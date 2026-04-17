@@ -6,6 +6,44 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-04-17 — DuckDB Removal, Skill Hardening & Feature Catalogue
+
+**Duration:** ~2h | **Focus:** Local backend swap, skill quality, feature catalogue
+
+### Done
+
+- Replaced DuckDB with PostgreSQL as the local `ComputeBackend` — removed `duckdb>=0.10` from `pyproject.toml`, updated all docs, README, CLAUDE.md, backlog, and decisions log
+- Audited all skills and commands for hard-coded file paths — found offenders in `backend-builder`, `frontend-builder`, and `plan-feature`; replaced with instructions to derive paths from `docs/architecture.md`
+- Added F8–F18 to `docs/features.md` (13 new features); bumped F8 (Compliance & Audit Traceability) and F9 (Downloadable Migration Output) to MVP scope
+- Updated `docs/mvp-scope.md` and `journal/BACKLOG.md` accordingly
+
+### Decisions
+
+- DuckDB removed: PostgreSQL is already in Docker Compose for job state — one less engine, logged in DECISIONS.md
+- Skills must not hard-code file paths: derive from `docs/architecture.md` — logged in DECISIONS.md
+
+### Open Questions
+
+- none
+
+### Next Session — Start Here
+
+1. Run `/plan-feature` for Phase 1 scaffold (Docker Compose revision, `src/backend/`, `src/worker/`, `src/frontend/` structure, jobs table Alembic migration)
+2. Run `uv sync` to drop DuckDB from the lock file after the scaffold is in place
+
+### Files Touched
+
+- `pyproject.toml`
+- `docs/architecture.md`, `docs/features.md`, `docs/mvp-scope.md`, `docs/user-stories.md`
+- `CLAUDE.md`, `README.md`
+- `journal/BACKLOG.md`, `journal/DECISIONS.md`
+- `.claude/skills/backend-builder/SKILL.md`
+- `.claude/skills/frontend-builder/SKILL.md`
+- `.claude/skills/plan-feature/SKILL.md`
+- `.claude/commands/plan-feature.md`
+
+---
+
 ## 2026-04-17 — Architecture Revision, Feature Expansion & Tooling Overhaul
 
 **Duration:** ~3h | **Focus:** Architecture, features, skills/commands, CI
