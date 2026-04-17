@@ -10,10 +10,12 @@ Deliver a working end-to-end migration for a single, real SAS script — local e
 
 | Feature | Scope limit for MVP |
 |---|---|
-| **F1 — Pipeline Generation** | DATA steps + PROC SQL only. No macro support in MVP. Single SAS file input. |
+| **F1 — Pipeline Generation** | DATA steps + PROC SQL only. No macro support in MVP. Multi-file SAS input (scripts, macro modules, includes). |
 | **F3 — Validation & Reconciliation** | Schema parity + row count + aggregate parity. Hash diff is post-MVP. |
+| **F8 — Compliance & Audit Traceability** | Immutable audit record per job (input hashes, model, timestamp, reconciliation results). Exposed via API. No new data computed — jobs table already holds it. |
+| **F9 — Downloadable Migration Output** | `GET /jobs/{id}/download` returns a zip: `pipeline.py` + `reconciliation_report.json` + `audit.json`. |
 
-Everything else (F2, F4, F5, F6, F7) is post-MVP.
+Everything else is post-MVP.
 
 ---
 
@@ -32,25 +34,23 @@ The `ComputeBackend` interface abstracts all execution differences. No `if CLOUD
 
 ## Sample SAS Input Scope (MVP)
 
-A single SAS script containing:
+One or more SAS files representing a real project (main script + macro modules + includes), containing:
 - At least one DATA step with a SET statement and variable transformations
 - At least one PROC SQL block
 - No macro definitions or calls
 - No ODS, PROC REPORT, or platform I/O procedures
 
-The same script is used for reconciliation: SAS output (exported as CSV) vs Python output.
+Reference CSV outputs (exported from SAS) are used for reconciliation: SAS output vs Python output.
 
 ---
 
 ## Post-MVP (next phases)
 
-- Macro variable resolution and macro definitions (F1 extension)
-- SAS log ingestion (F4)
-- Row-level hash diff (F3 extension)
-- Frontend: explanation UI (F2), side-by-side view (F7)
-- Frontend: lineage (F5), dependency graph (F6)
-- Databricks PySpark backend (CLOUD=true)
-- Multi-file SAS input with dependency resolution
+**Phase 2:** Macro variable resolution + macro definitions (F1 extension), PROC SORT (F1), row-level hash diff (F3 extension), record-level reconciliation (F15), log-based reverse engineering (F4), artefact versioning (F10), plain-language docs (F11), refine conversion action (F18)
+
+**Phase 3:** Code explanation UI (F2), side-by-side view (F7), editable code in UI (F13), lineage UI (F5), dependency graph (F6), ETL pipeline view (F17), migration dashboard (F16), technical docs + lineage metadata (F12)
+
+**Phase 4:** Databricks PySpark backend (CLOUD=true), authentication & SSO (F14)
 
 ---
 

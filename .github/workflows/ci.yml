@@ -8,8 +8,9 @@ on:
 
 env:
   PYTHON_VERSION: "3.12"
-  # Dummy value so config loading doesn't fail in tests — real API is never
-  # called in CI (LLM client is mocked in all unit/reconciliation tests)
+  # Dummy values so config loading doesn't fail in CI — real APIs are never
+  # called (LLM client is mocked in all unit/reconciliation tests)
+  LLM_MODEL: "anthropic:claude-sonnet-4-6"
   ANTHROPIC_API_KEY: "test"
   CLOUD: "false"
 
@@ -82,13 +83,32 @@ jobs:
         run: uv run pytest -m "not reconciliation and not cloud and not integration"
 
   # ── 3. Reconciliation tests ───────────────────────────────────────────────
-  # Slow tests that compare SAS vs Python outputs on sample scripts.
-  # Runs after unit tests pass. Uncomment when first reconciliation test exists.
+  # Slow tests that run the full worker pipeline (parse → LLM mock → codegen →
+  # reconcile) against sample SAS files and reference CSVs.
+  # Requires Postgres (spun up as a service) and at least one sample in samples/.
+  # Uncomment when the first reconciliation test exists.
   #
   # reconciliation:
   #   name: Reconciliation tests
   #   runs-on: ubuntu-latest
   #   needs: test
+  #
+  #   services:
+  #     postgres:
+  #       image: postgres:16
+  #       env:
+  #         POSTGRES_DB: rosetta_test
+  #         POSTGRES_USER: rosetta
+  #         POSTGRES_PASSWORD: rosetta
+  #       ports: ["5432:5432"]
+  #       options: >-
+  #         --health-cmd pg_isready
+  #         --health-interval 10s
+  #         --health-timeout 5s
+  #         --health-retries 5
+  #
+  #   env:
+  #     DATABASE_URL: postgresql+asyncpg://rosetta:rosetta@localhost:5432/rosetta_test
   #
   #   steps:
   #     - uses: actions/checkout@v4
@@ -112,11 +132,14 @@ jobs:
   #     - name: Install dependencies
   #       run: uv sync --extra dev
   #
+  #     - name: Run Alembic migrations
+  #       run: uv run alembic upgrade head
+  #
   #     - name: Run reconciliation tests
   #       run: uv run pytest -m reconciliation --timeout=120
 
   # ── 4. Frontend ───────────────────────────────────────────────────────────
-  # Uncomment when src/frontend is scaffolded (Phase 3).
+  # Uncomment when src/frontend is scaffolded (Phase 1).
   #
   # frontend:
   #   name: Frontend lint & build
@@ -149,7 +172,9 @@ jobs:
   #       working-directory: src/frontend
 
   # ── 5. Docker build ───────────────────────────────────────────────────────
-  # Uncomment when Dockerfiles exist in src/backend/ and src/frontend/.
+  # Builds all four service images (backend, worker, frontend, postgres is
+  # stock so not built here). Uncomment when Dockerfiles exist in all three
+  # src/ service directories.
   #
   # docker:
   #   name: Docker build
@@ -165,8 +190,17 @@ jobs:
   #     - name: Build backend image
   #       uses: docker/build-push-action@v5
   #       with:
-  #         context: .
+  #         context: src/backend
   #         file: src/backend/Dockerfile
+  #         push: false
+  #         cache-from: type=gha
+  #         cache-to: type=gha,mode=max
+  #
+  #     - name: Build worker image
+  #       uses: docker/build-push-action@v5
+  #       with:
+  #         context: src/worker
+  #         file: src/worker/Dockerfile
   #         push: false
   #         cache-from: type=gha
   #         cache-to: type=gha,mode=max
@@ -179,35 +213,3 @@ jobs:
   #         push: false
   #         cache-from: type=gha
   #         cache-to: type=gha,mode=max
-
-  # ── 6. Cloud / Databricks tests ───────────────────────────────────────────
-  # Requires DATABRICKS_HOST, DATABRICKS_TOKEN secrets set in GitHub.
-  # Only runs on push to main (not PRs) to protect secrets.
-  # Uncomment when DatabricksBackend is implemented (Phase 4).
-  #
-  # cloud:
-  #   name: Databricks integration tests
-  #   runs-on: ubuntu-latest
-  #   needs: [test]
-  #   if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-  #
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #
-  #     - name: Install uv
-  #       uses: astral-sh/setup-uv@v4
-  #       with:
-  #         version: "latest"
-  #
-  #     - name: Set up Python ${{ env.PYTHON_VERSION }}
-  #       run: uv python install ${{ env.PYTHON_VERSION }}
-  #
-  #     - name: Install dependencies (including cloud extras)
-  #       run: uv sync --extra dev --extra cloud
-  #
-  #     - name: Run cloud tests
-  #       env:
-  #         CLOUD: "true"
-  #         DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
-  #         DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
-  #       run: uv run pytest -m cloud --timeout=300
