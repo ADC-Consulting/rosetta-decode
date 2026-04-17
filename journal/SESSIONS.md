@@ -3,6 +3,59 @@
 Most recent session on top. Each entry should answer:
 
 - What did we do?
+
+---
+
+## 2026-04-17 — Architecture Revision, Feature Expansion & Tooling Overhaul
+
+**Duration:** ~3h | **Focus:** Architecture, features, skills/commands, CI
+
+### Done
+
+- Confirmed context: CI fixes defer to when `src/` is created; multi-file upload is MVP; frontend confirmed React+Vite; Databricks paused
+- Revised `docs/architecture.md` — full rewrite: 4-service microservices (backend, worker, frontend, postgres), async job flow (POST→job_id→poll), reconciliation inline in worker, provider-agnostic LLM via `LLM_MODEL` env var, PostgreSQL jobs table schema, updated directory structure
+- Updated `docs/mvp-scope.md` — multi-file input now in MVP scope; post-MVP phases restructured
+- Updated `.github/workflows/ci.yml` — reconciliation job gets postgres service + Alembic step; worker image added to Docker build job; frontend comment corrected to Phase 1; `LLM_MODEL` dummy env var added
+- Added F8–F18 to `docs/features.md` — 13 new features catalogued across phases
+- Bumped F8 (Compliance & Audit Traceability) and F9 (Downloadable Migration Output) to MVP
+- Updated `journal/BACKLOG.md` — Phase 1 rewritten for 4-service scaffold; F8/F9 tasks added; Phase 2–4 expanded with new features
+- Updated `journal/DECISIONS.md` — session 3 decisions logged
+- Overhauled `plan-feature`, `session-start`, `session-end` skills and commands — plan-feature now writes `docs/plans/F<N>-<slug>.md` with subtasks, dependencies, acceptance criteria; session-start reads `docs/plans/`; session-end updates plan file before journal
+- Updated `CLAUDE.md` — architecture summary, key docs table, session continuity steps, skills table
+
+### Decisions
+
+- All logged in `journal/DECISIONS.md` under "session 3 — architecture revision"
+- Key: 4-service microservices, async jobs in Postgres, reconciliation inline, LLM_MODEL env var, multi-file in MVP, F8/F9 bumped to MVP, Databricks paused to Phase 4
+
+### Open Questions
+
+- none
+
+### Next Session — Start Here
+
+1. Run `/plan-feature` for Phase 1 scaffold (Docker Compose revision, `src/backend/`, `src/worker/`, `src/frontend/` structure, jobs table Alembic migration)
+2. Work through F1 vertical slice subtasks in order per the generated plan file
+
+### Files Touched
+
+- `docs/architecture.md`
+- `docs/features.md`
+- `docs/mvp-scope.md`
+- `journal/BACKLOG.md`
+- `journal/DECISIONS.md`
+- `.github/workflows/ci.yml`
+- `.claude/commands/plan-feature.md`
+- `.claude/commands/session-start.md`
+- `.claude/commands/session-end.md`
+- `.claude/skills/plan-feature/SKILL.md`
+- `.claude/skills/session-start/SKILL.md`
+- `.claude/skills/session-end/SKILL.md`
+- `CLAUDE.md`
+
+---
+
+## 2026-04-17 — Claude Setup Hardening & Dev Scaffolding
 - What decisions did we make?
 - What's blocked or open?
 - What's the very next thing to do?
