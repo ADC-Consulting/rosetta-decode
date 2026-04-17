@@ -1,6 +1,6 @@
 ---
 name: plan-feature
-description: Run when starting any new feature. Reads context, breaks into subtasks, enters plan mode, and waits for approval before coding.
+description: Run when starting any new feature. Reads context, breaks into ordered subtasks with dependencies, writes a feature plan file, and waits for approval before coding.
 ---
 
 ## Use for
@@ -8,24 +8,111 @@ description: Run when starting any new feature. Reads context, breaks into subta
 - Getting explicit user approval on the implementation plan before any code is written
 
 ## Do NOT use for
-- Continuing an already-planned feature (pick up from `journal/BACKLOG.md`)
-- Small fixes or chores that don't need a formal plan
+- Continuing an already-planned feature — read the existing plan file in `docs/plans/` instead
+- Small fixes or chores that do not need a formal plan
 
 ## Steps
 
-1. Read `docs/features.md`, `docs/architecture.md`, and `docs/mvp-scope.md` to understand the feature's scope and constraints before doing anything else.
+### 1. Read context
 
-2. Break the feature into the smallest independently testable subtasks:
-   - Each subtask produces one testable artifact (function, endpoint, component, or test file)
-   - Backend order: service layer → API route → tests → `make test`
-   - Frontend order: API client → component → page wiring → `make test`
-   - Every backend data transform must have a corresponding reconciliation test subtask
-   - The final subtask of every feature is always: write tests → run `make test` → confirm pass
+Read all of the following before doing anything else:
 
-3. Write the subtasks to `journal/BACKLOG.md` under the correct phase.
+- `docs/features.md` — feature definition, area, phase
+- `docs/architecture.md` — service layout, API contracts, data model
+- `docs/mvp-scope.md` — what is and is not in scope
+- `docs/coding-standards.md` — conventions to follow
+- `journal/BACKLOG.md` — current phase and existing tasks
+- `journal/DECISIONS.md` — locked constraints
 
-4. Enter plan mode and present the subtask list to the user. Wait for explicit approval before writing any code.
+### 2. Break the feature into subtasks
 
-5. Once approved, work through subtasks in order. After each subtask, mark it done in `journal/BACKLOG.md` immediately — do not batch completions.
+Rules for subtask decomposition:
+- Each subtask produces exactly one independently testable artefact: a function, a route, a schema migration, a component, or a test file
+- Subtasks must be ordered — list blocked subtasks after the ones they depend on
+- Mark dependencies explicitly: "requires: <subtask name>"
+- Never combine data model + service logic + route in one subtask
 
-6. A feature is only complete when `make test` exits 0.
+**Ordering by area:**
+
+Backend (worker service — `src/worker/`):
+1. Data model / Alembic migration (if new DB columns needed)
+2. Core logic: engine, validation, or compute layer
+3. Unit tests for core logic
+4. Integration with worker poll loop (if applicable)
+
+Backend (API service — `src/backend/`):
+1. Request/response Pydantic schemas
+2. FastAPI route
+3. Route tests (pytest + TestClient)
+
+Frontend (`src/frontend/src/`):
+1. API client function (`api/`)
+2. Component (`components/`)
+3. Page wiring (`pages/`)
+4. Manual smoke test note
+
+Always last:
+- Run `make test` and confirm exit 0
+- Mark feature done in `journal/BACKLOG.md`
+
+### 3. Write the feature plan file
+
+Create `docs/plans/F<N>-<slug>.md` (e.g. `docs/plans/F1-pipeline-generation.md`).
+
+Use this structure:
+
+```markdown
+# F<N> — <Feature Name>
+
+**Phase:** <1|2|3|4>
+**Area:** <Backend / Worker | Backend / API | Frontend | Both>
+**Status:** in-progress
+
+## Goal
+
+One paragraph: what this feature does, why it matters, what done looks like.
+
+## Acceptance Criteria
+
+- [ ] <concrete, testable criterion>
+- [ ] `make test` exits 0
+- [ ] ruff and mypy pass
+
+## Subtasks
+
+### <subtask-id>: <name>
+**File:** `<exact path>`
+**Depends on:** <subtask-id or "none">
+**Done when:** <one sentence — what exists that didn't before>
+- [ ] done
+
+(repeat for each subtask)
+
+## Dependencies on other features
+
+- <F-number and what specifically is needed, or "none">
+
+## Out of scope for this feature
+
+- <explicit exclusion>
+```
+
+### 4. Update BACKLOG.md
+
+Add the subtasks under the correct phase in `journal/BACKLOG.md`, formatted as:
+```
+- [ ] F<N>: <subtask name> → see `docs/plans/F<N>-<slug>.md`
+```
+
+### 5. Enter plan mode
+
+Present the plan to the user. Wait for explicit approval before writing any code.
+
+### 6. Execute in order
+
+Work through subtasks sequentially. After each one:
+- Mark it done in the plan file (`- [x] done`)
+- Mark it done in `journal/BACKLOG.md`
+- Do not batch completions
+
+A feature is only complete when `make test` exits 0 and all acceptance criteria are checked off.

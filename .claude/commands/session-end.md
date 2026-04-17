@@ -1,38 +1,44 @@
-```markdown
 ---
 description: Persist session state before stopping
 ---
 
-You are ending the current Claude Code session. Update the journal so the next
-session can resume cleanly.
+Do the following IN ORDER:
 
-Do the following:
+1. **Update the active feature plan (if any)**  
+   Check `docs/plans/` for a file with `Status: in-progress`. If found:
+   - Mark completed subtasks as `- [x] done`
+   - Set `Status: complete` if all acceptance criteria are met, otherwise leave as `in-progress`
 
-1. **Append a new entry to the TOP of `journal/SESSIONS.md`** with today's date
-   and a structured summary:
-   - Focus
-   - Done (bullets)
-   - Decisions (reference DECISIONS.md entries)
-   - Open Questions
-   - Next Session — Start Here (concrete, actionable first step)
-   - Files Touched
-
-2. **Update `journal/BACKLOG.md`:**
+2. **Update `journal/BACKLOG.md`**  
    - Check off completed items
-   - Add any new items discovered this session
-   - Reorder if priorities shifted
+   - Add any newly discovered tasks under the correct phase
+   - Backlog entries for a feature in progress should reference its plan file:
+     `- [x] F<N>: <subtask> → see docs/plans/F<N>-<slug>.md`
 
-3. **Update `journal/DECISIONS.md`** if any new decisions were made.
+3. **Update `journal/DECISIONS.md`** if any architectural decision was made this session.  
+   If the decision is non-trivial (new service, data model change, external dependency), also create an ADR in `docs/adr/`.
 
-4. **Create an ADR in `docs/adr/`** if a non-trivial architectural choice was made
-   (use `/adr` command as reference).
+4. **Append a new entry to the TOP of `journal/SESSIONS.md`** using today's real date:
+   ```
+   ## YYYY-MM-DD — <one-line session title>
+   **Duration:** ~Xh | **Focus:** <topic>
 
-5. **Create a detailed session file** at
-   `journal/sessions/YYYY-MM-DD-<slug>.md` summarizing transcript highlights,
-   artifacts produced, and handoff notes.
+   ### Done
+   - <item>
 
-6. Show the user a diff summary of what you updated and ask them to confirm
-   before committing.
+   ### Decisions
+   - <decision and rationale, or "none">
 
-IMPORTANT: Use today's real date from the system, not a placeholder.
-```
+   ### Open Questions
+   - <question, or "none">
+
+   ### Next Session — Start Here
+   1. <concrete first action — reference the plan file if a feature is in progress>
+
+   ### Files Touched
+   - <file>
+   ```
+
+5. **Show the user the journal diffs** and wait for explicit approval before committing.
+
+6. **Invoke the `git-committer` skill** for the final commit. Journal updates and plan file updates are one logical unit — commit them together unless there are unrelated code changes that belong in a separate commit.

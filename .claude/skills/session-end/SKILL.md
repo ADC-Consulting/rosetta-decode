@@ -13,31 +13,55 @@ description: Run before stopping to update the journal and commit any outstandin
 
 ## Steps
 
-1. Append a new entry to the TOP of `journal/SESSIONS.md` using this format:
-   ```
-   ## YYYY-MM-DD — <one-line session title>
-   **Duration:** ~Xh | **Focus:** <topic>
+### 1. Update the active feature plan (if any)
 
-   ### Done
-   - <item>
+Check `docs/plans/` for a plan file with `Status: in-progress`. If one exists:
+- Mark completed subtasks as `- [x] done`
+- Update `Status:` to `in-progress` (still going) or `complete` (all criteria met)
+- Do not add new subtasks here — new scope goes in `journal/BACKLOG.md`
 
-   ### Decisions
-   - <decision and rationale, or "none">
+### 2. Update BACKLOG.md
 
-   ### Open Questions
-   - <question, or "none">
+- Check off completed items
+- Add any newly discovered tasks under the correct phase
+- If a feature plan file exists, backlog entries for that feature should reference it:
+  `- [x] F<N>: <subtask> → see docs/plans/F<N>-<slug>.md`
 
-   ### Next Session — Start Here
-   - <concrete first action>
+### 3. Update DECISIONS.md
 
-   ### Files Touched
-   - <file>
-   ```
+If any architectural decision was made this session, append it to `journal/DECISIONS.md`:
+```
+- **<Decision>:** <what was decided> · <rationale> · revisit <when/never>
+```
 
-2. Update `journal/BACKLOG.md`: check off completed items, add any newly discovered tasks under the correct phase.
+If the decision is non-trivial (new service, data model change, external dependency added), also create an ADR in `docs/adr/`.
 
-3. If any architectural decision was made this session, log it in `journal/DECISIONS.md` with rationale and a revisit flag if appropriate.
+### 4. Append a new entry to the TOP of SESSIONS.md
 
-4. If a non-trivial architectural choice was made, create an ADR in `docs/adr/` following the existing format.
+```
+## YYYY-MM-DD — <one-line session title>
+**Duration:** ~Xh | **Focus:** <topic>
 
-5. Show the user the journal diffs and wait for approval before committing. Then invoke the `git-committer` skill for the commit.
+### Done
+- <item>
+
+### Decisions
+- <decision and rationale, or "none">
+
+### Open Questions
+- <question, or "none">
+
+### Next Session — Start Here
+1. <concrete first action, referencing the plan file if a feature is in progress>
+
+### Files Touched
+- <file>
+```
+
+### 5. Show diffs and wait for approval
+
+Show the user what changed in the journal files. Wait for explicit approval before committing.
+
+### 6. Invoke git-committer
+
+Run the `git-committer` skill for the final commit. Journal updates and feature plan updates are one logical unit — commit them together unless there are also unrelated code changes that should be separate commits.

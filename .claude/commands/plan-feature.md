@@ -1,24 +1,59 @@
-```markdown
 ---
-description: Produce a plan for a new feature using grounded context
+description: Plan a new feature — reads context, writes docs/plans/F<N>-<slug>.md, enters plan mode
 ---
 
-Before planning:
+Read the following before doing anything else:
 
-1. Read `CLAUDE.md`
-2. Read `docs/user-stories.md` and `docs/features.md`
-3. Read `specs/mvp-scope.md`
-4. Read the TOP entry of `journal/SESSIONS.md`
+1. `CLAUDE.md`
+2. `docs/features.md` — find the feature definition, area, and phase
+3. `docs/architecture.md` — service layout, API contracts, data model
+4. `docs/mvp-scope.md` — what is and is not in scope
+5. `docs/coding-standards.md` — conventions to follow
+6. `journal/BACKLOG.md` — current phase and existing tasks
+7. `journal/DECISIONS.md` — locked constraints
 
-Then produce a plan for the feature the user names, containing:
+Then break the feature into the smallest independently testable subtasks, ordered by dependency:
 
-1. **User story mapping** — which US and acceptance criteria this serves
-2. **File tree changes** — new/modified files
-3. **Implementation order** — smallest vertical slice first
-4. **Interfaces** — function signatures and data contracts
-5. **Test strategy** — unit + reconciliation tests
-6. **CLOUD flag handling** — how this behaves in both modes
-7. **Open questions** — anything requiring user input before coding
+**Worker service (`src/worker/`):** data model/migration → core logic → unit tests → worker loop wiring  
+**API service (`src/backend/`):** Pydantic schemas → FastAPI route → route tests  
+**Frontend (`src/frontend/src/`):** API client → component → page wiring  
+**Always last:** run `make test`, confirm exit 0, mark feature done in backlog
 
-STOP after the plan. Do not write code until the user approves.
+Write a plan file at `docs/plans/F<N>-<slug>.md` using this structure:
+
 ```
+# F<N> — <Feature Name>
+
+**Phase:** <1|2|3|4>
+**Area:** <Backend / Worker | Backend / API | Frontend | Both>
+**Status:** in-progress
+
+## Goal
+One paragraph: what this feature does, why it matters, what done looks like.
+
+## Acceptance Criteria
+- [ ] <concrete, testable criterion>
+- [ ] `make test` exits 0
+- [ ] ruff and mypy pass
+
+## Subtasks
+
+### <subtask-id>: <name>
+**File:** `<exact path>`
+**Depends on:** <subtask-id or "none">
+**Done when:** <one sentence>
+- [ ] done
+
+## Dependencies on other features
+- <F-number and what is needed, or "none">
+
+## Out of scope for this feature
+- <explicit exclusion>
+```
+
+Add entries to `journal/BACKLOG.md` under the correct phase:
+```
+- [ ] F<N>: <subtask name> → see `docs/plans/F<N>-<slug>.md`
+```
+
+Enter plan mode. Present the subtask list to the user. Wait for explicit approval before writing any code.

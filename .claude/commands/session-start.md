@@ -1,22 +1,19 @@
-```markdown
 ---
 description: Load context at the start of a working session
 ---
 
-You are starting a new Claude Code session on the SAS-to-Databricks migration tool.
+Read the following IN ORDER:
 
-Do the following IN ORDER:
+1. `CLAUDE.md`
+2. Top entry of `journal/SESSIONS.md` (most recent session only)
+3. `journal/BACKLOG.md` — identify the active phase and pending tasks
+4. `journal/DECISIONS.md` — note constraints that affect today's work
+5. `docs/plans/` — check for any plan file with `Status: in-progress`; if found, read it fully
 
-1. Read `CLAUDE.md` fully.
-2. Read the TOP entry of `journal/SESSIONS.md`.
-3. Read `journal/BACKLOG.md`.
-4. Read `journal/DECISIONS.md`.
-5. Produce a short briefing for the user with:
-   - What the last session accomplished
-   - What was flagged as "Next Session — Start Here"
-   - Any open questions from the last session
-   - Your proposed plan for this session (1–3 bullets)
-6. Wait for the user to confirm or redirect before doing any work.
+Then produce a short briefing for the user:
+- What the last session accomplished
+- What feature (if any) is in progress and which subtask is next
+- What is next on the backlog if no feature is in progress
+- Any open questions or blockers from the last session
 
-Do NOT start implementing anything until the user confirms the plan.
-```
+Wait for the user to confirm the context or redirect before proposing or starting any work.
