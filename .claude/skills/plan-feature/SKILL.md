@@ -3,6 +3,16 @@ name: plan-feature
 description: Run when starting any new feature. Reads context, breaks into subtasks, enters plan mode, and waits for approval before coding.
 ---
 
+## Use for
+- Starting work on any new feature from the backlog
+- Getting explicit user approval on the implementation plan before any code is written
+
+## Do NOT use for
+- Continuing an already-planned feature (pick up from `journal/BACKLOG.md`)
+- Small fixes or chores that don't need a formal plan
+
+## Steps
+
 1. Read `docs/features.md`, `docs/architecture.md`, and `docs/mvp-scope.md` to understand the feature's scope and constraints before doing anything else.
 
 2. Break the feature into the smallest independently testable subtasks:

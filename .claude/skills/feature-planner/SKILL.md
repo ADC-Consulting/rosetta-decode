@@ -3,6 +3,18 @@ name: feature-planner
 description: Use when the user asks to build or implement a feature. Reads the feature definition, breaks it into ordered subtasks, updates the backlog, and enters plan mode before any code is written.
 ---
 
+## Use for
+- Breaking down any feature from `docs/features.md` into implementable subtasks
+- Planning the build order before any code is written
+- Updating `journal/BACKLOG.md` with new subtasks
+
+## Do NOT use for
+- Mid-feature replanning (just continue from the backlog)
+- Hotfixes or small isolated changes (go directly to `backend-builder` or `frontend-builder`)
+- Committing or testing (use `git-committer` and `make test`)
+
+## Steps
+
 1. Read the feature definition from `docs/features.md`, `docs/architecture.md`, and `docs/mvp-scope.md` to fully understand scope and constraints before doing anything else.
 
 2. Break the feature into the smallest independently testable subtasks:
