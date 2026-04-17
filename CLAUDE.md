@@ -4,7 +4,7 @@
 ## Purpose
 
 Build a tool that migrates legacy SAS code into Python/PySpark pipelines runnable
-locally (pandas/DuckDB) or on Databricks (PySpark), controlled by the CLOUD flag
+locally (pandas/PostgreSQL) or on Databricks (PySpark), controlled by the CLOUD flag
 in .env. Tool must be transparent, tool-agnostic, and produce audit-ready output.
 
 ## Session Continuity — READ FIRST EVERY SESSION
@@ -58,7 +58,7 @@ Execution backend abstracted behind `ComputeBackend` interface in `src/worker/co
 ## Critical Rules
 
 - NEVER commit secrets or .env files (only .env.example)
-- When CLOUD=true: PySpark only. When CLOUD=false: pandas/DuckDB.
+- When CLOUD=true: PySpark only. When CLOUD=false: pandas/PostgreSQL.
 - Abstract execution behind a `ComputeBackend` interface — no `if CLOUD` checks scattered in business logic
 - Every migration output must be reproducible: same SAS input → same Python output
 - Use plan mode before any multi-file change

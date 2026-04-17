@@ -21,7 +21,6 @@ dependencies = [
 
     # Local execution backend
     "pandas>=2.2",
-    "duckdb>=0.10",
     "pyarrow>=15.0",
 
     # SAS ingestion
@@ -134,7 +133,7 @@ addopts = [
 markers = [
     "reconciliation: slow tests comparing SAS vs Python outputs",
     "cloud: tests requiring a Databricks workspace (CLOUD=true)",
-    "integration: tests hitting a real backend (pyspark/duckdb)",
+    "integration: tests hitting a real backend (pyspark/postgres)",
     "flaky: known-flaky tests, to be stabilized",
 ]
 

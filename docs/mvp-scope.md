@@ -25,7 +25,7 @@ Controlled by `CLOUD` in `.env` (never in code).
 
 | `CLOUD` | Execution | Libraries |
 |---|---|---|
-| `false` | Local | pandas, DuckDB |
+| `false` | Local | pandas, PostgreSQL |
 | `true` | Databricks | PySpark |
 
 The `ComputeBackend` interface abstracts all execution differences. No `if CLOUD` checks are allowed outside of the backend initialization layer.

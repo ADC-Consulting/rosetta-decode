@@ -6,12 +6,12 @@ Decode legacy SAS with LLMs. Extract hidden business logic, map dependencies, an
 
 ## What this is
 
-A migration tool that takes legacy SAS scripts and produces runnable Python ETL pipelines — locally via pandas/DuckDB, or on Databricks via PySpark. A hosted LLM handles the translation; a reconciliation engine proves the output matches the original SAS results.
+A migration tool that takes legacy SAS scripts and produces runnable Python ETL pipelines — locally via pandas/PostgreSQL, or on Databricks via PySpark. A hosted LLM handles the translation; a reconciliation engine proves the output matches the original SAS results.
 
 Controlled by a single flag in `.env`:
 
 ```
-CLOUD=false   # pandas + DuckDB (local)
+CLOUD=false   # pandas + PostgreSQL (local)
 CLOUD=true    # PySpark (Databricks)
 ```
 
@@ -123,7 +123,7 @@ Read the top entry of `SESSIONS.md` and `BACKLOG.md` before starting any work, e
 
 ### The philosophy
 
-**No `if CLOUD` checks in business logic.** All execution differences between local (pandas/DuckDB) and Databricks (PySpark) are hidden behind a `ComputeBackend` interface. Business logic never knows which backend is running. This keeps the codebase clean, testable, and honest about its abstractions.
+**No `if CLOUD` checks in business logic.** All execution differences between local (pandas/PostgreSQL) and Databricks (PySpark) are hidden behind a `ComputeBackend` interface. Business logic never knows which backend is running. This keeps the codebase clean, testable, and honest about its abstractions.
 
 **Every generated line is traceable.** All Python code produced by the migration engine carries a `# SAS: <file>:<line>` provenance comment. You can always trace any output back to its SAS source. This is non-negotiable — it's what makes the tool audit-ready.
 

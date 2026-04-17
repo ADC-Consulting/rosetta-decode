@@ -61,7 +61,7 @@ Rosetta Decode is a microservices application. Each service is a separate Docker
 │                                                         │             │
 │  ┌──────────────────────────────────────────────────────▼──────────┐ │
 │  │  ComputeBackend (abstract interface)                             │ │
-│  │  LocalBackend       → pandas + DuckDB      (active)              │ │
+│  │  LocalBackend       → pandas + PostgreSQL      (active)              │ │
 │  │  DatabricksBackend  → PySpark              (future — Phase 4)    │ │
 │  └──────────────────────────────────────────────────────────────────┘ │
 └──────────────────────────────────────────────────────────────────────┘
@@ -263,7 +263,7 @@ All services on bridge network `rosetta-net`. Run the full stack with `make dev`
 | Backend language | Python 3.12 |
 | API framework | FastAPI |
 | Job state | PostgreSQL 16 + SQLAlchemy (async) + Alembic + asyncpg |
-| Local execution | pandas + DuckDB |
+| Local execution | pandas + PostgreSQL |
 | Cloud execution | PySpark / Databricks — Phase 4, paused |
 | LLM integration | Pydantic AI — agents, tool definitions, structured outputs |
 | LLM provider | Provider-agnostic via `LLM_MODEL` env var |

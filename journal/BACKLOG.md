@@ -25,7 +25,7 @@
 - [ ] Add SQLAlchemy async setup + Alembic + asyncpg to `pyproject.toml`
 - [ ] DB: `jobs` table Alembic migration (id, status, input_hash, files JSONB, python_code, report JSONB, error, timestamps)
 - [ ] Define `ComputeBackend` abstract interface (`src/worker/compute/base.py`)
-- [ ] Implement `LocalBackend` (pandas + DuckDB) (`src/worker/compute/local.py`)
+- [ ] Implement `LocalBackend` (pandas + PostgreSQL) (`src/worker/compute/local.py`)
 - [ ] Implement `BackendFactory` — reads `CLOUD` from env, returns correct backend
 - [ ] F1: SAS parser — extract DATA step + PROC SQL blocks from N SAS files, order by dependency (`src/worker/engine/parser.py`)
 - [ ] F1: LLM client — Pydantic AI agent, model from `LLM_MODEL` env var, structured output (`src/worker/engine/llm_client.py`)

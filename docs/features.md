@@ -11,7 +11,7 @@ Features are grouped by MVP status. New features introduced after the initial se
 **Serves:** US1  
 **Phase:** 1
 
-Ingests one or more SAS scripts (main scripts, macro modules, includes), calls a hosted LLM with the SAS source as context, and produces a complete runnable ETL pipeline in Python. Execution mode is controlled by the `CLOUD` flag in `.env`: `false` → pandas/DuckDB (local), `true` → PySpark (Databricks).
+Ingests one or more SAS scripts (main scripts, macro modules, includes), calls a hosted LLM with the SAS source as context, and produces a complete runnable ETL pipeline in Python. Execution mode is controlled by the `CLOUD` flag in `.env`: `false` → pandas/PostgreSQL (local), `true` → PySpark (Databricks).
 
 The engine handles: DATA steps, PROC SQL, PROC SORT, macro definitions and calls, macro variable resolution. SAS constructs that cannot be reliably translated (e.g. PROC MIXED, ODS, platform-specific I/O) are preserved as comments marked `# SAS-UNTRANSLATABLE: <reason>` so engineers know exactly what needs manual attention.
 

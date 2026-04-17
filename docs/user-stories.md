@@ -9,7 +9,7 @@
 ### Acceptance Criteria
 
 - [ ] Given a SAS script, the system produces a runnable Python ETL pipeline
-- [ ] The pipeline runs locally (pandas/DuckDB) when `CLOUD=false` and on Databricks (PySpark) when `CLOUD=true`
+- [ ] The pipeline runs locally (pandas/PostgreSQL) when `CLOUD=false` and on Databricks (PySpark) when `CLOUD=true`
 - [ ] Every generated line includes a provenance comment `# SAS: <file>:<line>`
 - [ ] Any SAS construct that cannot be translated is flagged as `# SAS-UNTRANSLATABLE: <reason>` rather than silently dropped
 - [ ] The same SAS input always produces the same Python output (deterministic)
