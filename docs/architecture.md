@@ -62,7 +62,8 @@ Rosetta Decode is a microservices application. Each service is a separate Docker
 │  ┌──────────────────────────────────────────────────────▼──────────┐ │
 │  │  ComputeBackend (abstract interface)                             │ │
 │  │  LocalBackend       → pandas + PostgreSQL      (active)              │ │
-│  │  DatabricksBackend  → PySpark              (future — Phase 4)    │ │
+│  │  DatabricksBackend  → PySpark only          (future — Phase 4)    │ │
+  │  (DLT + Databricks SQL evaluated; deferred — see DECISIONS.md)   │ │
 │  └──────────────────────────────────────────────────────────────────┘ │
 └──────────────────────────────────────────────────────────────────────┘
                              │
