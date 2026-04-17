@@ -25,9 +25,9 @@ dependencies = [
     "pyarrow>=15.0",
 
     # SAS ingestion
-    "pyreadstat>=1.2",  # read .sas7bdat / .sas7bcat datasets
-    "sqlparse>=0.4",    # for PROC SQL parsing
-    "lark>=1.1",        # grammar-based SAS DATA step parser
+    "pyreadstat>=1.2", # read .sas7bdat / .sas7bcat datasets
+    "sqlparse>=0.4",   # for PROC SQL parsing
+    "lark>=1.1",       # grammar-based SAS DATA step parser
 
     # Pipeline manifest + lineage
     "pyyaml>=6.0",
@@ -146,4 +146,4 @@ omit = ["**/__init__.py", "**/cli.py"]
 [tool.coverage.report]
 show_missing = true
 skip_covered = false
-fail_under = 80
+fail_under = 90
