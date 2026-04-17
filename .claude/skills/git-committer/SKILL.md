@@ -17,7 +17,7 @@ description: Use before making any git commit. Enforces conventional commit form
    - Subject line: imperative mood, ≤72 characters, no trailing period
    - Body (optional): explain the why, not the what
 
-4. Show the staged file list and commit message to the user and wait for explicit approval before running `git commit`.
+4. Show the staged file list and commit message to the user and wait for explicit approval before running `git commit`. Never add Co-Authored-By or any Claude attribution to commit messages.
 
 5. Never use `--no-verify`. Pre-commit hooks are the quality gate — if a hook fails, fix the underlying issue and retry. Never bypass.
 
