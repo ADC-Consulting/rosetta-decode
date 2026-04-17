@@ -49,7 +49,7 @@
 - [ ] F8: Audit traceability — expose `GET /jobs/{id}/audit` returning immutable record
 - [ ] F9: Downloadable output — `GET /jobs/{id}/download` returns zip
 - [ ] Reconciliation test: DATA step → DataFrame (pytest, CLOUD=false)
-- [x] Sample SAS files in `samples/` + corresponding reference output CSVs
+- [ ] Sample SAS files in `samples/` + corresponding reference output CSVs
 
 ---
 

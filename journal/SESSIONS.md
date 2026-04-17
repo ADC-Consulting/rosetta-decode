@@ -6,6 +6,62 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-04-17 — Phase 1 Scaffold, Databricks Strategy & Workflow Hardening
+
+**Duration:** ~3h | **Focus:** Full four-service skeleton, design decisions, session tooling
+
+### Done
+
+- Reasoned through three Databricks output targets (PySpark, Databricks SQL, DLT) — locked in PySpark-only for `DatabricksBackend`; Databricks SQL and DLT deferred. Logged in `journal/DECISIONS.md` and `docs/architecture.md`
+- Created `feat/phase1-scaffold` branch
+- Planned and executed all 21 subtasks of `docs/plans/F0-phase1-scaffold.md` without stopping:
+  - `docker-compose.yml`: 4 services (postgres, backend, worker, frontend) on `rosetta-net`
+  - `src/backend/`: FastAPI app, `POST /migrate`, `GET /jobs/{id}`, SQLAlchemy async, pydantic-settings
+  - `src/worker/`: async poll loop (queued→running→failed:not-implemented), `ComputeBackend` ABC, `LocalBackend` stub, `BackendFactory`
+  - `src/frontend/`: Vite + React + TS + Tailwind + shadcn/ui placeholder
+  - `alembic/` + `jobs` table migration (`001_create_jobs_table`)
+  - `tests/test_api_smoke.py`: 6 smoke tests via in-memory SQLite — 6/6 pass
+  - `pyproject.toml`: added SQLAlchemy[asyncio], Alembic, asyncpg, pytest-asyncio, aiosqlite, pandas-stubs
+  - CI: reconciliation job with Postgres service + Alembic step; frontend build and Docker build jobs active
+- Rewrote `README.md` with full session workflow guide (`/session-start`, `/session-end`, `/plan-feature`, `/git-committer`) and `make test` as the canonical test command
+- Updated `Makefile`: fixed `coverage` path (`--cov=src`), fixed `run-backend` entrypoint (`src.backend.main:app`), removed stale `frontend-test`
+- Hardened skills: `git-committer` now mandates `make test` at step 1 before staging code; `backend-builder` and `CLAUDE.md` explicitly forbid raw `uv run pytest`
+
+### Decisions
+
+- **DatabricksBackend = PySpark only:** SQL cannot handle DATA steps; DLT breaks local/cloud symmetry. See `journal/DECISIONS.md` session 5 entry.
+- **Codegen constraint:** `CodeGenerator` must not emit pandas-only idioms — use parameterised DataFrame ops so `LocalBackend` and `DatabricksBackend` swap APIs without changing structure
+- **Tests via `make test` only:** `uv run pytest` and bare `pytest` are forbidden in skills, CLAUDE.md, and README
+- **SQLite for smoke tests:** `aiosqlite` in-memory DB avoids a real Postgres dependency in unit/smoke tests; Alembic migration runs against real Postgres in CI reconciliation job only
+
+### Open Questions
+
+- none
+
+### Next Session — Start Here
+
+1. Run `/plan-feature` for **F1** (SAS parser → LLM client → codegen). The plan should cover: `src/worker/engine/parser.py` (DATA step + PROC SQL block extraction, multi-file dependency ordering), `src/worker/engine/llm_client.py` (Pydantic AI agent, `LLM_MODEL` env var), `src/worker/engine/codegen.py` (provenance comments, `# SAS: <file>:<line>`)
+2. Before planning F1, add sample SAS files to `samples/` — the parser needs real input to test against
+
+### Files Touched
+
+- `docker-compose.yml`
+- `pyproject.toml`, `uv.lock`
+- `.env.example`
+- `alembic.ini`, `alembic/env.py`, `alembic/versions/001_create_jobs_table.py`
+- `src/backend/` (all files — new)
+- `src/worker/` (all files — new)
+- `src/frontend/` (full scaffold — new)
+- `tests/test_api_smoke.py` (new)
+- `.github/workflows/ci.yml`
+- `docs/plans/F0-phase1-scaffold.md` (new, status: done)
+- `docs/architecture.md`
+- `journal/BACKLOG.md`, `journal/DECISIONS.md`
+- `README.md`, `Makefile`, `CLAUDE.md`
+- `.claude/skills/git-committer/SKILL.md`, `.claude/skills/backend-builder/SKILL.md`
+
+---
+
 ## 2026-04-17 — DuckDB Removal, Skill Hardening & Feature Catalogue
 
 **Duration:** ~2h | **Focus:** Local backend swap, skill quality, feature catalogue
