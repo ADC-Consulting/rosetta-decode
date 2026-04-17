@@ -19,9 +19,11 @@ CLOUD=true    # PySpark (Databricks)
 
 ## Prerequisites
 
-- Python 3.12
-- [uv](https://docs.astral.sh/uv/) — install with `curl -LsSf https://astral.sh/uv/install.sh | sh`
-- Node.js 20+ (frontend, Phase 3 onwards)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) — for running the stack
+- [uv](https://docs.astral.sh/uv/) — for local tooling (tests, linting, pre-commit)
+  ```bash
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  ```
 
 ---
 
@@ -32,10 +34,10 @@ CLOUD=true    # PySpark (Databricks)
 git clone <repo-url>
 cd rosetta-decode
 
-# 2. Install dependencies (creates .venv automatically)
+# 2. Install local dev tools (ruff, mypy, pytest, pre-commit)
 uv sync --extra dev
 
-# 3. Register pre-commit hooks (runs ruff + mypy on every commit)
+# 3. Register pre-commit hooks — these run on every commit automatically
 uv run pre-commit install
 
 # 4. Copy env file and fill in your API key
@@ -49,6 +51,20 @@ CLOUD=false
 ANTHROPIC_API_KEY=sk-ant-...
 LOG_LEVEL=INFO
 ```
+
+---
+
+## Running the stack
+
+```bash
+make dev        # start backend + frontend in Docker
+make dev-down   # stop everything
+make dev-logs   # tail logs from all containers
+```
+
+Backend runs at `http://localhost:8000`, frontend at `http://localhost:5173`.
+
+Each service's `Dockerfile` lives alongside its source (`src/backend/Dockerfile`, `src/frontend/Dockerfile`) and will be added when those are scaffolded.
 
 ---
 
@@ -86,6 +102,14 @@ Claude will read the journal, summarise what was done last session, what's next,
 ```
 
 **Always start with `/session-start`. Always end with `/session-end`.** This is how we keep the project coherent across contributors and sessions.
+
+### Committing code
+
+**Never commit manually.** All commits go through the `/git-committer` skill, which enforces conventional commit format, verifies the journal is up to date, and confirms nothing sensitive is staged. In practice, `/session-end` handles this for you at the end of every session.
+
+If you need to commit mid-session, run `/git-committer` explicitly. Claude will show you the staged file list and commit message and wait for your approval before running `git commit`.
+
+Pre-commit hooks (ruff + mypy) run automatically on every commit. If a hook fails, fix the issue and retry — never use `--no-verify`.
 
 ### The journal
 

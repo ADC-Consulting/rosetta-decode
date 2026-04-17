@@ -1,5 +1,5 @@
 .PHONY: help install test test-fast test-reconciliation lint format check coverage clean \
-        run-local run-backend run-frontend frontend-lint frontend-test frontend-build
+        dev dev-down dev-logs run-local run-backend run-frontend frontend-lint frontend-test frontend-build
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-24s %s\n", $$1, $$2}'
@@ -36,13 +36,22 @@ clean: ## Remove build artifacts and caches
 	find . -type d -name htmlcov -exec rm -rf {} + 2>/dev/null; \
 	find . -name ".coverage*" -delete 2>/dev/null; true
 
-run-backend: ## Start FastAPI dev server
+dev: ## Start full stack in Docker (backend + frontend)
+	docker compose up --build
+
+dev-down: ## Stop all Docker containers
+	docker compose down
+
+dev-logs: ## Tail logs from all Docker containers
+	docker compose logs -f
+
+run-backend: ## Start FastAPI dev server (local, no Docker)
 	uv run uvicorn sas_migrator.api.main:app --reload --port 8000
 
-run-frontend: ## Start Vite dev server
+run-frontend: ## Start Vite dev server (local, no Docker)
 	cd src/frontend && npm run dev
 
-run-local: ## Start backend + frontend (requires two terminals)
+run-local: ## Start backend + frontend without Docker (requires two terminals)
 	@echo "Run 'make run-backend' and 'make run-frontend' in separate terminals"
 
 frontend-lint: ## Run ESLint on frontend
