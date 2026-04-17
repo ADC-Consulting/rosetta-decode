@@ -32,23 +32,23 @@ Rules for subtask decomposition:
 - Mark dependencies explicitly: "requires: <subtask name>"
 - Never combine data model + service logic + route in one subtask
 
-**Ordering by area:**
+**Ordering by area** (derive exact paths from `docs/architecture.md` — Directory Structure section):
 
-Backend (worker service — `src/worker/`):
+Worker service:
 1. Data model / Alembic migration (if new DB columns needed)
 2. Core logic: engine, validation, or compute layer
 3. Unit tests for core logic
 4. Integration with worker poll loop (if applicable)
 
-Backend (API service — `src/backend/`):
+API service:
 1. Request/response Pydantic schemas
 2. FastAPI route
 3. Route tests (pytest + TestClient)
 
-Frontend (`src/frontend/src/`):
-1. API client function (`api/`)
-2. Component (`components/`)
-3. Page wiring (`pages/`)
+Frontend:
+1. API client function
+2. Component
+3. Page wiring
 4. Manual smoke test note
 
 Always last:

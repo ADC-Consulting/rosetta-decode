@@ -12,12 +12,14 @@ Read the following before doing anything else:
 6. `journal/BACKLOG.md` — current phase and existing tasks
 7. `journal/DECISIONS.md` — locked constraints
 
-Then break the feature into the smallest independently testable subtasks, ordered by dependency:
+Then break the feature into the smallest independently testable subtasks, ordered by dependency.
 
-**Worker service (`src/worker/`):** data model/migration → core logic → unit tests → worker loop wiring  
-**API service (`src/backend/`):** Pydantic schemas → FastAPI route → route tests  
-**Frontend (`src/frontend/src/`):** API client → component → page wiring  
-**Always last:** run `make test`, confirm exit 0, mark feature done in backlog
+Derive exact service names and directory paths from the **Directory Structure** section of `docs/architecture.md` — do not hard-code them here. General ordering:
+
+- Worker service: data model/migration → core logic → unit tests → worker loop wiring
+- API service: Pydantic schemas → FastAPI route → route tests
+- Frontend: API client → component → page wiring
+- Always last: run `make test`, confirm exit 0, mark feature done in backlog
 
 Write a plan file at `docs/plans/F<N>-<slug>.md` using this structure:
 

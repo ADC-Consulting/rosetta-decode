@@ -46,7 +46,8 @@ This tool is used by engineers and analysts — the audience is technical. When 
 
 Architecture rules that always apply regardless of aesthetic direction:
 - Stack: Vite + React + TypeScript + Tailwind + shadcn/ui
-- Files: components → `src/frontend/src/components/`, pages → `src/frontend/src/pages/`, API calls → `src/frontend/src/api/` (never `fetch` directly in a component)
+- Before writing any file, read the **Directory Structure** section of `docs/architecture.md` to confirm exact paths for components, pages, and API client. Never hard-code paths from memory — the architecture doc is the authority.
+- Never `fetch` directly in a component — all API calls go through the dedicated API client layer
 - TypeScript strict mode — explicit props interfaces, no `any`
 - Use shadcn/ui primitives before reaching for custom components
 - No new UI library dependencies without user approval
