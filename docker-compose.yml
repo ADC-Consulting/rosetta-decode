@@ -1,17 +1,52 @@
 services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: rosetta
+      POSTGRES_USER: rosetta
+      POSTGRES_PASSWORD: rosetta
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - rosetta-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rosetta -d rosetta"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   backend:
     build:
       context: .
       dockerfile: src/backend/Dockerfile
     ports:
       - "8000:8000"
-    volumes:
-      - ./src/backend:/app/src
-      - ./samples:/app/samples
     env_file:
       - .env
     environment:
-      - PYTHONPATH=/app/src
+      - DATABASE_URL=postgresql+asyncpg://rosetta:rosetta@postgres:5432/rosetta
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - rosetta-net
+
+  worker:
+    build:
+      context: .
+      dockerfile: src/worker/Dockerfile
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://rosetta:rosetta@postgres:5432/rosetta
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - rosetta-net
 
   frontend:
     build:
@@ -19,8 +54,14 @@ services:
       dockerfile: Dockerfile
     ports:
       - "5173:5173"
-    volumes:
-      - ./src/frontend:/app
-      - /app/node_modules
     environment:
       - VITE_API_URL=http://localhost:8000
+    networks:
+      - rosetta-net
+
+volumes:
+  postgres_data:
+
+networks:
+  rosetta-net:
+    driver: bridge

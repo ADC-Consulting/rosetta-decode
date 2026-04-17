@@ -17,27 +17,39 @@
 - [x] Create `Makefile` with dev targets: `make test`, `make lint`, `make format`, `make check`, `make dev`
 - [x] Set up `pre-commit`: `.pre-commit-config.yaml` with ruff-format, ruff-lint, mypy hooks; run `pre-commit install`
 - [x] Add GitHub Actions CI pipeline with uv caching and future job stubs
-- [ ] Fix CI: skip ruff/mypy/pytest gracefully when `src/` and `tests/` don't exist (CI auto-heals when folders are created)
-- [ ] Revise `docker-compose.yml`: 4 services — postgres, backend, worker, frontend; shared `rosetta-net` network
-- [ ] Scaffold `src/backend/` (Dockerfile, api/, db/, core/)
-- [ ] Scaffold `src/worker/` (Dockerfile, engine/, validation/, compute/, core/)
-- [ ] Scaffold `src/frontend/` (Dockerfile, Vite+React+TS+Tailwind+shadcn/ui)
-- [ ] Add SQLAlchemy async setup + Alembic + asyncpg to `pyproject.toml`
-- [ ] DB: `jobs` table Alembic migration (id, status, input_hash, files JSONB, python_code, report JSONB, error, timestamps)
-- [ ] Define `ComputeBackend` abstract interface (`src/worker/compute/base.py`)
-- [ ] Implement `LocalBackend` (pandas + PostgreSQL) (`src/worker/compute/local.py`)
-- [ ] Implement `BackendFactory` — reads `CLOUD` from env, returns correct backend
+**Active plan:** `docs/plans/F0-phase1-scaffold.md`
+
+- [x] S01: docker-compose.yml — 4-service revision → see `docs/plans/F0-phase1-scaffold.md`
+- [x] S02: pyproject.toml — add SQLAlchemy async + Alembic + asyncpg → see `docs/plans/F0-phase1-scaffold.md`
+- [x] S03: backend core — settings + logging → see `docs/plans/F0-phase1-scaffold.md`
+- [x] S04: database layer — SQLAlchemy async engine + session factory → see `docs/plans/F0-phase1-scaffold.md`
+- [x] S05: Alembic init + jobs table migration → see `docs/plans/F0-phase1-scaffold.md`
+- [x] S06: SQLAlchemy Job model → see `docs/plans/F0-phase1-scaffold.md`
+- [x] S07: backend API — request/response schemas → see `docs/plans/F0-phase1-scaffold.md`
+- [x] S08: backend API — POST /migrate route → see `docs/plans/F0-phase1-scaffold.md`
+- [x] S09: backend API — GET /jobs/{id} route → see `docs/plans/F0-phase1-scaffold.md`
+- [x] S10: backend Dockerfile + FastAPI app entrypoint → see `docs/plans/F0-phase1-scaffold.md`
+- [x] S11: ComputeBackend ABC → see `docs/plans/F0-phase1-scaffold.md`
+- [x] S12: LocalBackend stub → see `docs/plans/F0-phase1-scaffold.md`
+- [x] S13: BackendFactory → see `docs/plans/F0-phase1-scaffold.md`
+- [x] S14: worker core — settings → see `docs/plans/F0-phase1-scaffold.md`
+- [x] S15: worker poll loop → see `docs/plans/F0-phase1-scaffold.md`
+- [x] S16: worker Dockerfile → see `docs/plans/F0-phase1-scaffold.md`
+- [x] S17: frontend scaffold — Vite + React + TS + Tailwind + shadcn/ui → see `docs/plans/F0-phase1-scaffold.md`
+- [x] S18: frontend Dockerfile → see `docs/plans/F0-phase1-scaffold.md`
+- [x] S19: .env.example → see `docs/plans/F0-phase1-scaffold.md`
+- [x] S20: smoke test — POST /migrate + GET /jobs/{id} → see `docs/plans/F0-phase1-scaffold.md`
+- [x] S21: CI — fix graceful skip + add Alembic step → see `docs/plans/F0-phase1-scaffold.md`
+
+**Remaining Phase 1 (after scaffold — F1/F3/F8/F9 logic):**
 - [ ] F1: SAS parser — extract DATA step + PROC SQL blocks from N SAS files, order by dependency (`src/worker/engine/parser.py`)
 - [ ] F1: LLM client — Pydantic AI agent, model from `LLM_MODEL` env var, structured output (`src/worker/engine/llm_client.py`)
 - [ ] F1: Code generator — assemble full pipeline file with `# SAS: <file>:<line>` provenance (`src/worker/engine/codegen.py`)
 - [ ] F3: Reconciliation service — schema parity + row count + aggregate parity, runs inline in worker (`src/worker/validation/reconciliation.py`)
-- [ ] Backend: `POST /migrate` — validate + persist files + insert job → `{ job_id }` (`src/backend/api/`)
-- [ ] Backend: `GET /jobs/{id}` — read job row → `{ status, python_code?, report?, error? }`
-- [ ] Worker: poll loop — pick queued jobs, run full pipeline, update job row
-- [ ] F8: Audit traceability — expose `GET /jobs/{id}/audit` returning immutable record (input hashes, model, timestamps, reconciliation results)
-- [ ] F9: Downloadable output — `GET /jobs/{id}/download` returns zip (pipeline.py + reconciliation_report.json + audit.json)
+- [ ] F8: Audit traceability — expose `GET /jobs/{id}/audit` returning immutable record
+- [ ] F9: Downloadable output — `GET /jobs/{id}/download` returns zip
 - [ ] Reconciliation test: DATA step → DataFrame (pytest, CLOUD=false)
-- [ ] Sample SAS files in `samples/` + corresponding reference output CSVs
+- [x] Sample SAS files in `samples/` + corresponding reference output CSVs
 
 ---
 
