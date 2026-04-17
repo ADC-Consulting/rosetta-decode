@@ -51,7 +51,7 @@ Execution backend abstracted behind `ComputeBackend` interface in `src/worker/co
 
 - Python 3.12, type hints required on all public functions
 - Formatter: ruff (format + lint)
-- Tests: pytest; every new SAS construct handler MUST ship with a reconciliation test
+- Tests: always run via `make test` (never `uv run pytest` directly); every new SAS construct handler MUST ship with a reconciliation test
 - Commit style: conventional commits (feat:, fix:, docs:, chore:, refactor:, test:)
 - Generated Python must include provenance comments: `# SAS: <file>:<line>`
 

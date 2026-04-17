@@ -59,6 +59,7 @@ description: Use when implementing or modifying Python backend code — FastAPI 
 - Every new `ComputeBackend` method ships with tests for both LocalBackend and (stubbed) DatabricksBackend
 - Every new Pydantic AI agent ships with at least one test using `agent.override(model=TestModel(...))`
 - Reconciliation-relevant changes ship with a `@pytest.mark.reconciliation` test
+- Always verify with `make test` — never call `uv run pytest` or `pytest` directly
 
 ## Output contract
 
