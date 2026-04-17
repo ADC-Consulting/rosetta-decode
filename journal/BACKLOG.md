@@ -7,15 +7,17 @@
 - [x] Document architecture (`docs/architecture.md`)
 - [x] Document migration approaches (`docs/context/migration-approaches.md`)
 - [x] Build SAS pattern catalog (`docs/context/sas-patterns.md`)
-- [x] Write all skill SKILL.md files (feature-planner, sas-translator, validator, explainer, backend-builder, frontend-builder, git-committer)
+- [x] Write all skill SKILL.md files (session-start, session-end, plan-feature, feature-planner, backend-builder, frontend-builder, git-committer)
 - [x] Update CLAUDE.md with skills table
 
 ---
 
 ## Phase 1 — Vertical Slice (MVP core, CLOUD=false)
 - [x] Set up Python project: `pyproject.toml`, `ruff`, `mypy`, `pytest`, `uv`, `pydantic-ai`
-- [x] Create `Makefile` with at minimum: `make test` (runs pytest), `make lint` (runs ruff + mypy), `make all` (lint + test)
+- [x] Create `Makefile` with dev targets: `make test`, `make lint`, `make format`, `make check`, `make dev`
 - [x] Set up `pre-commit`: `.pre-commit-config.yaml` with ruff-format, ruff-lint, mypy hooks; run `pre-commit install`
+- [x] Add GitHub Actions CI pipeline with uv caching and future job stubs
+- [ ] Fix CI: skip ruff/mypy/pytest gracefully when `src/` and `tests/` don't exist (interrupted)
 - [ ] Define `ComputeBackend` abstract interface (`src/backend/compute/base.py`)
 - [ ] Implement `LocalBackend` (pandas + DuckDB) (`src/backend/compute/local.py`)
 - [ ] Implement `BackendFactory` — reads `CLOUD` from env, returns correct backend
