@@ -10,13 +10,41 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.backend.api.schemas import AuditResponse, JobStatusResponse
+from src.backend.api.schemas import AuditResponse, JobListResponse, JobStatusResponse, JobSummary
 from src.backend.db.models import Job
 from src.backend.db.session import get_async_session
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+@router.get("/jobs", response_model=JobListResponse)
+async def list_jobs(
+    session: AsyncSession = Depends(get_async_session),
+) -> JobListResponse:
+    """Return a summary list of all migration jobs, newest first.
+
+    Args:
+        session: Injected async database session.
+
+    Returns:
+        JobListResponse containing a list of JobSummary entries.
+    """
+    result = await session.execute(select(Job).order_by(Job.created_at.desc()))
+    jobs = result.scalars().all()
+    return JobListResponse(
+        jobs=[
+            JobSummary(
+                job_id=uuid.UUID(j.id),
+                status=j.status,
+                created_at=j.created_at,
+                updated_at=j.updated_at,
+                error=j.error,
+            )
+            for j in jobs
+        ]
+    )
 
 
 @router.get("/jobs/{job_id}", response_model=JobStatusResponse)

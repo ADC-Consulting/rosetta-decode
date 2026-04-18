@@ -23,6 +23,22 @@ class JobStatusResponse(BaseModel):
     error: str | None = None
 
 
+class JobSummary(BaseModel):
+    """Summary row for a single job, used in list responses."""
+
+    job_id: uuid.UUID
+    status: str
+    created_at: datetime
+    updated_at: datetime
+    error: str | None = None
+
+
+class JobListResponse(BaseModel):
+    """Response body for GET /jobs."""
+
+    jobs: list[JobSummary]
+
+
 class AuditResponse(BaseModel):
     """Response body for GET /jobs/{id}/audit."""
 

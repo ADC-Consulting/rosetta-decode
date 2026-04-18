@@ -6,6 +6,39 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-04-18 (session 12 — post-MVP UI planning)
+
+- **Zone-based editor architecture:** each UI content type gets the right primitive — Monaco DiffEditor for SAS vs Python diff, Monaco Editor for inline editing, Tiptap for rich-text notes/reports, React Flow for lineage graph · revisit never
+- **Sidebar nav replaces top nav:** persistent collapsible sidebar scales to 6+ pages; top nav does not · revisit never
+- **JobDetailPage at /jobs/:id (full page, 4 tabs):** replaces inline expansion in JobsPage; Comparison / Edit / Report / Lineage tabs; deep-linkable · revisit never
+- **Zip upload: partial acceptance, no file count limit:** unknown extensions collected into rejection manifest rather than hard 400; caller sees accepted + rejected list · revisit never
+- **Zip accepted extensions:** `.sas`, `.sas7bdat`, `.csv`, `.log`, `.xlsx`, `.xls` — covers SAS source, binary datasets, reference data, execution logs, and Excel inputs · revisit if new SAS-adjacent formats surface
+- **Lineage serialised to `job.lineage` JSON column at parse time:** worker writes lineage after parse step; not computed on demand at API request time · revisit never
+- **DocGenerator does not crash worker on LLM failure:** catch exception, log warning, leave `job.doc = None`; doc is optional enrichment, not a required pipeline step · revisit never
+- **`skip_llm` boolean column for re-reconciliation:** cleaner than adding a new status value to the FSM; worker branches on flag, skips parser+LLM, runs ReconciliationService only · revisit never
+- **`parent_job_id` FK on Job for refine action:** enables UI to show refinement history without a separate table · revisit never
+
+---
+
+## 2026-04-18 (session 11 — F-UI + Docker runtime + Azure OpenAI)
+
+- **`CORS_ORIGINS` as plain string, split internally:** `list[str]` pydantic-settings field fails when env var is `*`; switched to `str` field with `@property` that splits on comma · revisit never
+- **Migration 001 id column as String(36):** ORM uses `String(36)` for cross-dialect compatibility; migration was incorrectly using `postgresql.UUID` causing type mismatch on INSERT · revisit never
+- **Backend entrypoint runs migrations on startup:** `alembic upgrade head` in `entrypoint.sh` before uvicorn ensures schema is always current · revisit if migration time becomes a startup concern
+- **Azure deployment name stripped of provider prefix:** `LLM_MODEL=openai:gpt-5.4` → deployment `gpt-5.4` via `split(":", 1)[-1]`; handles both bare and prefixed values · revisit never
+- **Frontend volume mount for HMR:** `./src/frontend:/app` + `/app/node_modules` anonymous volume; Vite picks up file changes without container rebuild · revisit never
+
+---
+
+## 2026-04-18 (session 10 — F-LLM + F-sas7bdat + tooling)
+
+- **`make test` now includes mypy:** mypy was only running in `make check` and pre-commit; added to `make test` so type errors surface before commit time · revisit never
+- **git-branch-setup always pulls main before branching:** new feature branches start from latest main, not stale local HEAD · revisit never
+- **No Co-Authored-By attribution in commits:** user preference; removed from all commit messages · revisit never
+- **LLMTranslationError classifies transient vs permanent:** HTTP 429 / 5xx / network errors are transient (retry); 4xx / validation errors are permanent (fail immediately); partial codegen results are saved on failure with `error_detail.resumable=true` for transient cases · revisit if retry policy needs tuning
+
+---
+
 ## 2026-04-18 (session 9 — F1-ext + MVP scope alignment)
 
 - **F-number collision resolved:** PROC SORT + %LET are F1 extensions (Phase 2), not a new feature. `docs/plans/F2-proc-sort.md` renamed to `F1-ext-proc-sort-macro.md`. F2 is reserved for the Code Explanation Assistant UI (Phase 3 frontend) per `docs/features.md` · revisit never

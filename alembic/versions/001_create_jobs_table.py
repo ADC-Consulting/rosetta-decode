@@ -9,7 +9,6 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects import postgresql
 
 revision: str = "001"
 down_revision: str | None = None
@@ -21,12 +20,7 @@ def upgrade() -> None:
     """Create the jobs table."""
     op.create_table(
         "jobs",
-        sa.Column(
-            "id",
-            postgresql.UUID(as_uuid=True),
-            primary_key=True,
-            server_default=sa.text("gen_random_uuid()"),
-        ),
+        sa.Column("id", sa.String(36), primary_key=True),
         sa.Column(
             "status",
             sa.String(16),
@@ -34,9 +28,9 @@ def upgrade() -> None:
             server_default="queued",
         ),
         sa.Column("input_hash", sa.Text, nullable=False),
-        sa.Column("files", postgresql.JSONB, nullable=False),
+        sa.Column("files", sa.JSON, nullable=False),
         sa.Column("python_code", sa.Text, nullable=True),
-        sa.Column("report", postgresql.JSONB, nullable=True),
+        sa.Column("report", sa.JSON, nullable=True),
         sa.Column("error", sa.Text, nullable=True),
         sa.Column(
             "created_at",

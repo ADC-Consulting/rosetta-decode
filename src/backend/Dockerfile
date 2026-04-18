@@ -18,4 +18,6 @@ COPY alembic.ini ./alembic.ini
 
 ENV PYTHONPATH=/app
 
-CMD ["uv", "run", "uvicorn", "src.backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+RUN chmod +x src/backend/entrypoint.sh
+
+CMD ["sh", "src/backend/entrypoint.sh"]

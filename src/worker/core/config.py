@@ -14,5 +14,10 @@ class WorkerSettings(BaseSettings):
     poll_interval_seconds: int = 5
     log_level: str = "INFO"
 
+    # Azure OpenAI — set these to use Azure instead of direct OpenAI/Anthropic
+    azure_openai_endpoint: str | None = None
+    azure_openai_api_key: str | None = None
+    openai_api_version: str = "2024-06-01"
+
 
 worker_settings = WorkerSettings()
