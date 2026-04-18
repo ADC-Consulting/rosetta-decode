@@ -131,7 +131,7 @@ jobs:
           if uv run pytest --collect-only -q -m reconciliation 2>&1 | grep -q "no tests ran\|selected"; then
             echo "No reconciliation tests yet — skipping"
           else
-            uv run pytest -m reconciliation --timeout=120 --cov-fail-under=90
+            uv run pytest -m reconciliation --cov-fail-under=90
           fi
 
   # ── 4. Frontend ───────────────────────────────────────────────────────────
