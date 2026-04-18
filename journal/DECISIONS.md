@@ -6,6 +6,16 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-04-18 (session 9 — F1-ext + MVP scope alignment)
+
+- **F-number collision resolved:** PROC SORT + %LET are F1 extensions (Phase 2), not a new feature. `docs/plans/F2-proc-sort.md` renamed to `F1-ext-proc-sort-macro.md`. F2 is reserved for the Code Explanation Assistant UI (Phase 3 frontend) per `docs/features.md` · revisit never
+- **MVP requires a frontend:** Upload & Results page (F-UI) added to MVP scope — product cannot be demoed or handed to a user without UI · revisit never
+- **LLM is the primary and mandatory translation engine:** no rule-based fallback path. LLM system prompt must be upgraded to establish agent as SAS migration expert targeting Python/PySpark. Worker resilience (graceful job failure on API unreachable) is error handling only, not a translation fallback · revisit never
+- **sas7bdat reading is MVP-required:** `pyreadstat` already declared in `pyproject.toml` but never wired. `LocalBackend` must implement `read_sas7bdat()` before MVP is complete · revisit never
+- **make test is the only allowed test invocation:** `uv run pytest` forbidden everywhere including agent verification steps — all test runs go through make targets. Enforced in memory and CLAUDE.md · revisit never
+
+---
+
 ## 2026-04-17
 
 - **Language & runtime:** Python 3.11+ · modern typing, match statements, broad lib support · revisit if Databricks default changes
