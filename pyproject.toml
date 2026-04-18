@@ -124,8 +124,13 @@ plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
 # Third-party packages without stubs — added as src/ grows
-module = ["networkx", "networkx.*", "jinja2", "jinja2.*"]
+module = ["networkx", "networkx.*", "jinja2", "jinja2.*", "pyreadstat"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# pyreadstat has no stubs; its read functions return Any — suppress only in this file.
+module = ["src.worker.compute.local"]
+warn_return_any = false
 
 [[tool.mypy.overrides]]
 # pydantic-ai Agent overloads don't support BaseModel output_type in strict mode;

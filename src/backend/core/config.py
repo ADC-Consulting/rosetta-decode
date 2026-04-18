@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     llm_model: str = "anthropic:claude-sonnet-4-6"
     cloud: bool = False
     log_level: str = "INFO"
+    upload_dir: str = "/tmp/rosetta-uploads"
 
 
 settings = Settings()
+backend_settings = settings

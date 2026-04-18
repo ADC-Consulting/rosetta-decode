@@ -85,6 +85,7 @@ Execution backend abstracted behind `ComputeBackend` interface in `src/worker/co
 | `backend-builder` | Worker engine/validation/compute code, FastAPI routes, Pydantic AI agents |
 | `frontend-builder` | React pages and components (Vite + TypeScript + shadcn/ui) |
 | `git-committer` | Before any commit — conventional format, journal + plan file update check |
+| `git-branch-setup` | After plan approval, before any implementation is delegated — ensures the correct `feat/F<N>-<slug>` branch exists and is checked out |
 | `git-pr-summary` | When user asks for PR text, "give me the PR summary", or is about to open a PR — orchestrator only |
 | `test-runner` | Anytime the user says "run tests", "check tests", "are tests passing", or asks about coverage |
 

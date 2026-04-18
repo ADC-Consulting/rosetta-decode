@@ -25,6 +25,17 @@ class ComputeBackend(ABC):
         """
 
     @abstractmethod
+    def read_sas7bdat(self, path: str) -> object:
+        """Read a .sas7bdat binary dataset into a backend-native DataFrame.
+
+        Args:
+            path: Absolute path to the .sas7bdat file.
+
+        Returns:
+            A pandas DataFrame (LocalBackend) or Spark DataFrame (DatabricksBackend).
+        """
+
+    @abstractmethod
     def run_sql(self, query: str, context: dict[str, object]) -> object:
         """Execute a SQL query against registered tables.
 
