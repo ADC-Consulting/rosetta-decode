@@ -144,6 +144,10 @@ jobs:
           cache: "npm"
           cache-dependency-path: src/frontend/package-lock.json
 
+      - name: Verify lockfile is in sync
+        run: npm ci --dry-run
+        working-directory: src/frontend
+
       - name: Install frontend dependencies
         run: npm ci
         working-directory: src/frontend
