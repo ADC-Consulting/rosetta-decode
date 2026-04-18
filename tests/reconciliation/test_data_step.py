@@ -78,9 +78,9 @@ def test_data_step_reconciliation_all_checks_pass() -> None:
     assert "aggregate_parity" in checks, "aggregate_parity check missing from report"
 
     for name, check in checks.items():
-        assert (
-            check["status"] == "pass"
-        ), f"Check '{name}' failed: {check.get('detail', 'no detail')}"
+        assert check["status"] == "pass", (
+            f"Check '{name}' failed: {check.get('detail', 'no detail')}"
+        )
 
 
 @pytest.mark.reconciliation

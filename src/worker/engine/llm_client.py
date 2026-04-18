@@ -79,9 +79,7 @@ class LLMClient:
         """
         if block.block_type == BlockType.UNTRANSLATABLE:
             reason = block.untranslatable_reason or "no translation rule available"
-            code = (
-                f"# SAS-UNTRANSLATABLE: {reason}" f"  # SAS: {block.source_file}:{block.start_line}"
-            )
+            code = f"# SAS-UNTRANSLATABLE: {reason}  # SAS: {block.source_file}:{block.start_line}"
             return GeneratedBlock(
                 source_block=block,
                 python_code=code,

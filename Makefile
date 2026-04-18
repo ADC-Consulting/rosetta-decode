@@ -16,7 +16,9 @@ install: ## Install all dependencies (dev + core)
 
 # ── Tests ──────────────────────────────────────────────────────────────────────
 
-test: ## Run full test suite with coverage
+test: ## Run full test suite with coverage (includes lint + format check)
+	@uv run ruff check src tests --quiet
+	@uv run ruff format --check src tests --quiet
 	@uv run pytest $(PYTEST_FLAGS)
 
 test-fast: ## Skip reconciliation, cloud, and integration tests (quick feedback loop)
@@ -37,8 +39,10 @@ lint: ## Run ruff linter
 format: ## Run ruff auto-formatter
 	@uv run ruff format src tests --quiet
 
-check: ## Run linter + mypy type check
-	@uv run ruff check src tests --quiet && uv run mypy src --no-error-summary --no-pretty --hide-error-context --hide-error-codes
+check: ## Run linter + format check + mypy type check
+	@uv run ruff check src tests --quiet
+	@uv run ruff format --check src tests --quiet
+	@uv run mypy src --no-error-summary --no-pretty --hide-error-context --hide-error-codes
 
 # ── Docker stack ───────────────────────────────────────────────────────────────
 
