@@ -2,7 +2,8 @@
 
 from unittest.mock import MagicMock, patch
 
-from src.worker.engine.llm_client import LLMClient
+import pytest
+from src.worker.engine.llm_client import LLMClient, LLMTranslationError
 from src.worker.engine.models import BlockType, GeneratedBlock, SASBlock
 
 
@@ -75,3 +76,74 @@ def test_build_prompt_contains_block_metadata() -> None:
     assert "1" in prompt
     assert "data out; set in; run;" in prompt
     assert "PROC_SQL" in prompt
+
+
+def _make_fake_run_result(block: SASBlock) -> MagicMock:
+    fake_generated = GeneratedBlock(
+        source_block=block,
+        python_code="out = in_.copy()  # SAS: test.sas:1",
+        is_untranslatable=False,
+    )
+    mock_result = MagicMock()
+    mock_result.output = fake_generated
+    return mock_result
+
+
+def test_translate_retries_on_transient_error_then_succeeds() -> None:
+    block = _make_sas_block(BlockType.DATA_STEP)
+    fake_result = _make_fake_run_result(block)
+
+    # Raise a 429 error string twice, then succeed.
+    transient_exc = Exception("HTTP 429 rate limit exceeded")
+    mock_agent = MagicMock()
+    mock_agent.run_sync.side_effect = [transient_exc, transient_exc, fake_result]
+
+    with (
+        patch("src.worker.engine.llm_client._make_agent", return_value=mock_agent),
+        patch("src.worker.engine.llm_client.time.sleep") as mock_sleep,
+    ):
+        client = LLMClient()
+        result = client.translate(block)
+
+    assert result.is_untranslatable is False
+    assert mock_agent.run_sync.call_count == 3
+    assert mock_sleep.call_count == 2
+
+
+def test_translate_raises_after_all_retries_exhausted() -> None:
+    block = _make_sas_block(BlockType.DATA_STEP)
+    transient_exc = Exception("HTTP 503 service unavailable")
+
+    mock_agent = MagicMock()
+    mock_agent.run_sync.side_effect = transient_exc
+
+    with (
+        patch("src.worker.engine.llm_client._make_agent", return_value=mock_agent),
+        patch("src.worker.engine.llm_client.time.sleep"),
+    ):
+        client = LLMClient()
+        with pytest.raises(LLMTranslationError) as exc_info:
+            client.translate(block)
+
+    assert exc_info.value.is_transient is True
+    assert mock_agent.run_sync.call_count == 3
+
+
+def test_translate_raises_immediately_on_permanent_error() -> None:
+    block = _make_sas_block(BlockType.DATA_STEP)
+    permanent_exc = Exception("HTTP 400 bad request")
+
+    mock_agent = MagicMock()
+    mock_agent.run_sync.side_effect = permanent_exc
+
+    with (
+        patch("src.worker.engine.llm_client._make_agent", return_value=mock_agent),
+        patch("src.worker.engine.llm_client.time.sleep") as mock_sleep,
+    ):
+        client = LLMClient()
+        with pytest.raises(LLMTranslationError) as exc_info:
+            client.translate(block)
+
+    assert exc_info.value.is_transient is False
+    assert mock_agent.run_sync.call_count == 1
+    mock_sleep.assert_not_called()

@@ -5,21 +5,58 @@ variable (e.g. ``anthropic:claude-sonnet-4-6``).  No provider-specific code
 exists here; swapping models requires only an env-var change.
 """
 
+import logging
 import textwrap
+import time
 from typing import cast
 
+import httpx
 from pydantic_ai import Agent
 from pydantic_ai.models import KnownModelName
 from src.worker.core.config import worker_settings
 from src.worker.engine.models import BlockType, GeneratedBlock, SASBlock
 
+logger = logging.getLogger("src.worker.engine.llm_client")
+
+_RETRY_DELAYS = (2, 4, 8)
+
+
+class LLMTranslationError(Exception):
+    """Raised when the LLM fails to translate a SAS block.
+
+    Args:
+        message: Human-readable description of the failure.
+        is_transient: True if the error may succeed on retry (rate-limit, network).
+        cause: The underlying exception, if any.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        is_transient: bool,
+        cause: BaseException | None = None,
+    ) -> None:
+        """Initialise LLMTranslationError with transience flag and optional cause."""
+        super().__init__(message)
+        self.is_transient = is_transient
+        self.cause = cause
+
+
 # ── System prompt ─────────────────────────────────────────────────────────────
 
 _SYSTEM_PROMPT = textwrap.dedent("""\
-    You are an expert SAS-to-Python migration engineer.
+    You are a senior SAS-to-Python/PySpark migration expert with deep knowledge
+    of both SAS programming patterns and modern Python data engineering.
 
-    Your job is to translate a single SAS construct (DATA step or PROC SQL block)
-    into equivalent Python code that works with pandas DataFrames.
+    Your job is to translate a single SAS construct into equivalent Python code
+    that works with pandas DataFrames locally and is compatible with PySpark idioms.
+
+    Supported SAS constructs and their Python equivalents:
+    - DATA step          → pandas DataFrame operations (filter, assign, merge, etc.)
+    - PROC SQL           → pandas merge / query / groupby
+    - PROC SORT          → df.sort_values(by=[...], ascending=[...])
+    - %LET macro vars    → already resolved to Python constants before this call (see rule 6)
 
     Rules you MUST follow:
     1. Every logical group of lines you generate must end with a provenance comment
@@ -35,6 +72,10 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
        the output dataset name (lowercased).
     5. Return ONLY the python_code string and the is_untranslatable flag.
        Do not include markdown fences or explanatory prose.
+    6. Macro variable values will already be substituted into the SAS source before
+       you see it. Do not attempt to resolve &macrovar references yourself.
+    7. When translating PROC SORT, always use df.sort_values(). The by argument
+       must be a list. Use ascending=False for DESCENDING.
 """)
 
 # ── Agent ─────────────────────────────────────────────────────────────────────
@@ -53,6 +94,21 @@ def _make_agent() -> "Agent[GeneratedBlock]":
         output_type=GeneratedBlock,
         system_prompt=_SYSTEM_PROMPT,
     )
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+
+def _is_transient_http_error(exc_name: str, exc_str: str) -> bool:
+    """Return True when an exception string indicates a retryable HTTP error.
+
+    Checks for HTTP 429 (rate-limit) and 5xx (server-side) status codes in the
+    exception message, which pydantic-ai surfaces as plain exceptions without a
+    dedicated type hierarchy we can safely import.
+    """
+    if "429" in exc_str:
+        return True
+    return any(code in exc_str for code in ("500", "502", "503", "504"))
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -87,12 +143,51 @@ class LLMClient:
             )
 
         user_message = self._build_prompt(block)
-        result = self._agent.run_sync(user_message)
-        generated = cast(GeneratedBlock, result.output)
-        return GeneratedBlock(
-            source_block=block,
-            python_code=generated.python_code,
-            is_untranslatable=generated.is_untranslatable,
+        last_exc: BaseException | None = None
+
+        for attempt, delay in enumerate(_RETRY_DELAYS, start=1):
+            try:
+                result = self._agent.run_sync(user_message)
+                generated = cast(GeneratedBlock, result.output)
+                return GeneratedBlock(
+                    source_block=block,
+                    python_code=generated.python_code,
+                    is_untranslatable=generated.is_untranslatable,
+                )
+            except (httpx.TimeoutException, httpx.ConnectError) as exc:
+                last_exc = exc
+                logger.warning(
+                    "Attempt %d/%d transient error: %s; retrying in %ds",
+                    attempt,
+                    len(_RETRY_DELAYS),
+                    exc,
+                    delay,
+                )
+                time.sleep(delay)
+            except Exception as exc:
+                exc_str = str(exc)
+                exc_name = type(exc).__name__
+                if _is_transient_http_error(exc_name, exc_str):
+                    last_exc = exc
+                    logger.warning(
+                        "Attempt %d/%d transient error: %s; retrying in %ds",
+                        attempt,
+                        len(_RETRY_DELAYS),
+                        exc,
+                        delay,
+                    )
+                    time.sleep(delay)
+                else:
+                    raise LLMTranslationError(
+                        f"Permanent LLM translation error: {exc}",
+                        is_transient=False,
+                        cause=exc,
+                    ) from exc
+
+        raise LLMTranslationError(
+            f"LLM translation failed after {len(_RETRY_DELAYS)} attempts",
+            is_transient=True,
+            cause=last_exc,
         )
 
     @staticmethod
