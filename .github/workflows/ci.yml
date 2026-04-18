@@ -127,7 +127,7 @@ jobs:
         run: uv run alembic upgrade head
 
       - name: Run reconciliation tests with full coverage gate
-        run: uv run pytest -m reconciliation --cov-fail-under=90
+        run: uv run pytest -m reconciliation --cov=src/worker/validation/reconciliation --cov-fail-under=90
 
   # ── 4. Frontend ───────────────────────────────────────────────────────────
   frontend:
