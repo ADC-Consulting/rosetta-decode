@@ -124,7 +124,7 @@ plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
 # Third-party packages without stubs — added as src/ grows
-module = ["jinja2", "jinja2.*"]
+module = ["networkx", "networkx.*", "jinja2", "jinja2.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
