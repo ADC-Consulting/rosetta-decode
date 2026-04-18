@@ -127,12 +127,7 @@ jobs:
         run: uv run alembic upgrade head
 
       - name: Run reconciliation tests with full coverage gate
-        run: |
-          if uv run pytest --collect-only -q -m reconciliation 2>&1 | grep -q "no tests ran\|selected"; then
-            echo "No reconciliation tests yet — skipping"
-          else
-            uv run pytest -m reconciliation --cov-fail-under=90
-          fi
+        run: uv run pytest -m reconciliation --cov-fail-under=90
 
   # ── 4. Frontend ───────────────────────────────────────────────────────────
   frontend:
@@ -154,7 +149,11 @@ jobs:
         working-directory: src/frontend
 
       - name: Type check
-        run: npx tsc --noEmit
+        run: npx tsc -b
+        working-directory: src/frontend
+
+      - name: Lint
+        run: npm run lint
         working-directory: src/frontend
 
       - name: Build

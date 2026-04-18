@@ -1,5 +1,5 @@
 .PHONY: help install test test-fast test-reconciliation lint format check coverage clean \
-        dev dev-down dev-logs run-local run-backend run-frontend frontend-lint frontend-build
+        dev dev-down dev-logs run-local run-backend run-frontend frontend-lint frontend-build tsc-check
 
 # Silence pytest warnings + disable plugin autoload chatter + quieter output
 PYTEST_FLAGS := --no-header -q -p no:cacheprovider -W ignore --disable-warnings
@@ -16,10 +16,13 @@ install: ## Install all dependencies (dev + core)
 
 # ── Tests ──────────────────────────────────────────────────────────────────────
 
-test: ## Run full test suite with coverage (includes lint + format check)
+test: ## Run everything: ruff, mypy, pytest, tsc-check, frontend-lint, frontend-build
 	@uv run ruff check src tests --quiet
 	@uv run ruff format --check src tests --quiet
 	@uv run pytest $(PYTEST_FLAGS) --cov-fail-under=90
+	@$(MAKE) tsc-check
+	@$(MAKE) frontend-lint
+	@$(MAKE) frontend-build
 
 test-fast: ## Skip reconciliation, cloud, and integration tests (quick feedback loop)
 	@uv run pytest $(PYTEST_FLAGS) -m "not reconciliation and not cloud and not integration"
@@ -73,11 +76,14 @@ run-local: ## Reminder: run backend + frontend in separate terminals
 
 # ── Frontend ───────────────────────────────────────────────────────────────────
 
-frontend-lint: ## Run ESLint on frontend source
-	@cd src/frontend && npm run lint --silent $(NPM_FLAGS)
+tsc-check: ## TypeScript type check only (tsc -b, no emit)
+	@cd src/frontend && npx tsc -b
 
-frontend-build: ## Build frontend for production
-	@cd src/frontend && npm run build --silent $(NPM_FLAGS)
+frontend-lint: ## Run ESLint on frontend source
+	@cd src/frontend && npm run lint $(NPM_FLAGS)
+
+frontend-build: ## Build frontend for production (tsc -b + vite build)
+	@cd src/frontend && npm run build $(NPM_FLAGS)
 
 # ── Housekeeping ───────────────────────────────────────────────────────────────
 
