@@ -18,6 +18,8 @@ Most recent session on top. Each entry should answer:
 - **Tests:** 9 new parser unit tests, 2 codegen tests, 1 reconciliation test — 78 total, 93.5% coverage
 - **Doc alignment:** renamed `docs/plans/F2-proc-sort.md` → `F1-ext-proc-sort-macro.md` (PROC SORT is an F1 extension, not a new feature; F2 is reserved for Code Explanation UI)
 - **MVP scope expanded:** added F-LLM (system prompt upgrade + graceful degradation), F-sas7bdat (wire pyreadstat), F-UI (Upload & Results page) as required MVP items to `docs/mvp-scope.md` and `journal/BACKLOG.md`
+- **git-pr-summary skill:** new skill at `.claude/skills/git-pr-summary/SKILL.md` — generates copy-paste ready PR Markdown; wired into orchestrator only
+- **README updated:** parser description, reconciliation test listing, worker pipeline signature updated to reflect F1-ext changes
 
 ### Decisions
 
@@ -48,7 +50,9 @@ Most recent session on top. Each entry should answer:
 - `tests/test_parser.py`, `tests/test_codegen.py`, `tests/reconciliation/test_proc_sort.py`
 - `samples/proc_sort_example.sas`, `samples/proc_sort_expected.csv`
 - `docs/plans/F1-ext-proc-sort-macro.md` (created), `docs/plans/F2-proc-sort.md` (deleted)
-- `docs/mvp-scope.md`, `journal/BACKLOG.md`, `journal/DECISIONS.md`
+- `docs/mvp-scope.md`, `journal/BACKLOG.md`, `journal/DECISIONS.md`, `journal/SESSIONS.md`
+- `.claude/skills/git-pr-summary/SKILL.md` (created), `.claude/agents/orchestrator.md`, `CLAUDE.md`
+- `README.md`
 
 ---
 

@@ -47,7 +47,7 @@ After planning is approved, delegate implementation by invoking the appropriate 
 - **Backend code** (worker engine, FastAPI routes, Pydantic models, compute backend, validation): delegate to `backend-builder` agent
 - **Frontend code** (React components, pages, Tailwind, shadcn/ui): delegate to `frontend-builder` agent
 - **Running tests / coverage check**: delegate to `tester` agent
-- **Cross-cutting analysis** (e.g. "how does X wire to Y?"): you may answer directly from the docs, or spawn `fullstack-planner`
+- **Cross-cutting analysis** (e.g. "how does X wire to Y?"): delegate to `fullstack-planner` agent
 
 When delegating, pass the specialist:
 
