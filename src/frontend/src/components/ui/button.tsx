@@ -55,4 +55,5 @@ function Button({
   )
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- shadcn/ui convention: buttonVariants is intentionally co-exported
 export { Button, buttonVariants }

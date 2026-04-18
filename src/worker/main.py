@@ -7,7 +7,12 @@ import sys
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from src.backend.db.models import Job
+from src.worker.compute.factory import BackendFactory
 from src.worker.core.config import worker_settings
+from src.worker.engine.codegen import CodeGenerator
+from src.worker.engine.llm_client import LLMClient
+from src.worker.engine.parser import SASParser
+from src.worker.validation.reconciliation import ReconciliationService
 
 logging.basicConfig(
     level=getattr(logging, worker_settings.log_level.upper(), logging.INFO),
@@ -45,8 +50,9 @@ async def _claim_job(session: AsyncSession) -> Job | None:
 async def _process_job(session: AsyncSession, job: Job) -> None:
     """Run the full migration pipeline for a single job.
 
-    In this scaffold the pipeline is not yet implemented; the job is
-    marked failed with a clear message so downstream polling works correctly.
+    Executes SASParser → LLMClient → CodeGenerator → ReconciliationService in
+    order, then persists the results. Sets status=done on success, status=failed
+    with error message on any exception.
 
     Args:
         session: Database session for updating job state.
@@ -54,8 +60,30 @@ async def _process_job(session: AsyncSession, job: Job) -> None:
     """
     logger.info("Processing job %s", job.id)
     try:
-        # Migration pipeline not yet implemented — F1/F3 will fill this in
-        raise NotImplementedError("Migration pipeline not yet implemented (Phase 1 scaffold)")
+        files: dict[str, str] = {k: v for k, v in job.files.items() if k != "__ref_csv__"}
+        ref_csv_path: str = str(job.files.get("__ref_csv__", ""))
+
+        blocks = SASParser().parse(files)
+        client = LLMClient()
+        generated = await asyncio.to_thread(lambda: [client.translate(b) for b in blocks])
+        python_code = CodeGenerator().assemble(generated)
+
+        backend = BackendFactory.create()
+        reconciler = ReconciliationService()
+        report = await asyncio.to_thread(reconciler.run, ref_csv_path, python_code, backend)
+
+        await session.execute(
+            update(Job)
+            .where(Job.id == job.id)
+            .values(
+                status="done",
+                python_code=python_code,
+                report=report,
+                llm_model=worker_settings.llm_model,
+            )
+        )
+        await session.commit()
+        logger.info("Job %s completed successfully", job.id)
     except Exception as exc:
         logger.warning("Job %s failed: %s", job.id, exc)
         await session.execute(

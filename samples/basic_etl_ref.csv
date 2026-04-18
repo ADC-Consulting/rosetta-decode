@@ -1,0 +1,4 @@
+department,headcount,total_salary,avg_salary,total_bonus
+Engineering,3,287000,95666.666666666672,28700.0
+HR,2,100000,50000.0,10000.0
+Marketing,3,144000,48000.0,14400.0

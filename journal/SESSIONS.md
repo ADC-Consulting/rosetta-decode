@@ -6,6 +6,164 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-04-18 — CI hardening: Tailwind v4 migration, action bumps, Docker cache
+
+**Duration:** ~3h | **Focus:** CI green across all jobs; tooling correctness
+
+### Done
+
+- **Tailwind v3 → v4:** switched to `@tailwindcss/vite` plugin, removed `postcss.config.js` and `tailwind.config.js`, moved theme into `@theme` block in `index.css`; fixed `border-border` / `outline-ring/50` errors caused by shadcn v4 generating v4 CSS against v3
+- **tsconfig fix:** removed `baseUrl` from root `tsconfig.json` (redundant in project-references setup); kept `baseUrl` + `ignoreDeprecations: "6.0"` in `tsconfig.app.json` as required anchor for `paths` in `tsc --noEmit` mode
+- **Build script:** changed `tsc -b` → `tsc --noEmit` in `package.json` build script and CI — `tsc -b` (project references build mode) doesn't resolve `paths` without `composite: true`, which conflicts with `noEmit: true`
+- **no-commit-to-branch hook:** added `pre-commit-hooks` `no-commit-to-branch` for `main` to `.pre-commit-config.yaml`
+- **make test extended:** now runs `tsc --noEmit`, `npm run lint`, and `npm run build` — frontend errors caught locally
+- **CI action bumps:** all actions bumped to Node 24 compatible versions; `astral-sh/setup-uv` pinned to `v8.1.0` (no floating major tag)
+- **CI structure:** docker job made independent (no longer gated on `test`); reconciliation coverage scoped to `src/worker/validation` with 80% gate via `.coveragerc-reconciliation`; ESLint step added to frontend CI job
+- **.dockerignore:** added to reduce build context for backend/worker images and improve GHA layer cache hit rate
+
+### Decisions
+
+- `tsc --noEmit` is the correct type-check command for this project — `tsc -b` requires `composite: true` which conflicts with `noEmit: true`
+- `baseUrl` + `ignoreDeprecations: "6.0"` required in `tsconfig.app.json` — `pathsBasePath` is not propagated when loaded as a referenced project
+- Docker build job runs independently of Python test jobs — Dockerfile correctness is unrelated to Python logic
+- Reconciliation coverage gated separately at 80% on `src/worker/validation` only; main test suite gate remains 90% on all of `src`
+
+### Open Questions
+
+- none
+
+### Next Session — Start Here
+
+1. Phase 2 features — run `/session-start` → confirm backlog → `/plan-feature` for PROC SORT parser or `%LET` macro resolution
+
+### Files Touched
+
+- `.pre-commit-config.yaml`, `Makefile`, `.github/workflows/ci.yml`
+- `.dockerignore`, `.coveragerc-reconciliation`
+- `src/frontend/package.json`, `src/frontend/package-lock.json`
+- `src/frontend/vite.config.ts`, `src/frontend/src/index.css`
+- `src/frontend/tsconfig.json`, `src/frontend/tsconfig.app.json`
+- `src/frontend/src/components/ui/button.tsx`
+- `scripts/check_npm_lockfile.sh`
+- `journal/SESSIONS.md`, `journal/DECISIONS.md`
+
+---
+
+## 2026-04-18 — F1 complete: S10–S16 + multi-agent setup + tooling hardening
+
+**Duration:** ~4h | **Focus:** F1 pipeline generation — wiring, API endpoints, coverage, agents
+
+### Done
+
+- **S10:** Alembic migration `002_add_llm_model.py` + `Job.llm_model` ORM field
+- **S11:** `_process_job` in `src/worker/main.py` — full engine pipeline (SASParser → LLMClient → CodeGenerator → ReconciliationService), `asyncio.to_thread` for sync calls, persists `status=done/failed`
+- **S12:** `AuditResponse` Pydantic schema added to `src/backend/api/schemas.py`
+- **S13:** `GET /jobs/{id}/audit` endpoint in `src/backend/api/routes/jobs.py`
+- **S14:** `GET /jobs/{id}/download` endpoint — StreamingResponse zip with `pipeline.py`, `reconciliation_report.json`, `audit.json`
+- **S15:** `tests/test_api_routes.py` — 12 async route tests (audit + download + get_job, all paths)
+- **S16:** Coverage raised from 40% → 94.3%; `fail_under = 90`; `concurrency = ["thread", "greenlet"]` for async tracing
+- **Agents:** 5 agent files created in `.claude/agents/` (orchestrator, backend-builder, frontend-builder, fullstack-planner, tester)
+- **test-runner skill:** `.claude/skills/test-runner/SKILL.md` + CLAUDE.md table updated
+- **Tooling:** Makefile PYTEST_FLAGS/NPM_FLAGS/DOCKER_BUILD_FLAGS; `--quiet` everywhere; mypy `tests.*` exemption removed
+- **mypy clean:** jinja2 stubs added to ignore list, `no-any-return` fixed in codegen, N806 naming in test mocks fixed
+- **5 atomic commits** — all hooks passed
+
+### Decisions
+
+- Multi-agent architecture adopted; orchestrator delegation via Agent tool is mandatory
+- `coverage concurrency = ["thread", "greenlet"]` required for async route tracing
+- mypy `tests.*` blanket exemption removed — tests now checked under strict mode
+- Makefile output globally suppressed via flag variables
+
+### Open Questions
+
+- none
+
+### Next Session — Start Here
+
+1. F1 is complete. Start Phase 2 from `journal/BACKLOG.md`:
+   - PROC SORT parser + translation
+   - Macro variable (`%LET`) resolution → Python constants
+   - Row-level hash diff check (F15 precursor)
+2. Run `/session-start` → confirm backlog → `/plan-feature` for next feature
+
+### Files Touched
+
+- `CLAUDE.md`, `Makefile`, `pyproject.toml`
+- `.claude/agents/` (5 new files), `.claude/skills/test-runner/SKILL.md`
+- `alembic/versions/002_add_llm_model.py`
+- `src/backend/db/models.py`, `src/backend/api/schemas.py`, `src/backend/api/routes/jobs.py`
+- `src/worker/main.py`, `src/worker/engine/codegen.py`
+- `tests/test_api_routes.py`, `tests/test_codegen.py`, `tests/test_factory.py`
+- `tests/test_llm_client.py`, `tests/test_local_backend.py`, `tests/test_session.py`, `tests/test_worker_main.py`
+- `tests/reconciliation/test_data_step.py`
+- `journal/SESSIONS.md`, `journal/BACKLOG.md`, `journal/DECISIONS.md`
+- `docs/plans/F1-pipeline-generation.md`
+
+---
+
+## 2026-04-18 — F1 Engine S00–S09: parser, LLM client, codegen, reconciliation
+
+**Duration:** ~3h | **Focus:** F1 pipeline generation — engine layer implementation
+
+### Done
+
+- **S00:** Added `pydantic-ai[anthropic]>=0.0.36` to `pyproject.toml`; `uv.lock` updated
+- **S01:** Created `samples/basic_etl.sas` (DATA step + PROC SQL, no macros), `samples/employees_raw.csv` (8-row input), `samples/basic_etl_ref.csv` (3-row dept summary reference)
+- **S02:** `src/worker/engine/models.py` — `SASBlock` and `GeneratedBlock` Pydantic models
+- **S03:** `src/worker/engine/parser.py` — `SASParser.parse()` with regex extraction, networkx dependency ordering, unsupported PROC flagging as UNTRANSLATABLE
+- **S04:** `tests/test_parser.py` — 10 unit tests, all pass
+- **S05:** `src/worker/engine/llm_client.py` — `LLMClient.translate()` via Pydantic AI agent; short-circuits on UNTRANSLATABLE blocks
+- **S06:** `src/worker/engine/codegen.py` — `CodeGenerator.assemble()` with Jinja2 template; provenance headers and untranslatable boxing
+- **S07:** `src/worker/compute/local.py` — full `LocalBackend` implementation (read_csv/run_sql via sqlite3/write_parquet/to_pandas)
+- **S08:** `src/worker/validation/reconciliation.py` — `ReconciliationService` with schema parity, row count, aggregate parity checks
+- **S09:** `tests/reconciliation/test_data_step.py` — 4 reconciliation tests (happy path + 3 failure cases); all pass
+- **Docker fix:** Both Dockerfiles now copy `README.md` before `uv sync` (hatchling validation fix)
+- **Makefile:** Added `make docker-build` target
+- **CLAUDE.md:** Added two Critical Rules — `make test` only (no `uv run pytest`), `make docker-build` required on Dockerfile changes
+- **backend-builder compliance pass:** Fixed 14 ruff violations (import sort, E501, UP042, D107, RUF100) and 5 mypy errors across all new engine files; `BlockType` migrated to `StrEnum`; pydantic-ai `result_type→output_type` and `.data→.output` API migration; mypy override added for `llm_client.py` (pydantic-ai overload limitation); `CodeGenerator` refactored to pre-compute block headers in Python (avoids long Jinja2 template lines)
+- `make check` passes (ruff + mypy clean); `make test`: 20/20 pass, 64% coverage
+
+### Decisions
+
+- **LocalBackend.run_sql:** stdlib sqlite3 (not PostgreSQL, not pandasql) — zero dep, self-contained, correct for reconciliation
+- **make test is a Critical Rule:** added to CLAUDE.md so it applies in all contexts, not just when a skill is active
+- **make docker-build:** new mandatory step for Dockerfile commits; added to Makefile and CLAUDE.md
+
+### Open Questions
+
+- none
+
+### Next Session — Start Here
+
+1. Continue F1 from S10 in `docs/plans/F1-pipeline-generation.md`:
+   - S10: Alembic migration — add `llm_model` column to `jobs` table + update ORM model
+   - S11: Wire engine into worker poll loop (`src/worker/main.py`)
+   - S12: Audit + download API schemas (`src/backend/api/schemas.py`)
+   - S13: `GET /jobs/{id}/audit` endpoint
+   - S14: `GET /jobs/{id}/download` endpoint (zip)
+   - S15: API route tests
+   - S16: Raise `fail_under` to 90, confirm `make test` green
+
+### Files Touched
+
+- `pyproject.toml`, `uv.lock`
+- `CLAUDE.md`, `Makefile`
+- `src/backend/Dockerfile`, `src/worker/Dockerfile`
+- `src/worker/engine/models.py` (new)
+- `src/worker/engine/parser.py` (new)
+- `src/worker/engine/llm_client.py` (new)
+- `src/worker/engine/codegen.py` (new)
+- `src/worker/compute/local.py` (updated — full implementation)
+- `src/worker/validation/reconciliation.py` (new)
+- `samples/basic_etl.sas`, `samples/employees_raw.csv`, `samples/basic_etl_ref.csv` (new)
+- `tests/test_parser.py` (new)
+- `tests/reconciliation/__init__.py`, `tests/reconciliation/test_data_step.py` (new)
+- `docs/plans/F1-pipeline-generation.md` (new)
+- `journal/BACKLOG.md`, `journal/DECISIONS.md`, `journal/SESSIONS.md`
+
+---
+
 ## 2026-04-17 — Phase 1 Scaffold, Databricks Strategy & Workflow Hardening
 
 **Duration:** ~3h | **Focus:** Full four-service skeleton, design decisions, session tooling

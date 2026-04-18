@@ -1,0 +1,33 @@
+# Dev tooling
+.git
+.github
+.claude
+.pre-commit-config.yaml
+.coveragerc-reconciliation
+
+# Docs and journal
+docs/
+journal/
+samples/
+scripts/
+
+# Frontend (not needed for backend/worker images)
+src/frontend/
+
+# Test artefacts
+tests/
+.coverage*
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# Editor
+.vscode/
+*.swp

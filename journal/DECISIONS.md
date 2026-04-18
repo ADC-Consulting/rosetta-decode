@@ -58,4 +58,38 @@ Format: date · decision · rationale · revisit?
 - **Codegen constraint — no pandas-only idioms:** `CodeGenerator` must not emit pandas-specific calls; use parameterized DataFrame operations so `LocalBackend` and `DatabricksBackend` swap APIs without changing structure · enforced in Phase 1 codegen design
 
 ---
+
+## 2026-04-18 (session 7 — F1 completion S10–S16 + multi-agent setup)
+
+- **Multi-agent architecture adopted:** orchestrator + backend-builder + frontend-builder + fullstack-planner + tester agents defined in `.claude/agents/` · separates planning, implementation, and quality gating into distinct roles; orchestrator owns session lifecycle and commit gating · revisit if agent boundaries prove too rigid in practice
+- **Orchestrator delegation is mandatory:** orchestrator must spawn specialist agents via Agent tool — never write implementation code directly · discovered this was being bypassed in first pass; enforced in orchestrator.md guardrails and saved to memory · revisit never
+- **test-runner skill added:** dedicated `/test-runner` slash command for running `make test`, interpreting results, and reporting GREEN/RED verdict · prevents ad-hoc pytest invocations and centralises test output interpretation · revisit never
+- **Coverage concurrency = thread + greenlet:** `[tool.coverage.run] concurrency = ["thread", "greenlet"]` required to trace async FastAPI route bodies via httpx/aiosqlite — without it, route handler lines showed 0% despite tests passing · revisit if coverage tooling changes
+- **Makefile output suppressed globally:** PYTEST_FLAGS, NPM_FLAGS, DOCKER_BUILD_FLAGS variables added; all targets use `@` prefix and `--quiet`/`--silent` flags · saves tokens in CI and Claude sessions · revisit never
+- **mypy tests.* exemption removed:** the blanket `ignore_errors = true` on `tests.*` was a shortcut; removed so mypy checks test files under strict mode · required fixing `dict` → `dict[str, Any]`, `type: ignore` cleanup, and N806 naming violations · revisit never
+
+---
+
+## 2026-04-18 (session 8 — CI hardening + Tailwind v4 migration)
+
+- **tsc --noEmit is the correct type-check command:** `tsc -b` (project references build mode) requires `composite: true` which conflicts with `noEmit: true`; `tsc --noEmit` reads `tsconfig.app.json` directly and resolves paths correctly · revisit never
+- **baseUrl required in tsconfig.app.json:** `pathsBasePath` is not propagated when a config is loaded as a referenced project via `tsc -b`; `baseUrl: "."` + `ignoreDeprecations: "6.0"` is the TS 6 migration path · revisit when TS 7 ships a `baseUrl` replacement
+- **Tailwind v4 with Vite plugin:** shadcn v4 generates CSS for Tailwind v4; keeping v3 caused `@apply` errors on every new component; switched to `@tailwindcss/vite`, removed PostCSS config and JS theme config · revisit never
+- **Docker job independent of test:** Dockerfile correctness is unrelated to Python logic; running in parallel reduces wall-clock CI time · revisit never
+- **Reconciliation coverage scoped separately:** `src/worker/validation` measured in isolation via `.coveragerc-reconciliation` at 80% gate; main suite covers all of `src` at 90% · raise to 90% when missing lines covered
+- **astral-sh/setup-uv pinned to full semver:** `v8` floating tag does not exist; must use `v8.1.0` · update when new minor released
+
+---
+
+## 2026-04-18 (session 6 — F1 engine implementation S00–S09)
+
+- **LocalBackend.run_sql uses stdlib sqlite3, not PostgreSQL:** three options were evaluated — pandasql (SQLite wrapper, extra dep), live PostgreSQL (requires running service), stdlib sqlite3 (zero dep, self-contained). sqlite3 chosen: no extra dep, no service required for local tests, result fidelity is what matters not the SQL engine · revisit if PROC SQL edge cases (window functions, ANSI-only syntax) hit SQLite limits
+- **Dockerfile README.md copy required before uv sync:** hatchling validates `readme = "README.md"` at package build time; both backend and worker Dockerfiles now copy README.md alongside pyproject.toml and uv.lock before running `uv sync --no-dev --frozen` · revisit never
+- **make docker-build added as mandatory step for Dockerfile changes:** any commit touching a Dockerfile or docker-compose.yml must pass `make docker-build` in addition to `make test` · enforced in CLAUDE.md Critical Rules · revisit never
+- **make test is a Critical Rule in CLAUDE.md:** `uv run pytest` and bare `pytest` are forbidden everywhere; only `make test` is allowed · previously only in skills; now in CLAUDE.md to cover all contexts · revisit never
+- **pydantic-ai v1 API:** `result_type` → `output_type`; `result.data` → `result.output`; Agent overloads typed for `str` output only — BaseModel `output_type` works at runtime but mypy requires `ignore_errors = true` on `llm_client.py` · revisit if pydantic-ai adds typed overloads for structured output
+- **backend-builder skill must be invoked when writing engine code:** discovered that running without the skill led to ruff/mypy violations in the first pass; backend-builder enforces the checklist that catches these · revisit never
+- **BlockType uses StrEnum (Python 3.11+):** `class BlockType(str, Enum)` replaced with `class BlockType(StrEnum)` per ruff UP042 · no behaviour change · revisit never
+
+---
 ```
