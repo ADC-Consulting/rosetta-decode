@@ -62,6 +62,8 @@ Execution backend abstracted behind `ComputeBackend` interface in `src/worker/co
 - Abstract execution behind a `ComputeBackend` interface — no `if CLOUD` checks scattered in business logic
 - Every migration output must be reproducible: same SAS input → same Python output
 - Use plan mode before any multi-file change
+- NEVER run `uv run pytest` or `pytest` directly — always use `make test`. No exceptions.
+- When modifying any Dockerfile or docker-compose.yml, run `make docker-build` after `make test` before committing.
 
 ## Workflow
 
@@ -72,6 +74,7 @@ Execution backend abstracted behind `ComputeBackend` interface in `src/worker/co
 | `/session-start` | First thing every session — restores journal + active feature plan before any work |
 | `/session-end` | Before stopping — updates feature plan, journal, reviews diffs, triggers commit |
 | `/plan-feature` | Before implementing any new feature — reads docs, breaks into ordered subtasks with dependencies, writes `docs/plans/F<N>-<slug>.md`, enters plan mode |
+| `/test-runner` | Run full test suite via `make test`, interpret results and coverage |
 
 ### Claude-invoked skills (triggered automatically by context)
 
@@ -81,7 +84,18 @@ Execution backend abstracted behind `ComputeBackend` interface in `src/worker/co
 | `backend-builder` | Worker engine/validation/compute code, FastAPI routes, Pydantic AI agents |
 | `frontend-builder` | React pages and components (Vite + TypeScript + shadcn/ui) |
 | `git-committer` | Before any commit — conventional format, journal + plan file update check |
+| `test-runner` | Anytime the user says "run tests", "check tests", "are tests passing", or asks about coverage |
 
-> The product (the tool being built) calls hosted LLMs. Skills are for Claude Code building the product.
+### Agents (`.claude/agents/`)
+
+| Agent | Role | Owns |
+|---|---|---|
+| `orchestrator` | Default entry point — runs session-start on every invocation, delegates to specialists, gates commits | session-start, session-end, plan-feature, git-committer |
+| `backend-builder` | Python implementation — worker engine, FastAPI routes, Pydantic AI, migrations | backend-builder skill |
+| `frontend-builder` | React/TS implementation — components, pages, API clients | frontend-builder skill |
+| `fullstack-planner` | Read-only cross-cutting analysis — API contracts, type alignment, sequencing | read-only |
+| `tester` | Runs `make test`, reports pass/fail/coverage to orchestrator | test-runner skill |
+
+> The product (the tool being built) calls hosted LLMs. Skills and agents are for Claude Code building the product.
 > `docs/context/` files are the authoritative SAS reference for the LLM product layer.
 ```
