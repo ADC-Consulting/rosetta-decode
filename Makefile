@@ -19,10 +19,14 @@ install: ## Install all dependencies (dev + core)
 test: ## Run everything: ruff, mypy, pytest, tsc-check, frontend-lint, frontend-build
 	@uv run ruff check src tests --quiet
 	@uv run ruff format --check src tests --quiet
+	@uv run mypy src --no-error-summary --no-pretty --hide-error-context --hide-error-codes
 	@uv run pytest $(PYTEST_FLAGS) --cov-fail-under=90
 	@$(MAKE) tsc-check
 	@$(MAKE) frontend-lint
 	@$(MAKE) frontend-build
+
+test-file: ## Run a single test file: make test-file FILE=tests/test_foo.py
+	@uv run pytest $(PYTEST_FLAGS) $(FILE)
 
 test-fast: ## Skip reconciliation, cloud, and integration tests (quick feedback loop)
 	@uv run pytest $(PYTEST_FLAGS) -m "not reconciliation and not cloud and not integration"

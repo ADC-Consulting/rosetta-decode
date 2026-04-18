@@ -104,6 +104,7 @@ class ReconciliationService:
         ref_csv_path: str,
         python_code: str,
         backend: ComputeBackend,
+        ref_sas7bdat_path: str = "",
     ) -> dict[str, Any]:
         """Execute all reconciliation checks and return a structured report.
 
@@ -111,10 +112,14 @@ class ReconciliationService:
         DataFrame assigned to a variable named ``result`` (or the last
         DataFrame-valued local) is taken as the pipeline output.
 
+        Reference data is resolved in priority order: sas7bdat > csv > none.
+        When no reference path is supplied, reconciliation is skipped.
+
         Args:
             ref_csv_path: Path to the reference CSV produced by the original SAS run.
             python_code: Generated Python pipeline source (from CodeGenerator).
             backend: The ComputeBackend to inject into the pipeline namespace.
+            ref_sas7bdat_path: Optional path to a .sas7bdat reference dataset.
 
         Returns:
             Report dict: ``{ "checks": [ { "name", "status", "detail?" }, … ] }``
@@ -122,11 +127,24 @@ class ReconciliationService:
         checks: list[dict[str, Any]] = []
 
         try:
-            ref_df = cast(pd.DataFrame, backend.read_csv(ref_csv_path))
             actual_df = self._exec_pipeline(python_code, backend)
         except Exception:
             error_detail = textwrap.shorten(traceback.format_exc(), width=300)
             logger.warning("Reconciliation execution error: %s", error_detail)
+            checks.append(_check_result("execution", passed=False, detail=error_detail))
+            return {"checks": checks}
+
+        if not ref_sas7bdat_path and not ref_csv_path:
+            return {"checks": checks}
+
+        try:
+            if ref_sas7bdat_path:
+                ref_df = cast(pd.DataFrame, backend.read_sas7bdat(ref_sas7bdat_path))
+            else:
+                ref_df = cast(pd.DataFrame, backend.read_csv(ref_csv_path))
+        except Exception:
+            error_detail = textwrap.shorten(traceback.format_exc(), width=300)
+            logger.warning("Reconciliation reference load error: %s", error_detail)
             checks.append(_check_result("execution", passed=False, detail=error_detail))
             return {"checks": checks}
 

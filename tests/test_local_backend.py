@@ -1,6 +1,7 @@
 """Unit tests for LocalBackend — read_csv, run_sql, write_parquet, to_pandas."""
 
 import pathlib
+from unittest.mock import patch
 
 import pandas as pd
 import pytest
@@ -61,3 +62,13 @@ def test_to_pandas_passthrough(backend: LocalBackend) -> None:
 def test_to_pandas_rejects_non_dataframe(backend: LocalBackend) -> None:
     with pytest.raises(TypeError, match="Expected pandas DataFrame"):
         backend.to_pandas([1, 2, 3])
+
+
+def test_read_sas7bdat_returns_dataframe(backend: LocalBackend) -> None:
+    expected = pd.DataFrame({"id": [1, 2, 3], "value": [10.0, 20.0, 30.0]})
+    with patch("src.worker.compute.local.pyreadstat.read_sas7bdat", return_value=(expected, None)):
+        result = backend.read_sas7bdat("/fake/path/sample.sas7bdat")
+
+    assert isinstance(result, pd.DataFrame)
+    assert list(result.columns) == list(expected.columns)
+    assert result.shape == expected.shape

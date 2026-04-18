@@ -61,8 +61,11 @@ async def _process_job(session: AsyncSession, job: Job) -> None:
     """
     logger.info("Processing job %s", job.id)
     try:
-        files: dict[str, str] = {k: v for k, v in job.files.items() if k != "__ref_csv__"}
+        files: dict[str, str] = {
+            k: v for k, v in job.files.items() if k not in ("__ref_csv__", "__ref_sas7bdat__")
+        }
         ref_csv_path: str = str(job.files.get("__ref_csv__", ""))
+        ref_sas7bdat_path: str = str(job.files.get("__ref_sas7bdat__", ""))
 
         result = SASParser().parse(files)
         blocks = result.blocks
@@ -112,7 +115,13 @@ async def _process_job(session: AsyncSession, job: Job) -> None:
 
         backend = BackendFactory.create()
         reconciler = ReconciliationService()
-        report = await asyncio.to_thread(reconciler.run, ref_csv_path, python_code, backend)
+        report = await asyncio.to_thread(
+            reconciler.run,
+            ref_csv_path,
+            python_code,
+            backend,
+            ref_sas7bdat_path,
+        )
 
         await session.execute(
             update(Job)

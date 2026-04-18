@@ -9,6 +9,7 @@ use the same path since result fidelity is what matters, not the SQL engine.
 import sqlite3
 
 import pandas as pd
+import pyreadstat
 from src.worker.compute.base import ComputeBackend
 
 
@@ -25,6 +26,18 @@ class LocalBackend(ComputeBackend):
             pandas DataFrame with all columns loaded.
         """
         return pd.read_csv(path)
+
+    def read_sas7bdat(self, path: str) -> pd.DataFrame:
+        """Read a .sas7bdat binary file into a pandas DataFrame.
+
+        Args:
+            path: Absolute path to the .sas7bdat file.
+
+        Returns:
+            pandas DataFrame with all columns loaded.
+        """
+        df, _ = pyreadstat.read_sas7bdat(path)
+        return df
 
     def run_sql(self, query: str, context: dict[str, object]) -> pd.DataFrame:
         """Execute a SQL query against the provided DataFrames via SQLite.
