@@ -217,3 +217,5 @@ vite.config.ts.timestamp-*
 
 # Frontend test/coverage output
 coverage/
+
+.DS_Store

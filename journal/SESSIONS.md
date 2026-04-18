@@ -6,6 +6,53 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-04-18 — Post-MVP UI + backend planning; zone-based architecture designed
+
+**Duration:** ~1.5h | **Focus:** Planning session — no code written
+
+### Done
+
+- Reviewed all user stories (US1, US2), features (F2, F5–F7, F11, F13, F15, F18), and MVP scope docs
+- Explored full frontend codebase (all components, pages, API client, package.json) and backend API surface
+- Ran fullstack-planner analysis: identified all API gaps for post-MVP features (sources endpoint, lineage column, doc column, re-reconciliation, refine action, zip upload)
+- Designed zone-based editor architecture: right tool per content zone (Monaco DiffEditor / Monaco Editor / Tiptap / React Flow)
+- Decided full app page structure with sidebar nav: `/upload`, `/jobs`, `/jobs/:id`, `/lineage`, `/docs`, `/explain`
+- Wrote `docs/plans/F-UI-postmvp.md` (13 frontend subtasks, Status: in-progress)
+- Wrote `docs/plans/F-backend-postmvp.md` (6 backend subtasks across 3 DB migration waves, Status: in-progress)
+- Updated `journal/BACKLOG.md` with 19 new actionable items cross-linked to plan files
+
+### Decisions
+
+- Zone-based editor: Monaco DiffEditor (diff), Monaco Editor (edit), Tiptap (notes/reports), React Flow (lineage)
+- Sidebar nav (collapsible) replaces current top nav
+- `/jobs/:id` full page with 4 tabs replaces inline expansion
+- Zip upload: partial acceptance (no file count limit); rejected files returned in manifest, not as 400
+- Accepted zip extensions: `.sas`, `.sas7bdat`, `.csv`, `.log`, `.xlsx`, `.xls`
+- Lineage serialised to `job.lineage` JSON column at parse time (not on-demand)
+- `skip_llm` boolean flag for re-reconciliation pathway (cleaner than new status value)
+
+### Open Questions
+
+- none
+
+### Next Session — Start Here
+
+1. Two parallel tracks to start immediately:
+   - **Backend track:** implement S-BE1 (`GET /sources`) and S-BE2 (zip upload) in `src/backend/` — no migrations required, unblocks frontend Monaco work
+   - **Frontend nav track:** implement S-FE5 (`AppSidebar`) + S-FE10 (routing) + S-FE11 (JobsPage refactor) — no backend deps
+2. Full subtask list in `docs/plans/F-UI-postmvp.md` and `docs/plans/F-backend-postmvp.md`
+3. Branch: `feat/F-UI-postmvp`
+
+### Files Touched
+
+- `docs/plans/F-UI-postmvp.md` (created)
+- `docs/plans/F-backend-postmvp.md` (created)
+- `journal/BACKLOG.md` (19 new items added)
+- `journal/DECISIONS.md` (9 decisions appended)
+- `journal/SESSIONS.md` (this entry)
+
+---
+
 ## 2026-04-18 — F-UI complete; MVP shipped; Azure OpenAI + Docker fixes
 
 **Duration:** ~4h | **Focus:** F-UI React frontend, docker-compose runtime fixes, Azure OpenAI wiring

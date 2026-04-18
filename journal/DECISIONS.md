@@ -6,6 +6,20 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-04-18 (session 12 — post-MVP UI planning)
+
+- **Zone-based editor architecture:** each UI content type gets the right primitive — Monaco DiffEditor for SAS vs Python diff, Monaco Editor for inline editing, Tiptap for rich-text notes/reports, React Flow for lineage graph · revisit never
+- **Sidebar nav replaces top nav:** persistent collapsible sidebar scales to 6+ pages; top nav does not · revisit never
+- **JobDetailPage at /jobs/:id (full page, 4 tabs):** replaces inline expansion in JobsPage; Comparison / Edit / Report / Lineage tabs; deep-linkable · revisit never
+- **Zip upload: partial acceptance, no file count limit:** unknown extensions collected into rejection manifest rather than hard 400; caller sees accepted + rejected list · revisit never
+- **Zip accepted extensions:** `.sas`, `.sas7bdat`, `.csv`, `.log`, `.xlsx`, `.xls` — covers SAS source, binary datasets, reference data, execution logs, and Excel inputs · revisit if new SAS-adjacent formats surface
+- **Lineage serialised to `job.lineage` JSON column at parse time:** worker writes lineage after parse step; not computed on demand at API request time · revisit never
+- **DocGenerator does not crash worker on LLM failure:** catch exception, log warning, leave `job.doc = None`; doc is optional enrichment, not a required pipeline step · revisit never
+- **`skip_llm` boolean column for re-reconciliation:** cleaner than adding a new status value to the FSM; worker branches on flag, skips parser+LLM, runs ReconciliationService only · revisit never
+- **`parent_job_id` FK on Job for refine action:** enables UI to show refinement history without a separate table · revisit never
+
+---
+
 ## 2026-04-18 (session 11 — F-UI + Docker runtime + Azure OpenAI)
 
 - **`CORS_ORIGINS` as plain string, split internally:** `list[str]` pydantic-settings field fails when env var is `*`; switched to `str` field with `@property` that splits on comma · revisit never

@@ -45,9 +45,28 @@
 - [ ] F4: SAS log ingestion — parse log structure
 - [ ] F4: LLM call for runtime logic reconstruction from log
 - [ ] F10: Artefact versioning — group jobs by input_hash, expose version history per migration
-- [ ] F11: Plain-language documentation — LLM-generated business-readable summary per job
+- [ ] F11: Plain-language documentation — LLM-generated business-readable summary per job → see `docs/plans/F-backend-postmvp.md` S-BE4
 - [ ] F15: Record-level reconciliation — row-by-row diff with configurable keys and tolerances
-- [ ] F18: Refine conversion action — re-submit with previous output + reconciliation report as context
+- [ ] F18: Refine conversion action — re-submit with previous output + reconciliation report as context → see `docs/plans/F-backend-postmvp.md` S-BE6
+
+**Post-MVP UI + Backend (active) — `docs/plans/F-UI-postmvp.md` + `docs/plans/F-backend-postmvp.md`**
+- [ ] F-backend-postmvp S-BE1: `GET /jobs/{id}/sources` endpoint (no migration)
+- [ ] F-backend-postmvp S-BE2: Zip bulk upload — `.sas`, `.sas7bdat`, `.csv`, `.log`, `.xlsx`, `.xls` (no migration)
+- [ ] F-backend-postmvp S-BE3: Lineage extraction + `GET /jobs/{id}/lineage` (migration 002)
+- [ ] F-backend-postmvp S-BE4: Doc generation + `GET /jobs/{id}/doc` (migration 002)
+- [ ] F-backend-postmvp S-BE5: Re-reconciliation `PUT /jobs/{id}/python_code` + `skip_llm` (migration 003)
+- [ ] F-backend-postmvp S-BE6: Refine action `POST /jobs/{id}/refine` + `parent_job_id` (migration 003)
+- [ ] F-UI-postmvp S-FE5/10/11: AppSidebar + routing + JobsPage refactor
+- [ ] F-UI-postmvp S-FE1: `MonacoDiffViewer` component (Monaco DiffEditor)
+- [ ] F-UI-postmvp S-FE2: `MonacoEditor` component (Monaco Editor)
+- [ ] F-UI-postmvp S-FE3: `TiptapEditor` component (rich text + code blocks)
+- [ ] F-UI-postmvp S-FE4: `LineageGraph` component (React Flow, 3 zoom levels, colour-coded)
+- [ ] F-UI-postmvp S-FE6: `JobDetailPage` (4 tabs: Comparison / Edit / Report / Lineage)
+- [ ] F-UI-postmvp S-FE7: `GlobalLineagePage`
+- [ ] F-UI-postmvp S-FE8: `DocsPage`
+- [ ] F-UI-postmvp S-FE9: `ExplainPage` stub
+- [ ] F-UI-postmvp S-FE12: Upload UX — zip input + file manifest
+- [ ] F-UI-postmvp S-FE13: API client extensions (types + jobs.ts + migrate.ts)
 
 ---
 
