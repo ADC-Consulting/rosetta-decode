@@ -63,10 +63,11 @@ async def _process_job(session: AsyncSession, job: Job) -> None:
         files: dict[str, str] = {k: v for k, v in job.files.items() if k != "__ref_csv__"}
         ref_csv_path: str = str(job.files.get("__ref_csv__", ""))
 
-        blocks = SASParser().parse(files)
+        result = SASParser().parse(files)
+        blocks = result.blocks
         client = LLMClient()
         generated = await asyncio.to_thread(lambda: [client.translate(b) for b in blocks])
-        python_code = CodeGenerator().assemble(generated)
+        python_code = CodeGenerator().assemble(generated, macro_vars=result.macro_vars)
 
         backend = BackendFactory.create()
         reconciler = ReconciliationService()

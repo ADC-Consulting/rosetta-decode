@@ -6,6 +6,56 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-04-18 — F1-ext complete: PROC SORT + %LET, MVP scope alignment
+
+**Duration:** ~2h | **Focus:** F1 engine extension + structural doc cleanup
+
+### Done
+
+- **F1-ext — PROC SORT parser:** `BlockType.PROC_SORT`, `_extract_proc_sort()` with `DATA=`/`OUT=` resolution, covered-span logic so PROC SORT no longer hits UNTRANSLATABLE
+- **F1-ext — %LET macro vars:** `MacroVar` + `ParseResult` models, `_extract_macro_vars()`, `SASParser.parse()` return type changed to `ParseResult(blocks, macro_vars)`, `CodeGenerator.assemble()` accepts `macro_vars` and prepends constants section
+- **Sample files:** `samples/proc_sort_example.sas`, `samples/proc_sort_expected.csv`
+- **Tests:** 9 new parser unit tests, 2 codegen tests, 1 reconciliation test — 78 total, 93.5% coverage
+- **Doc alignment:** renamed `docs/plans/F2-proc-sort.md` → `F1-ext-proc-sort-macro.md` (PROC SORT is an F1 extension, not a new feature; F2 is reserved for Code Explanation UI)
+- **MVP scope expanded:** added F-LLM (system prompt upgrade + graceful degradation), F-sas7bdat (wire pyreadstat), F-UI (Upload & Results page) as required MVP items to `docs/mvp-scope.md` and `journal/BACKLOG.md`
+- **git-pr-summary skill:** new skill at `.claude/skills/git-pr-summary/SKILL.md` — generates copy-paste ready PR Markdown; wired into orchestrator only
+- **README updated:** parser description, reconciliation test listing, worker pipeline signature updated to reflect F1-ext changes
+
+### Decisions
+
+- **F-number collision resolved:** PROC SORT + %LET are F1 extensions (Phase 2 post-MVP backend). F2 remains the Code Explanation Assistant UI (Phase 3 frontend) per `docs/features.md` · revisit never
+- **MVP requires a frontend:** Upload & Results page added to MVP scope — product is not shippable without UI
+- **MVP requires LLM system prompt upgrade:** current prompt only mentions pandas; must establish agent as SAS migration expert targeting Python/PySpark · LLM remains the primary translation engine, not optional
+- **MVP requires sas7bdat reading:** `pyreadstat` already in `pyproject.toml` but never wired; must be connected to `LocalBackend` before MVP is done
+- **LLM resilience is MVP scope:** worker must not crash if API unreachable — graceful job failure, not process crash · this is error handling, not a fallback translation path
+- **make test is the only allowed test invocation:** `uv run pytest` is forbidden everywhere including agent verification steps — all tests via make targets only · enforced in memory
+
+### Open Questions
+
+- none
+
+### Next Session — Start Here
+
+1. Implement the three remaining MVP items in order:
+   - F-LLM: upgrade `_SYSTEM_PROMPT` in `src/worker/engine/llm_client.py` + lazy-init resilience → plan and delegate to `backend-builder`
+   - F-sas7bdat: wire `pyreadstat` into `src/worker/compute/local.py` + `base.py` + worker routing → plan and delegate to `backend-builder`
+   - F-UI: Upload & Results page → plan and delegate to `frontend-builder`
+2. F-LLM and F-sas7bdat can be planned and built in parallel
+3. F-UI follows after both backend items are green
+
+### Files Touched
+
+- `src/worker/engine/models.py`, `src/worker/engine/parser.py`, `src/worker/engine/codegen.py`
+- `src/worker/main.py`
+- `tests/test_parser.py`, `tests/test_codegen.py`, `tests/reconciliation/test_proc_sort.py`
+- `samples/proc_sort_example.sas`, `samples/proc_sort_expected.csv`
+- `docs/plans/F1-ext-proc-sort-macro.md` (created), `docs/plans/F2-proc-sort.md` (deleted)
+- `docs/mvp-scope.md`, `journal/BACKLOG.md`, `journal/DECISIONS.md`, `journal/SESSIONS.md`
+- `.claude/skills/git-pr-summary/SKILL.md` (created), `.claude/agents/orchestrator.md`, `CLAUDE.md`
+- `README.md`
+
+---
+
 ## 2026-04-18 — CI hardening: Tailwind v4 migration, action bumps, Docker cache
 
 **Duration:** ~3h | **Focus:** CI green across all jobs; tooling correctness

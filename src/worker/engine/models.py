@@ -10,7 +10,28 @@ class BlockType(StrEnum):
 
     DATA_STEP = "DATA_STEP"
     PROC_SQL = "PROC_SQL"
+    PROC_SORT = "PROC_SORT"
     UNTRANSLATABLE = "UNTRANSLATABLE"
+
+
+class MacroVar(BaseModel):
+    """A resolved SAS macro variable declared via %LET.
+
+    Attributes:
+        name: Macro variable name, stored uppercase.
+        raw_value: Raw string value as declared (e.g. "100", "department").
+        source_file: Name of the `.sas` file containing the %LET declaration.
+        line: 1-based line number of the %LET declaration.
+    """
+
+    name: str
+    raw_value: str
+    source_file: str
+    line: int = Field(ge=1)
+
+    def model_post_init(self, __context: object) -> None:
+        """Normalise name to uppercase after construction."""
+        object.__setattr__(self, "name", self.name.upper())
 
 
 class SASBlock(BaseModel):
@@ -35,6 +56,18 @@ class SASBlock(BaseModel):
     untranslatable_reason: str | None = None
     input_datasets: list[str] = Field(default_factory=list)
     output_datasets: list[str] = Field(default_factory=list)
+
+
+class ParseResult(BaseModel):
+    """Aggregated output of the SAS parser for a single file.
+
+    Attributes:
+        blocks: Ordered list of SAS construct blocks extracted from the file.
+        macro_vars: Macro variables declared via %LET in the file.
+    """
+
+    blocks: list[SASBlock] = Field(default_factory=list)
+    macro_vars: list[MacroVar] = Field(default_factory=list)
 
 
 class GeneratedBlock(BaseModel):

@@ -75,6 +75,7 @@ Execution backend abstracted behind `ComputeBackend` interface in `src/worker/co
 | `/session-end` | Before stopping — updates feature plan, journal, reviews diffs, triggers commit |
 | `/plan-feature` | Before implementing any new feature — reads docs, breaks into ordered subtasks with dependencies, writes `docs/plans/F<N>-<slug>.md`, enters plan mode |
 | `/test-runner` | Run full test suite via `make test`, interpret results and coverage |
+| `/git-pr-summary` | Generate copy-paste ready PR description in standard Markdown format |
 
 ### Claude-invoked skills (triggered automatically by context)
 
@@ -84,6 +85,7 @@ Execution backend abstracted behind `ComputeBackend` interface in `src/worker/co
 | `backend-builder` | Worker engine/validation/compute code, FastAPI routes, Pydantic AI agents |
 | `frontend-builder` | React pages and components (Vite + TypeScript + shadcn/ui) |
 | `git-committer` | Before any commit — conventional format, journal + plan file update check |
+| `git-pr-summary` | When user asks for PR text, "give me the PR summary", or is about to open a PR — orchestrator only |
 | `test-runner` | Anytime the user says "run tests", "check tests", "are tests passing", or asks about coverage |
 
 ### Agents (`.claude/agents/`)

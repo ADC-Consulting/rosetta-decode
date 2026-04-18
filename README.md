@@ -68,10 +68,9 @@ Open Claude Code, invoke the orchestrator, then run:
 
 ```
 @orchestrator
-/session-start
 ```
 
-The orchestrator reads the journal, checks for any active feature plan in `docs/plans/`, and tells you exactly what's next. It waits for you to confirm before proposing any work. **Always do this before anything else.**
+The orchestrator should run the skill `/session-start` and then reads the journal, checks for any active feature plan in `docs/plans/`, and tells you exactly what's next. It waits for you to confirm before proposing any work. **Always do this before anything else.**
 
 ### Planning a feature
 
@@ -133,7 +132,7 @@ rosetta-decode/
 │   │   ├── main.py                  # Poll loop: picks queued jobs, runs pipeline
 │   │   ├── engine/
 │   │   │   ├── models.py            # SASBlock, GeneratedBlock Pydantic models
-│   │   │   ├── parser.py            # SASParser — DATA step + PROC SQL extraction
+│   │   │   ├── parser.py            # SASParser — DATA step, PROC SQL, PROC SORT extraction; %LET macro vars
 │   │   │   ├── llm_client.py        # LLMClient — Pydantic AI agent, structured output
 │   │   │   └── codegen.py           # CodeGenerator — assembles pipeline.py with provenance
 │   │   ├── validation/
@@ -161,7 +160,8 @@ rosetta-decode/
 │   ├── test_api_smoke.py            # Smoke: POST /migrate + GET /jobs/{id}
 │   ├── test_worker_main.py          # Worker poll loop tests
 │   └── reconciliation/
-│       └── test_data_step.py        # Reconciliation test — DATA step → DataFrame
+│       ├── test_data_step.py        # Reconciliation test — DATA step → DataFrame
+│       └── test_proc_sort.py        # Reconciliation test — PROC SORT → sorted DataFrame
 │
 ├── alembic/
 │   └── versions/
@@ -243,7 +243,7 @@ Four Docker services. The only shared state is PostgreSQL.
 ### Worker pipeline (per job)
 
 ```
-SASParser.parse(files)               → List[SASBlock]  (ordered by dependency)
+SASParser.parse(files)               → ParseResult(blocks, macro_vars)  (dependency-ordered)
   ↓
 LLMClient.translate(block, patterns) → GeneratedBlock   (structured Pydantic AI output)
   ↓ (for each block)
