@@ -6,6 +6,68 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-04-18 — F1 Engine S00–S09: parser, LLM client, codegen, reconciliation
+
+**Duration:** ~3h | **Focus:** F1 pipeline generation — engine layer implementation
+
+### Done
+
+- **S00:** Added `pydantic-ai[anthropic]>=0.0.36` to `pyproject.toml`; `uv.lock` updated
+- **S01:** Created `samples/basic_etl.sas` (DATA step + PROC SQL, no macros), `samples/employees_raw.csv` (8-row input), `samples/basic_etl_ref.csv` (3-row dept summary reference)
+- **S02:** `src/worker/engine/models.py` — `SASBlock` and `GeneratedBlock` Pydantic models
+- **S03:** `src/worker/engine/parser.py` — `SASParser.parse()` with regex extraction, networkx dependency ordering, unsupported PROC flagging as UNTRANSLATABLE
+- **S04:** `tests/test_parser.py` — 10 unit tests, all pass
+- **S05:** `src/worker/engine/llm_client.py` — `LLMClient.translate()` via Pydantic AI agent; short-circuits on UNTRANSLATABLE blocks
+- **S06:** `src/worker/engine/codegen.py` — `CodeGenerator.assemble()` with Jinja2 template; provenance headers and untranslatable boxing
+- **S07:** `src/worker/compute/local.py` — full `LocalBackend` implementation (read_csv/run_sql via sqlite3/write_parquet/to_pandas)
+- **S08:** `src/worker/validation/reconciliation.py` — `ReconciliationService` with schema parity, row count, aggregate parity checks
+- **S09:** `tests/reconciliation/test_data_step.py` — 4 reconciliation tests (happy path + 3 failure cases); all pass
+- **Docker fix:** Both Dockerfiles now copy `README.md` before `uv sync` (hatchling validation fix)
+- **Makefile:** Added `make docker-build` target
+- **CLAUDE.md:** Added two Critical Rules — `make test` only (no `uv run pytest`), `make docker-build` required on Dockerfile changes
+- **backend-builder compliance pass:** Fixed 14 ruff violations (import sort, E501, UP042, D107, RUF100) and 5 mypy errors across all new engine files; `BlockType` migrated to `StrEnum`; pydantic-ai `result_type→output_type` and `.data→.output` API migration; mypy override added for `llm_client.py` (pydantic-ai overload limitation); `CodeGenerator` refactored to pre-compute block headers in Python (avoids long Jinja2 template lines)
+- `make check` passes (ruff + mypy clean); `make test`: 20/20 pass, 64% coverage
+
+### Decisions
+
+- **LocalBackend.run_sql:** stdlib sqlite3 (not PostgreSQL, not pandasql) — zero dep, self-contained, correct for reconciliation
+- **make test is a Critical Rule:** added to CLAUDE.md so it applies in all contexts, not just when a skill is active
+- **make docker-build:** new mandatory step for Dockerfile commits; added to Makefile and CLAUDE.md
+
+### Open Questions
+
+- none
+
+### Next Session — Start Here
+
+1. Continue F1 from S10 in `docs/plans/F1-pipeline-generation.md`:
+   - S10: Alembic migration — add `llm_model` column to `jobs` table + update ORM model
+   - S11: Wire engine into worker poll loop (`src/worker/main.py`)
+   - S12: Audit + download API schemas (`src/backend/api/schemas.py`)
+   - S13: `GET /jobs/{id}/audit` endpoint
+   - S14: `GET /jobs/{id}/download` endpoint (zip)
+   - S15: API route tests
+   - S16: Raise `fail_under` to 90, confirm `make test` green
+
+### Files Touched
+
+- `pyproject.toml`, `uv.lock`
+- `CLAUDE.md`, `Makefile`
+- `src/backend/Dockerfile`, `src/worker/Dockerfile`
+- `src/worker/engine/models.py` (new)
+- `src/worker/engine/parser.py` (new)
+- `src/worker/engine/llm_client.py` (new)
+- `src/worker/engine/codegen.py` (new)
+- `src/worker/compute/local.py` (updated — full implementation)
+- `src/worker/validation/reconciliation.py` (new)
+- `samples/basic_etl.sas`, `samples/employees_raw.csv`, `samples/basic_etl_ref.csv` (new)
+- `tests/test_parser.py` (new)
+- `tests/reconciliation/__init__.py`, `tests/reconciliation/test_data_step.py` (new)
+- `docs/plans/F1-pipeline-generation.md` (new)
+- `journal/BACKLOG.md`, `journal/DECISIONS.md`, `journal/SESSIONS.md`
+
+---
+
 ## 2026-04-17 — Phase 1 Scaffold, Databricks Strategy & Workflow Hardening
 
 **Duration:** ~3h | **Focus:** Full four-service skeleton, design decisions, session tooling

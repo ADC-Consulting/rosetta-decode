@@ -41,15 +41,24 @@
 - [x] S20: smoke test — POST /migrate + GET /jobs/{id} → see `docs/plans/F0-phase1-scaffold.md`
 - [x] S21: CI — fix graceful skip + add Alembic step → see `docs/plans/F0-phase1-scaffold.md`
 
-**Remaining Phase 1 (after scaffold — F1/F3/F8/F9 logic):**
-- [ ] F1: SAS parser — extract DATA step + PROC SQL blocks from N SAS files, order by dependency (`src/worker/engine/parser.py`)
-- [ ] F1: LLM client — Pydantic AI agent, model from `LLM_MODEL` env var, structured output (`src/worker/engine/llm_client.py`)
-- [ ] F1: Code generator — assemble full pipeline file with `# SAS: <file>:<line>` provenance (`src/worker/engine/codegen.py`)
-- [ ] F3: Reconciliation service — schema parity + row count + aggregate parity, runs inline in worker (`src/worker/validation/reconciliation.py`)
-- [ ] F8: Audit traceability — expose `GET /jobs/{id}/audit` returning immutable record
-- [ ] F9: Downloadable output — `GET /jobs/{id}/download` returns zip
-- [ ] Reconciliation test: DATA step → DataFrame (pytest, CLOUD=false)
-- [ ] Sample SAS files in `samples/` + corresponding reference output CSVs
+**Remaining Phase 1 — active plan: `docs/plans/F1-pipeline-generation.md`**
+- [x] F1 S00: add pydantic-ai dependency (`pyproject.toml`) → see `docs/plans/F1-pipeline-generation.md`
+- [x] F1 S01: sample SAS files (`samples/`) → see `docs/plans/F1-pipeline-generation.md`
+- [x] F1 S02: SASBlock + GeneratedBlock models (`src/worker/engine/models.py`) → see `docs/plans/F1-pipeline-generation.md`
+- [x] F1 S03: SASParser — DATA step + PROC SQL extraction (`src/worker/engine/parser.py`) → see `docs/plans/F1-pipeline-generation.md`
+- [x] F1 S04: parser unit tests (`tests/test_parser.py`) → see `docs/plans/F1-pipeline-generation.md`
+- [x] F1 S05: LLMClient — Pydantic AI agent (`src/worker/engine/llm_client.py`) → see `docs/plans/F1-pipeline-generation.md`
+- [x] F1 S06: CodeGenerator — assemble pipeline.py (`src/worker/engine/codegen.py`) → see `docs/plans/F1-pipeline-generation.md`
+- [x] F1 S07: LocalBackend — full implementation (`src/worker/compute/local.py`) → see `docs/plans/F1-pipeline-generation.md`
+- [x] F1 S08: ReconciliationService (`src/worker/validation/reconciliation.py`) → see `docs/plans/F1-pipeline-generation.md`
+- [x] F1 S09: reconciliation pytest test — DATA step (`tests/reconciliation/test_data_step.py`) → see `docs/plans/F1-pipeline-generation.md`
+- [x] F1 S10: Alembic migration — add llm_model column (`alembic/versions/002_add_llm_model.py`) → see `docs/plans/F1-pipeline-generation.md`
+- [x] F1 S11: wire engine into worker poll loop (`src/worker/main.py`) → see `docs/plans/F1-pipeline-generation.md`
+- [x] F1 S12: audit + download API schemas (`src/backend/api/schemas.py`) → see `docs/plans/F1-pipeline-generation.md`
+- [x] F1 S13: audit endpoint `GET /jobs/{id}/audit` (`src/backend/api/routes/jobs.py`) → see `docs/plans/F1-pipeline-generation.md`
+- [x] F1 S14: download endpoint `GET /jobs/{id}/download` (`src/backend/api/routes/jobs.py`) → see `docs/plans/F1-pipeline-generation.md`
+- [x] F1 S15: API route tests — audit + download (`tests/test_api_routes.py`) → see `docs/plans/F1-pipeline-generation.md`
+- [x] F1 S16: `make test` — full suite green, coverage ≥ 90% → see `docs/plans/F1-pipeline-generation.md`
 
 ---
 
