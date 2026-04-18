@@ -6,6 +6,16 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-04-18 (session 11 — F-UI + Docker runtime + Azure OpenAI)
+
+- **`CORS_ORIGINS` as plain string, split internally:** `list[str]` pydantic-settings field fails when env var is `*`; switched to `str` field with `@property` that splits on comma · revisit never
+- **Migration 001 id column as String(36):** ORM uses `String(36)` for cross-dialect compatibility; migration was incorrectly using `postgresql.UUID` causing type mismatch on INSERT · revisit never
+- **Backend entrypoint runs migrations on startup:** `alembic upgrade head` in `entrypoint.sh` before uvicorn ensures schema is always current · revisit if migration time becomes a startup concern
+- **Azure deployment name stripped of provider prefix:** `LLM_MODEL=openai:gpt-5.4` → deployment `gpt-5.4` via `split(":", 1)[-1]`; handles both bare and prefixed values · revisit never
+- **Frontend volume mount for HMR:** `./src/frontend:/app` + `/app/node_modules` anonymous volume; Vite picks up file changes without container rebuild · revisit never
+
+---
+
 ## 2026-04-18 (session 10 — F-LLM + F-sas7bdat + tooling)
 
 - **`make test` now includes mypy:** mypy was only running in `make check` and pre-commit; added to `make test` so type errors surface before commit time · revisit never

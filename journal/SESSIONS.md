@@ -6,6 +6,63 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-04-18 — F-UI complete; MVP shipped; Azure OpenAI + Docker fixes
+
+**Duration:** ~4h | **Focus:** F-UI React frontend, docker-compose runtime fixes, Azure OpenAI wiring
+
+### Done
+
+- **F-UI — backend:** `GET /jobs` list endpoint + `JobSummary`/`JobListResponse` schemas; `CORSMiddleware` with env-driven `CORS_ORIGINS`; `cors_origins` as split-string property to handle `CORS_ORIGINS=*` from env
+- **F-UI — frontend:** typed API client (`src/api/`), `UploadPage`, `JobsPage`, `JobResult` component with React Query polling; react-router-dom routing; `@tanstack/react-query` server state
+- **Docker runtime fixes:** `entrypoint.sh` runs `alembic upgrade head` before uvicorn; migration 001 fixed (`postgresql.UUID` → `String(36)` to match ORM); frontend volume mount for Vite HMR live reload
+- **Azure OpenAI:** `AzureProvider` wired in `_make_agent()` when `AZURE_OPENAI_ENDPOINT` is set; provider prefix stripped from `LLM_MODEL` to get bare deployment name; new worker settings: `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `OPENAI_API_VERSION`
+- **`.env.example`:** full documentation of all env vars with comments; both `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` included
+- **UI polish:** status labels renamed (Queued/Running/Completed/Failed); shimmer text effect (3.5s, black pill) for active statuses; no colour-coding
+- **Verified end-to-end:** Azure gpt-5.4 deployment returned 200 OK; job completed successfully in Docker Compose
+
+### Decisions
+
+- **`CORS_ORIGINS` as plain string, split internally:** `list[str]` pydantic-settings field fails when env var is `*`; switched to `str` field with `@property` that splits on comma — avoids JSON bracket requirement in `.env` · revisit never
+- **Migration 001 id column as String(36):** ORM uses `String(36)` for cross-dialect SQLite/PostgreSQL compatibility in tests; migration was incorrectly using `postgresql.UUID` causing type mismatch on INSERT · revisit never
+- **Backend entrypoint runs migrations on startup:** `alembic upgrade head` in `entrypoint.sh` before uvicorn ensures schema is always current without a separate migration step · revisit if migration time becomes a startup concern
+- **Azure deployment name stripped of provider prefix:** `LLM_MODEL=openai:gpt-5.4` → deployment name `gpt-5.4`; `split(":", 1)[-1]` handles both bare and prefixed values · revisit never
+- **Frontend volume mount for HMR:** `./src/frontend:/app` + `/app/node_modules` anonymous volume in docker-compose; Vite picks up file changes without container rebuild · revisit never
+
+### Open Questions
+
+- none
+
+### Next Session — Start Here
+
+1. MVP is complete — all Phase 1 items done. Consider opening PRs for `feat/F-UI` → main
+2. Phase 2 candidates: `%MACRO`/`%MEND` expansion, row-level hash diff, SAS log ingestion
+3. Run `/plan-feature` for whichever Phase 2 item to tackle next
+
+### Files Touched
+
+- `src/backend/main.py`
+- `src/backend/core/config.py`
+- `src/backend/api/routes/jobs.py`
+- `src/backend/api/schemas.py`
+- `src/backend/Dockerfile`
+- `src/backend/entrypoint.sh` (created)
+- `src/worker/core/config.py`
+- `src/worker/engine/llm_client.py`
+- `alembic/versions/001_create_jobs_table.py`
+- `docker-compose.yml`
+- `src/frontend/package.json`
+- `src/frontend/package-lock.json`
+- `src/frontend/src/main.tsx`
+- `src/frontend/src/App.tsx`
+- `src/frontend/src/api/types.ts` (created)
+- `src/frontend/src/api/migrate.ts` (created)
+- `src/frontend/src/api/jobs.ts` (created)
+- `src/frontend/src/pages/UploadPage.tsx` (created)
+- `src/frontend/src/pages/JobsPage.tsx` (created)
+- `src/frontend/src/components/JobResult.tsx` (created)
+- `docs/plans/F-UI.md` (created)
+- `journal/BACKLOG.md`
+
 ## 2026-04-18 — F-LLM + F-sas7bdat complete; git-branch-setup skill; make test hardened
 
 **Duration:** ~3h | **Focus:** two remaining backend MVP items + tooling improvements
