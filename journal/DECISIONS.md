@@ -6,6 +6,15 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-04-18 (session 10 — F-LLM + F-sas7bdat + tooling)
+
+- **`make test` now includes mypy:** mypy was only running in `make check` and pre-commit; added to `make test` so type errors surface before commit time · revisit never
+- **git-branch-setup always pulls main before branching:** new feature branches start from latest main, not stale local HEAD · revisit never
+- **No Co-Authored-By attribution in commits:** user preference; removed from all commit messages · revisit never
+- **LLMTranslationError classifies transient vs permanent:** HTTP 429 / 5xx / network errors are transient (retry); 4xx / validation errors are permanent (fail immediately); partial codegen results are saved on failure with `error_detail.resumable=true` for transient cases · revisit if retry policy needs tuning
+
+---
+
 ## 2026-04-18 (session 9 — F1-ext + MVP scope alignment)
 
 - **F-number collision resolved:** PROC SORT + %LET are F1 extensions (Phase 2), not a new feature. `docs/plans/F2-proc-sort.md` renamed to `F1-ext-proc-sort-macro.md`. F2 is reserved for the Code Explanation Assistant UI (Phase 3 frontend) per `docs/features.md` · revisit never

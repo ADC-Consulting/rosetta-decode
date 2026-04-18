@@ -25,10 +25,10 @@
 **F1 — Pipeline generation** (`docs/plans/F1-pipeline-generation.md`)
 - [x] F1 S00–S16: SASParser, LLMClient, CodeGenerator, ReconciliationService, API routes, full suite green
 
-**Remaining MVP items — not yet started**
-- [ ] F-LLM: Upgrade LLM system prompt (SAS migration expert, PySpark-aware) + graceful degradation on API failure → see `docs/plans/` (to be planned)
-- [ ] F-sas7bdat: Wire `pyreadstat` into `LocalBackend` — read `.sas7bdat` files as DataFrames → see `docs/plans/` (to be planned)
-- [ ] F-UI: Upload & Results page — `.sas` / `.sas7bdat` / `.csv` / `.log` upload, job polling, results view, download → see `docs/plans/` (to be planned)
+**Remaining MVP items**
+- [x] F-LLM: Upgrade LLM system prompt + retry resilience + partial result accumulation (`feat/F-llm-resilience`)
+- [x] F-sas7bdat: Wire `pyreadstat` into `LocalBackend` + `/migrate` upload + reconciliation routing (`feat/F-sas7bdat`)
+- [ ] F-UI: Upload & Results page — `.sas` / `.sas7bdat` / `.csv` / `.log` upload, job polling, results view, download → to be planned
 
 ---
 

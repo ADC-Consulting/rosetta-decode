@@ -6,6 +6,60 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-04-18 — F-LLM + F-sas7bdat complete; git-branch-setup skill; make test hardened
+
+**Duration:** ~3h | **Focus:** two remaining backend MVP items + tooling improvements
+
+### Done
+
+- **git-branch-setup skill:** new `.claude/skills/git-branch-setup/SKILL.md` — checks local + remote for feature branch, pulls main, creates branch if missing, confirms checkout before any implementation is delegated; wired into orchestrator feature planning (step 6 after plan approval)
+- **F-LLM — system prompt upgrade:** expanded `_SYSTEM_PROMPT` in `src/worker/engine/llm_client.py` with full SAS construct coverage (DATA step, PROC SQL, PROC SORT, %LET), PySpark idiom rules, and PROC SORT → `sort_values()` mapping
+- **F-LLM — retry + resilience:** `LLMTranslationError` exception with `is_transient` flag; 3-attempt exponential retry (2/4/8s) in `LLMClient.translate()`; transient vs permanent error classification; partial result accumulation in `_process_job()` with early return and structured `error_detail` JSON persisted to the job row
+- **F-LLM — DB:** `error_detail: Mapped[dict[str, Any] | None]` JSON column added to `Job` model; Alembic migration `003_add_error_detail_to_jobs.py`
+- **F-sas7bdat — ComputeBackend:** abstract `read_sas7bdat()` added to `src/worker/compute/base.py`; implemented in `src/worker/compute/local.py` via `pyreadstat.read_sas7bdat()`
+- **F-sas7bdat — /migrate route:** accepts optional `ref_dataset: UploadFile | None`; validates `.sas7bdat` extension; saves binary to `upload_dir` on disk; stores path under `__ref_sas7bdat__` in `job.files`; `upload_dir` setting added to `src/backend/core/config.py`
+- **F-sas7bdat — pipeline:** worker extracts `__ref_sas7bdat__` from `job.files`; `ReconciliationService.run()` always executes the pipeline, then skips comparison checks if no reference supplied; sas7bdat takes priority over csv
+- **make test hardened:** mypy now runs inside `make test` (was only in `make check` and pre-commit); `make test-file FILE=<path>` target added for single-file runs; `pyreadstat` + `src.worker.compute.local` mypy overrides added to `pyproject.toml`
+- **Tests:** 3 new LLM retry tests, 1 sas7bdat backend test, 2 migrate route tests — **86 tests total, 91.64% coverage**
+
+### Decisions
+
+- **`make test` now includes mypy:** discovered that mypy failures were only caught at pre-commit time, not during the test cycle; added to `make test` to surface errors earlier · revisit never
+- **git-branch-setup always pulls main before branching:** ensures new feature branches start from the latest main, not from a stale local HEAD · revisit never
+- **No Co-Authored-By attribution in commits:** user preference; removed from all commit messages and memory · revisit never
+
+### Open Questions
+
+- none
+
+### Next Session — Start Here
+
+1. F-UI is the last remaining MVP item — Upload & Results page (React frontend)
+2. Run `/plan-feature` for F-UI, then delegate to `frontend-builder`
+3. Both F-LLM (`feat/F-llm-resilience`) and F-sas7bdat (`feat/F-sas7bdat`) branches are ready to open PRs — consider merging before starting F-UI to keep main up to date
+
+### Files Touched
+
+- `.claude/skills/git-branch-setup/SKILL.md` (created)
+- `.claude/agents/orchestrator.md`
+- `CLAUDE.md`
+- `Makefile`
+- `pyproject.toml`
+- `src/worker/engine/llm_client.py`
+- `src/worker/main.py`
+- `src/backend/db/models.py`
+- `alembic/versions/003_add_error_detail_to_jobs.py` (created)
+- `src/worker/compute/base.py`
+- `src/worker/compute/local.py`
+- `src/backend/api/routes/migrate.py`
+- `src/backend/core/config.py`
+- `src/worker/validation/reconciliation.py`
+- `tests/test_llm_client.py`
+- `tests/test_local_backend.py`
+- `tests/test_migrate_route.py` (created)
+
+---
+
 ## 2026-04-18 — F1-ext complete: PROC SORT + %LET, MVP scope alignment
 
 **Duration:** ~2h | **Focus:** F1 engine extension + structural doc cleanup
