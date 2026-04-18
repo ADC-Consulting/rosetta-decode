@@ -6,6 +6,59 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-04-18 — F1 complete: S10–S16 + multi-agent setup + tooling hardening
+
+**Duration:** ~4h | **Focus:** F1 pipeline generation — wiring, API endpoints, coverage, agents
+
+### Done
+
+- **S10:** Alembic migration `002_add_llm_model.py` + `Job.llm_model` ORM field
+- **S11:** `_process_job` in `src/worker/main.py` — full engine pipeline (SASParser → LLMClient → CodeGenerator → ReconciliationService), `asyncio.to_thread` for sync calls, persists `status=done/failed`
+- **S12:** `AuditResponse` Pydantic schema added to `src/backend/api/schemas.py`
+- **S13:** `GET /jobs/{id}/audit` endpoint in `src/backend/api/routes/jobs.py`
+- **S14:** `GET /jobs/{id}/download` endpoint — StreamingResponse zip with `pipeline.py`, `reconciliation_report.json`, `audit.json`
+- **S15:** `tests/test_api_routes.py` — 12 async route tests (audit + download + get_job, all paths)
+- **S16:** Coverage raised from 40% → 94.3%; `fail_under = 90`; `concurrency = ["thread", "greenlet"]` for async tracing
+- **Agents:** 5 agent files created in `.claude/agents/` (orchestrator, backend-builder, frontend-builder, fullstack-planner, tester)
+- **test-runner skill:** `.claude/skills/test-runner/SKILL.md` + CLAUDE.md table updated
+- **Tooling:** Makefile PYTEST_FLAGS/NPM_FLAGS/DOCKER_BUILD_FLAGS; `--quiet` everywhere; mypy `tests.*` exemption removed
+- **mypy clean:** jinja2 stubs added to ignore list, `no-any-return` fixed in codegen, N806 naming in test mocks fixed
+- **5 atomic commits** — all hooks passed
+
+### Decisions
+
+- Multi-agent architecture adopted; orchestrator delegation via Agent tool is mandatory
+- `coverage concurrency = ["thread", "greenlet"]` required for async route tracing
+- mypy `tests.*` blanket exemption removed — tests now checked under strict mode
+- Makefile output globally suppressed via flag variables
+
+### Open Questions
+
+- none
+
+### Next Session — Start Here
+
+1. F1 is complete. Start Phase 2 from `journal/BACKLOG.md`:
+   - PROC SORT parser + translation
+   - Macro variable (`%LET`) resolution → Python constants
+   - Row-level hash diff check (F15 precursor)
+2. Run `/session-start` → confirm backlog → `/plan-feature` for next feature
+
+### Files Touched
+
+- `CLAUDE.md`, `Makefile`, `pyproject.toml`
+- `.claude/agents/` (5 new files), `.claude/skills/test-runner/SKILL.md`
+- `alembic/versions/002_add_llm_model.py`
+- `src/backend/db/models.py`, `src/backend/api/schemas.py`, `src/backend/api/routes/jobs.py`
+- `src/worker/main.py`, `src/worker/engine/codegen.py`
+- `tests/test_api_routes.py`, `tests/test_codegen.py`, `tests/test_factory.py`
+- `tests/test_llm_client.py`, `tests/test_local_backend.py`, `tests/test_session.py`, `tests/test_worker_main.py`
+- `tests/reconciliation/test_data_step.py`
+- `journal/SESSIONS.md`, `journal/BACKLOG.md`, `journal/DECISIONS.md`
+- `docs/plans/F1-pipeline-generation.md`
+
+---
+
 ## 2026-04-18 — F1 Engine S00–S09: parser, LLM client, codegen, reconciliation
 
 **Duration:** ~3h | **Focus:** F1 pipeline generation — engine layer implementation
