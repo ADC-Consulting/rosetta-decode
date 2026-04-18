@@ -6,6 +6,49 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-04-18 — CI hardening: Tailwind v4 migration, action bumps, Docker cache
+
+**Duration:** ~3h | **Focus:** CI green across all jobs; tooling correctness
+
+### Done
+
+- **Tailwind v3 → v4:** switched to `@tailwindcss/vite` plugin, removed `postcss.config.js` and `tailwind.config.js`, moved theme into `@theme` block in `index.css`; fixed `border-border` / `outline-ring/50` errors caused by shadcn v4 generating v4 CSS against v3
+- **tsconfig fix:** removed `baseUrl` from root `tsconfig.json` (redundant in project-references setup); kept `baseUrl` + `ignoreDeprecations: "6.0"` in `tsconfig.app.json` as required anchor for `paths` in `tsc --noEmit` mode
+- **Build script:** changed `tsc -b` → `tsc --noEmit` in `package.json` build script and CI — `tsc -b` (project references build mode) doesn't resolve `paths` without `composite: true`, which conflicts with `noEmit: true`
+- **no-commit-to-branch hook:** added `pre-commit-hooks` `no-commit-to-branch` for `main` to `.pre-commit-config.yaml`
+- **make test extended:** now runs `tsc --noEmit`, `npm run lint`, and `npm run build` — frontend errors caught locally
+- **CI action bumps:** all actions bumped to Node 24 compatible versions; `astral-sh/setup-uv` pinned to `v8.1.0` (no floating major tag)
+- **CI structure:** docker job made independent (no longer gated on `test`); reconciliation coverage scoped to `src/worker/validation` with 80% gate via `.coveragerc-reconciliation`; ESLint step added to frontend CI job
+- **.dockerignore:** added to reduce build context for backend/worker images and improve GHA layer cache hit rate
+
+### Decisions
+
+- `tsc --noEmit` is the correct type-check command for this project — `tsc -b` requires `composite: true` which conflicts with `noEmit: true`
+- `baseUrl` + `ignoreDeprecations: "6.0"` required in `tsconfig.app.json` — `pathsBasePath` is not propagated when loaded as a referenced project
+- Docker build job runs independently of Python test jobs — Dockerfile correctness is unrelated to Python logic
+- Reconciliation coverage gated separately at 80% on `src/worker/validation` only; main test suite gate remains 90% on all of `src`
+
+### Open Questions
+
+- none
+
+### Next Session — Start Here
+
+1. Phase 2 features — run `/session-start` → confirm backlog → `/plan-feature` for PROC SORT parser or `%LET` macro resolution
+
+### Files Touched
+
+- `.pre-commit-config.yaml`, `Makefile`, `.github/workflows/ci.yml`
+- `.dockerignore`, `.coveragerc-reconciliation`
+- `src/frontend/package.json`, `src/frontend/package-lock.json`
+- `src/frontend/vite.config.ts`, `src/frontend/src/index.css`
+- `src/frontend/tsconfig.json`, `src/frontend/tsconfig.app.json`
+- `src/frontend/src/components/ui/button.tsx`
+- `scripts/check_npm_lockfile.sh`
+- `journal/SESSIONS.md`, `journal/DECISIONS.md`
+
+---
+
 ## 2026-04-18 — F1 complete: S10–S16 + multi-agent setup + tooling hardening
 
 **Duration:** ~4h | **Focus:** F1 pipeline generation — wiring, API endpoints, coverage, agents
