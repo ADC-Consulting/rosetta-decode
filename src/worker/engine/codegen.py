@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from jinja2 import Environment, StrictUndefined
-from src.worker.engine.models import GeneratedBlock
+from src.worker.engine.models import GeneratedBlock, MacroVar
 
 # ── Jinja2 template ───────────────────────────────────────────────────────────
 
@@ -23,6 +23,13 @@ _PIPELINE_TEMPLATE = """\
 # Source files: {{ source_files | join(", ") }}
 #
 # WARNING: Review all # SAS-UNTRANSLATABLE sections before running in production.
+{% if constants %}
+
+# ── Macro constants ──────────────────────────────────────────────────────────
+{% for c in constants %}
+{{ c.name }} = {{ c.raw_value }}  # SAS: {{ c.source_file }}:{{ c.line }}
+{% endfor %}
+{% endif %}
 
 import pandas as pd
 {% for entry in entries %}
@@ -76,7 +83,11 @@ class CodeGenerator:
         self._env = _make_env()
         self._template = self._env.from_string(_PIPELINE_TEMPLATE)
 
-    def assemble(self, blocks: list[GeneratedBlock]) -> str:
+    def assemble(
+        self,
+        blocks: list[GeneratedBlock],
+        macro_vars: list[MacroVar] | None = None,
+    ) -> str:
         """Render all *blocks* into a single Python source string.
 
         Translatable blocks are rendered in the order given (caller is
@@ -85,6 +96,8 @@ class CodeGenerator:
 
         Args:
             blocks: Translated blocks from LLMClient, in dependency order.
+            macro_vars: Optional list of macro variable constants to prepend as
+                a constants section before the imports.
 
         Returns:
             Complete Python source ready to be saved as ``pipeline.py``.
@@ -96,5 +109,6 @@ class CodeGenerator:
                 generated_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 source_files=source_files,
                 entries=entries,
+                constants=macro_vars or [],
             )
         )

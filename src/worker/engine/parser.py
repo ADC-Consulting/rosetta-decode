@@ -13,7 +13,7 @@ import re
 from collections.abc import Iterator
 
 import networkx as nx
-from src.worker.engine.models import BlockType, SASBlock
+from src.worker.engine.models import BlockType, MacroVar, ParseResult, SASBlock
 
 # ── Regex patterns ────────────────────────────────────────────────────────────
 
@@ -46,6 +46,21 @@ _SQL_FROM_RE = re.compile(r"(?i)\b(?:FROM|JOIN)\s+([\w.]+)")
 
 # Extract CREATE TABLE target in PROC SQL
 _SQL_CREATE_RE = re.compile(r"(?i)CREATE\s+TABLE\s+([\w.]+)\s+AS")
+
+# PROC SORT block: PROC SORT … RUN;
+_PROC_SORT_RE = re.compile(
+    r"(?i)(PROC\s+SORT\b.*?RUN\s*;)",
+    re.DOTALL,
+)
+
+# Extract DATA= dataset name from PROC SORT header
+_SORT_DATA_RE = re.compile(r"(?i)\bDATA\s*=\s*(\w[\w.]*)")
+
+# Extract OUT= dataset name from PROC SORT header (optional)
+_SORT_OUT_RE = re.compile(r"(?i)\bOUT\s*=\s*(\w[\w.]*)")
+
+# %LET macro variable declaration
+_LET_RE = re.compile(r"(?i)%LET\s+(\w+)\s*=\s*([^;]+?)\s*;")
 
 
 # ── Line-number helpers ───────────────────────────────────────────────────────
@@ -103,6 +118,42 @@ def _extract_proc_sql(source: str, filename: str) -> Iterator[SASBlock]:
             input_datasets=inputs,
             output_datasets=outputs,
         )
+
+
+def _extract_proc_sort(source: str, filename: str) -> Iterator[SASBlock]:
+    """Yield SASBlock for every PROC SORT block found in *source*."""
+    for match in _PROC_SORT_RE.finditer(source):
+        raw = match.group(1)
+        start = _line_of(source, match.start())
+        end = _line_of(source, match.end() - 1)
+        data_match = _SORT_DATA_RE.search(raw)
+        out_match = _SORT_OUT_RE.search(raw)
+        inputs = [data_match.group(1).lower()] if data_match else []
+        outputs = [out_match.group(1).lower()] if out_match else inputs[:]
+        yield SASBlock(
+            block_type=BlockType.PROC_SORT,
+            source_file=filename,
+            start_line=start,
+            end_line=end,
+            raw_sas=raw,
+            input_datasets=inputs,
+            output_datasets=outputs,
+        )
+
+
+def _extract_macro_vars(source: str, filename: str) -> list[MacroVar]:
+    """Return a MacroVar for every %LET declaration in *source*."""
+    result: list[MacroVar] = []
+    for match in _LET_RE.finditer(source):
+        result.append(
+            MacroVar(
+                name=match.group(1),
+                raw_value=match.group(2),
+                source_file=filename,
+                line=_line_of(source, match.start()),
+            )
+        )
+    return result
 
 
 def _extract_unsupported_procs(
@@ -169,17 +220,18 @@ def _topological_sort(blocks: list[SASBlock]) -> list[SASBlock]:
 class SASParser:
     """Extract and dependency-order SAS blocks from one or more source files."""
 
-    def parse(self, files: dict[str, str]) -> list[SASBlock]:
-        """Parse SAS source files and return dependency-ordered blocks.
+    def parse(self, files: dict[str, str]) -> ParseResult:
+        """Parse SAS source files and return dependency-ordered blocks with macro vars.
 
         Args:
             files: Mapping of filename to SAS source text.
 
         Returns:
-            List of SASBlock in the order they should be translated, with
-            blocks that produce datasets appearing before blocks that consume them.
+            ParseResult containing SASBlock list in dependency order and all
+            MacroVar declarations found across all files.
         """
         all_blocks: list[SASBlock] = []
+        all_macro_vars: list[MacroVar] = []
 
         for filename, source in files.items():
             covered: list[tuple[int, int]] = []
@@ -188,9 +240,13 @@ class SASParser:
                 covered.append((match.start(), match.end()))
             for match in _PROC_SQL_RE.finditer(source):
                 covered.append((match.start(), match.end()))
+            for match in _PROC_SORT_RE.finditer(source):
+                covered.append((match.start(), match.end()))
 
             all_blocks.extend(_extract_data_steps(source, filename))
             all_blocks.extend(_extract_proc_sql(source, filename))
+            all_blocks.extend(_extract_proc_sort(source, filename))
             all_blocks.extend(_extract_unsupported_procs(source, filename, covered))
+            all_macro_vars.extend(_extract_macro_vars(source, filename))
 
-        return _topological_sort(all_blocks)
+        return ParseResult(blocks=_topological_sort(all_blocks), macro_vars=all_macro_vars)

@@ -1,0 +1,9 @@
+emp_id,first_name,last_name,department,salary,annual_bonus
+5,Eve,Davis,Engineering,120000,12000.0
+1,Alice,Smith,Engineering,95000,9500.0
+2,Bob,Jones,Engineering,72000,7200.0
+8,Henry,Moore,Marketing,61000,6100.0
+6,Frank,Miller,HR,52000,5200.0
+7,Grace,Wilson,HR,48000,4800.0
+3,Carol,White,Marketing,45000,4500.0
+4,David,Brown,Marketing,38000,3800.0

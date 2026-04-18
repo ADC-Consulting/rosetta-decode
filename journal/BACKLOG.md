@@ -63,8 +63,9 @@
 ---
 
 ## Phase 2 — Core Backend Extension
-- [ ] F1: PROC SORT parser + translation
-- [ ] F1: Macro variable (`%LET`) resolution → Python constants
+- [x] F2: PROC SORT parser + translation → see `docs/plans/F2-proc-sort.md`
+- [x] F2: Macro variable (`%LET`) resolution → Python constants → see `docs/plans/F2-proc-sort.md`
+- [x] Reconciliation tests: PROC SORT, macro variables → see `tests/reconciliation/test_proc_sort.py`
 - [ ] F1: Macro definition + call expansion
 - [ ] F3: Row-level hash diff check
 - [ ] F4: SAS log ingestion — parse log structure
@@ -73,7 +74,6 @@
 - [ ] F11: Plain-language documentation — LLM-generated business-readable summary per job
 - [ ] F15: Record-level reconciliation — row-by-row diff with configurable keys and tolerances
 - [ ] F18: Refine conversion action — re-submit job with previous output + reconciliation report as context
-- [ ] Reconciliation tests: PROC SORT, macro variables
 
 ---
 
