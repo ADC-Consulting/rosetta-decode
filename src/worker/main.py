@@ -10,7 +10,8 @@ from src.backend.db.models import Job
 from src.worker.compute.factory import BackendFactory
 from src.worker.core.config import worker_settings
 from src.worker.engine.codegen import CodeGenerator
-from src.worker.engine.llm_client import LLMClient
+from src.worker.engine.llm_client import LLMClient, LLMTranslationError
+from src.worker.engine.models import GeneratedBlock
 from src.worker.engine.parser import SASParser
 from src.worker.validation.reconciliation import ReconciliationService
 
@@ -66,7 +67,47 @@ async def _process_job(session: AsyncSession, job: Job) -> None:
         result = SASParser().parse(files)
         blocks = result.blocks
         client = LLMClient()
-        generated = await asyncio.to_thread(lambda: [client.translate(b) for b in blocks])
+        generated: list[GeneratedBlock] = []
+        for idx, block in enumerate(blocks):
+            try:
+                gb = await asyncio.to_thread(client.translate, block)
+                generated.append(gb)
+            except LLMTranslationError as exc:
+                partial_code = (
+                    CodeGenerator().assemble(generated, macro_vars=result.macro_vars)
+                    if generated
+                    else None
+                )
+                logger.error(
+                    "Job %s failed at block %d/%d: %s",
+                    job.id,
+                    idx,
+                    len(blocks),
+                    exc,
+                    exc_info=True,
+                )
+                await session.execute(
+                    update(Job)
+                    .where(Job.id == job.id)
+                    .values(
+                        status="failed",
+                        error=str(exc),
+                        error_detail={
+                            "stage": "llm_translation",
+                            "block_index": idx,
+                            "block_count": len(blocks),
+                            "is_transient": exc.is_transient,
+                            "resumable": exc.is_transient,
+                            "exception_type": (
+                                type(exc.cause).__name__ if exc.cause else type(exc).__name__
+                            ),
+                            **({"python_code": partial_code} if partial_code else {}),
+                        },
+                        python_code=partial_code,
+                    )
+                )
+                await session.commit()
+                return
         python_code = CodeGenerator().assemble(generated, macro_vars=result.macro_vars)
 
         backend = BackendFactory.create()
