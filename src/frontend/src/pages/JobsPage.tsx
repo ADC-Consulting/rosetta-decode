@@ -9,13 +9,11 @@ import { cn } from "@/lib/utils";
 
 const POLLING_STATUSES: JobStatusValue[] = ["queued", "running"];
 
-const STATUS_BADGE: Record<JobStatusValue, string> = {
-  queued:
-    "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
-  running:
-    "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
-  done: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
-  failed: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+const STATUS_LABEL: Record<JobStatusValue, string> = {
+  queued: "Queued",
+  running: "Running",
+  done: "Completed",
+  failed: "Failed",
 };
 
 export default function JobsPage() {
@@ -88,7 +86,7 @@ export default function JobsPage() {
                   role="button"
                   tabIndex={0}
                   aria-pressed={selectedJobId === job.job_id}
-                  aria-label={`Job ${job.job_id.slice(0, 8)}, status ${job.status}`}
+                  aria-label={`Job ${job.job_id.slice(0, 8)}, status ${STATUS_LABEL[job.status]}`}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
@@ -105,13 +103,25 @@ export default function JobsPage() {
                     {job.job_id.slice(0, 8)}…
                   </td>
                   <td className="px-4 py-3">
-                    <span
-                      className={cn(
-                        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-                        STATUS_BADGE[job.status],
+                    <style>{`@keyframes shimmer { from { background-position: 200% center; } to { background-position: -200% center; } }`}</style>
+                    <span className="inline-flex items-center rounded-full bg-black px-2.5 py-0.5 text-xs font-medium">
+                      {POLLING_STATUSES.includes(job.status) ? (
+                        <span
+                          style={{
+                            background:
+                              "linear-gradient(90deg, #fff 25%, #888 50%, #fff 75%)",
+                            backgroundSize: "200% 100%",
+                            WebkitBackgroundClip: "text",
+                            WebkitTextFillColor: "transparent",
+                            backgroundClip: "text",
+                            animation: "shimmer 3.5s linear infinite",
+                          }}
+                        >
+                          {STATUS_LABEL[job.status]}
+                        </span>
+                      ) : (
+                        <span className="text-white">{STATUS_LABEL[job.status]}</span>
                       )}
-                    >
-                      {job.status}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">

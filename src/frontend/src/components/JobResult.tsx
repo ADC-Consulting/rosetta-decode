@@ -9,6 +9,13 @@ interface JobResultProps {
 
 const POLLING_STATUSES: JobStatusValue[] = ["queued", "running"];
 
+const STATUS_LABEL: Record<JobStatusValue, string> = {
+  queued: "Queued",
+  running: "Running",
+  done: "Completed",
+  failed: "Failed",
+};
+
 export default function JobResult({ jobId }: JobResultProps) {
   const { data, error, isLoading } = useQuery<JobStatus, Error>({
     queryKey: ["job", jobId],
@@ -48,12 +55,22 @@ export default function JobResult({ jobId }: JobResultProps) {
 
   if (POLLING_STATUSES.includes(status)) {
     return (
-      <div className="flex items-center gap-3 py-6 text-muted-foreground">
-        <div
-          aria-label="Job in progress"
-          className="size-5 rounded-full border-2 border-border border-t-foreground animate-spin"
-        />
-        <span className="text-sm capitalize">{status}</span>
+      <div className="py-6" aria-label="Job in progress">
+        <style>{`@keyframes shimmer { from { background-position: 200% center; } to { background-position: -200% center; } }`}</style>
+        <span className="inline-flex items-center rounded-full bg-black px-2.5 py-0.5 text-xs font-medium">
+          <span
+            style={{
+              background: "linear-gradient(90deg, #fff 25%, #888 50%, #fff 75%)",
+              backgroundSize: "200% 100%",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+              backgroundClip: "text",
+              animation: "shimmer 3.5s linear infinite",
+            }}
+          >
+            {STATUS_LABEL[status]}
+          </span>
+        </span>
       </div>
     );
   }
