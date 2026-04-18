@@ -1,4 +1,13 @@
 repos:
+  - repo: local
+    hooks:
+      - id: npm-lockfile-sync
+        name: npm lockfile in sync
+        language: script
+        entry: scripts/check_npm_lockfile.sh
+        pass_filenames: false
+        always_run: true
+
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: d1b833175a5d08a925900115526febd8fe71c98e  # frozen: v0.15.11
     hooks:

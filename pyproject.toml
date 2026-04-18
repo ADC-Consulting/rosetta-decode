@@ -124,13 +124,8 @@ plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
 # Third-party packages without stubs — added as src/ grows
-module = ["pyreadstat", "pyreadstat.*", "networkx", "networkx.*", "jinja2", "jinja2.*"]
+module = ["jinja2", "jinja2.*"]
 ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-# Alembic env uses dynamic patterns incompatible with strict mypy
-module = ["alembic.*", "alembic.env"]
-ignore_errors = true
 
 [[tool.mypy.overrides]]
 # pydantic-ai Agent overloads don't support BaseModel output_type in strict mode;
@@ -150,7 +145,7 @@ addopts = [
     "--strict-markers",
     "--strict-config",
     "--cov=src",
-    "--cov-report=term-missing",
+    "--cov-report=term-missing:skip-covered",
 ]
 markers = [
     "reconciliation: slow tests comparing SAS vs Python outputs",
@@ -168,4 +163,3 @@ concurrency = ["thread", "greenlet"]
 [tool.coverage.report]
 show_missing = true
 skip_covered = false
-fail_under = 90

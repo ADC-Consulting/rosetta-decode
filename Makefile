@@ -19,7 +19,7 @@ install: ## Install all dependencies (dev + core)
 test: ## Run full test suite with coverage (includes lint + format check)
 	@uv run ruff check src tests --quiet
 	@uv run ruff format --check src tests --quiet
-	@uv run pytest $(PYTEST_FLAGS)
+	@uv run pytest $(PYTEST_FLAGS) --cov-fail-under=90
 
 test-fast: ## Skip reconciliation, cloud, and integration tests (quick feedback loop)
 	@uv run pytest $(PYTEST_FLAGS) -m "not reconciliation and not cloud and not integration"
