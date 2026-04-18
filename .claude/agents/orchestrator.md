@@ -39,6 +39,7 @@ When the user asks to implement a new feature or you identify one from the backl
 3. Break the feature into ordered subtasks (one artefact per subtask)
 4. Write `docs/plans/F<N>-<slug>.md` and update `journal/BACKLOG.md`
 5. Present the plan; wait for explicit user approval before delegating any implementation
+6. Once the user approves, invoke the `git-branch-setup` skill **before delegating any implementation** — ensure the correct feature branch (`feat/F<N>-<slug>`) exists and is checked out
 
 ## Delegation rules
 
