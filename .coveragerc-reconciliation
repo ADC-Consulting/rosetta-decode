@@ -1,0 +1,6 @@
+[run]
+source = src/worker/validation
+concurrency = thread,greenlet
+
+[report]
+show_missing = true

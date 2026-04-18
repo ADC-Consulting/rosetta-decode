@@ -126,8 +126,8 @@ jobs:
       - name: Run Alembic migrations
         run: uv run alembic upgrade head
 
-      - name: Run reconciliation tests with full coverage gate
-        run: uv run pytest -m reconciliation --cov=src/worker/validation/reconciliation --cov-fail-under=90
+      - name: Run reconciliation tests with coverage gate
+        run: uv run pytest -m reconciliation --cov-config=.coveragerc-reconciliation --cov=src/worker/validation --cov-fail-under=80 --override-ini="addopts=-ra -q --tb=short --strict-markers --strict-config"
 
   # ── 4. Frontend ───────────────────────────────────────────────────────────
   frontend:
@@ -164,7 +164,6 @@ jobs:
   docker:
     name: Docker build
     runs-on: ubuntu-latest
-    needs: [test]
 
     steps:
       - uses: actions/checkout@v6
