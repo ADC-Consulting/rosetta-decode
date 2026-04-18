@@ -149,7 +149,7 @@ jobs:
         working-directory: src/frontend
 
       - name: Type check
-        run: ./node_modules/.bin/tsc -b
+        run: ./node_modules/.bin/tsc --noEmit
         working-directory: src/frontend
 
       - name: Lint

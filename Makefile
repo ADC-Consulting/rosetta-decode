@@ -77,7 +77,7 @@ run-local: ## Reminder: run backend + frontend in separate terminals
 # ── Frontend ───────────────────────────────────────────────────────────────────
 
 tsc-check: ## TypeScript type check only (tsc -b, no emit)
-	@cd src/frontend && ./node_modules/.bin/tsc -b
+	@cd src/frontend && ./node_modules/.bin/tsc --noEmit
 
 frontend-lint: ## Run ESLint on frontend source
 	@cd src/frontend && npm run lint $(NPM_FLAGS)
