@@ -13,6 +13,8 @@ from typing import cast
 import httpx
 from pydantic_ai import Agent
 from pydantic_ai.models import KnownModelName
+from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.providers.azure import AzureProvider
 from src.worker.core.config import worker_settings
 from src.worker.engine.models import BlockType, GeneratedBlock, SASBlock
 
@@ -84,13 +86,32 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
 def _make_agent() -> "Agent[GeneratedBlock]":
     """Instantiate the Pydantic AI agent using the configured model.
 
+    When AZURE_OPENAI_ENDPOINT is set, builds an AzureProvider and uses
+    LLM_MODEL as the deployment name. Otherwise passes LLM_MODEL as a
+    KnownModelName string (e.g. ``anthropic:claude-sonnet-4-6``).
+
     Returns:
         A Pydantic AI Agent configured to return GeneratedBlock outputs.
     """
-    model: KnownModelName = worker_settings.llm_model  # type: ignore[assignment]
-    # pydantic-ai overloads default to str output; GeneratedBlock works at runtime.
+    if worker_settings.azure_openai_endpoint:
+        provider = AzureProvider(
+            azure_endpoint=worker_settings.azure_openai_endpoint,
+            api_key=worker_settings.azure_openai_api_key,
+            api_version=worker_settings.openai_api_version,
+        )
+        # Strip provider prefix (e.g. "openai:gpt-4o" → "gpt-4o") — Azure uses
+        # the bare deployment name, not the pydantic-ai model string format.
+        raw = worker_settings.llm_model
+        deployment = raw.split(":", 1)[-1] if ":" in raw else raw
+        model_obj: OpenAIChatModel | KnownModelName = OpenAIChatModel(
+            model_name=deployment,
+            provider=provider,
+        )
+    else:
+        model_obj = worker_settings.llm_model  # type: ignore[assignment]
+
     return Agent(  # type: ignore[arg-type, return-value]
-        model=model,
+        model=model_obj,
         output_type=GeneratedBlock,
         system_prompt=_SYSTEM_PROMPT,
     )
