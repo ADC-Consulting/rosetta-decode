@@ -149,7 +149,7 @@ jobs:
         working-directory: src/frontend
 
       - name: Type check
-        run: npx tsc -b
+        run: ./node_modules/.bin/tsc -b
         working-directory: src/frontend
 
       - name: Lint
