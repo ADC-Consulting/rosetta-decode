@@ -42,32 +42,36 @@ def _unpack_zip(
         for info in zf.infolist():
             if info.is_dir():
                 continue
-            name = os.path.basename(info.filename)
+            # Normalise to forward slashes and strip leading slash
+            norm_path = info.filename.replace("\\", "/").lstrip("/")
+            name = os.path.basename(norm_path)
             if not name:
                 continue
-            # path traversal guard
-            if name != info.filename.replace("\\", "/").split("/")[-1]:
-                continue
             # macOS resource fork / metadata files — skip silently
-            if name.startswith("._") or info.filename.startswith("__MACOSX/"):
+            if name.startswith("._") or norm_path.startswith("__MACOSX/"):
+                continue
+            # Path traversal guard — reject any component that tries to escape
+            if ".." in norm_path.split("/"):
                 continue
             ext = os.path.splitext(name)[1].lower()
             if ext not in _ACCEPTED_ZIP_EXTS:
                 rejected.append(
-                    FileRejection(filename=name, reason=f"Unsupported file type: {ext or '(none)'}")
+                    FileRejection(
+                        filename=norm_path, reason=f"Unsupported file type: {ext or '(none)'}"
+                    )
                 )
                 continue
             data = zf.read(info.filename)
             if ext == ".sas":
-                file_contents[name] = data.decode("utf-8", errors="replace")
+                file_contents[norm_path] = data.decode("utf-8", errors="replace")
             else:
                 os.makedirs(upload_dir, exist_ok=True)
                 dest = os.path.join(upload_dir, f"{job_id}_{name}")
                 with open(dest, "wb") as fh:
                     fh.write(data)
-                sentinel = f"__ref_{ext.lstrip('.')}_{name}__"
+                sentinel = f"__ref_{ext.lstrip('.')}_{norm_path}__"
                 file_contents[sentinel] = dest
-            accepted.append(name)
+            accepted.append(norm_path)
 
     return file_contents, accepted, rejected
 

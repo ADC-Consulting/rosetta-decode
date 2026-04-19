@@ -85,3 +85,52 @@ class GeneratedBlock(BaseModel):
     source_block: SASBlock
     python_code: str
     is_untranslatable: bool = False
+
+
+class ReconciliationReport(BaseModel):
+    """Outcome of a single reconciliation run against reference data."""
+
+    passed: bool
+    row_count_match: bool
+    column_match: bool
+    diff_summary: str
+    affected_block_ids: list[str] = Field(default_factory=list)
+
+
+class JobContext(BaseModel):
+    """Shared context object passed between all agentic pipeline stages."""
+
+    source_files: dict[str, str]
+    resolved_macros: list[MacroVar]
+    dependency_order: list[str]
+    risk_flags: list[str]
+    blocks: list[SASBlock]
+    generated: list[GeneratedBlock]
+    reconciliation: ReconciliationReport | None = None
+    retry_count: int = 0
+    llm_call_count: int = 0
+
+    def windowed_context(self, block: SASBlock) -> "JobContext":
+        """Return a windowed view of this context scoped to a single block.
+
+        Translation agents receive only:
+        - source_files: empty (full source only for AnalysisAgent/DocumentationAgent)
+        - resolved_macros: full list (needed for macro substitution in any block)
+        - dependency_order: only entries relevant to block's input/output datasets
+        - risk_flags: full list
+        - blocks: only this block
+        - generated: empty (not needed during per-block translation)
+        - reconciliation, retry_count, llm_call_count: preserved as-is
+        """
+        relevant_datasets = set(block.input_datasets) | set(block.output_datasets)
+        return JobContext(
+            source_files={},
+            resolved_macros=self.resolved_macros,
+            dependency_order=[d for d in self.dependency_order if d in relevant_datasets],
+            risk_flags=self.risk_flags,
+            blocks=[block],
+            generated=[],
+            reconciliation=self.reconciliation,
+            retry_count=self.retry_count,
+            llm_call_count=self.llm_call_count,
+        )

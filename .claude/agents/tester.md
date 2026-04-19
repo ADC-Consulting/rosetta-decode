@@ -15,32 +15,59 @@ make test
 
 Never call `uv run pytest`, `pytest`, or any other direct invocation. This is a Critical Rule in `CLAUDE.md`. No exceptions.
 
+## What `make test` does
+
+`make test` runs seven gates **sequentially**, short-circuiting on the first failure:
+
+1. `ruff-check` — lint
+2. `ruff-format` — format check
+3. `mypy` — type check
+4. `pytest+coverage` — full test suite with `--cov-fail-under=90` (coverage enforcement is automatic)
+5. `tsc` — TypeScript type check
+6. `frontend-lint` — ESLint
+7. `frontend-build` — Vite production build
+
+Each gate is wrapped in `run_quiet`. **On success it prints only `✓ <gate-name>`.** On failure it prints the full output of the failing gate and `make` exits immediately — later gates do not run.
+
+A fully green run looks like:
+
+```
+✓ ruff-check
+✓ ruff-format
+✓ mypy
+✓ pytest+coverage
+✓ tsc
+✓ frontend-lint
+✓ frontend-build
+Coverage: htmlcov/index.html
+```
+
+No pass counts, no coverage percentages, and no per-test lines appear on a green run.
+
 ## Steps (run IN ORDER)
 
 1. **Run `make test`.**
 
-2. **Read the output.** Note:
-   - Total passed / failed / error count
-   - Coverage percentage (from `--cov-report=term-missing`)
-   - Missing-coverage lines for recently changed files
+2. **Read the output.**
+   - On a **green run**: note which `✓` lines appeared.
+   - On a **red run**: identify the first gate that printed output (failure output), and note which subsequent gates are missing from the output (they did not run due to short-circuit).
 
-3. **If all tests pass — report to orchestrator:**
-   - Pass count and coverage %
-   - Any coverage gaps in files changed this session
-   - If coverage is below `fail_under` in `pyproject.toml`, flag it explicitly
+3. **If all gates pass — report to orchestrator:**
+   - List the seven `✓` lines as confirmation
    - Verdict: **GREEN — ready for orchestrator commit gate**
 
-4. **If tests fail — report to orchestrator:**
-   - Failing test name and file path
-   - Exact assertion error or exception message (quoted)
+4. **If a gate fails — report to orchestrator:**
+   - Which gate failed (e.g. `pytest+coverage`)
+   - The exact error or assertion message from the output (quoted)
+   - Which gates did **not** run (all gates after the failing one)
    - Do NOT attempt to fix failures — surface information only, then stop
-   - Exception: if failure is a missing import or trivial typo clearly introduced this session, fix it once and re-run; report the fix made
    - Verdict: **RED — do not commit**
 
-5. **Slow-test variants (use only when orchestrator or user explicitly asks):**
-   - `make test-fast` — skips `reconciliation`, `cloud`, `integration` markers
+5. **Alternate targets (use only when orchestrator or user explicitly asks):**
+   - `make test-fast` — skips `reconciliation`, `cloud`, `integration` markers; faster feedback
    - `make test-reconciliation` — reconciliation tests only; requires Postgres running
-   - `make coverage` — generates HTML report; tell user to open `htmlcov/index.html`
+   - `make coverage` — runs pytest with verbose term output; opens `htmlcov/index.html`
+   - `make test-file FILE=tests/test_foo.py` — runs a single test file
 
 ## Output format (always use this structure)
 
@@ -48,24 +75,30 @@ Never call `uv run pytest`, `pytest`, or any other direct invocation. This is a 
 ## Test Results
 
 **Status:** GREEN ✓ / RED ✗
-**Passed:** N  |  **Failed:** N  |  **Errors:** N
-**Coverage:** X%  (fail_under: Y%)
 
-### Failures (if any)
-- `tests/path/test_file.py::test_name`
-  > AssertionError: <message>
+### Gates
+✓ ruff-check
+✓ ruff-format
+✓ mypy
+✓ pytest+coverage
+✓ tsc
+✓ frontend-lint
+✓ frontend-build
 
-### Coverage gaps in changed files (if any)
-- `src/worker/engine/parser.py`: lines 42–45, 78
+### Failure (if any)
+**Failed gate:** <gate-name>
+> <exact error output, quoted>
+
+**Gates that did not run:** <gate-name>, <gate-name>, …
 
 ### Verdict
 [GREEN — ready for orchestrator commit gate]
-[RED — fix failures before committing]
+[RED — fix failure in <gate-name> before committing]
 ```
 
 ## Guardrails
 
-- Never write or edit implementation code (fix only trivial import/typo errors as noted above)
+- Never write or edit implementation code
 - Never commit or stage files
 - Never run `uv run pytest` or `pytest` directly
 - Never make decisions about whether to commit — that is the orchestrator's job

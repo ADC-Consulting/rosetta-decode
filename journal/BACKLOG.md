@@ -75,6 +75,9 @@
 - [X] F-UI-postmvp S-FE13: API client extensions (types + jobs.ts + migrate.ts)
 - [X] UI polish: sonner toast for all errors, human-friendly error copy
 - [X] UI polish: jobs table row disabled/non-clickable for non-done status
+- [X] UI polish: TipTap text size fix, Report tab side-by-side layout
+- [X] UI polish: LineageGraph node background light, lucide icon on Reset button
+- [X] fix(backend): preserve zip directory structure in file tree (path as key, not basename)
 
 ---
 

@@ -1,4 +1,7 @@
+import type { JobLineageResponse, LineageNode } from "@/api/types";
 import dagre from "dagre";
+import { RotateCcw } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Background,
   Controls,
@@ -16,8 +19,6 @@ import {
   type NodeChange,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { JobLineageResponse, LineageNode } from "@/api/types";
 
 interface LineageGraphProps {
   lineage: JobLineageResponse;
@@ -38,9 +39,13 @@ const STATUS_STYLE: Record<
   LineageNode["status"],
   { background: string; border: string; color: string }
 > = {
-  migrated: { background: "#d1fae5", border: "#10b981", color: "#065f46" },
-  manual_review: { background: "#fef3c7", border: "#f59e0b", color: "#92400e" },
-  untranslatable: { background: "#fee2e2", border: "#ef4444", color: "#991b1b" },
+  migrated: { background: "#f5f5f5", border: "#22c55e", color: "#1a1a1a" },
+  manual_review: { background: "#f5f5f5", border: "#f59e0b", color: "#1a1a1a" },
+  untranslatable: {
+    background: "#f5f5f5",
+    border: "#ef4444",
+    color: "#1a1a1a",
+  },
 };
 
 const STATUS_LABEL: Record<LineageNode["status"], string> = {
@@ -49,14 +54,43 @@ const STATUS_LABEL: Record<LineageNode["status"], string> = {
   untranslatable: "Untranslatable",
 };
 
-const NODE_W = 180;
-const NODE_H = 56;
+const STATUS_SYMBOL: Record<
+  LineageNode["status"],
+  { symbol: string; color: string }
+> = {
+  migrated: { symbol: "✓", color: "#22c55e" },
+  manual_review: { symbol: "⚠", color: "#f59e0b" },
+  untranslatable: { symbol: "✗", color: "#ef4444" },
+};
+
+function abbrevBlockType(bt: string): string {
+  const map: Record<string, string> = {
+    DATA_STEP: "DATA",
+    PROC_SQL: "PROC SQL",
+    PROC_SORT: "PROC SORT",
+    PROC_MEANS: "PROC MEANS",
+    PROC_FREQ: "PROC FREQ",
+    PROC_PRINT: "PROC PRINT",
+    PROC_TRANSPOSE: "PROC TRANSPOSE",
+    PROC_IMPORT: "PROC IMPORT",
+    PROC_EXPORT: "PROC EXPORT",
+    PROC_LOGISTIC: "PROC LOGISTIC",
+    PROC_REG: "PROC REG",
+  };
+  return map[bt] ?? bt.replace(/_/g, " ");
+}
+
+const NODE_W = 210;
+const NODE_H = 72;
 
 // ---------------------------------------------------------------------------
 // Dagre layout
 // ---------------------------------------------------------------------------
 
-function applyDagreLayout(nodes: Node<NodeData>[], edges: Edge[]): Node<NodeData>[] {
+function applyDagreLayout(
+  nodes: Node<NodeData>[],
+  edges: Edge[],
+): Node<NodeData>[] {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
   g.setGraph({ rankdir: "LR", nodesep: 40, ranksep: 80 });
@@ -81,6 +115,7 @@ function applyDagreLayout(nodes: Node<NodeData>[], edges: Edge[]): Node<NodeData
 function buildInitialNodes(lineageNodes: LineageNode[]): Node<NodeData>[] {
   return lineageNodes.map((n) => {
     const style = STATUS_STYLE[n.status];
+    const sym = STATUS_SYMBOL[n.status];
     return {
       id: n.id,
       type: "default",
@@ -89,10 +124,50 @@ function buildInitialNodes(lineageNodes: LineageNode[]): Node<NodeData>[] {
         block_type: n.block_type,
         status: n.status,
         label: (
-          <div style={{ lineHeight: 1.3 }}>
-            <div style={{ fontWeight: 600, fontSize: 12 }}>{n.label}</div>
-            <div style={{ fontFamily: "monospace", fontSize: 10, opacity: 0.65, marginTop: 2 }}>
-              {n.block_type}
+          <div
+            style={{ position: "relative", lineHeight: 1.35, paddingRight: 14 }}
+          >
+            {/* Status badge — top-right */}
+            <span
+              style={{
+                position: "absolute",
+                top: -2,
+                right: -8,
+                fontSize: 10,
+                fontWeight: 700,
+                color: sym.color,
+                lineHeight: 1,
+              }}
+            >
+              {sym.symbol}
+            </span>
+            {/* Label */}
+            <div
+              style={{
+                fontSize: 14,
+                fontWeight: 700,
+                color: "#111",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {n.label}
+            </div>
+            {/* block_type abbreviated */}
+            <div
+              style={{
+                fontSize: 10,
+                fontFamily: "monospace",
+                color: "#9ca3af",
+                marginTop: 3,
+              }}
+            >
+              {abbrevBlockType(n.block_type)}
+            </div>
+            {/* source_file — filename only */}
+            <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 1 }}>
+              {n.source_file.split("/").pop() ?? n.source_file}
             </div>
           </div>
         ),
@@ -102,12 +177,13 @@ function buildInitialNodes(lineageNodes: LineageNode[]): Node<NodeData>[] {
       targetPosition: Position.Left,
       draggable: true,
       style: {
-        background: style.background,
-        border: `2px solid ${style.border}`,
-        color: style.color,
+        background: "rgba(245,245,245,0.92)",
+        border: `1.5px solid ${style.border}`,
+        borderBottom: `3px solid ${style.border}`,
+        color: "#333",
         borderRadius: 8,
-        padding: "8px 14px",
-        boxShadow: "0 1px 4px rgba(0,0,0,0.10)",
+        padding: "8px 12px",
+        boxShadow: "0 1px 4px rgba(0,0,0,0.15)",
         width: NODE_W,
         minHeight: NODE_H,
         transition: "opacity 0.18s ease",
@@ -138,10 +214,20 @@ function buildInitialEdges(lineageEdges: JobLineageResponse["edges"]): Edge[] {
 function getRelated(nodeId: string, edges: Edge[]): Set<string> {
   const related = new Set<string>([nodeId]);
   const visitUp = (id: string) => {
-    edges.forEach((e) => { if (e.target === id && !related.has(e.source)) { related.add(e.source); visitUp(e.source); } });
+    edges.forEach((e) => {
+      if (e.target === id && !related.has(e.source)) {
+        related.add(e.source);
+        visitUp(e.source);
+      }
+    });
   };
   const visitDown = (id: string) => {
-    edges.forEach((e) => { if (e.source === id && !related.has(e.target)) { related.add(e.target); visitDown(e.target); } });
+    edges.forEach((e) => {
+      if (e.source === id && !related.has(e.target)) {
+        related.add(e.target);
+        visitDown(e.target);
+      }
+    });
   };
   visitUp(nodeId);
   visitDown(nodeId);
@@ -160,10 +246,10 @@ function Legend(): React.ReactElement {
         top: 10,
         right: 10,
         zIndex: 10,
-        background: "rgba(255,255,255,0.78)",
+        background: "rgba(245,245,245,0.92)",
         backdropFilter: "blur(6px)",
         borderRadius: 8,
-        border: "1px solid #e2e8f0",
+        border: "1px solid rgba(0,0,0,0.1)",
         padding: "8px 12px",
         display: "flex",
         flexDirection: "column",
@@ -174,15 +260,16 @@ function Legend(): React.ReactElement {
         <div key={s} style={{ display: "flex", alignItems: "center", gap: 7 }}>
           <div
             style={{
-              width: 12,
-              height: 12,
+              width: 20,
+              height: 14,
               borderRadius: 3,
-              background: STATUS_STYLE[s].background,
-              border: `2px solid ${STATUS_STYLE[s].border}`,
+              background: "#e8e8e8",
+              border: `1.5px solid ${STATUS_STYLE[s].border}`,
+              borderBottom: `3px solid ${STATUS_STYLE[s].border}`,
               flexShrink: 0,
             }}
           />
-          <span style={{ fontSize: 11, color: "#475569", fontWeight: 500 }}>
+          <span style={{ fontSize: 11, color: "#444", fontWeight: 500 }}>
             {STATUS_LABEL[s]}
           </span>
         </div>
@@ -200,20 +287,27 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
   const [nodes, setNodes, onNodesChange] = useNodesState<NodeData>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const hoveredIdRef = useRef<string | null>(null);
-  const trackHoveredId = (id: string | null) => { hoveredIdRef.current = id; };
+  const trackHoveredId = (id: string | null) => {
+    hoveredIdRef.current = id;
+  };
 
   // Undo/redo history — store {id → position} maps only; merging back preserves ReactFlow's internal state
   type PosSnapshot = Record<string, { x: number; y: number }>;
   const historyRef = useRef<PosSnapshot[]>([]);
   const historyIdxRef = useRef<number>(-1);
-  const [historyState, setHistoryState] = useState<{ idx: number; len: number }>({ idx: -1, len: 0 });
+  const [historyState, setHistoryState] = useState<{
+    idx: number;
+    len: number;
+  }>({ idx: -1, len: 0 });
 
   // Initial layout ref for reset
   const initialLayoutRef = useRef<Node<NodeData>[]>([]);
 
   // Mirror of current nodes — always up-to-date, readable from stable callbacks
   const nodesRef = useRef<Node<NodeData>[]>([]);
-  useEffect(() => { nodesRef.current = nodes; }, [nodes]);
+  useEffect(() => {
+    nodesRef.current = nodes;
+  }, [nodes]);
 
   // Hover debounce timer
   const leaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -231,7 +325,11 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
     setEdges(rawEdges);
     trackHoveredId(null);
     initialLayoutRef.current = laid;
-    historyRef.current = [Object.fromEntries(laid.map((n) => [n.id, { x: n.position.x, y: n.position.y }]))];
+    historyRef.current = [
+      Object.fromEntries(
+        laid.map((n) => [n.id, { x: n.position.x, y: n.position.y }]),
+      ),
+    ];
     historyIdxRef.current = 0;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: re-init derived state on lineage change
     setHistoryState({ idx: 0, len: 1 });
@@ -259,7 +357,10 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
       const related = getRelated(node.id, edges);
       trackHoveredId(node.id);
       setNodes((prev) =>
-        prev.map((n) => ({ ...n, style: { ...n.style, opacity: related.has(n.id) ? 1 : 0.2 } })),
+        prev.map((n) => ({
+          ...n,
+          style: { ...n.style, opacity: related.has(n.id) ? 1 : 0.2 },
+        })),
       );
     },
     [edges, setNodes],
@@ -269,7 +370,9 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
     if (leaveTimerRef.current !== null) clearTimeout(leaveTimerRef.current);
     leaveTimerRef.current = setTimeout(() => {
       trackHoveredId(null);
-      setNodes((prev) => prev.map((n) => ({ ...n, style: { ...n.style, opacity: 1 } })));
+      setNodes((prev) =>
+        prev.map((n) => ({ ...n, style: { ...n.style, opacity: 1 } })),
+      );
       leaveTimerRef.current = null;
     }, 80);
   }, [setNodes]);
@@ -280,24 +383,23 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
       leaveTimerRef.current = null;
     }
     trackHoveredId(null);
-    setNodes((prev) => prev.map((n) => ({ ...n, style: { ...n.style, opacity: 1 } })));
+    setNodes((prev) =>
+      prev.map((n) => ({ ...n, style: { ...n.style, opacity: 1 } })),
+    );
   }, [setNodes]);
 
-  const handleNodeDragStop = useCallback(
-    () => {
-      // Snapshot ALL current nodes (not just the dragged one — RF only passes dragged nodes)
-      const all = nodesRef.current;
-      const posSnapshot: PosSnapshot = Object.fromEntries(
-        all.map((n) => [n.id, { x: n.position.x, y: n.position.y }]),
-      );
-      const sliced = historyRef.current.slice(0, historyIdxRef.current + 1);
-      const next = [...sliced, posSnapshot].slice(-50);
-      historyRef.current = next;
-      historyIdxRef.current = next.length - 1;
-      setHistoryState({ idx: next.length - 1, len: next.length });
-    },
-    [],
-  );
+  const handleNodeDragStop = useCallback(() => {
+    // Snapshot ALL current nodes (not just the dragged one — RF only passes dragged nodes)
+    const all = nodesRef.current;
+    const posSnapshot: PosSnapshot = Object.fromEntries(
+      all.map((n) => [n.id, { x: n.position.x, y: n.position.y }]),
+    );
+    const sliced = historyRef.current.slice(0, historyIdxRef.current + 1);
+    const next = [...sliced, posSnapshot].slice(-50);
+    historyRef.current = next;
+    historyIdxRef.current = next.length - 1;
+    setHistoryState({ idx: next.length - 1, len: next.length });
+  }, []);
 
   const handleUndo = useCallback(() => {
     if (historyIdxRef.current <= 0) return;
@@ -309,11 +411,22 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
       prev.map((n) => {
         const p = snap[n.id];
         if (!p) return { ...n, style: { ...n.style, opacity: 1 } };
-        return { ...n, position: { x: p.x, y: p.y }, positionAbsolute: { x: p.x, y: p.y }, dragging: false, style: { ...n.style, opacity: 1 } };
+        return {
+          ...n,
+          position: { x: p.x, y: p.y },
+          positionAbsolute: { x: p.x, y: p.y },
+          dragging: false,
+          style: { ...n.style, opacity: 1 },
+        };
       }),
     );
-    requestAnimationFrame(() => { suppressChangesRef.current = false; });
-    setHistoryState({ idx: historyIdxRef.current, len: historyRef.current.length });
+    requestAnimationFrame(() => {
+      suppressChangesRef.current = false;
+    });
+    setHistoryState({
+      idx: historyIdxRef.current,
+      len: historyRef.current.length,
+    });
   }, [setNodes]);
 
   const handleRedo = useCallback(() => {
@@ -326,11 +439,22 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
       prev.map((n) => {
         const p = snap[n.id];
         if (!p) return { ...n, style: { ...n.style, opacity: 1 } };
-        return { ...n, position: { x: p.x, y: p.y }, positionAbsolute: { x: p.x, y: p.y }, dragging: false, style: { ...n.style, opacity: 1 } };
+        return {
+          ...n,
+          position: { x: p.x, y: p.y },
+          positionAbsolute: { x: p.x, y: p.y },
+          dragging: false,
+          style: { ...n.style, opacity: 1 },
+        };
       }),
     );
-    requestAnimationFrame(() => { suppressChangesRef.current = false; });
-    setHistoryState({ idx: historyIdxRef.current, len: historyRef.current.length });
+    requestAnimationFrame(() => {
+      suppressChangesRef.current = false;
+    });
+    setHistoryState({
+      idx: historyIdxRef.current,
+      len: historyRef.current.length,
+    });
   }, [setNodes]);
 
   const handleReset = useCallback(() => {
@@ -346,8 +470,14 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
         style: { ...n.style, opacity: 1 },
       })),
     );
-    requestAnimationFrame(() => { suppressChangesRef.current = false; });
-    historyRef.current = [Object.fromEntries(initial.map((n) => [n.id, { x: n.position.x, y: n.position.y }]))];
+    requestAnimationFrame(() => {
+      suppressChangesRef.current = false;
+    });
+    historyRef.current = [
+      Object.fromEntries(
+        initial.map((n) => [n.id, { x: n.position.x, y: n.position.y }]),
+      ),
+    ];
     historyIdxRef.current = 0;
     setHistoryState({ idx: 0, len: 1 });
     requestAnimationFrame(() => fitView({ padding: 0.2, duration: 300 }));
@@ -371,7 +501,10 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
     padding: "3px 9px",
     cursor: "pointer",
   };
-  const btnDisabled: React.CSSProperties = { opacity: 0.4, cursor: "not-allowed" };
+  const btnDisabled: React.CSSProperties = {
+    opacity: 0.4,
+    cursor: "not-allowed",
+  };
 
   return (
     <div
@@ -395,7 +528,9 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
         }}
       >
         <button
-          style={historyState.idx <= 0 ? { ...btnBase, ...btnDisabled } : btnBase}
+          style={
+            historyState.idx <= 0 ? { ...btnBase, ...btnDisabled } : btnBase
+          }
           disabled={historyState.idx <= 0}
           onClick={handleUndo}
           title="Undo"
@@ -403,15 +538,32 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
           ↩ Undo
         </button>
         <button
-          style={historyState.idx >= historyState.len - 1 ? { ...btnBase, ...btnDisabled } : btnBase}
+          style={
+            historyState.idx >= historyState.len - 1
+              ? { ...btnBase, ...btnDisabled }
+              : btnBase
+          }
           disabled={historyState.idx >= historyState.len - 1}
           onClick={handleRedo}
           title="Redo"
         >
           ↪ Redo
         </button>
-        <button style={btnBase} onClick={handleReset} title="Reset layout">
-          ⟳ Reset
+        <button
+          style={{
+            ...btnBase,
+            background: "rgba(255,255,255,0.18)",
+            borderColor: "#94a3b8",
+            color: "#1e293b",
+            fontWeight: 600,
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+          }}
+          onClick={handleReset}
+          title="Reset layout"
+        >
+          <RotateCcw size={12} /> Reset
         </button>
       </div>
       <ReactFlow
@@ -440,7 +592,9 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
 // Export
 // ---------------------------------------------------------------------------
 
-export default function LineageGraph({ lineage }: LineageGraphProps): React.ReactElement {
+export default function LineageGraph({
+  lineage,
+}: LineageGraphProps): React.ReactElement {
   return (
     <ReactFlowProvider>
       <LineageGraphInner lineage={lineage} />

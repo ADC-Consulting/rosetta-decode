@@ -19,5 +19,8 @@ class WorkerSettings(BaseSettings):
     azure_openai_api_key: str | None = None
     openai_api_version: str = "2024-06-01"
 
+    # TensorZero gateway — when set, LLM calls are routed through the gateway
+    tensorzero_gateway_url: str | None = None
+
 
 worker_settings = WorkerSettings()
