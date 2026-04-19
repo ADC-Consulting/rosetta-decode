@@ -9,13 +9,14 @@ import {
   ReactFlowProvider,
   useEdgesState,
   useNodesState,
+  useReactFlow,
   type Edge,
   type EdgeChange,
   type Node,
   type NodeChange,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JobLineageResponse, LineageNode } from "@/api/types";
 
 interface LineageGraphProps {
@@ -109,6 +110,7 @@ function buildInitialNodes(lineageNodes: LineageNode[]): Node<NodeData>[] {
         boxShadow: "0 1px 4px rgba(0,0,0,0.10)",
         width: NODE_W,
         minHeight: NODE_H,
+        transition: "opacity 0.18s ease",
       },
     };
   });
@@ -155,8 +157,8 @@ function Legend(): React.ReactElement {
     <div
       style={{
         position: "absolute",
-        bottom: 12,
-        right: 12,
+        top: 10,
+        right: 10,
         zIndex: 10,
         background: "rgba(255,255,255,0.78)",
         backdropFilter: "blur(6px)",
@@ -194,9 +196,31 @@ function Legend(): React.ReactElement {
 // ---------------------------------------------------------------------------
 
 function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
+  const { fitView } = useReactFlow();
   const [nodes, setNodes, onNodesChange] = useNodesState<NodeData>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  const [focusedId, setFocusedId] = useState<string | null>(null);
+  const hoveredIdRef = useRef<string | null>(null);
+  const trackHoveredId = (id: string | null) => { hoveredIdRef.current = id; };
+
+  // Undo/redo history — store {id → position} maps only; merging back preserves ReactFlow's internal state
+  type PosSnapshot = Record<string, { x: number; y: number }>;
+  const historyRef = useRef<PosSnapshot[]>([]);
+  const historyIdxRef = useRef<number>(-1);
+  const [historyState, setHistoryState] = useState<{ idx: number; len: number }>({ idx: -1, len: 0 });
+
+  // Initial layout ref for reset
+  const initialLayoutRef = useRef<Node<NodeData>[]>([]);
+
+  // Mirror of current nodes — always up-to-date, readable from stable callbacks
+  const nodesRef = useRef<Node<NodeData>[]>([]);
+  useEffect(() => { nodesRef.current = nodes; }, [nodes]);
+
+  // Hover debounce timer
+  const leaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // When true, onNodesChange is suppressed for one frame so undo/redo/reset
+  // position restores are not overwritten by RF's own queued change events.
+  const suppressChangesRef = useRef(false);
 
   useEffect(() => {
     if (lineage.nodes.length === 0) return;
@@ -205,11 +229,19 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
     const laid = applyDagreLayout(rawNodes, rawEdges);
     setNodes(laid);
     setEdges(rawEdges);
-    setFocusedId(null); // eslint-disable-line react-hooks/set-state-in-effect
+    trackHoveredId(null);
+    initialLayoutRef.current = laid;
+    historyRef.current = [Object.fromEntries(laid.map((n) => [n.id, { x: n.position.x, y: n.position.y }]))];
+    historyIdxRef.current = 0;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: re-init derived state on lineage change
+    setHistoryState({ idx: 0, len: 1 });
   }, [lineage, setNodes, setEdges]);
 
   const handleNodesChange = useCallback(
-    (changes: NodeChange[]) => onNodesChange(changes),
+    (changes: NodeChange[]) => {
+      if (suppressChangesRef.current) return;
+      onNodesChange(changes);
+    },
     [onNodesChange],
   );
 
@@ -218,10 +250,14 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
     [onEdgesChange],
   );
 
-  const handleNodeClick = useCallback(
+  const handleNodeMouseEnter = useCallback(
     (_: React.MouseEvent, node: Node<NodeData>) => {
+      if (leaveTimerRef.current !== null) {
+        clearTimeout(leaveTimerRef.current);
+        leaveTimerRef.current = null;
+      }
       const related = getRelated(node.id, edges);
-      setFocusedId(node.id);
+      trackHoveredId(node.id);
       setNodes((prev) =>
         prev.map((n) => ({ ...n, style: { ...n.style, opacity: related.has(n.id) ? 1 : 0.2 } })),
       );
@@ -229,11 +265,93 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
     [edges, setNodes],
   );
 
+  const handleNodeMouseLeave = useCallback(() => {
+    if (leaveTimerRef.current !== null) clearTimeout(leaveTimerRef.current);
+    leaveTimerRef.current = setTimeout(() => {
+      trackHoveredId(null);
+      setNodes((prev) => prev.map((n) => ({ ...n, style: { ...n.style, opacity: 1 } })));
+      leaveTimerRef.current = null;
+    }, 80);
+  }, [setNodes]);
+
   const handlePaneClick = useCallback(() => {
-    if (!focusedId) return;
-    setFocusedId(null);
+    if (leaveTimerRef.current !== null) {
+      clearTimeout(leaveTimerRef.current);
+      leaveTimerRef.current = null;
+    }
+    trackHoveredId(null);
     setNodes((prev) => prev.map((n) => ({ ...n, style: { ...n.style, opacity: 1 } })));
-  }, [focusedId, setNodes]);
+  }, [setNodes]);
+
+  const handleNodeDragStop = useCallback(
+    () => {
+      // Snapshot ALL current nodes (not just the dragged one — RF only passes dragged nodes)
+      const all = nodesRef.current;
+      const posSnapshot: PosSnapshot = Object.fromEntries(
+        all.map((n) => [n.id, { x: n.position.x, y: n.position.y }]),
+      );
+      const sliced = historyRef.current.slice(0, historyIdxRef.current + 1);
+      const next = [...sliced, posSnapshot].slice(-50);
+      historyRef.current = next;
+      historyIdxRef.current = next.length - 1;
+      setHistoryState({ idx: next.length - 1, len: next.length });
+    },
+    [],
+  );
+
+  const handleUndo = useCallback(() => {
+    if (historyIdxRef.current <= 0) return;
+    historyIdxRef.current -= 1;
+    const snap = historyRef.current[historyIdxRef.current];
+    trackHoveredId(null);
+    suppressChangesRef.current = true;
+    setNodes((prev) =>
+      prev.map((n) => {
+        const p = snap[n.id];
+        if (!p) return { ...n, style: { ...n.style, opacity: 1 } };
+        return { ...n, position: { x: p.x, y: p.y }, positionAbsolute: { x: p.x, y: p.y }, dragging: false, style: { ...n.style, opacity: 1 } };
+      }),
+    );
+    requestAnimationFrame(() => { suppressChangesRef.current = false; });
+    setHistoryState({ idx: historyIdxRef.current, len: historyRef.current.length });
+  }, [setNodes]);
+
+  const handleRedo = useCallback(() => {
+    if (historyIdxRef.current >= historyRef.current.length - 1) return;
+    historyIdxRef.current += 1;
+    const snap = historyRef.current[historyIdxRef.current];
+    trackHoveredId(null);
+    suppressChangesRef.current = true;
+    setNodes((prev) =>
+      prev.map((n) => {
+        const p = snap[n.id];
+        if (!p) return { ...n, style: { ...n.style, opacity: 1 } };
+        return { ...n, position: { x: p.x, y: p.y }, positionAbsolute: { x: p.x, y: p.y }, dragging: false, style: { ...n.style, opacity: 1 } };
+      }),
+    );
+    requestAnimationFrame(() => { suppressChangesRef.current = false; });
+    setHistoryState({ idx: historyIdxRef.current, len: historyRef.current.length });
+  }, [setNodes]);
+
+  const handleReset = useCallback(() => {
+    const initial = initialLayoutRef.current;
+    trackHoveredId(null);
+    suppressChangesRef.current = true;
+    setNodes(
+      initial.map((n) => ({
+        ...n,
+        position: { x: n.position.x, y: n.position.y },
+        positionAbsolute: { x: n.position.x, y: n.position.y },
+        dragging: false,
+        style: { ...n.style, opacity: 1 },
+      })),
+    );
+    requestAnimationFrame(() => { suppressChangesRef.current = false; });
+    historyRef.current = [Object.fromEntries(initial.map((n) => [n.id, { x: n.position.x, y: n.position.y }]))];
+    historyIdxRef.current = 0;
+    setHistoryState({ idx: 0, len: 1 });
+    requestAnimationFrame(() => fitView({ padding: 0.2, duration: 300 }));
+  }, [setNodes, fitView]);
 
   if (lineage.nodes.length === 0) {
     return (
@@ -243,17 +361,67 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
     );
   }
 
+  const btnBase: React.CSSProperties = {
+    fontSize: 12,
+    fontWeight: 500,
+    color: "#475569",
+    background: "transparent",
+    border: "1px solid #e2e8f0",
+    borderRadius: 5,
+    padding: "3px 9px",
+    cursor: "pointer",
+  };
+  const btnDisabled: React.CSSProperties = { opacity: 0.4, cursor: "not-allowed" };
+
   return (
     <div
       className="rounded-md border border-border overflow-hidden"
       style={{ width: "100%", height: 600, position: "relative" }}
     >
+      {/* Toolbar */}
+      <div
+        style={{
+          position: "absolute",
+          top: 10,
+          left: 10,
+          zIndex: 10,
+          background: "rgba(255,255,255,0.85)",
+          backdropFilter: "blur(6px)",
+          borderRadius: 8,
+          border: "1px solid #e2e8f0",
+          padding: "4px 6px",
+          display: "flex",
+          gap: 4,
+        }}
+      >
+        <button
+          style={historyState.idx <= 0 ? { ...btnBase, ...btnDisabled } : btnBase}
+          disabled={historyState.idx <= 0}
+          onClick={handleUndo}
+          title="Undo"
+        >
+          ↩ Undo
+        </button>
+        <button
+          style={historyState.idx >= historyState.len - 1 ? { ...btnBase, ...btnDisabled } : btnBase}
+          disabled={historyState.idx >= historyState.len - 1}
+          onClick={handleRedo}
+          title="Redo"
+        >
+          ↪ Redo
+        </button>
+        <button style={btnBase} onClick={handleReset} title="Reset layout">
+          ⟳ Reset
+        </button>
+      </div>
       <ReactFlow
         nodes={nodes}
         edges={edges}
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
-        onNodeClick={handleNodeClick}
+        onNodeMouseEnter={handleNodeMouseEnter}
+        onNodeMouseLeave={handleNodeMouseLeave}
+        onNodeDragStop={handleNodeDragStop}
         onPaneClick={handlePaneClick}
         nodesDraggable={true}
         fitView
