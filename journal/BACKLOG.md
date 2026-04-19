@@ -50,23 +50,23 @@
 - [ ] F18: Refine conversion action — re-submit with previous output + reconciliation report as context → see `docs/plans/F-backend-postmvp.md` S-BE6
 
 **Post-MVP UI + Backend (active) — `docs/plans/F-UI-postmvp.md` + `docs/plans/F-backend-postmvp.md`**
-- [ ] F-backend-postmvp S-BE1: `GET /jobs/{id}/sources` endpoint (no migration)
-- [ ] F-backend-postmvp S-BE2: Zip bulk upload — `.sas`, `.sas7bdat`, `.csv`, `.log`, `.xlsx`, `.xls` (no migration)
-- [ ] F-backend-postmvp S-BE3: Lineage extraction + `GET /jobs/{id}/lineage` (migration 002)
-- [ ] F-backend-postmvp S-BE4: Doc generation + `GET /jobs/{id}/doc` (migration 002)
+- [x] F-backend-postmvp S-BE1: `GET /jobs/{id}/sources` endpoint (no migration)
+- [x] F-backend-postmvp S-BE2: Zip bulk upload — `.sas`, `.sas7bdat`, `.csv`, `.log`, `.xlsx`, `.xls` (no migration)
+- [x] F-backend-postmvp S-BE3: Lineage extraction + `GET /jobs/{id}/lineage` (migration 004)
+- [x] F-backend-postmvp S-BE4: Doc generation + `GET /jobs/{id}/doc` (migration 004)
 - [ ] F-backend-postmvp S-BE5: Re-reconciliation `PUT /jobs/{id}/python_code` + `skip_llm` (migration 003)
 - [ ] F-backend-postmvp S-BE6: Refine action `POST /jobs/{id}/refine` + `parent_job_id` (migration 003)
-- [ ] F-UI-postmvp S-FE5/10/11: AppSidebar + routing + JobsPage refactor
-- [ ] F-UI-postmvp S-FE1: `MonacoDiffViewer` component (Monaco DiffEditor)
-- [ ] F-UI-postmvp S-FE2: `MonacoEditor` component (Monaco Editor)
-- [ ] F-UI-postmvp S-FE3: `TiptapEditor` component (rich text + code blocks)
-- [ ] F-UI-postmvp S-FE4: `LineageGraph` component (React Flow, 3 zoom levels, colour-coded)
-- [ ] F-UI-postmvp S-FE6: `JobDetailPage` (4 tabs: Comparison / Edit / Report / Lineage)
+- [x] F-UI-postmvp S-FE5/10/11: AppSidebar + routing + JobsPage refactor
+- [x] F-UI-postmvp S-FE1: `MonacoDiffViewer` component (Monaco DiffEditor)
+- [x] F-UI-postmvp S-FE2: `MonacoEditor` component (Monaco Editor)
+- [x] F-UI-postmvp S-FE3: `TiptapEditor` component (rich text + code blocks)
+- [x] F-UI-postmvp S-FE4: `LineageGraph` component (React Flow, colour-coded)
+- [x] F-UI-postmvp S-FE6: `JobDetailPage` (4 tabs: Comparison / Edit / Report / Lineage)
 - [ ] F-UI-postmvp S-FE7: `GlobalLineagePage`
 - [ ] F-UI-postmvp S-FE8: `DocsPage`
 - [ ] F-UI-postmvp S-FE9: `ExplainPage` stub
-- [ ] F-UI-postmvp S-FE12: Upload UX — zip input + file manifest
-- [ ] F-UI-postmvp S-FE13: API client extensions (types + jobs.ts + migrate.ts)
+- [x] F-UI-postmvp S-FE12: Upload UX — unified drop-zone (.sas/.sas7bdat/.zip/.log/.csv/.xls/.xlsx), manifest view
+- [x] F-UI-postmvp S-FE13: API client extensions (types + jobs.ts + migrate.ts)
 
 ---
 
