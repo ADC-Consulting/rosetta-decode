@@ -30,26 +30,27 @@ install: ## Install all dependencies
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
 
-test: ## Run full suite
+test: ## Run full suite (incl. coverage)
 	$(call run_quiet,uv run ruff check src tests --quiet,ruff-check)
 	$(call run_quiet,uv run ruff format --check src tests --quiet,ruff-format)
 	$(call run_quiet,uv run mypy src --no-error-summary --no-pretty --hide-error-context --hide-error-codes,mypy)
-	@uv run pytest $(PYTEST_FLAGS) --cov-fail-under=90 --cov-report= 2>&1 | tail -n 20
+	$(call run_quiet,uv run pytest $(PYTEST_FLAGS) --cov=src --cov-fail-under=90 --cov-report=html --cov-report=,pytest+coverage)
 	@$(MAKE) -s tsc-check
 	@$(MAKE) -s frontend-lint
 	@$(MAKE) -s frontend-build
+	@echo "Coverage: htmlcov/index.html"
 
 test-file: ## make test-file FILE=tests/test_foo.py
-	@uv run pytest $(PYTEST_FLAGS) --tb=short $(FILE) 2>&1 | tail -n 30
+	$(call run_quiet,uv run pytest $(PYTEST_FLAGS) $(FILE),pytest $(FILE))
 
 test-fast: ## Skip slow test markers
-	@uv run pytest $(PYTEST_FLAGS) -m "not reconciliation and not cloud and not integration" 2>&1 | tail -n 20
+	$(call run_quiet,uv run pytest $(PYTEST_FLAGS) -m "not reconciliation and not cloud and not integration",pytest-fast)
 
 test-reconciliation: ## Reconciliation tests only
-	@uv run pytest $(PYTEST_FLAGS) -m reconciliation 2>&1 | tail -n 20
+	$(call run_quiet,uv run pytest $(PYTEST_FLAGS) -m reconciliation,pytest-reconciliation)
 
-coverage: ## HTML coverage report
-	@uv run pytest $(PYTEST_FLAGS) --cov=src --cov-report=html --cov-report=term:skip-covered 2>&1 | tail -n 15
+coverage: ## HTML coverage report (verbose)
+	@uv run pytest $(PYTEST_FLAGS) --cov=src --cov-report=html --cov-report=term:skip-covered
 	@echo "Report: htmlcov/index.html"
 
 # ── Code quality ──────────────────────────────────────────────────────────────
