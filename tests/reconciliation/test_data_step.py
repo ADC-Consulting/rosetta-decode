@@ -192,7 +192,9 @@ def test_exec_pipeline_no_dataframe_raises() -> None:
     backend = LocalBackend()
     service = ReconciliationService()
     code = "x = 42"  # no DataFrame assigned
-    report = service.run("", code, backend)
+    # Provide a ref path so reconciliation is not skipped; the execution check
+    # should still fail because the pipeline produces no DataFrame.
+    report = service.run(REF_CSV, code, backend)
     checks = {c["name"]: c for c in report["checks"]}
     assert checks.get("execution", {}).get("status") == "fail"
 

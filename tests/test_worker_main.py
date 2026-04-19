@@ -439,7 +439,7 @@ async def test_orchestrator_execute_lineage_failure_swallowed() -> None:
     session.execute.assert_called_once()
 
 
-# ── JobOrchestrator._translate_with_refinement() ─────────────────────────────
+# ── JobOrchestrator._translate_two_phase() ───────────────────────────────────
 
 
 @pytest.mark.asyncio
@@ -462,7 +462,7 @@ async def test_translate_with_refinement_passes_first_try() -> None:
         patch("src.worker.main.asyncio.to_thread", new=AsyncMock(return_value=fake_report)),
     ):
         mock_factory.create.return_value = MagicMock()
-        result = await orch._translate_with_refinement([fake_block], fake_ctx, "", "")
+        result = await orch._translate_two_phase([fake_block], fake_ctx, "", "")
 
     assert result == [fake_gb]
     mocks["failure_interpreter"].interpret.assert_not_called()
@@ -497,7 +497,7 @@ async def test_translate_with_refinement_retries_on_failure() -> None:
         patch("src.worker.main.asyncio.to_thread", side_effect=_fake_to_thread),
     ):
         mock_factory.create.return_value = MagicMock()
-        result = await orch._translate_with_refinement([fake_block], fake_ctx, "", "")
+        result = await orch._translate_two_phase([fake_block], fake_ctx, "", "")
 
     mocks["failure_interpreter"].interpret.assert_called_once()
     assert len(result) == 1
@@ -522,7 +522,7 @@ async def test_translate_with_refinement_breaks_on_no_diff_summary() -> None:
         patch("src.worker.main.asyncio.to_thread", new=AsyncMock(return_value=failed_report)),
     ):
         mock_factory.create.return_value = MagicMock()
-        result = await orch._translate_with_refinement([fake_block], fake_ctx, "", "")
+        result = await orch._translate_two_phase([fake_block], fake_ctx, "", "")
 
     mocks["failure_interpreter"].interpret.assert_not_called()
     assert result == [fake_gb]
@@ -548,7 +548,7 @@ async def test_translate_with_refinement_breaks_when_interpreter_fails() -> None
         patch("src.worker.main.asyncio.to_thread", new=AsyncMock(return_value=failed_report)),
     ):
         mock_factory.create.return_value = MagicMock()
-        result = await orch._translate_with_refinement([fake_block], fake_ctx, "", "")
+        result = await orch._translate_two_phase([fake_block], fake_ctx, "", "")
 
     assert result == [fake_gb]
 
@@ -689,7 +689,7 @@ async def test_orchestrator_execute_with_macro_expansion_warning() -> None:
     session.commit.assert_called_once()
 
 
-# ── _translate_with_refinement — dict raw_report branch ──────────────────────
+# ── _translate_two_phase — dict raw_report branch ────────────────────────────
 
 
 @pytest.mark.asyncio
@@ -712,7 +712,7 @@ async def test_translate_with_refinement_dict_report_passed() -> None:
         patch("src.worker.main.asyncio.to_thread", new=AsyncMock(return_value=dict_report)),
     ):
         mock_factory.create.return_value = MagicMock()
-        result = await orch._translate_with_refinement([fake_block], fake_ctx, "", "")
+        result = await orch._translate_two_phase([fake_block], fake_ctx, "", "")
 
     assert result == [fake_gb]
     mocks["failure_interpreter"].interpret.assert_not_called()
@@ -790,6 +790,66 @@ async def test_process_job_llm_translation_error_sets_failed() -> None:
 
         await _process_job(session, fake_job)
 
-    # Should have executed one UPDATE to failed + commit
     assert session.execute.call_count == 1
     session.commit.assert_called_once()
+
+
+# ── JobOrchestrator._execute_rereconcile() ────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_execute_rereconcile_sets_proposed_on_success() -> None:
+    """skip_llm path: runs reconciliation only, sets status=proposed."""
+    orch, _ = _make_orchestrator_with_mocks()
+    session = AsyncMock()
+    job = _make_job(python_code="result = df.copy()", skip_llm=True)
+    fake_report = {"checks": [{"name": "row_count", "status": "pass"}]}
+
+    with (
+        patch("src.worker.main.BackendFactory") as mock_factory,
+        patch("src.worker.main.asyncio.to_thread", new=AsyncMock(return_value=fake_report)),
+    ):
+        mock_factory.create.return_value = MagicMock()
+        await orch._execute_rereconcile(job, session, "", "")
+
+    session.execute.assert_called_once()
+    session.commit.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_execute_rereconcile_sets_failed_on_exception() -> None:
+    """skip_llm path: exception sets status=failed and re-raises."""
+    orch, _ = _make_orchestrator_with_mocks()
+    session = AsyncMock()
+    job = _make_job(python_code="result = df.copy()", skip_llm=True)
+
+    with (
+        patch("src.worker.main.BackendFactory") as mock_factory,
+        patch(
+            "src.worker.main.asyncio.to_thread",
+            new=AsyncMock(side_effect=RuntimeError("recon boom")),
+        ),
+    ):
+        mock_factory.create.return_value = MagicMock()
+        with pytest.raises(RuntimeError, match="recon boom"):
+            await orch._execute_rereconcile(job, session, "", "")
+
+    assert session.execute.call_count == 1
+    session.commit.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_execute_skips_llm_when_skip_llm_true() -> None:
+    """When job.skip_llm=True, _execute calls _execute_rereconcile and returns early."""
+    orch, _ = _make_orchestrator_with_mocks()
+    orch._execute_rereconcile = AsyncMock()  # type: ignore[method-assign]
+    session = AsyncMock()
+    job = _make_job(
+        files={"test.sas": "data out; set in; run;"},
+        python_code="result = df.copy()",
+        skip_llm=True,
+    )
+
+    await orch._execute(session, job)
+
+    orch._execute_rereconcile.assert_called_once()

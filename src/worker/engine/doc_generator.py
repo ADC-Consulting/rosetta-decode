@@ -39,11 +39,19 @@ def _build_doc_prompt(files: dict[str, str], report: dict[str, Any] | None) -> s
         You are a technical documentation expert. Produce a structured Markdown
         summary for the SAS migration below.
 
-        Include these sections:
-        1. **Overview** — what the SAS code does in plain English
-        2. **Key Datasets** — input and output datasets with a one-line description each
-        3. **Business Logic** — the core transformations and filters applied
-        4. **Migration Notes** — any constructs flagged as untranslatable or needing review
+        Include these sections using ## headings:
+        ## Overview
+        What the SAS code does in plain English (2-4 sentences).
+
+        ## Key Datasets
+        Table: | Dataset | Role (Input/Output) | Description |
+
+        ## Business Logic
+        Numbered list of the core transformations and filters.
+
+        ## Migration Notes
+        Bullet list of any untranslatable constructs or review items.
+        Write "No migration issues identified." if none.
 
         Source files:
         {sources_section}
@@ -51,7 +59,9 @@ def _build_doc_prompt(files: dict[str, str], report: dict[str, Any] | None) -> s
         Reconciliation summary:
         {report_summary}
 
-        Return ONLY the Markdown document. No preamble, no code fences around the doc.
+        IMPORTANT: Your entire response must be the raw Markdown document.
+        Do NOT wrap it in a code fence (no ```markdown). Do NOT add any preamble
+        or explanation before the first ## heading.
     """)
 
 

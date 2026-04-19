@@ -1,10 +1,18 @@
 """Unit tests for LLMClient — mocks the pydantic-ai agent, no live LLM."""
 
+from collections.abc import Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
 from src.worker.engine.llm_client import LLMClient, LLMTranslationError
 from src.worker.engine.models import BlockType, GeneratedBlock, SASBlock
+
+
+@pytest.fixture(autouse=True)
+def _mock_text_agent() -> Generator[None, None, None]:
+    """Patch _make_text_agent for every test — prevents live OpenAI calls."""
+    with patch("src.worker.engine.llm_client._make_text_agent", return_value=MagicMock()):
+        yield
 
 
 def _make_sas_block(block_type: BlockType = BlockType.DATA_STEP) -> SASBlock:
