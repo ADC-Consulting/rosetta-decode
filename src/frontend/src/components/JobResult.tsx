@@ -46,7 +46,8 @@ export default function JobResult({ jobId }: JobResultProps) {
         role="alert"
         className="rounded-md border border-destructive bg-destructive/10 px-4 py-3 text-sm text-destructive"
       >
-        {error.message}
+        <p className="font-medium mb-1">Could not load job status</p>
+        <p className="text-xs opacity-80">Please refresh the page. If the problem persists, the job may have been removed.</p>
       </div>
     );
   }
@@ -82,7 +83,7 @@ export default function JobResult({ jobId }: JobResultProps) {
         className="rounded-md border border-destructive bg-destructive/10 px-4 py-3 text-sm text-destructive"
       >
         <p className="font-medium mb-1">Migration failed</p>
-        <p>{data.error ?? "Unknown error."}</p>
+        <p>We were unable to complete the migration. Try submitting again, or check that your SAS files are valid.</p>
       </div>
     );
   }

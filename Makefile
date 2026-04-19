@@ -1,96 +1,109 @@
 .PHONY: help install test test-fast test-reconciliation lint format check coverage clean \
-        dev dev-down dev-logs run-local run-backend run-frontend frontend-lint frontend-build tsc-check
+        dev dev-down dev-logs run-local run-backend run-frontend frontend-lint frontend-build tsc-check docker-build test-file
 
-# Silence pytest warnings + disable plugin autoload chatter + quieter output
-PYTEST_FLAGS := --no-header -q -p no:cacheprovider -W ignore --disable-warnings
-# Silence npm's progress/funding/audit noise
-NPM_FLAGS := --silent --no-fund --no-audit --loglevel=error
-# Quiet Docker buildkit plain logs
+SHELL := bash
+.SHELLFLAGS := -eu -o pipefail -c
+
+# Pytest: quiet, no header, no warnings, short tracebacks, only failure summary
+PYTEST_FLAGS := --no-header -q -p no:cacheprovider -W ignore --disable-warnings \
+                --tb=short -rN --no-summary
+# npm: kill progress/funding/audit/notice noise
+NPM_FLAGS := --silent --no-fund --no-audit --no-update-notifier --loglevel=error
+# Docker: quiet build
 DOCKER_BUILD_FLAGS := --quiet
+
+# Helper: run a command, print only on failure; on success emit one-line OK
+define run_quiet
+	@out=$$(mktemp); \
+	if $(1) >$$out 2>&1; then \
+	    echo "✓ $(2)"; rm -f $$out; \
+	else \
+	    ec=$$?; cat $$out; rm -f $$out; exit $$ec; \
+	fi
+endef
 
 help: ## Show available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-26s %s\n", $$1, $$2}'
 
-install: ## Install all dependencies (dev + core)
-	@uv sync --extra dev --quiet
+install: ## Install all dependencies
+	$(call run_quiet,uv sync --extra dev --quiet,install)
 
-# ── Tests ──────────────────────────────────────────────────────────────────────
+# ── Tests ─────────────────────────────────────────────────────────────────────
 
-test: ## Run everything: ruff, mypy, pytest, tsc-check, frontend-lint, frontend-build
-	@uv run ruff check src tests --quiet
-	@uv run ruff format --check src tests --quiet
-	@uv run mypy src --no-error-summary --no-pretty --hide-error-context --hide-error-codes
-	@uv run pytest $(PYTEST_FLAGS) --cov-fail-under=90
-	@$(MAKE) tsc-check
-	@$(MAKE) frontend-lint
-	@$(MAKE) frontend-build
+test: ## Run full suite (incl. coverage)
+	$(call run_quiet,uv run ruff check src tests --quiet,ruff-check)
+	$(call run_quiet,uv run ruff format --check src tests --quiet,ruff-format)
+	$(call run_quiet,uv run mypy src --no-error-summary --no-pretty --hide-error-context --hide-error-codes,mypy)
+	$(call run_quiet,uv run pytest $(PYTEST_FLAGS) --cov=src --cov-fail-under=90 --cov-report=html --cov-report=,pytest+coverage)
+	@$(MAKE) -s tsc-check
+	@$(MAKE) -s frontend-lint
+	@$(MAKE) -s frontend-build
+	@echo "Coverage: htmlcov/index.html"
 
-test-file: ## Run a single test file: make test-file FILE=tests/test_foo.py
-	@uv run pytest $(PYTEST_FLAGS) $(FILE)
+test-file: ## make test-file FILE=tests/test_foo.py
+	$(call run_quiet,uv run pytest $(PYTEST_FLAGS) $(FILE),pytest $(FILE))
 
-test-fast: ## Skip reconciliation, cloud, and integration tests (quick feedback loop)
-	@uv run pytest $(PYTEST_FLAGS) -m "not reconciliation and not cloud and not integration"
+test-fast: ## Skip slow test markers
+	$(call run_quiet,uv run pytest $(PYTEST_FLAGS) -m "not reconciliation and not cloud and not integration",pytest-fast)
 
-test-reconciliation: ## Run reconciliation tests only (requires Postgres running)
-	@uv run pytest $(PYTEST_FLAGS) -m reconciliation
+test-reconciliation: ## Reconciliation tests only
+	$(call run_quiet,uv run pytest $(PYTEST_FLAGS) -m reconciliation,pytest-reconciliation)
 
-coverage: ## Generate HTML coverage report (open htmlcov/index.html)
-	@uv run pytest $(PYTEST_FLAGS) --cov=src --cov-report=html --cov-report=term-missing:skip-covered
+coverage: ## HTML coverage report (verbose)
+	@uv run pytest $(PYTEST_FLAGS) --cov=src --cov-report=html --cov-report=term:skip-covered
 	@echo "Report: htmlcov/index.html"
 
-# ── Code quality ───────────────────────────────────────────────────────────────
+# ── Code quality ──────────────────────────────────────────────────────────────
 
-lint: ## Run ruff linter
-	@uv run ruff check src tests --quiet
+lint:
+	$(call run_quiet,uv run ruff check src tests --quiet,lint)
 
-format: ## Run ruff auto-formatter
-	@uv run ruff format src tests --quiet
+format:
+	$(call run_quiet,uv run ruff format src tests --quiet,format)
 
-check: ## Run linter + format check + mypy type check
-	@uv run ruff check src tests --quiet
-	@uv run ruff format --check src tests --quiet
-	@uv run mypy src --no-error-summary --no-pretty --hide-error-context --hide-error-codes
+check:
+	$(call run_quiet,uv run ruff check src tests --quiet,ruff-check)
+	$(call run_quiet,uv run ruff format --check src tests --quiet,ruff-format)
+	$(call run_quiet,uv run mypy src --no-error-summary --no-pretty --hide-error-context --hide-error-codes,mypy)
 
-# ── Docker stack ───────────────────────────────────────────────────────────────
+# ── Docker ────────────────────────────────────────────────────────────────────
 
-docker-build: ## Build all Docker images without starting containers (validates Dockerfiles)
-	@docker build $(DOCKER_BUILD_FLAGS) -f src/backend/Dockerfile  -t rosetta-backend:dev  .
-	@docker build $(DOCKER_BUILD_FLAGS) -f src/worker/Dockerfile   -t rosetta-worker:dev   .
-	@docker build $(DOCKER_BUILD_FLAGS) -f src/frontend/Dockerfile -t rosetta-frontend:dev src/frontend
+docker-build:
+	$(call run_quiet,docker build $(DOCKER_BUILD_FLAGS) -f src/backend/Dockerfile  -t rosetta-backend:dev  .,docker-backend)
+	$(call run_quiet,docker build $(DOCKER_BUILD_FLAGS) -f src/worker/Dockerfile   -t rosetta-worker:dev   .,docker-worker)
+	$(call run_quiet,docker build $(DOCKER_BUILD_FLAGS) -f src/frontend/Dockerfile -t rosetta-frontend:dev src/frontend,docker-frontend)
 
-dev: ## Build and start all four services (postgres, backend, worker, frontend)
-	docker compose up --build
+# ── Frontend ──────────────────────────────────────────────────────────────────
 
-dev-down: ## Stop all Docker containers
-	@docker compose down
+tsc-check:
+	$(call run_quiet,cd src/frontend && ./node_modules/.bin/tsc --noEmit,tsc)
 
-dev-logs: ## Tail logs from all Docker containers
-	docker compose logs -f
+frontend-lint:
+	$(call run_quiet,cd src/frontend && npm run lint,frontend-lint)
 
-# ── Local (no Docker) ──────────────────────────────────────────────────────────
+frontend-build:
+	$(call run_quiet,cd src/frontend && npm run build,frontend-build)
 
-run-backend: ## Start FastAPI dev server locally (no Docker)
+# ── Run (interactive — leave verbose) ─────────────────────────────────────────
+
+run-backend:
 	uv run uvicorn src.backend.main:app --reload --port 8000 --log-level warning
 
-run-frontend: ## Start Vite dev server locally (no Docker)
-	cd src/frontend && npm run dev $(NPM_FLAGS)
+run-frontend:
+	cd src/frontend && npm run dev -- $(NPM_FLAGS)
 
-run-local: ## Reminder: run backend + frontend in separate terminals
+run-local:
 	@echo "Run 'make run-backend' and 'make run-frontend' in separate terminals."
 
-# ── Frontend ───────────────────────────────────────────────────────────────────
+dev:
+	docker compose up --build
 
-tsc-check: ## TypeScript type check only (tsc -b, no emit)
-	@cd src/frontend && ./node_modules/.bin/tsc --noEmit
+dev-down:
+	@docker compose down >/dev/null 2>&1 && echo "✓ dev-down"
 
-frontend-lint: ## Run ESLint on frontend source
-	@cd src/frontend && npm run lint $(NPM_FLAGS)
+dev-logs:
+	docker compose logs -f
 
-frontend-build: ## Build frontend for production (tsc -b + vite build)
-	@cd src/frontend && npm run build $(NPM_FLAGS)
-
-# ── Housekeeping ───────────────────────────────────────────────────────────────
-
-clean: ## Remove build artefacts and caches
+clean:
 	@find . -type d $$$ -name __pycache__ -o -name .pytest_cache -o -name .mypy_cache -o -name .ruff_cache -o -name htmlcov $$$ -exec rm -rf {} + 2>/dev/null; \
-	find . -name ".coverage*" -delete 2>/dev/null; true
+	find . -name ".coverage*" -delete 2>/dev/null; echo "✓ clean"

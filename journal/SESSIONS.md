@@ -6,6 +6,262 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-04-19 — LineageGraph UX overhaul, sonner toasts, file_count fix, undo/redo
+
+**Duration:** ~3h | **Focus:** LineageGraph interactivity, error UX, backend bug fixes
+
+### Done
+
+- **LineageGraph hover-to-focus**: replaced click-to-focus with `onNodeMouseEnter`/`onNodeMouseLeave`; 80ms debounce prevents flicker; pane click clears
+- **Undo/Redo toolbar**: `onNodeDragStop` snapshots `{id→{x,y}}` position maps (deep-copied to avoid mutation); Undo/Redo restore via `setNodes` (controlled-mode setter — `rfSetNodes` was clobbered by React Flow's controlled-mode render loop); Reset restores initial dagre layout + `fitView`
+- **Opacity transition**: `transition: "opacity 0.18s ease"` on all nodes for smooth hover-dim effect
+- **Legend → top-right, toolbar → top-left**: repositioned overlays
+- **Untranslatable status bug fixed**: `parser.py` was checking `"# SAS-UNTRANSLATABLE" in block.raw_sas` (always false); fixed to `block.block_type == BlockType.UNTRANSLATABLE`
+- **file_count fixed**: was counting only non-sentinel keys (`.sas` only); now `len(j.files or {})` counts all accepted files (SAS + CSV/log/xlsx reference sentinels)
+- **Jobs table row disabled for non-done**: running/queued/failed rows are `cursor-default opacity-70`, non-clickable; only `done` rows navigate to detail page
+- **Sonner toast for all errors**: shadcn sonner component installed; `<Toaster>` added to App root; all `onError` callbacks and failed-job status wired to `toast.error()`; removed all inline red text error displays
+- **Human-friendly error copy**: generic fallbacks rewritten ("Your changes could not be saved. Please try again."), raw technical strings never shown to user; `extractApiError` continues to pass through clean FastAPI messages verbatim
+
+### Decisions
+
+- Controlled-mode `setNodes` is the only correct setter for position restores in React Flow — `rfSetNodes` (instance) gets clobbered by the nodes prop on re-render
+- `file_count` now counts all keys including reference sentinels (they are user-uploaded files)
+- Sonner hardcoded to `theme="light"` — no `next-themes` in this Vite SPA
+
+### Open Questions
+
+- None
+
+### Next Session — Start Here
+
+1. Apply pending Alembic migrations if not yet done: `docker compose exec backend uv run alembic upgrade head`
+2. S-BE5: `PUT /jobs/{id}/python_code` re-reconciliation + `skip_llm` worker branch
+3. S-BE6: `POST /jobs/{id}/refine` + `parent_job_id`
+4. S-FE7/8/9: GlobalLineagePage, DocsPage, ExplainPage stub
+
+### Files Touched
+
+- `src/frontend/src/components/LineageGraph.tsx` (hover-to-focus, undo/redo/reset, smooth opacity, layout repositioning)
+- `src/frontend/src/components/ui/sonner.tsx` (new — fixed generated file, no next-themes)
+- `src/frontend/src/components/JobResult.tsx` (human-friendly error copy)
+- `src/frontend/src/pages/UploadPage.tsx` (useEffect toast for failed job, mutation onError, remove inline errors)
+- `src/frontend/src/pages/JobDetailPage.tsx` (mutation onError toasts, lineage error toast, remove inline errors)
+- `src/frontend/src/pages/JobsPage.tsx` (non-done rows non-clickable)
+- `src/frontend/src/App.tsx` (Toaster added)
+- `src/worker/engine/parser.py` (untranslatable status bug fix)
+- `src/backend/api/routes/jobs.py` (file_count counts all keys)
+
+---
+
+## 2026-04-19 — UI polish: mandatory name, merged editor, lineage DAG upgrade
+
+**Duration:** ~3h | **Focus:** JobDetailPage UX, LineageGraph dagre rewrite, UploadPage, JobsPage, backend fixes
+
+### Done
+
+- **Mandatory migration name**: `submitDisabled` blocks on empty name; `(optional)` label removed; `required` attr on input
+- **cursor-pointer audit**: added throughout UploadPage, JobDetailPage, tabs.tsx, AppSidebar
+- **Merged Editor tab**: Comparison + Edit collapsed into one "Editor" tab — SAS read-only Monaco left, editable Python Monaco right, save/refine below
+- **JobDetailPage header**: shows `job.name` as primary label, short ID as mono sub-line; `name` added to `JobStatusResponse` schema and `GET /jobs/{id}`
+- **JobsPage**: column renamed "Migration" → "Name"; cell shows name only; `file_count` renders via `!= null` guard
+- **UploadPage result card**: accepted/rejected file lists removed (cleaner post-submit UX)
+- **Zip filter**: `._` macOS resource fork files and `__MACOSX/` entries silently skipped in `_unpack_zip`
+- **LineageGraph dagre rewrite**: `dagre` + `@types/dagre` installed; LR layout (nodesep 40, ranksep 80); `useNodesState`/`useEdgesState` with `useEffect` seeding; click-to-focus dims unrelated nodes (ancestor+descendant closure); legend overlay (semi-transparent + backdrop blur); MiniMap only >15 nodes; `Position` enum for sourcePosition/targetPosition; no TS errors
+- **Makefile fix**: `frontend-lint` and `frontend-build` targets no longer pass `NPM_FLAGS` to ESLint/Vite CLIs (ESLint v9 flat config and Vite reject `--silent`)
+- **vite.config.ts**: `chunkSizeWarningLimit: 1000` to suppress Monaco chunk size warning
+
+### Decisions
+
+- Editor tab merges comparison + edit: single tab is cleaner — users naturally want to see SAS while editing Python
+- `._` files skipped silently (not rejected) — macOS OS artefacts, not user files
+- `file_count` sentinel pattern: count keys not matching `__…__` (SAS files only); legacy jobs show "—" gracefully
+
+### Open Questions
+
+- DB migrations (004/005 for name, lineage, doc columns) not yet applied to running Postgres — API returns no `name`/`file_count` for existing jobs; needs `alembic upgrade head` on next deploy
+
+### Next Session — Start Here
+
+1. Apply pending Alembic migrations: `docker compose exec backend uv run alembic upgrade head`
+2. Implement S-BE5 (`PUT /jobs/{id}/python_code` re-reconciliation + `skip_llm`)
+3. Implement S-BE6 (`POST /jobs/{id}/refine` + `parent_job_id`)
+4. Implement S-FE7 `GlobalLineagePage`, S-FE8 `DocsPage`, S-FE9 `ExplainPage` stub
+
+### Files Touched
+
+- `src/frontend/src/pages/UploadPage.tsx` (mandatory name, removed accepted/rejected lists)
+- `src/frontend/src/pages/JobDetailPage.tsx` (merged Editor tab, name in header)
+- `src/frontend/src/pages/JobsPage.tsx` (column rename, name cell, file_count guard)
+- `src/frontend/src/components/LineageGraph.tsx` (full dagre rewrite)
+- `src/frontend/src/components/ui/tabs.tsx` (cursor-pointer)
+- `src/frontend/src/api/types.ts` (name on JobStatus)
+- `src/frontend/src/api/jobs.ts` (updateJobPythonCode, refineJob, downloadJob stubs)
+- `src/backend/api/schemas.py` (name on JobStatusResponse)
+- `src/backend/api/routes/jobs.py` (name in get_job, file_count sentinel fix)
+- `src/backend/api/routes/migrate.py` (._/MACOSX zip filter)
+- `src/frontend/package.json` + `package-lock.json` (dagre, @types/dagre)
+- `src/frontend/vite.config.ts` (chunkSizeWarningLimit)
+- `Makefile` (frontend-lint/build no longer pass NPM_FLAGS to CLI)
+
+---
+
+## 2026-04-18 — JobDetailPage + UploadPage workspace + name/file_count + markdown doc
+
+**Duration:** ~3h | **Focus:** S-FE1–4, S-FE6, S-BE3, S-BE4, upload UX fixes, name field
+
+### Done
+
+- **S-FE1–4**: `MonacoDiffViewer`, `MonacoEditor`, `TiptapEditor`, `LineageGraph` components created; npm packages installed (`@monaco-editor/react`, `@tiptap/*`, `lowlight`, `reactflow`, `jszip`)
+- **S-FE6**: `JobDetailPage` — 4 tabs (Comparison/Edit/Report/Lineage), live status polling, Monaco editors, `marked`-rendered doc summary; hand-rolled `Tabs` component (replaced broken shadcn `base-nova` tabs with circular import)
+- **S-BE3**: `GET /jobs/{id}/lineage` endpoint + `extract_lineage()` wired into worker; migration 004 adds `lineage JSON` column
+- **S-BE4**: `GET /jobs/{id}/doc` endpoint + `DocGenerator` wired into worker post-reconciliation; migration 004 adds `doc TEXT` column
+- **UploadPage persistent workspace**: state lifted to `UploadStateProvider`; survives navigation; zip tree client-side parsed (jszip), `__MACOSX` filtered, per-file/folder remove; "Start another" vs "Accept & clear" actions; "Open full details" only when done
+- **Migration name**: text input on upload form; stored on `Job` (migration 005); shown in result card and jobs table
+- **JobsPage**: "Migration" column shows name + mono ID sub-line; "Files" column shows `file_count`
+- **Markdown summary**: LLM doc rendered via `marked` + Tailwind `prose` instead of Tiptap
+- 110 tests green, 90.23% coverage
+
+### Decisions
+
+- UploadPage state lifted to context so navigation doesn't reset it
+- Tabs hand-rolled (shadcn base-nova depends on uninstalled `@base-ui-components/react`)
+- Markdown doc via `marked` + prose (not Tiptap) — simpler, no editor overhead for read-only
+- `file_count` derived at query time, not stored
+- `name` optional form field on `POST /migrate`, stored as nullable TEXT
+
+### Open Questions
+
+- none
+
+### Next Session — Start Here
+
+1. Implement S-BE5 (`PUT /jobs/{id}/python_code` re-reconciliation pathway + migration 003)
+2. Implement S-BE6 (`POST /jobs/{id}/refine` + `parent_job_id` + migration 003)
+3. Implement S-FE7 `GlobalLineagePage`, S-FE8 `DocsPage`, S-FE9 `ExplainPage`
+4. See `docs/plans/F-UI-postmvp.md` + `docs/plans/F-backend-postmvp.md`
+
+### Files Touched
+
+- `src/frontend/src/components/MonacoDiffViewer.tsx` (new)
+- `src/frontend/src/components/MonacoEditor.tsx` (new)
+- `src/frontend/src/components/TiptapEditor.tsx` (new)
+- `src/frontend/src/components/LineageGraph.tsx` (new)
+- `src/frontend/src/components/ui/tabs.tsx` (replaced broken shadcn tabs)
+- `src/frontend/src/pages/JobDetailPage.tsx` (full impl)
+- `src/frontend/src/pages/UploadPage.tsx` (persistent workspace, name input)
+- `src/frontend/src/pages/JobsPage.tsx` (name column, file_count column)
+- `src/frontend/src/context/UploadStateContext.tsx` (new — lifted state)
+- `src/frontend/src/api/types.ts`, `jobs.ts`, `migrate.ts` (extended)
+- `src/frontend/package.json` (new packages)
+- `src/backend/db/models.py` (name column)
+- `src/backend/api/schemas.py` (name, file_count on JobSummary)
+- `src/backend/api/routes/jobs.py` (lineage + doc + file_count endpoints)
+- `src/backend/api/routes/migrate.py` (name form field)
+- `src/worker/engine/doc_generator.py` (new)
+- `src/worker/main.py` (lineage + doc wired)
+- `alembic/versions/004_add_lineage_doc_columns.py` (new)
+- `alembic/versions/005_add_job_name.py` (new)
+- `tests/test_lineage_endpoint.py`, `test_doc_endpoint.py`, `test_doc_generator.py` (new)
+- `tests/test_worker_main.py` (extended)
+
+---
+
+## 2026-04-18 — UI polish: JobDetailPage status, sidebar tooltips, cursor, icon stability
+
+**Duration:** ~30min | **Focus:** UI bug fixes on sidebar and job detail page
+
+### Done
+
+- `JobDetailPage`: status badge now fetches real job status via `useQuery` with live polling (queued/running → 3s refetch); uses same black pill style as jobs table
+- `AppSidebar` tooltips: replaced native `title` (slow browser delay) with instant CSS opacity tooltip (`duration-100`) appearing to the right of the sidebar
+- `AppSidebar` icons: fixed icon drift on expand/collapse — icons now pinned at fixed `left` offset (`ICON_COL=56px`); labels fade via `width`+`opacity`+`margin` transition instead of `max-width` (smoother)
+- `AppSidebar` overflow: removed `overflow-hidden` from `<aside>` (was clipping tooltips); moved clip to individual row elements
+- `cursor-pointer` added to `Button` base class and sidebar nav/toggle links
+
+### Decisions
+
+- none
+
+### Open Questions
+
+- none
+
+### Next Session — Start Here
+
+1. Install npm packages: `@monaco-editor/react`, `@tiptap/react`, `@tiptap/starter-kit`, `@tiptap/extension-code-block-lowlight`, `lowlight`, `reactflow`
+2. Implement S-FE1 (`MonacoDiffViewer`), S-FE2 (`MonacoEditor`), S-FE3 (`TiptapEditor`), S-FE4 (`LineageGraph`)
+3. Wire into S-FE6 `JobDetailPage` (replace stub tabs with real data + editor components)
+4. In parallel: S-BE3 (lineage + migration 002) + S-BE4 (doc generation)
+5. See `docs/plans/F-UI-postmvp.md` + `docs/plans/F-backend-postmvp.md`
+
+### Files Touched
+
+- `src/frontend/src/pages/JobDetailPage.tsx` (real status fetch)
+- `src/frontend/src/components/AppSidebar.tsx` (tooltip, icon stability, smooth text transition)
+- `src/frontend/src/components/ui/button.tsx` (cursor-pointer)
+
+---
+
+## 2026-04-18 — Post-MVP nav scaffold, backend sources/zip endpoints, unified upload UX
+
+**Duration:** ~2h | **Focus:** S-BE1, S-BE2, S-FE5/10/11/12/13 implementation + bugfixes
+
+### Done
+
+- Branched `feat/F-UI-postmvp` off latest main (rebased after merge of F-UI PR)
+- **S-BE1:** `GET /jobs/{id}/sources` — returns job source files, strips `__sentinel__` keys; 6 new tests
+- **S-BE2:** Zip bulk upload on `POST /migrate` — `_unpack_zip` helper, 500MB limit, `FileRejection` schema, `accepted`/`rejected` in `MigrateResponse`; tests for all edge cases
+- **Bugfix:** `sas_files` changed to `File(default=[])` so FastAPI accepts requests with only `zip_file` (was returning 422 missing field)
+- **S-FE5:** `AppSidebar` — collapsible left sidebar with localStorage persistence, 5 nav items, lucide icons
+- **S-FE10:** `App.tsx` — replaced top nav with sidebar layout, lazy-loaded routes for all new pages
+- **S-FE11:** `JobsPage` — rows navigate to `/jobs/:id`, removed inline expansion
+- **S-FE13:** API client extended — new types + `getJobSources`, `getJobLineage`, `getJobDoc`, `updateJobPythonCode`, `refineJob`; `submitMigration` supports zip
+- **S-FE12:** `UploadPage` — unified drop-zone accepting all 7 file types, file-type badges, manifest view post-submit; removed conflict check (zip + individual files allowed together)
+- Stub pages created: `JobDetailPage` (4-tab layout), `GlobalLineagePage`, `DocsPage`, `ExplainPage`
+- 93 tests passing, 91% coverage
+
+### Decisions
+
+- `UploadPage` accepts `.sas`, `.sas7bdat`, `.zip`, `.log`, `.csv`, `.xls`, `.xlsx` in one input — no mode toggle, no conflict restriction between zip and individual files
+- Supporting files (`.log/.csv/.xls/.xlsx`) without a zip are accepted by the UI but will be ignored by backend individual-file path (only processed inside zips); frontend shows "Supporting file" amber badge
+
+### Open Questions
+
+- none
+
+### Next Session — Start Here
+
+1. Install npm packages: `@monaco-editor/react`, `@tiptap/react`, `@tiptap/starter-kit`, `@tiptap/extension-code-block-lowlight`, `lowlight`, `reactflow`
+2. Implement S-FE1 (`MonacoDiffViewer`), S-FE2 (`MonacoEditor`), S-FE3 (`TiptapEditor`), S-FE4 (`LineageGraph`) — editor component layer
+3. Wire into S-FE6 `JobDetailPage` (replace stubs with real tabs + data fetching)
+4. In parallel: S-BE3 (lineage extraction + migration 002) + S-BE4 (doc generation)
+5. All work in `docs/plans/F-UI-postmvp.md` + `docs/plans/F-backend-postmvp.md`
+
+### Files Touched
+
+- `src/backend/api/schemas.py` (FileRejection, MigrateResponse extended, JobSourcesResponse)
+- `src/backend/api/routes/jobs.py` (GET /sources)
+- `src/backend/api/routes/migrate.py` (zip support, File(default=[]) fix)
+- `src/backend/core/config.py` (max_zip_bytes)
+- `tests/test_sources_endpoint.py` (new)
+- `tests/test_zip_upload.py` (new)
+- `src/frontend/src/api/types.ts` (new types)
+- `src/frontend/src/api/jobs.ts` (new functions)
+- `src/frontend/src/api/migrate.ts` (zip support)
+- `src/frontend/src/components/AppSidebar.tsx` (new)
+- `src/frontend/src/App.tsx` (sidebar layout, new routes)
+- `src/frontend/src/pages/JobsPage.tsx` (navigate to /jobs/:id)
+- `src/frontend/src/pages/UploadPage.tsx` (unified drop-zone)
+- `src/frontend/src/pages/JobDetailPage.tsx` (stub, new)
+- `src/frontend/src/pages/GlobalLineagePage.tsx` (stub, new)
+- `src/frontend/src/pages/DocsPage.tsx` (stub, new)
+- `src/frontend/src/pages/ExplainPage.tsx` (stub, new)
+- `docs/plans/F-UI-postmvp.md` (subtasks marked done)
+- `docs/plans/F-backend-postmvp.md` (subtasks marked done)
+- `journal/BACKLOG.md` (items checked off)
+
+---
+
 ## 2026-04-18 — Post-MVP UI + backend planning; zone-based architecture designed
 
 **Duration:** ~1.5h | **Focus:** Planning session — no code written
@@ -516,6 +772,7 @@ Most recent session on top. Each entry should answer:
 ---
 
 ## 2026-04-17 — Claude Setup Hardening & Dev Scaffolding
+
 - What decisions did we make?
 - What's blocked or open?
 - What's the very next thing to do?
@@ -628,4 +885,7 @@ Most recent session on top. Each entry should answer:
 - journal/\* (created)
 - docs/\* (created)
 - specs/mvp-scope.md (created)
+
+```
+
 ```

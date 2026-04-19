@@ -135,12 +135,43 @@ def _is_transient_http_error(exc_name: str, exc_str: str) -> bool:
 # ── Public API ────────────────────────────────────────────────────────────────
 
 
+def _make_text_agent() -> "Agent[str]":
+    """Instantiate a plain-text Pydantic AI agent for free-form generation.
+
+    Uses the same model/provider selection logic as ``_make_agent`` but
+    returns a ``str`` output instead of a structured Pydantic model.
+
+    Returns:
+        A Pydantic AI Agent configured to return plain string outputs.
+    """
+    if worker_settings.azure_openai_endpoint:
+        provider = AzureProvider(
+            azure_endpoint=worker_settings.azure_openai_endpoint,
+            api_key=worker_settings.azure_openai_api_key,
+            api_version=worker_settings.openai_api_version,
+        )
+        raw = worker_settings.llm_model
+        deployment = raw.split(":", 1)[-1] if ":" in raw else raw
+        model_obj: OpenAIChatModel | KnownModelName = OpenAIChatModel(
+            model_name=deployment,
+            provider=provider,
+        )
+    else:
+        model_obj = worker_settings.llm_model  # type: ignore[assignment]
+
+    return Agent(  # type: ignore[arg-type, return-value]
+        model=model_obj,
+        output_type=str,
+    )
+
+
 class LLMClient:
     """Translates individual SAS blocks to Python using a hosted LLM."""
 
     def __init__(self) -> None:
-        """Instantiate the Pydantic AI agent from the configured LLM_MODEL."""
+        """Instantiate the Pydantic AI agents from the configured LLM_MODEL."""
         self._agent: Agent[GeneratedBlock] = _make_agent()
+        self._text_agent: Agent[str] = _make_text_agent()
 
     def translate(self, block: SASBlock) -> GeneratedBlock:
         """Translate *block* into Python via the configured LLM.
@@ -210,6 +241,29 @@ class LLMClient:
             is_transient=True,
             cause=last_exc,
         )
+
+    async def generate_text(self, prompt: str) -> str:
+        """Run a free-form text generation request through the LLM.
+
+        Wraps the synchronous pydantic-ai ``run_sync`` call in
+        ``asyncio.to_thread`` so it is safe to await from async code.
+
+        Args:
+            prompt: The user-turn prompt to send to the LLM.
+
+        Returns:
+            The generated text string from the LLM.
+
+        Raises:
+            LLMTranslationError: On permanent or transient LLM failures.
+        """
+        import asyncio
+
+        def _run() -> str:
+            result = self._text_agent.run_sync(prompt)
+            return cast(str, result.output)
+
+        return await asyncio.to_thread(_run)
 
     @staticmethod
     def _build_prompt(block: SASBlock) -> str:

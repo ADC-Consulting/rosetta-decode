@@ -1,10 +1,8 @@
-import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { JobStatusValue, JobSummary } from "@/api/types";
 import { listJobs, downloadJob } from "@/api/jobs";
 import { Button } from "@/components/ui/button";
-import JobResult from "@/components/JobResult";
 import { cn } from "@/lib/utils";
 
 const POLLING_STATUSES: JobStatusValue[] = ["queued", "running"];
@@ -16,9 +14,8 @@ const STATUS_LABEL: Record<JobStatusValue, string> = {
   failed: "Failed",
 };
 
-export default function JobsPage() {
+export default function JobsPage(): React.ReactElement {
   const navigate = useNavigate();
-  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
 
   const { data: jobs, isLoading } = useQuery<JobSummary[], Error>({
     queryKey: ["jobs"],
@@ -30,15 +27,11 @@ export default function JobsPage() {
     },
   });
 
-  function handleRowClick(jobId: string) {
-    setSelectedJobId((prev) => (prev === jobId ? null : jobId));
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-foreground">Migrations</h1>
-        <Button variant="outline" onClick={() => navigate("/")}>
+        <Button variant="outline" onClick={() => navigate("/upload")}>
           New migration
         </Button>
       </div>
@@ -65,10 +58,13 @@ export default function JobsPage() {
             <thead>
               <tr className="border-b border-border bg-muted text-muted-foreground text-left">
                 <th scope="col" className="px-4 py-2.5 font-medium">
-                  Job ID
+                  Name
                 </th>
                 <th scope="col" className="px-4 py-2.5 font-medium">
                   Status
+                </th>
+                <th scope="col" className="px-4 py-2.5 font-medium">
+                  Files
                 </th>
                 <th scope="col" className="px-4 py-2.5 font-medium">
                   Created
@@ -79,28 +75,34 @@ export default function JobsPage() {
               </tr>
             </thead>
             <tbody>
-              {jobs.map((job) => (
+              {jobs.map((job) => {
+                const isClickable = job.status === "done";
+                return (
                 <tr
                   key={job.job_id}
-                  onClick={() => handleRowClick(job.job_id)}
-                  role="button"
-                  tabIndex={0}
-                  aria-pressed={selectedJobId === job.job_id}
-                  aria-label={`Job ${job.job_id.slice(0, 8)}, status ${STATUS_LABEL[job.status]}`}
+                  onClick={() => { if (isClickable) navigate(`/jobs/${job.job_id}`); }}
+                  role={isClickable ? "button" : undefined}
+                  tabIndex={isClickable ? 0 : undefined}
+                  aria-label={`${job.name ?? job.job_id.slice(0, 8)}, status ${STATUS_LABEL[job.status]}`}
+                  aria-disabled={!isClickable}
                   onKeyDown={(e) => {
+                    if (!isClickable) return;
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
-                      handleRowClick(job.job_id);
+                      navigate(`/jobs/${job.job_id}`);
                     }
                   }}
                   className={cn(
-                    "border-b border-border last:border-0 cursor-pointer",
-                    "hover:bg-muted/50 transition-colors",
-                    selectedJobId === job.job_id && "bg-muted/70",
+                    "border-b border-border last:border-0 transition-colors",
+                    isClickable ? "cursor-pointer hover:bg-muted/50" : "cursor-default opacity-70",
                   )}
                 >
-                  <td className="px-4 py-3 font-mono text-foreground">
-                    {job.job_id.slice(0, 8)}…
+                  <td className="px-4 py-3 text-foreground font-medium">
+                    {job.name ?? (
+                      <span className="font-mono text-muted-foreground">
+                        {job.job_id.slice(0, 8)}…
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <style>{`@keyframes shimmer { from { background-position: 200% center; } to { background-position: -200% center; } }`}</style>
@@ -124,6 +126,7 @@ export default function JobsPage() {
                       )}
                     </span>
                   </td>
+                  <td className="px-4 py-3 text-muted-foreground">{job.file_count != null ? job.file_count : "—"}</td>
                   <td className="px-4 py-3 text-muted-foreground">
                     {new Date(job.created_at).toLocaleString()}
                   </td>
@@ -143,22 +146,10 @@ export default function JobsPage() {
                     )}
                   </td>
                 </tr>
-              ))}
+              )})}
             </tbody>
           </table>
         </div>
-      )}
-
-      {selectedJobId !== null && (
-        <section aria-label="Job details">
-          <h2 className="text-base font-medium text-foreground mb-3">
-            Job details —{" "}
-            <span className="font-mono text-muted-foreground">
-              {selectedJobId.slice(0, 8)}…
-            </span>
-          </h2>
-          <JobResult jobId={selectedJobId} />
-        </section>
       )}
     </div>
   );

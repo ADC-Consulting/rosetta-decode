@@ -18,13 +18,13 @@ Add the backend endpoints, DB columns, and worker steps required by the post-MVP
 
 ### No DB migration required
 
-- [ ] S-BE1 — `GET /jobs/{id}/sources` *(no migration)*
+- [x] S-BE1 — `GET /jobs/{id}/sources` *(no migration)*
   - File: `src/backend/api/routes/jobs.py`, `src/backend/api/schemas.py`
   - New schema: `JobSourcesResponse(job_id: UUID, sources: dict[str, str])`
   - Reads `job.files`, excludes keys starting with `__` (internal sentinels)
   - Returns 404 if job not found, 200 with sources dict otherwise
 
-- [ ] S-BE2 — Zip bulk upload *(no migration)*
+- [x] S-BE2 — Zip bulk upload *(no migration)*
   - File: `src/backend/api/routes/migrate.py`, `src/backend/api/schemas.py`, `src/backend/core/config.py`
   - Add `zip_file: UploadFile | None = None` to `POST /migrate`; 400 if both `sas_files` and `zip_file` are supplied
   - Helper: `_unpack_zip(raw: bytes, upload_dir: str, job_id: str) -> ZipManifest`
@@ -42,7 +42,7 @@ Add the backend endpoints, DB columns, and worker steps required by the post-MVP
 Migration file: `alembic/versions/002_add_lineage_doc_columns.py`
 Adds two nullable columns to `jobs` table: `lineage JSON`, `doc TEXT`
 
-- [ ] S-BE3 — Lineage extraction + endpoint
+- [x] S-BE3 — Lineage extraction + endpoint
   - Worker file: `src/worker/engine/parser.py`
     - After `SASParser().parse(files)`, serialize `nx.DiGraph` into `JobLineageResponse` schema
     - Each `SASBlock` becomes a node: `id = f"{block.source_file}::{block.start_line}"`
@@ -53,7 +53,7 @@ Adds two nullable columns to `jobs` table: `lineage JSON`, `doc TEXT`
     - New schemas: `LineageNode`, `LineageEdge`, `JobLineageResponse`
     - `GET /jobs/{id}/lineage` → `JobLineageResponse`; 404 if not found, 202 if `job.lineage is None`
 
-- [ ] S-BE4 — Plain-language doc generation + endpoint
+- [x] S-BE4 — Plain-language doc generation + endpoint
   - New file: `src/worker/engine/doc_generator.py`
     - `DocGenerator` class with `async def generate(job: Job, llm_client: LLMClient) -> str`
     - Prompt: SAS source + reconciliation report → LLM → structured Markdown summary

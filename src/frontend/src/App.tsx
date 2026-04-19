@@ -1,35 +1,40 @@
-import { Link, Routes, Route } from 'react-router-dom'
-import UploadPage from './pages/UploadPage'
-import JobsPage from './pages/JobsPage'
+import { lazy, Suspense } from "react";
+import { Navigate, Route, Routes } from "react-router-dom";
+import AppSidebar from "./components/AppSidebar";
+import { Toaster } from "./components/ui/sonner";
+import { UploadStateProvider } from "./context/UploadStateContext";
+import JobsPage from "./pages/JobsPage";
+import UploadPage from "./pages/UploadPage";
 
-function App() {
+const JobDetailPage = lazy(() => import("./pages/JobDetailPage"));
+const GlobalLineagePage = lazy(() => import("./pages/GlobalLineagePage"));
+const DocsPage = lazy(() => import("./pages/DocsPage"));
+const ExplainPage = lazy(() => import("./pages/ExplainPage"));
+
+function App(): React.ReactElement {
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <header className="border-b border-border">
-        <nav className="max-w-5xl mx-auto px-4 h-14 flex items-center gap-6">
-          <span className="font-semibold text-foreground">Rosetta Decode</span>
-          <Link
-            to="/"
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Upload
-          </Link>
-          <Link
-            to="/jobs"
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Jobs
-          </Link>
-        </nav>
-      </header>
-      <main className="max-w-5xl mx-auto px-4 py-8">
-        <Routes>
-          <Route path="/" element={<UploadPage />} />
-          <Route path="/jobs" element={<JobsPage />} />
-        </Routes>
+    <UploadStateProvider>
+    <div className="flex h-screen overflow-hidden bg-background text-foreground">
+      <AppSidebar />
+      <main className="flex-1 overflow-y-auto">
+        <div className="max-w-5xl mx-auto px-6 py-8">
+          <Suspense fallback={<div className="text-sm text-muted-foreground">Loading…</div>}>
+            <Routes>
+              <Route path="/" element={<Navigate to="/jobs" replace />} />
+              <Route path="/upload" element={<UploadPage />} />
+              <Route path="/jobs" element={<JobsPage />} />
+              <Route path="/jobs/:id" element={<JobDetailPage />} />
+              <Route path="/lineage" element={<GlobalLineagePage />} />
+              <Route path="/docs" element={<DocsPage />} />
+              <Route path="/explain" element={<ExplainPage />} />
+            </Routes>
+          </Suspense>
+        </div>
       </main>
     </div>
-  )
+    <Toaster position="top-right" richColors closeButton />
+    </UploadStateProvider>
+  );
 }
 
-export default App
+export default App;
