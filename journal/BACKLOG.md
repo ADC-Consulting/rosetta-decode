@@ -34,6 +34,21 @@
 
 ## Phase 2 — Core Backend Extension (post-MVP)
 
+**F2 — Agentic Workflow** (`docs/plans/F2-agentic-workflow.md`)
+- [ ] F2 S00: TensorZero infra — config + docker-compose
+- [ ] F2 S01: `JobContext` model
+- [ ] F2 S02: `MacroExpander` (deterministic, non-LLM)
+- [ ] F2 S03: `AnalysisAgent`
+- [ ] F2 S04: `TranslationRouter` + `StubGenerator`
+- [ ] F2 S05: `DataStepAgent`
+- [ ] F2 S06: `ProcAgent`
+- [ ] F2 S07: `MacroResolverAgent` (gated LLM fallback)
+- [ ] F2 S08: `FailureInterpreterAgent` + `RefinementLoop`
+- [ ] F2 S09: `DocumentationAgent` upgrade
+- [ ] F2 S10: Wire `JobOrchestrator` — replace `_process_job`
+- [ ] F2 S11: Worker config + env wiring
+- [ ] F2 S12: Reconciliation tests for new pipeline
+
 **F1 extensions** (`docs/plans/F1-ext-proc-sort-macro.md`)
 - [x] F1-ext: PROC SORT parser + translation → see `docs/plans/F1-ext-proc-sort-macro.md`
 - [x] F1-ext: Macro variable (`%LET`) resolution → Python constants → see `docs/plans/F1-ext-proc-sort-macro.md`

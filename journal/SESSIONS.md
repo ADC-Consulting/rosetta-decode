@@ -6,6 +6,51 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-04-19 — F2 agentic workflow planning + TensorZero design
+
+**Duration:** ~2h | **Focus:** Architecture design, no code
+
+### Done
+
+- Designed full agentic pipeline to replace the stateless single-prompt LLM loop
+- Defined 6 LLM agents: `AnalysisAgent`, `MacroResolverAgent`, `DataStepAgent`, `ProcAgent`, `FailureInterpreterAgent`, `DocumentationAgent`
+- Defined non-LLM components: `MacroExpander`, `TranslationRouter`, `StubGenerator`, `RefinementLoop`
+- Established deterministic routing rule: `match block.block_type → agent`, never an LLM decision
+- Designed `JobContext` as shared typed object flowing through all agents (windowed for translation agents)
+- Integrated TensorZero gateway as 5th Docker service for cost/rate control, replacing in-process counters
+- Chose Postgres-only TensorZero backend (no ClickHouse needed for rate limiting)
+- Per-job circuit breaker: 40 LLM calls/job via TensorZero `model_inferences_per_hour` rule scoped by `job_id` tag
+- Defined `StubGenerator` for explicit untranslatable stubs with `human_review_required` flag
+- Wrote formal plan `docs/plans/F2-agentic-workflow.md` with 12 subtasks across 4 phases
+- Updated `journal/BACKLOG.md` with all F2 subtasks
+
+### Decisions
+
+- **Agentic pipeline replaces single LLM loop:** 6 specialist LLM agents + deterministic non-LLM components replace the generic `LLMClient.translate()` loop; improves quality via shared context and specialization · revisit never
+- **TensorZero gateway for cost controls:** budget enforcement externalized to TensorZero container; no in-process counters in worker; circuit breaker = TensorZero 429 caught by worker · revisit if TensorZero adds overhead
+- **Postgres-only TensorZero backend:** ClickHouse deferred; Postgres sufficient for rate limiting and basic cost tracking in MVP · revisit when full observability UI is needed
+- **TranslationRouter is deterministic:** routing is `match block.block_type`, never an LLM call; prevents latency/cost/failure-mode creep · revisit never
+- **StubGenerator makes failure explicit:** untranslatable blocks produce `# SAS-UNTRANSLATABLE + # TODO` stub with `human_review_required=True`; silent failures removed · revisit never
+- **JobContext windowed for translation agents:** specialists receive only their block + relevant macro/dependency slice; `AnalysisAgent` and `DocumentationAgent` get full source · revisit if context window costs change significantly
+
+### Open Questions
+
+- none
+
+### Next Session — Start Here
+
+1. Implement F2 Phase A: `git checkout -b feat/F2-agentic-workflow` then S00 (TensorZero infra), S01 (`JobContext` model), S02 (`MacroExpander`), S03 (`AnalysisAgent`)
+2. Reference `docs/plans/F2-agentic-workflow.md` for exact file paths and acceptance criteria
+
+### Files Touched
+
+- `docs/plans/F2-agentic-workflow.md` (new — full feature plan)
+- `journal/BACKLOG.md` (F2 subtasks added under Phase 2)
+- `journal/SESSIONS.md` (this entry)
+- `journal/DECISIONS.md` (architectural decisions appended)
+
+---
+
 ## 2026-04-19 — LineageGraph UX overhaul, sonner toasts, file_count fix, undo/redo
 
 **Duration:** ~3h | **Focus:** LineageGraph interactivity, error UX, backend bug fixes
