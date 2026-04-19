@@ -1,7 +1,10 @@
 services:
   postgres:
-    image: postgres:16
+    build:
+      context: ./config/postgres
+      dockerfile: Dockerfile
     restart: unless-stopped
+    command: postgres -c shared_preload_libraries=pg_cron -c cron.database_name=rosetta
     environment:
       POSTGRES_DB: rosetta
       POSTGRES_USER: rosetta
@@ -10,6 +13,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./config/postgres:/docker-entrypoint-initdb.d:ro
     networks:
       - rosetta-net
     healthcheck:
@@ -34,6 +38,31 @@ services:
     networks:
       - rosetta-net
 
+  tensorzero:
+    image: tensorzero/gateway:latest
+    container_name: rosetta-tensorzero
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      TENSORZERO_POSTGRES_URL: postgres://rosetta:rosetta@postgres:5432/rosetta
+      TENSORZERO_GATEWAY_BIND_ADDRESS: 0.0.0.0:3000
+      AZURE_AI_FOUNDRY_API_KEY: ${AZURE_AI_FOUNDRY_API_KEY:-}
+    volumes:
+      - ./config:/app/config:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-lc"]
+    command:
+      - |
+        set -euo pipefail
+        cp /app/config/tensorzero.toml /tmp/tensorzero.toml
+        gateway --config-file /tmp/tensorzero.toml --run-postgres-migrations
+        exec gateway --config-file /tmp/tensorzero.toml --log-format json
+    networks:
+      - rosetta-net
+
   worker:
     build:
       context: .
@@ -45,6 +74,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      tensorzero:
+        condition: service_started
     networks:
       - rosetta-net
 
@@ -55,7 +86,7 @@ services:
     ports:
       - "5173:5173"
     environment:
-      - VITE_API_URL=http://localhost:8000
+      - VITE_API_URL=${VITE_API_URL:-http://localhost:8000}
     volumes:
       - ./src/frontend:/app
       - /app/node_modules
