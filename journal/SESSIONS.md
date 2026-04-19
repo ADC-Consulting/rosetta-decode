@@ -6,6 +6,39 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-04-19 — UI polish: TipTap sizing, report layout, zip folder tree, lineage node styling
+
+**Duration:** ~1h | **Focus:** Quick frontend polish + backend zip path fix
+
+### Done
+
+- **TipTap text size**: changed `prose-sm` → `prose-xs` + explicit `text-sm` on `EditorContent`; content no longer oversized
+- **Report tab side-by-side**: `ReportTab` changed from vertical `space-y-6` stack to `flex gap-4` row — Reconciliation and Migration summary sit side by side with individual `overflow-y-auto` scroll areas
+- **Backend zip path preservation**: `migrate.py` was calling `os.path.basename(info.filename)` stripping all directory structure; now stores full normalized path (`folder/subfolder/file.sas`) as the dict key — file tree will reflect folder hierarchy for new uploads
+- **LineageGraph reset button**: replaced `⟳` unicode symbol with `<RotateCcw size={12} />` lucide icon
+- **LineageGraph node background**: changed from dark `#3c3c3c` / `#1e1e1e` to `rgba(245,245,245,0.92)` — matches Legend panel; text updated to dark `#111` / `#333`
+
+### Decisions
+
+- none (all cosmetic / minor fixes)
+
+### Open Questions
+
+- Old jobs in DB have flat file keys (basename only) — folder tree only works for newly uploaded zips
+
+### Next Session — Start Here
+
+1. Check `docs/plans/` for any in-progress F2 plan; run `make test` to verify suite green; continue with next unstarted backlog item
+
+### Files Touched
+
+- `src/frontend/src/components/TiptapEditor.tsx`
+- `src/frontend/src/pages/JobDetailPage.tsx`
+- `src/backend/api/routes/migrate.py`
+- `src/frontend/src/components/LineageGraph.tsx`
+
+---
+
 ## 2026-04-19 — LineageGraph UX overhaul, sonner toasts, file_count fix, undo/redo
 
 **Duration:** ~3h | **Focus:** LineageGraph interactivity, error UX, backend bug fixes

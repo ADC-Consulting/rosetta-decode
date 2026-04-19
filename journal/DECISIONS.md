@@ -6,6 +6,12 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-04-19 (session 16 — UI polish, zip folder tree, lineage node styling)
+
+- **Zip upload stores full relative path as key:** `os.path.basename` was stripping directory structure; full path required for VSCode-style file tree; path traversal guard updated to check `".." in path.split("/")` instead of basename equality · revisit never
+
+---
+
 ## 2026-04-19 (session 15 — LineageGraph UX, toasts, file_count, undo/redo)
 
 - **LineageGraph hover-to-focus replaces click-to-focus:** hover is more discoverable and natural for a graph; 80ms debounce prevents flicker when crossing node boundaries · revisit never
