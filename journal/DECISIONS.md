@@ -17,19 +17,6 @@ Format: date · decision · rationale · revisit?
 
 ---
 
-## 2026-04-19 (session 15 — F2 agentic workflow planning)
-
-- **Agentic pipeline replaces single LLM loop:** 6 specialist LLM agents + deterministic non-LLM components replace the generic `LLMClient.translate()` loop; `AnalysisAgent` provides shared `JobContext` before translation begins; specialists receive windowed context · revisit never
-- **TensorZero gateway for cost/rate controls:** budget enforcement externalized to a 5th Docker service (`tensorzero/gateway`); circuit breaker = TensorZero 429 → worker sets `status=failed, error_detail="circuit_breaker_tripped"`; no in-process LLM call counters · revisit if TensorZero adds latency overhead
-- **Postgres-only TensorZero backend:** ClickHouse deferred; Postgres sufficient for rate limiting and cost tracking · revisit when full observability UI is needed
-- **TranslationRouter is deterministic:** `match block.block_type → agent`; never an LLM decision; keeps routing fast and failure-free · revisit never
-- **StubGenerator replaces silent untranslatable:** explicit `# SAS-UNTRANSLATABLE + # TODO` stub + `human_review_required=True` flag on job; no silent failures · revisit never
-- **JobContext windowed for translation agents:** specialists see only their block + relevant macro/dependency slice; `AnalysisAgent` and `DocumentationAgent` see full `source_files`; prevents context window cost from scaling with job size · revisit if model pricing changes substantially
-- **PROC MEANS/FREQ/TRANSPOSE → StubGenerator for now:** insufficient data to justify specialist agents; routed to `StubGenerator` until usage patterns justify specialization · revisit after Phase A/B of F2
-- **MacroResolverAgent is gated:** only called on `CannotExpand` from deterministic `MacroExpander`; never invoked speculatively · revisit never
-
----
-
 ## 2026-04-19 (session 14 — UI polish, lineage DAG, Makefile fixes)
 
 - **Editor tab merges Comparison + Edit:** single tab with SAS read-only left, editable Python right; users naturally want the source visible while editing; avoids context-switching between tabs · revisit never

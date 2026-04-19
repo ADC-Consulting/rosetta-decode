@@ -1,14 +1,15 @@
 # Backlog
 
 ## Phase 0 — Foundation
-- [x] Define user stories (`docs/user-stories.md`)
-- [x] Define and expand features (`docs/features.md`)
-- [x] Define MVP scope (`docs/mvp-scope.md`)
-- [x] Document architecture (`docs/architecture.md`)
-- [x] Document migration approaches (`docs/context/migration-approaches.md`)
-- [x] Build SAS pattern catalog (`docs/context/sas-patterns.md`)
-- [x] Write all skill SKILL.md files (session-start, session-end, plan-feature, feature-planner, backend-builder, frontend-builder, git-committer)
-- [x] Update CLAUDE.md with skills table
+
+- [X] Define user stories (`docs/user-stories.md`)
+- [X] Define and expand features (`docs/features.md`)
+- [X] Define MVP scope (`docs/mvp-scope.md`)
+- [X] Document architecture (`docs/architecture.md`)
+- [X] Document migration approaches (`docs/context/migration-approaches.md`)
+- [X] Build SAS pattern catalog (`docs/context/sas-patterns.md`)
+- [X] Write all skill SKILL.md files (session-start, session-end, plan-feature, feature-planner, backend-builder, frontend-builder, git-committer)
+- [X] Update CLAUDE.md with skills table
 
 ---
 
@@ -16,45 +17,34 @@
 
 **Active plan:** `docs/plans/F0-phase1-scaffold.md`
 
-- [x] Set up Python project: `pyproject.toml`, `ruff`, `mypy`, `pytest`, `uv`, `pydantic-ai`
-- [x] Create `Makefile` with dev targets: `make test`, `make lint`, `make format`, `make check`, `make dev`
-- [x] Set up `pre-commit`: `.pre-commit-config.yaml` with ruff-format, ruff-lint, mypy hooks; run `pre-commit install`
-- [x] Add GitHub Actions CI pipeline with uv caching and future job stubs
-- [x] S01–S21: Docker / DB / Backend / Worker / Frontend scaffold → see `docs/plans/F0-phase1-scaffold.md`
+- [X] Set up Python project: `pyproject.toml`, `ruff`, `mypy`, `pytest`, `uv`, `pydantic-ai`
+- [X] Create `Makefile` with dev targets: `make test`, `make lint`, `make format`, `make check`, `make dev`
+- [X] Set up `pre-commit`: `.pre-commit-config.yaml` with ruff-format, ruff-lint, mypy hooks; run `pre-commit install`
+- [X] Add GitHub Actions CI pipeline with uv caching and future job stubs
+- [X] S01–S21: Docker / DB / Backend / Worker / Frontend scaffold → see `docs/plans/F0-phase1-scaffold.md`
 
 **F1 — Pipeline generation** (`docs/plans/F1-pipeline-generation.md`)
-- [x] F1 S00–S16: SASParser, LLMClient, CodeGenerator, ReconciliationService, API routes, full suite green
+
+- [X] F1 S00–S16: SASParser, LLMClient, CodeGenerator, ReconciliationService, API routes, full suite green
 
 **Remaining MVP items**
-- [x] F-LLM: Upgrade LLM system prompt + retry resilience + partial result accumulation (`feat/F-llm-resilience`)
-- [x] F-sas7bdat: Wire `pyreadstat` into `LocalBackend` + `/migrate` upload + reconciliation routing (`feat/F-sas7bdat`)
-- [x] F-UI: Upload & Results page — `.sas` / `.sas7bdat` / `.csv` / `.log` upload, job polling, results view, download (`feat/F-UI`)
+
+- [X] F-LLM: Upgrade LLM system prompt + retry resilience + partial result accumulation (`feat/F-llm-resilience`)
+- [X] F-sas7bdat: Wire `pyreadstat` into `LocalBackend` + `/migrate` upload + reconciliation routing (`feat/F-sas7bdat`)
+- [X] F-UI: Upload & Results page — `.sas` / `.sas7bdat` / `.csv` / `.log` upload, job polling, results view, download (`feat/F-UI`)
 
 ---
 
 ## Phase 2 — Core Backend Extension (post-MVP)
 
-**F2 — Agentic Workflow** (`docs/plans/F2-agentic-workflow.md`)
-- [ ] F2 S00: TensorZero infra — config + docker-compose
-- [ ] F2 S01: `JobContext` model
-- [ ] F2 S02: `MacroExpander` (deterministic, non-LLM)
-- [ ] F2 S03: `AnalysisAgent`
-- [ ] F2 S04: `TranslationRouter` + `StubGenerator`
-- [ ] F2 S05: `DataStepAgent`
-- [ ] F2 S06: `ProcAgent`
-- [ ] F2 S07: `MacroResolverAgent` (gated LLM fallback)
-- [ ] F2 S08: `FailureInterpreterAgent` + `RefinementLoop`
-- [ ] F2 S09: `DocumentationAgent` upgrade
-- [ ] F2 S10: Wire `JobOrchestrator` — replace `_process_job`
-- [ ] F2 S11: Worker config + env wiring
-- [ ] F2 S12: Reconciliation tests for new pipeline
-
 **F1 extensions** (`docs/plans/F1-ext-proc-sort-macro.md`)
-- [x] F1-ext: PROC SORT parser + translation → see `docs/plans/F1-ext-proc-sort-macro.md`
-- [x] F1-ext: Macro variable (`%LET`) resolution → Python constants → see `docs/plans/F1-ext-proc-sort-macro.md`
-- [x] Reconciliation tests: PROC SORT, macro variables → see `tests/reconciliation/test_proc_sort.py`
+
+- [X] F1-ext: PROC SORT parser + translation → see `docs/plans/F1-ext-proc-sort-macro.md`
+- [X] F1-ext: Macro variable (`%LET`) resolution → Python constants → see `docs/plans/F1-ext-proc-sort-macro.md`
+- [X] Reconciliation tests: PROC SORT, macro variables → see `tests/reconciliation/test_proc_sort.py`
 
 **Remaining Phase 2**
+
 - [ ] F1-ext: Macro definition + call expansion (`%MACRO` / `%MEND`)
 - [ ] F3-ext: Row-level hash diff check
 - [ ] F4: SAS log ingestion — parse log structure
@@ -65,29 +55,31 @@
 - [ ] F18: Refine conversion action — re-submit with previous output + reconciliation report as context → see `docs/plans/F-backend-postmvp.md` S-BE6
 
 **Post-MVP UI + Backend (active) — `docs/plans/F-UI-postmvp.md` + `docs/plans/F-backend-postmvp.md`**
-- [x] F-backend-postmvp S-BE1: `GET /jobs/{id}/sources` endpoint (no migration)
-- [x] F-backend-postmvp S-BE2: Zip bulk upload — `.sas`, `.sas7bdat`, `.csv`, `.log`, `.xlsx`, `.xls` (no migration)
-- [x] F-backend-postmvp S-BE3: Lineage extraction + `GET /jobs/{id}/lineage` (migration 004)
-- [x] F-backend-postmvp S-BE4: Doc generation + `GET /jobs/{id}/doc` (migration 004)
+
+- [X] F-backend-postmvp S-BE1: `GET /jobs/{id}/sources` endpoint (no migration)
+- [X] F-backend-postmvp S-BE2: Zip bulk upload — `.sas`, `.sas7bdat`, `.csv`, `.log`, `.xlsx`, `.xls` (no migration)
+- [X] F-backend-postmvp S-BE3: Lineage extraction + `GET /jobs/{id}/lineage` (migration 004)
+- [X] F-backend-postmvp S-BE4: Doc generation + `GET /jobs/{id}/doc` (migration 004)
 - [ ] F-backend-postmvp S-BE5: Re-reconciliation `PUT /jobs/{id}/python_code` + `skip_llm` (migration 003)
 - [ ] F-backend-postmvp S-BE6: Refine action `POST /jobs/{id}/refine` + `parent_job_id` (migration 003)
-- [x] F-UI-postmvp S-FE5/10/11: AppSidebar + routing + JobsPage refactor
-- [x] F-UI-postmvp S-FE1: `MonacoDiffViewer` component (Monaco DiffEditor)
-- [x] F-UI-postmvp S-FE2: `MonacoEditor` component (Monaco Editor)
-- [x] F-UI-postmvp S-FE3: `TiptapEditor` component (rich text + code blocks)
-- [x] F-UI-postmvp S-FE4: `LineageGraph` component (React Flow, colour-coded by status, hover-to-focus, undo/redo/reset toolbar, dagre LR layout)
-- [x] F-UI-postmvp S-FE6: `JobDetailPage` (4 tabs: Comparison / Edit / Report / Lineage)
+- [X] F-UI-postmvp S-FE5/10/11: AppSidebar + routing + JobsPage refactor
+- [X] F-UI-postmvp S-FE1: `MonacoDiffViewer` component (Monaco DiffEditor)
+- [X] F-UI-postmvp S-FE2: `MonacoEditor` component (Monaco Editor)
+- [X] F-UI-postmvp S-FE3: `TiptapEditor` component (rich text + code blocks)
+- [X] F-UI-postmvp S-FE4: `LineageGraph` component (React Flow, colour-coded by status, hover-to-focus, undo/redo/reset toolbar, dagre LR layout)
+- [X] F-UI-postmvp S-FE6: `JobDetailPage` (4 tabs: Comparison / Edit / Report / Lineage)
 - [ ] F-UI-postmvp S-FE7: `GlobalLineagePage`
 - [ ] F-UI-postmvp S-FE8: `DocsPage`
 - [ ] F-UI-postmvp S-FE9: `ExplainPage` stub
-- [x] F-UI-postmvp S-FE12: Upload UX — unified drop-zone (.sas/.sas7bdat/.zip/.log/.csv/.xls/.xlsx), manifest view
-- [x] F-UI-postmvp S-FE13: API client extensions (types + jobs.ts + migrate.ts)
-- [x] UI polish: sonner toast for all errors, human-friendly error copy
-- [x] UI polish: jobs table row disabled/non-clickable for non-done status
+- [X] F-UI-postmvp S-FE12: Upload UX — unified drop-zone (.sas/.sas7bdat/.zip/.log/.csv/.xls/.xlsx), manifest view
+- [X] F-UI-postmvp S-FE13: API client extensions (types + jobs.ts + migrate.ts)
+- [X] UI polish: sonner toast for all errors, human-friendly error copy
+- [X] UI polish: jobs table row disabled/non-clickable for non-done status
 
 ---
 
 ## Phase 3 — Frontend Features (post-MVP)
+
 - [ ] F2: Code Explanation Assistant page (chat UI — explain SAS/Python snippets)
 - [ ] F7: Side-by-side SAS vs Python diff view
 - [ ] F12: Auto-generated technical docs + lineage metadata (backend data layer for F5)
@@ -100,6 +92,7 @@
 ---
 
 ## Phase 4 — Advanced Features + Cloud
+
 - [ ] F14: Authentication & SSO (SAML/OIDC, JWT, RBAC)
 - [ ] `DatabricksBackend` (PySpark) (`src/worker/compute/databricks.py`)
 - [ ] End-to-end test: CLOUD=true, Databricks connection
