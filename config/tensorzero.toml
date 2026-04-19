@@ -23,10 +23,4 @@ enabled = true
 
 [[rate_limiting.rules]]
 always = true
-# Keep one unscoped rule; TensorZero treats duplicate unscoped scopes as invalid.
-# Local dev uses a self-hosted provider without reliable cost feedback,
-# so prefer a simple daily request cap over cost-based limiting.
 model_inferences_per_day = 1000
-# Long-context local models need a larger burst budget so ordinary chat turns do not
-# trip the minute limiter before actual generation starts.
-tokens_per_minute = { capacity = 750000, refill_rate = 150000 }
