@@ -96,7 +96,7 @@ async def test_data_step_routes_to_data_step_agent() -> None:
         source_file="basic_etl.sas",
         start_line=7,
         end_line=16,
-        raw_sas="DATA employees_classified; SET employees_raw; RUN;",
+        raw_sas="DATA employees_classified; SET employees_raw; IF department = 'IT'; RUN;",
         input_datasets=["employees_raw"],
         output_datasets=["employees_classified"],
     )

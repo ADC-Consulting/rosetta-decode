@@ -85,6 +85,8 @@ class GeneratedBlock(BaseModel):
     source_block: SASBlock
     python_code: str
     is_untranslatable: bool = False
+    confidence: str = "high"
+    uncertainty_notes: list[str] = []
 
 
 class ReconciliationReport(BaseModel):
@@ -95,6 +97,112 @@ class ReconciliationReport(BaseModel):
     column_match: bool
     diff_summary: str
     affected_block_ids: list[str] = Field(default_factory=list)
+
+
+class TranslationStrategy(StrEnum):
+    """Strategy to apply when migrating a SAS block."""
+
+    TRANSLATE = "translate"
+    STUB = "stub"
+    SKIP = "skip"
+
+
+class BlockRisk(StrEnum):
+    """Risk level assigned to a SAS block or migration as a whole."""
+
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+class BlockPlan(BaseModel):
+    """Migration plan for a single SAS block.
+
+    Attributes:
+        block_id: Unique identifier for the block.
+        source_file: Name of the `.sas` file containing the block.
+        start_line: 1-based line number where the block starts.
+        block_type: SAS construct type (e.g. DATA_STEP, PROC_SQL).
+        strategy: Translation strategy to apply.
+        risk: Risk level for this block.
+        rationale: Explanation of the chosen strategy and risk level.
+        estimated_effort: Human-readable effort estimate (e.g. "low", "2h").
+    """
+
+    block_id: str
+    source_file: str
+    start_line: int
+    block_type: str
+    strategy: TranslationStrategy
+    risk: BlockRisk
+    rationale: str
+    estimated_effort: str
+
+
+class MigrationPlan(BaseModel):
+    """Overall migration plan produced by the planning agent.
+
+    Attributes:
+        summary: High-level description of the migration scope.
+        block_plans: Per-block plans ordered by dependency.
+        overall_risk: Aggregate risk level for the full migration.
+        recommended_review_blocks: Block IDs that require human review.
+        cross_file_dependencies: Dataset/macro names shared across files.
+    """
+
+    summary: str
+    block_plans: list[BlockPlan]
+    overall_risk: BlockRisk
+    recommended_review_blocks: list[str]
+    cross_file_dependencies: list[str]
+
+
+class ColumnFlow(BaseModel):
+    """A single column lineage edge from source to target dataset.
+
+    Attributes:
+        column: Column name.
+        source_dataset: Name of the dataset the column originates from.
+        target_dataset: Name of the dataset the column flows into.
+        via_block_id: ID of the block that performs the transformation.
+        transformation: Optional description of the transformation applied.
+    """
+
+    column: str
+    source_dataset: str
+    target_dataset: str
+    via_block_id: str
+    transformation: str | None = None
+
+
+class MacroUsage(BaseModel):
+    """A single resolved macro variable usage within a block.
+
+    Attributes:
+        macro_name: Name of the macro variable.
+        macro_value: Resolved value at time of usage.
+        used_in_block_id: ID of the block where the macro is referenced.
+    """
+
+    macro_name: str
+    macro_value: str
+    used_in_block_id: str
+
+
+class EnrichedLineage(BaseModel):
+    """Full enriched lineage graph produced by the lineage agent.
+
+    Attributes:
+        column_flows: All column-level lineage edges across the pipeline.
+        macro_usages: All macro variable usages resolved across blocks.
+        cross_file_edges: Edges that cross file boundaries (serialised as dicts).
+        dataset_summaries: Human-readable summaries keyed by dataset name.
+    """
+
+    column_flows: list[ColumnFlow]
+    macro_usages: list[MacroUsage]
+    cross_file_edges: list[dict[str, str]]
+    dataset_summaries: dict[str, str]
 
 
 class JobContext(BaseModel):
@@ -109,6 +217,8 @@ class JobContext(BaseModel):
     reconciliation: ReconciliationReport | None = None
     retry_count: int = 0
     llm_call_count: int = 0
+    migration_plan: MigrationPlan | None = None
+    enriched_lineage: EnrichedLineage | None = None
 
     def windowed_context(self, block: SASBlock) -> "JobContext":
         """Return a windowed view of this context scoped to a single block.
@@ -133,4 +243,5 @@ class JobContext(BaseModel):
             reconciliation=self.reconciliation,
             retry_count=self.retry_count,
             llm_call_count=self.llm_call_count,
+            migration_plan=self.migration_plan,
         )
