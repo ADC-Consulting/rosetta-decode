@@ -1,6 +1,7 @@
 """Worker service — async poll loop for migration jobs."""
 
 import asyncio
+import json
 import logging
 import sys
 from typing import Any
@@ -15,6 +16,8 @@ from src.worker.engine.agents.analysis import AnalysisAgent
 from src.worker.engine.agents.data_step import DataStepAgent
 from src.worker.engine.agents.documentation import DocumentationAgent
 from src.worker.engine.agents.failure_interpreter import FailureInterpreterAgent
+from src.worker.engine.agents.lineage_enricher import LineageEnricherAgent
+from src.worker.engine.agents.migration_planner import MigrationPlannerAgent
 from src.worker.engine.agents.proc import ProcAgent
 from src.worker.engine.codegen import CodeGenerator
 from src.worker.engine.doc_generator import DocGenerator
@@ -62,8 +65,6 @@ async def _claim_job(session: AsyncSession) -> Job | None:
 class JobOrchestrator:
     """Runs the full agentic migration pipeline for a single job."""
 
-    _MAX_RETRIES = 2
-
     def __init__(self) -> None:
         """Initialise all pipeline components."""
         self._analysis_agent = AnalysisAgent()
@@ -78,6 +79,8 @@ class JobOrchestrator:
         self._failure_interpreter = FailureInterpreterAgent()
         self._doc_agent = DocumentationAgent()
         self._expander = MacroExpander()
+        self._migration_planner = MigrationPlannerAgent()
+        self._lineage_enricher = LineageEnricherAgent()
 
     async def run(self, session: AsyncSession, job: Job) -> None:
         """Execute the full pipeline and persist results.
@@ -114,10 +117,25 @@ class JobOrchestrator:
     async def _execute(self, session: AsyncSession, job: Job) -> None:
         """Inner pipeline — raises on unhandled errors."""
         files: dict[str, str] = {
-            k: v for k, v in job.files.items() if k not in ("__ref_csv__", "__ref_sas7bdat__")
+            k: v
+            for k, v in job.files.items()
+            if k not in ("__ref_csv__", "__ref_sas7bdat__", "__refine_context__")
         }
         ref_csv_path: str = str(job.files.get("__ref_csv__", ""))
         ref_sas7bdat_path: str = str(job.files.get("__ref_sas7bdat__", ""))
+
+        # Refine context — injected by POST /jobs/{id}/refine
+        refine_context_raw = job.files.get("__refine_context__")
+        refine_context: dict[str, Any] | None = None
+        if refine_context_raw:
+            import contextlib
+
+            with contextlib.suppress(json.JSONDecodeError, TypeError):
+                refine_context = json.loads(refine_context_raw)
+
+        if job.skip_llm:
+            await self._execute_rereconcile(job, session, ref_csv_path, ref_sas7bdat_path)
+            return
 
         # Step 1: Parse
         parse_result = SASParser().parse(files)
@@ -143,13 +161,36 @@ class JobOrchestrator:
                 update={"risk_flags": context.risk_flags + expansion_warnings}
             )
 
-        # Steps 4-7: Translate + optional refinement loop
-        generated = await self._translate_with_refinement(
-            expanded_blocks, context, ref_csv_path, ref_sas7bdat_path
+        # Step 3.5: Migration planning (best-effort)
+        try:
+            plan = await self._migration_planner.plan(context)
+            context = context.model_copy(update={"migration_plan": plan})
+        except Exception as exc:
+            logger.warning("Job %s: migration planning failed, continuing: %s", job.id, exc)
+
+        # Steps 4-7: Translate + two-phase refinement
+        prior_python_code: str | None = None
+        hint: str | None = None
+        if refine_context:
+            prior_python_code = refine_context.get("prior_python_code") or None
+            hint = refine_context.get("hint") or None
+
+        generated = await self._translate_two_phase(
+            expanded_blocks,
+            context,
+            ref_csv_path,
+            ref_sas7bdat_path,
+            prior_python_code=prior_python_code,
+            hint=hint,
         )
 
-        # Step 5: Assemble
-        python_code = self._codegen.assemble(generated, macro_vars=parse_result.macro_vars)
+        # Step 5: Assemble — dict form for generated_files, flat str for python_code column
+        generated_files: dict[str, str] = self._codegen.assemble(
+            generated, macro_vars=parse_result.macro_vars
+        )
+        python_code: str = self._codegen.assemble_flat(
+            generated, macro_vars=parse_result.macro_vars
+        )
 
         # Step 6: Final reconciliation
         backend = BackendFactory.create()
@@ -161,6 +202,13 @@ class JobOrchestrator:
             ref_sas7bdat_path,
         )
 
+        # Step 7.5: Lineage enrichment (best-effort)
+        try:
+            enriched = await self._lineage_enricher.enrich(context)
+            context = context.model_copy(update={"enriched_lineage": enriched})
+        except Exception as exc:
+            logger.warning("Job %s: lineage enrichment failed, continuing: %s", job.id, exc)
+
         # Step 8: Documentation
         recon_summary = _recon_summary(report)
         doc: str | None = None
@@ -169,20 +217,30 @@ class JobOrchestrator:
         except Exception as exc:
             logger.warning("Job %s: doc generation failed: %s", job.id, exc)
 
-        # Lineage (best-effort)
+        # Step 9: Lineage extraction + merge enriched fields (best-effort)
         lineage_data = None
         try:
             lineage_data = extract_lineage(blocks, str(job.id))
         except Exception as exc:
             logger.warning("Job %s: lineage extraction failed: %s", job.id, exc)
 
-        # Step 9: Persist
+        # Merge enriched lineage fields into lineage_data dict when available
+        if context.enriched_lineage is not None and lineage_data is not None:
+            lineage_data = {**lineage_data, **context.enriched_lineage.model_dump()}
+        elif context.enriched_lineage is not None:
+            lineage_data = context.enriched_lineage.model_dump()
+
+        # Step 10: Persist
         await session.execute(
             update(Job)
             .where(Job.id == job.id)
             .values(
-                status="done",
+                status="proposed",
                 python_code=python_code,
+                generated_files=generated_files,
+                migration_plan=(
+                    context.migration_plan.model_dump() if context.migration_plan else None
+                ),
                 report=report,
                 llm_model=worker_settings.llm_model,
                 lineage=lineage_data,
@@ -192,68 +250,92 @@ class JobOrchestrator:
         await session.commit()
         logger.info("Job %s completed successfully", job.id)
 
-    async def _translate_with_refinement(
+    async def _translate_two_phase(
         self,
         blocks: list[SASBlock],
         context: JobContext,
         ref_csv_path: str,
         ref_sas7bdat_path: str,
+        *,
+        prior_python_code: str | None = None,
+        hint: str | None = None,
     ) -> list[GeneratedBlock]:
-        """Translate blocks and run up to _MAX_RETRIES refinement rounds.
+        """Translate blocks using an explicit two-phase sequence.
+
+        Phase 1: translate all blocks, reconcile. Return immediately if passed.
+        Phase 2 (only on failure): FailureInterpreterAgent identifies the affected
+        block, re-translates it, then reconciles once more (final regardless of result).
 
         Args:
             blocks: Expanded SAS blocks to translate.
             context: Current job context.
             ref_csv_path: Path to reference CSV for reconciliation.
             ref_sas7bdat_path: Path to reference SAS7BDAT (optional).
+            prior_python_code: Previous translation to improve (from refine context).
+            hint: Reviewer hint to prepend to the LLM prompt (from refine context).
 
         Returns:
             Final list of GeneratedBlock instances.
         """
-        generated = await self._translate_blocks(blocks, context)
-        retry_count = 0
+        # Phase 1 — translate all blocks then reconcile
+        generated_v1 = await self._translate_blocks(blocks, context, prior_python_code, hint)
+        python_code_v1 = self._codegen.assemble_flat(
+            generated_v1, macro_vars=context.resolved_macros
+        )
+        backend = BackendFactory.create()
+        raw_report_v1 = await asyncio.to_thread(
+            self._reconciler.run,
+            ref_csv_path,
+            python_code_v1,
+            backend,
+            ref_sas7bdat_path,
+        )
+        report_v1 = (
+            _dict_to_recon_report(raw_report_v1)
+            if isinstance(raw_report_v1, dict)
+            else raw_report_v1
+        )
+        if report_v1.passed or not report_v1.diff_summary:
+            return generated_v1
 
-        while retry_count < self._MAX_RETRIES:
-            python_code = self._codegen.assemble(generated, macro_vars=context.resolved_macros)
-            backend = BackendFactory.create()
-            raw_report = await asyncio.to_thread(
-                self._reconciler.run,
-                ref_csv_path,
-                python_code,
-                backend,
-                ref_sas7bdat_path,
+        # Phase 2 — interpret failure and re-translate the affected block only
+        try:
+            retry_hint, affected_id = await self._failure_interpreter.interpret(
+                report_v1.diff_summary, python_code_v1, context
             )
-            report = (
-                _dict_to_recon_report(raw_report) if isinstance(raw_report, dict) else raw_report
-            )
-            if report.passed:
-                break
-            if not report.diff_summary:
-                break
+        except Exception as exc:
+            logger.warning("FailureInterpreterAgent failed, skipping phase 2: %s", exc)
+            return generated_v1
 
-            try:
-                retry_hint, affected_id = await self._failure_interpreter.interpret(
-                    report.diff_summary, python_code, context
-                )
-            except Exception as exc:
-                logger.warning("FailureInterpreterAgent failed: %s", exc)
-                break
-
-            generated = await self._retry_affected_block(
-                blocks, generated, context, affected_id, retry_hint
-            )
-            retry_count += 1
-
-        return generated
+        generated_v2 = await self._retry_affected_block(
+            blocks, generated_v1, context, affected_id, retry_hint
+        )
+        context = context.model_copy(update={"retry_count": context.retry_count + 1})
+        return generated_v2
 
     async def _translate_blocks(
-        self, blocks: list[SASBlock], context: JobContext
+        self,
+        blocks: list[SASBlock],
+        context: JobContext,
+        prior_python_code: str | None = None,
+        hint: str | None = None,
     ) -> list[GeneratedBlock]:
         """Translate every block via the TranslationRouter."""
+        effective_context = context
+        extra_flags: list[str] = []
+        if prior_python_code:
+            extra_flags.append(f"prior_translation:\n```python\n{prior_python_code}\n```")
+        if hint:
+            extra_flags.append(f"reviewer_hint: {hint}")
+        if extra_flags:
+            effective_context = context.model_copy(
+                update={"risk_flags": context.risk_flags + extra_flags}
+            )
+
         generated: list[GeneratedBlock] = []
         for block in blocks:
             translator = self._router.route(block)
-            gb = await translator.translate(block, context)
+            gb = await translator.translate(block, effective_context)
             generated.append(gb)
         return generated
 
@@ -294,6 +376,47 @@ class JobOrchestrator:
                 logger.warning("Retry for block %s failed: %s", affected_id, exc)
             break
         return updated
+
+    async def _execute_rereconcile(
+        self,
+        job: Job,
+        session: AsyncSession,
+        ref_csv_path: str,
+        ref_sas7bdat_path: str,
+    ) -> None:
+        """Re-run only reconciliation against the existing python_code (no LLM).
+
+        Used when ``job.skip_llm=True`` (triggered by PUT /jobs/{id}/python_code).
+
+        Args:
+            job: The job with manually updated Python code.
+            session: Database session for persisting results.
+            ref_csv_path: Path to reference CSV (may be empty string).
+            ref_sas7bdat_path: Path to reference SAS7BDAT (may be empty string).
+        """
+        try:
+            backend = BackendFactory.create()
+            report = await asyncio.to_thread(
+                self._reconciler.run,
+                ref_csv_path,
+                job.python_code or "",
+                backend,
+                ref_sas7bdat_path,
+            )
+            await session.execute(
+                update(Job)
+                .where(Job.id == job.id)
+                .values(status="proposed", report=report, skip_llm=False)
+            )
+            await session.commit()
+            logger.info("Job %s re-reconciliation complete", job.id)
+        except Exception as exc:
+            logger.warning("Job %s re-reconciliation failed: %s", job.id, exc)
+            await session.execute(
+                update(Job).where(Job.id == job.id).values(status="failed", error=str(exc))
+            )
+            await session.commit()
+            raise
 
 
 def _dict_to_recon_report(report: dict[str, Any]) -> ReconciliationReport:
@@ -401,7 +524,7 @@ async def _process_job(session: AsyncSession, job: Job) -> None:
                 generated.append(gb)
             except LLMTranslationError as exc:
                 partial_code = (
-                    CodeGenerator().assemble(generated, macro_vars=result.macro_vars)
+                    CodeGenerator().assemble_flat(generated, macro_vars=result.macro_vars)
                     if generated
                     else None
                 )
@@ -436,7 +559,7 @@ async def _process_job(session: AsyncSession, job: Job) -> None:
                 await session.commit()
                 return
 
-        python_code = CodeGenerator().assemble(generated, macro_vars=result.macro_vars)
+        python_code = CodeGenerator().assemble_flat(generated, macro_vars=result.macro_vars)
         backend = BackendFactory.create()
         reconciler = ReconciliationService()
         report = await asyncio.to_thread(
@@ -457,7 +580,7 @@ async def _process_job(session: AsyncSession, job: Job) -> None:
             update(Job)
             .where(Job.id == job.id)
             .values(
-                status="done",
+                status="proposed",
                 python_code=python_code,
                 report=report,
                 llm_model=worker_settings.llm_model,

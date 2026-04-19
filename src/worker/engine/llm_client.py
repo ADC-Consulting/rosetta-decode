@@ -173,7 +173,13 @@ class LLMClient:
         self._agent: Agent[GeneratedBlock] = _make_agent()
         self._text_agent: Agent[str] = _make_text_agent()
 
-    def translate(self, block: SASBlock) -> GeneratedBlock:
+    def translate(
+        self,
+        block: SASBlock,
+        *,
+        prior_python_code: str | None = None,
+        hint: str | None = None,
+    ) -> GeneratedBlock:
         """Translate *block* into Python via the configured LLM.
 
         For UNTRANSLATABLE blocks the LLM is not called; a comment is returned
@@ -181,6 +187,8 @@ class LLMClient:
 
         Args:
             block: The parsed SAS construct to translate.
+            prior_python_code: Previous translation to improve (optional).
+            hint: Reviewer free-text hint prepended to the prompt (optional).
 
         Returns:
             GeneratedBlock with translated Python code and provenance.
@@ -194,7 +202,7 @@ class LLMClient:
                 is_untranslatable=True,
             )
 
-        user_message = self._build_prompt(block)
+        user_message = self._build_prompt(block, prior_python_code=prior_python_code, hint=hint)
         last_exc: BaseException | None = None
 
         for attempt, delay in enumerate(_RETRY_DELAYS, start=1):
@@ -266,16 +274,35 @@ class LLMClient:
         return await asyncio.to_thread(_run)
 
     @staticmethod
-    def _build_prompt(block: SASBlock) -> str:
+    def _build_prompt(
+        block: SASBlock,
+        *,
+        prior_python_code: str | None = None,
+        hint: str | None = None,
+    ) -> str:
         """Format the user-turn prompt for a single SAS block.
 
         Args:
             block: The SAS block to translate.
+            prior_python_code: Previous translation to improve (optional).
+            hint: Reviewer free-text hint (optional).
 
         Returns:
             Formatted prompt string for the LLM agent.
         """
-        return textwrap.dedent(f"""\
+        preamble = ""
+        if prior_python_code:
+            preamble += textwrap.dedent(f"""\
+                Prior translation to improve:
+                ```python
+                {prior_python_code}
+                ```
+
+                """)
+        if hint:
+            preamble += f"Reviewer hint: {hint}\n\n"
+
+        return preamble + textwrap.dedent(f"""\
             Translate the following SAS {block.block_type.value} block to Python/pandas.
 
             Source file: {block.source_file}

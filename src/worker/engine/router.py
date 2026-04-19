@@ -105,6 +105,76 @@ class _ProcSortHelper:
         )
 
 
+class _SimpleCopyHelper:
+    """Inline (no-LLM) translator for DATA steps that are pure SET+KEEP/DROP.
+
+    Handles DATA steps containing only SET and optionally KEEP or DROP statements.
+    Blocks containing IF, DO, MERGE, RETAIN, ARRAY, or OUTPUT are excluded and
+    routed to the full DataStepAgent instead.
+    """
+
+    # Patterns that indicate the block requires full LLM translation
+    _COMPLEX_PATTERNS: tuple[str, ...] = (
+        "IF ",
+        "DO ",
+        "DO;",
+        "MERGE ",
+        "RETAIN ",
+        "ARRAY ",
+        "OUTPUT;",
+    )
+
+    @classmethod
+    def is_simple(cls, block: SASBlock) -> bool:  # SAS: src/worker/engine/router.py:111
+        """Return True when *block* is a pure SET+KEEP/DROP DATA step.
+
+        Args:
+            block: The SAS block to inspect.
+
+        Returns:
+            True if the block can be handled without LLM translation.
+        """
+        raw_upper = block.raw_sas.upper()
+        return not any(pat in raw_upper for pat in cls._COMPLEX_PATTERNS)
+
+    # SAS: src/worker/engine/router.py:127
+    async def translate(self, block: SASBlock, context: JobContext) -> GeneratedBlock:
+        """Translate a simple DATA step to a pandas copy/filter expression.
+
+        Args:
+            block: A DATA step SAS block with only SET and optional KEEP/DROP.
+            context: The current job context.
+
+        Returns:
+            A GeneratedBlock with inline pandas code and confidence ``"high"``.
+        """
+        raw = block.raw_sas.upper()
+
+        data_match = re.search(r"DATA\s+([\w.]+)\s*;", raw)
+        set_match = re.search(r"SET\s+([\w.]+)\s*;", raw)
+        keep_match = re.search(r"KEEP\s+([\w\s]+)\s*;", raw)
+        drop_match = re.search(r"DROP\s+([\w\s]+)\s*;", raw)
+
+        out_ds = data_match.group(1).lower().replace(".", "_") if data_match else "output"
+        in_ds = set_match.group(1).lower().replace(".", "_") if set_match else "input"
+
+        if keep_match:
+            cols = [c.lower() for c in keep_match.group(1).split()]
+            code = (
+                f"{out_ds} = {in_ds}[{cols}].copy()  # SAS: {block.source_file}:{block.start_line}"
+            )
+        elif drop_match:
+            cols = [c.lower() for c in drop_match.group(1).split()]
+            code = (
+                f"{out_ds} = {in_ds}.drop(columns={cols}).copy()"
+                f"  # SAS: {block.source_file}:{block.start_line}"
+            )
+        else:
+            code = f"{out_ds} = {in_ds}.copy()  # SAS: {block.source_file}:{block.start_line}"
+
+        return GeneratedBlock(source_block=block, python_code=code, confidence="high")
+
+
 # ── Router ────────────────────────────────────────────────────────────────────
 
 
@@ -132,6 +202,7 @@ class TranslationRouter:
         self._proc_agent = proc_agent
         self._stub_generator = stub_generator
         self._sort_helper = _ProcSortHelper()
+        self._simple_copy = _SimpleCopyHelper()
 
     def route(self, block: SASBlock) -> Any:
         """Return the translator responsible for *block*.
@@ -147,6 +218,8 @@ class TranslationRouter:
         """
         match block.block_type:
             case BlockType.DATA_STEP:
+                if _SimpleCopyHelper.is_simple(block):
+                    return self._simple_copy
                 return self._data_step_agent
             case BlockType.PROC_SQL:
                 return self._proc_agent

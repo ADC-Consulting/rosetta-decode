@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { useUploadState } from "@/context/UploadStateContext";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { toast } from "sonner";
 import {
   Archive,
   ChevronDown,
@@ -21,6 +20,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -116,10 +116,16 @@ function StatusBadge({ status }: { status: string }) {
         Running…
       </span>
     );
-  if (status === "done")
+  if (status === "proposed" || status === "done")
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">
+        Under Review
+      </span>
+    );
+  if (status === "accepted")
     return (
       <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">
-        Done
+        Accepted
       </span>
     );
   if (status === "failed")
@@ -375,24 +381,32 @@ export default function UploadPage() {
     enabled: jobId !== null,
     refetchInterval: (query) => {
       const s = query.state.data?.status;
-      return s === "done" || s === "failed" ? false : 3000;
+      return s === "accepted" || s === "failed" || s === "done" ? false : 3000;
     },
   });
 
   const mutation = useMutation({
-    mutationFn: () => submitMigration(sasFiles, refDataset, zipFile, migrationName),
+    mutationFn: () =>
+      submitMigration(sasFiles, refDataset, zipFile, migrationName),
     onSuccess: (data) => {
       setManifest(data);
       setPhase("submitted");
     },
     onError: (err) => {
-      toast.error(err instanceof Error ? err.message : "Something went wrong while submitting the migration. Please try again.");
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Something went wrong while submitting the migration. Please try again.",
+      );
     },
   });
 
   const isPending = mutation.status === "pending";
   const submitDisabled =
-    files.length === 0 || unknownFiles.length > 0 || isPending || migrationName.trim() === "";
+    files.length === 0 ||
+    unknownFiles.length > 0 ||
+    isPending ||
+    migrationName.trim() === "";
 
   function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
     applyFiles(Array.from(e.target.files ?? []));
@@ -415,12 +429,16 @@ export default function UploadPage() {
     void navigator.clipboard.writeText(text);
   }
 
-  const isDone = jobStatus?.status === "done";
+  const isAccepted = jobStatus?.status === "accepted";
+  const isProposed =
+    jobStatus?.status === "proposed" || jobStatus?.status === "done"; // done = legacy
   const isFailed = jobStatus?.status === "failed";
 
   useEffect(() => {
     if (isFailed && jobStatus?.error) {
-      toast.error("The migration could not be completed. Please check your files and try again.");
+      toast.error(
+        "The migration could not be completed. Please check your files and try again.",
+      );
     }
   }, [isFailed, jobStatus?.error]);
 
@@ -498,7 +516,7 @@ export default function UploadPage() {
       {/* ------------------------------------------------------------------ */}
       {manifest !== null && (
         <div className="rounded-lg border border-border bg-background shadow-sm space-y-4 p-5">
-          {isDone && (
+          {(isAccepted || isProposed) && (
             <Button
               type="button"
               onClick={() => navigate(`/jobs/${manifest.job_id}`)}
@@ -515,64 +533,28 @@ export default function UploadPage() {
               <p className="text-sm font-semibold text-foreground">
                 Migration submitted
               </p>
-              {manifest.name && (
-                <p className="text-base font-semibold text-foreground">{manifest.name}</p>
+              {(manifest.name ?? migrationName) ? (
+                <p className="text-base font-semibold text-foreground">
+                  {manifest.name ?? migrationName}
+                </p>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <code className="font-mono text-xs text-muted-foreground truncate max-w-65">
+                    {manifest.job_id}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={() => copyText(manifest.job_id)}
+                    aria-label="Copy job ID"
+                    className="shrink-0 cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <ClipboardCopy className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               )}
-              <div className="flex items-center gap-2">
-                <code className="font-mono text-xs text-muted-foreground truncate max-w-65">
-                  {manifest.job_id}
-                </code>
-                <button
-                  type="button"
-                  onClick={() => copyText(manifest.job_id)}
-                  aria-label="Copy job ID"
-                  className="shrink-0 cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  <ClipboardCopy className="h-3.5 w-3.5" />
-                </button>
-              </div>
             </div>
             <StatusBadge status={jobStatus?.status ?? "queued"} />
           </div>
-
-          {isDone && (
-            <>
-              {jobStatus.python_code && (
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                      Generated Python (preview)
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => copyText(jobStatus.python_code ?? "")}
-                      aria-label="Copy generated Python"
-                      className="flex items-center gap-1 cursor-pointer text-xs text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      <ClipboardCopy className="h-3 w-3" />
-                      Copy
-                    </button>
-                  </div>
-                  <pre className="rounded-md bg-zinc-950 dark:bg-zinc-900 text-zinc-100 text-xs font-mono p-3 overflow-x-auto max-h-48">
-                    {jobStatus.python_code.split("\n").slice(0, 20).join("\n")}
-                  </pre>
-                </div>
-              )}
-
-              {jobStatus.report !== null && (
-                <details className="group rounded-md border border-border">
-                  <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors select-none">
-                    <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" />
-                    Reconciliation report
-                  </summary>
-                  <pre className="border-t border-border px-3 py-2 text-xs font-mono text-foreground overflow-x-auto max-h-64">
-                    {JSON.stringify(jobStatus.report, null, 2)}
-                  </pre>
-                </details>
-              )}
-            </>
-          )}
-
 
           <div className="flex items-center gap-3 pt-1 border-t border-border">
             <Button
@@ -617,7 +599,10 @@ export default function UploadPage() {
           />
 
           <div className="space-y-1.5">
-            <label htmlFor="migration-name" className="text-sm font-medium text-foreground">
+            <label
+              htmlFor="migration-name"
+              className="text-sm font-medium text-foreground"
+            >
               Migration name
             </label>
             <input

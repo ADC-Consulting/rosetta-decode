@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
+import sqlalchemy as sa
 from sqlalchemy import JSON, DateTime, String, Text, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -39,6 +40,17 @@ class Job(Base):
     llm_model: Mapped[str | None] = mapped_column(Text, nullable=True)
     lineage: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     doc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    migration_plan: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    generated_files: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    user_overrides: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    skip_llm: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, default=False, server_default=sa.text("false")
+    )
+    parent_job_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    trigger: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="agent", server_default=sa.text("'agent'")
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

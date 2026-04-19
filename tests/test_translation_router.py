@@ -44,7 +44,8 @@ def _make_router() -> tuple[TranslationRouter, MagicMock, MagicMock, StubGenerat
 
 def test_routes_data_step() -> None:
     router, data_step_agent, _, _ = _make_router()
-    block = _make_block(BlockType.DATA_STEP)
+    # Use a complex DATA step (IF statement) to bypass _SimpleCopyHelper
+    block = _make_block(BlockType.DATA_STEP, raw_sas="DATA out; SET in; IF flag = 1; RUN;")
     assert router.route(block) is data_step_agent
 
 

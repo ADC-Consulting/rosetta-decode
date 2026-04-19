@@ -126,15 +126,16 @@ class ReconciliationService:
         """
         checks: list[dict[str, Any]] = []
 
+        if not ref_sas7bdat_path and not ref_csv_path:
+            # No reference data supplied — skip reconciliation entirely
+            return {"checks": checks}
+
         try:
             actual_df = self._exec_pipeline(python_code, backend)
         except Exception:
             error_detail = textwrap.shorten(traceback.format_exc(), width=300)
             logger.warning("Reconciliation execution error: %s", error_detail)
             checks.append(_check_result("execution", passed=False, detail=error_detail))
-            return {"checks": checks}
-
-        if not ref_sas7bdat_path and not ref_csv_path:
             return {"checks": checks}
 
         try:

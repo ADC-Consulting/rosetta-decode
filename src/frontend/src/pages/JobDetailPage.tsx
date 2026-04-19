@@ -1,13 +1,23 @@
 import {
+  acceptJob,
   downloadJob,
   getJob,
   getJobDoc,
+  getJobHistory,
   getJobLineage,
+  getJobPlan,
   getJobSources,
+  patchJobPlan,
   refineJob,
   updateJobPythonCode,
 } from "@/api/jobs";
-import type { JobStatusValue } from "@/api/types";
+import type {
+  BlockOverride,
+  BlockPlan,
+  JobHistoryEntry,
+  JobStatusValue,
+  PatchPlanRequest,
+} from "@/api/types";
 import FileTree from "@/components/FileTree";
 import LineageGraph from "@/components/LineageGraph";
 import TiptapEditor from "@/components/TiptapEditor";
@@ -21,37 +31,64 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import type { Monaco } from "@monaco-editor/react";
 import { Editor } from "@monaco-editor/react";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Download, Moon, Sun } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, Bot, Download, Moon, Sun, User } from "lucide-react";
 import { marked } from "marked";
-import { Suspense, useState } from "react";
+import { Suspense, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
+
+/** Unwrap `{"markdown":"..."}` responses from older LLM calls. */
+function extractMarkdown(raw: string): string {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      "markdown" in parsed &&
+      typeof (parsed as Record<string, unknown>).markdown === "string"
+    ) {
+      return (parsed as { markdown: string }).markdown;
+    }
+  } catch {
+    // not JSON — use as-is
+  }
+  return raw;
+}
 
 // ---------------------------------------------------------------------------
 // Status badge
 // ---------------------------------------------------------------------------
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const STATUS_LABEL: Record<JobStatusValue, string> = {
   queued: "Queued",
   running: "Running",
-  done: "Completed",
+  proposed: "Under Review",
+  accepted: "Accepted",
   failed: "Failed",
+  done: "Under Review", // legacy — worker pre-F3
 };
 
 const STATUS_PILL_CLASS: Record<JobStatusValue, string> = {
   queued: "bg-slate-600",
   running: "bg-blue-600",
-  done: "bg-emerald-600",
+  proposed: "bg-amber-500",
+  done: "bg-amber-500", // legacy
+  accepted: "bg-emerald-600",
   failed: "bg-red-600",
 };
 
 const STATUS_SHIMMER: Record<JobStatusValue, boolean> = {
   queued: true,
   running: true,
-  done: false,
+  proposed: true,
+  done: false, // legacy — treat as terminal
+  accepted: false,
   failed: false,
 };
+
+const POLLING_STATUSES: JobStatusValue[] = ["queued", "running", "proposed"];
 
 export function StatusBadge({
   status,
@@ -77,7 +114,9 @@ export function StatusBadge({
                 background:
                   status === "running"
                     ? "linear-gradient(90deg, #bfdbfe 25%, #eff6ff 50%, #bfdbfe 75%)"
-                    : "linear-gradient(90deg, #e2e8f0 25%, #f8fafc 50%, #e2e8f0 75%)",
+                    : status === "proposed"
+                      ? "linear-gradient(90deg, #fde68a 25%, #fffbeb 50%, #fde68a 75%)"
+                      : "linear-gradient(90deg, #e2e8f0 25%, #f8fafc 50%, #e2e8f0 75%)",
                 backgroundSize: "200% 100%",
                 WebkitBackgroundClip: "text",
                 WebkitTextFillColor: "transparent",
@@ -214,7 +253,7 @@ function registerSasLanguage(monaco: Monaco): void {
         // Numbers
         [/\d+\.?\d*([eE][+-]?\d+)?/, "number"],
         // Operators
-        [/[=<>!|+\-*\/]/, "operator"],
+        [/[=<>!|+\-*/]/, "operator"],
         // Delimiters
         [/[;(),]/, "delimiter"],
       ],
@@ -274,12 +313,14 @@ function registerSasLanguage(monaco: Monaco): void {
 function EditorTab({
   jobId,
   initialCode,
+  generatedFiles,
 }: {
   jobId: string;
   initialCode: string;
+  generatedFiles: Record<string, string> | null;
 }): React.ReactElement {
   const navigate = useNavigate();
-  const [editorDark, setEditorDark] = useState(true);
+  const [editorDark, setEditorDark] = useState(false);
   const monacoTheme = editorDark
     ? { sas: "sas-dark", python: "vs-dark" }
     : { sas: "sas-light", python: "vs" };
@@ -300,6 +341,16 @@ function EditorTab({
   const effectiveSasKey = selectedSasKey || sasKeys[0] || "";
   const sasSource =
     effectiveSasKey && sources ? (sources.sources[effectiveSasKey] ?? "") : "";
+
+  // S-M: derive per-file Python from generated_files when available
+  const perFileCode: string | null = (() => {
+    if (!generatedFiles || !effectiveSasKey) return null;
+    const basename = effectiveSasKey.split("/").pop() ?? effectiveSasKey;
+    const pyKey = basename.replace(/\.sas$/i, ".py");
+    return generatedFiles[pyKey] ?? null;
+  })();
+  const rightCode = perFileCode ?? code;
+  const rightReadOnly = perFileCode !== null;
 
   const saveMutation = useMutation({
     mutationFn: () => updateJobPythonCode(jobId, code),
@@ -459,6 +510,11 @@ function EditorTab({
                       {breadcrumbParts.join(" / ")}
                     </span>
                   )}
+                  {rightReadOnly && (
+                    <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-200 font-semibold">
+                      per-file view
+                    </span>
+                  )}
                 </div>
                 <Suspense
                   fallback={
@@ -469,7 +525,7 @@ function EditorTab({
                 >
                   <Editor
                     height="100%"
-                    value={code}
+                    value={rightCode}
                     language="python"
                     theme={monacoTheme.python}
                     loading={
@@ -477,8 +533,14 @@ function EditorTab({
                         Loading…
                       </div>
                     }
-                    onChange={(value) => setCode(value ?? "")}
-                    options={{ fontSize: 13, minimap: { enabled: false } }}
+                    onChange={(value) => {
+                      if (!rightReadOnly) setCode(value ?? "");
+                    }}
+                    options={{
+                      fontSize: 13,
+                      minimap: { enabled: false },
+                      readOnly: rightReadOnly,
+                    }}
                   />
                 </Suspense>
               </div>
@@ -539,6 +601,377 @@ function EditorTab({
 }
 
 // ---------------------------------------------------------------------------
+// Plan tab
+// ---------------------------------------------------------------------------
+
+const RISK_BADGE: Record<"low" | "medium" | "high", string> = {
+  low: "text-green-700 bg-green-50 border border-green-200",
+  medium: "text-amber-700 bg-amber-50 border border-amber-200",
+  high: "text-red-700 bg-red-50 border border-red-200",
+};
+const RISK_CELL: Record<"low" | "medium" | "high", string> = {
+  low: "text-green-700",
+  medium: "text-amber-700",
+  high: "text-red-700",
+};
+
+function ReconSummaryCard({
+  report,
+}: {
+  report: Record<string, unknown> | null;
+}): React.ReactElement | null {
+  if (!report) return null;
+  const checks =
+    (report.checks as Array<{ name: string; status: string }> | undefined) ??
+    [];
+  const passed = checks.filter((c) => c.status === "pass").length;
+  const failed = checks.filter((c) => c.status !== "pass").length;
+  const allPassed = failed === 0 && checks.length > 0;
+  return (
+    <div
+      className={`rounded-lg border p-3 flex items-center gap-3 ${
+        allPassed
+          ? "border-emerald-200 bg-emerald-50"
+          : "border-red-200 bg-red-50"
+      }`}
+    >
+      <span
+        className={`text-lg ${allPassed ? "text-emerald-600" : "text-red-500"}`}
+      >
+        {allPassed ? "✓" : "✗"}
+      </span>
+      <div>
+        <p
+          className={`text-sm font-semibold ${allPassed ? "text-emerald-700" : "text-red-700"}`}
+        >
+          {allPassed
+            ? "Reconciliation passed"
+            : "Reconciliation issues detected"}
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {passed} passed · {failed} failed · {checks.length} total checks
+        </p>
+        {!allPassed && (report.diff_summary as string | undefined) && (
+          <p className="text-xs text-red-600 mt-1">
+            {report.diff_summary as string}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function BlockPlanTable({
+  blockPlans,
+  isProposed,
+  overrides,
+  savingBlockId,
+  onStrategyChange,
+  onRiskChange,
+  onNoteChange,
+}: {
+  blockPlans: BlockPlan[];
+  isProposed: boolean;
+  overrides: Record<string, BlockOverride>;
+  savingBlockId: string | null;
+  onStrategyChange: (blockId: string, value: string) => void;
+  onRiskChange: (blockId: string, value: string) => void;
+  onNoteChange: (blockId: string, value: string) => void;
+}): React.ReactElement {
+  return (
+    <div className="overflow-x-auto rounded-md border border-border">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="bg-muted/50 text-left">
+            <th className="px-3 py-2 font-medium text-muted-foreground">
+              Block
+            </th>
+            <th className="px-3 py-2 font-medium text-muted-foreground">
+              Type
+            </th>
+            <th className="px-3 py-2 font-medium text-muted-foreground">
+              Strategy
+            </th>
+            <th className="px-3 py-2 font-medium text-muted-foreground">
+              Risk
+            </th>
+            <th className="px-3 py-2 font-medium text-muted-foreground">
+              Effort
+            </th>
+            <th className="px-3 py-2 font-medium text-muted-foreground">
+              Rationale
+            </th>
+            <th className="px-3 py-2 font-medium text-muted-foreground">
+              Note
+            </th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {blockPlans.map((bp) => (
+            <tr key={bp.block_id} className="hover:bg-muted/30">
+              <td className="px-3 py-2 font-mono text-xs text-muted-foreground">
+                {bp.block_id}
+              </td>
+              <td className="px-3 py-2 font-mono text-xs">{bp.block_type}</td>
+              <td className="px-3 py-2 text-xs">
+                {isProposed ? (
+                  <select
+                    value={overrides[bp.block_id]?.strategy ?? bp.strategy}
+                    onChange={(e) =>
+                      onStrategyChange(bp.block_id, e.target.value)
+                    }
+                    className="rounded border border-border bg-background px-1 py-0.5 text-xs"
+                    aria-label={`Strategy for ${bp.block_id}`}
+                  >
+                    <option value="translate">translate</option>
+                    <option value="stub">stub</option>
+                    <option value="skip">skip</option>
+                  </select>
+                ) : (
+                  <span className="capitalize">
+                    {overrides[bp.block_id]?.strategy ?? bp.strategy}
+                  </span>
+                )}
+              </td>
+              <td
+                className={`px-3 py-2 text-xs font-semibold capitalize ${RISK_CELL[bp.risk]}`}
+              >
+                {isProposed ? (
+                  <select
+                    value={overrides[bp.block_id]?.risk ?? bp.risk}
+                    onChange={(e) => onRiskChange(bp.block_id, e.target.value)}
+                    className="rounded border border-border bg-background px-1 py-0.5 text-xs font-normal"
+                    aria-label={`Risk for ${bp.block_id}`}
+                  >
+                    <option value="low">low</option>
+                    <option value="medium">medium</option>
+                    <option value="high">high</option>
+                  </select>
+                ) : (
+                  (overrides[bp.block_id]?.risk ?? bp.risk)
+                )}
+              </td>
+              <td className="px-3 py-2 text-xs capitalize">
+                {bp.estimated_effort}
+              </td>
+              <td className="px-3 py-2 text-xs text-muted-foreground">
+                {bp.rationale}
+              </td>
+              <td className="px-3 py-2 text-xs">
+                {isProposed ? (
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="text"
+                      placeholder="Add note…"
+                      value={overrides[bp.block_id]?.note ?? ""}
+                      onChange={(e) =>
+                        onNoteChange(bp.block_id, e.target.value)
+                      }
+                      className="rounded border border-border bg-background px-1.5 py-0.5 text-xs w-28"
+                      aria-label={`Note for ${bp.block_id}`}
+                    />
+                    {savingBlockId === bp.block_id && (
+                      <span className="text-[10px] text-muted-foreground">
+                        Saving…
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <span className="text-muted-foreground">
+                    {overrides[bp.block_id]?.note ?? ""}
+                  </span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function PlanTab({
+  jobId,
+  isReviewable,
+  jobStatus,
+  report,
+}: {
+  jobId: string;
+  isReviewable: boolean;
+  jobStatus: JobStatusValue;
+  report: Record<string, unknown> | null;
+}): React.ReactElement {
+  const queryClient = useQueryClient();
+  const [overrides, setOverrides] = useState<Record<string, BlockOverride>>({});
+  const [savingBlockId, setSavingBlockId] = useState<string | null>(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["job", jobId, "plan"],
+    queryFn: () => getJobPlan(jobId),
+    enabled: !!jobId && isReviewable,
+  });
+
+  const acceptMutation = useMutation({
+    mutationFn: () => acceptJob(jobId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["job", jobId] });
+      toast.success("Migration accepted.");
+    },
+    onError: () => toast.error("Could not accept migration. Please try again."),
+  });
+
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function saveOverride(blockId: string, override: BlockOverride): void {
+    if (saveTimerRef.current !== null) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      setSavingBlockId(blockId);
+      void patchJobPlan(jobId, {
+        block_overrides: [override],
+      } satisfies PatchPlanRequest).finally(() => setSavingBlockId(null));
+    }, 500);
+  }
+
+  function handleStrategyChange(blockId: string, value: string): void {
+    const current = overrides[blockId] ?? { block_id: blockId };
+    const updated: BlockOverride = {
+      ...current,
+      block_id: blockId,
+      strategy: value,
+    };
+    setOverrides((prev) => ({ ...prev, [blockId]: updated }));
+    saveOverride(blockId, updated);
+  }
+
+  function handleRiskChange(blockId: string, value: string): void {
+    const current = overrides[blockId] ?? { block_id: blockId };
+    const updated: BlockOverride = {
+      ...current,
+      block_id: blockId,
+      risk: value,
+    };
+    setOverrides((prev) => ({ ...prev, [blockId]: updated }));
+    saveOverride(blockId, updated);
+  }
+
+  function handleNoteChange(blockId: string, value: string): void {
+    const current = overrides[blockId] ?? { block_id: blockId };
+    const updated: BlockOverride = {
+      ...current,
+      block_id: blockId,
+      note: value,
+    };
+    setOverrides((prev) => ({ ...prev, [blockId]: updated }));
+    saveOverride(blockId, updated);
+  }
+
+  const isProposed = jobStatus === "proposed";
+
+  if (!isReviewable) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        Migration plan available once migration completes.
+      </p>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
+        Loading plan…
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        No migration plan available for this job.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <ReconSummaryCard report={report} />
+
+      {isProposed && (
+        <Button
+          onClick={() => acceptMutation.mutate()}
+          disabled={acceptMutation.isPending}
+          className="w-full"
+        >
+          {acceptMutation.isPending ? "Accepting…" : "Accept migration"}
+        </Button>
+      )}
+      {jobStatus === "accepted" && (
+        <p className="text-sm text-emerald-600 font-medium">
+          ✓ Migration accepted
+        </p>
+      )}
+
+      {/* Summary card */}
+      <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <span
+            className={`text-xs font-semibold px-2 py-0.5 rounded-full ${RISK_BADGE[data.overall_risk]}`}
+          >
+            {data.overall_risk.toUpperCase()} RISK
+          </span>
+        </div>
+        <p className="text-sm text-foreground">{data.summary}</p>
+      </div>
+
+      {/* Blocks requiring manual review */}
+      {data.recommended_review_blocks.length > 0 && (
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold">
+            Blocks requiring manual review
+          </h3>
+          <div className="flex flex-wrap gap-2">
+            {data.recommended_review_blocks.map((bid) => (
+              <span
+                key={bid}
+                className="font-mono text-xs px-2 py-1 rounded bg-amber-50 border border-amber-200 text-amber-800"
+              >
+                {bid}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Cross-file dependencies */}
+      {data.cross_file_dependencies.length > 0 && (
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold">Cross-file dependencies</h3>
+          <ul className="text-sm space-y-1 list-disc list-inside text-muted-foreground">
+            {data.cross_file_dependencies.map((dep, i) => (
+              <li key={i}>{dep}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Block plan table */}
+      {data.block_plans.length > 0 && (
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold">Block plan</h3>
+          <BlockPlanTable
+            blockPlans={data.block_plans}
+            isProposed={isProposed}
+            overrides={overrides}
+            savingBlockId={savingBlockId}
+            onStrategyChange={handleStrategyChange}
+            onRiskChange={handleRiskChange}
+            onNoteChange={handleNoteChange}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+// ---------------------------------------------------------------------------
 // Report tab
 // ---------------------------------------------------------------------------
 
@@ -570,17 +1003,21 @@ function ReportTab({
   return (
     <div className="flex gap-4 h-[calc(100vh-320px)] min-h-[300px]">
       <div className="flex flex-col flex-1 min-w-0">
-        <h3 className="text-sm font-semibold mb-2 shrink-0">Reconciliation report</h3>
+        <h3 className="text-sm font-semibold mb-2 shrink-0">
+          Reconciliation report
+        </h3>
         <div className="flex-1 overflow-y-auto">
           <TiptapEditor content={reportHtml} readOnly={false} />
         </div>
       </div>
       <div className="flex flex-col flex-1 min-w-0">
-        <h3 className="text-sm font-semibold mb-2 shrink-0">Migration summary</h3>
+        <h3 className="text-sm font-semibold mb-2 shrink-0">
+          Migration summary
+        </h3>
         <div className="flex-1 overflow-y-auto">
           {docData?.doc ? (
             <TiptapEditor
-              content={marked.parse(docData.doc) as string}
+              content={String(marked.parse(extractMarkdown(docData.doc)))}
               readOnly={false}
             />
           ) : (
@@ -641,6 +1078,117 @@ function LineageTab({ jobId }: { jobId: string }): React.ReactElement {
 }
 
 // ---------------------------------------------------------------------------
+// History tab
+// ---------------------------------------------------------------------------
+
+function HistoryTab({ jobId }: { jobId: string }): React.ReactElement {
+  const navigate = useNavigate();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["job", jobId, "history"],
+    queryFn: () => getJobHistory(jobId),
+    enabled: !!jobId,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
+        Loading history…
+      </div>
+    );
+  }
+
+  if (!data || data.entries.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">No history available.</p>
+    );
+  }
+
+  return (
+    <div className="relative space-y-0 pl-8">
+      {/* Vertical line */}
+      <div className="absolute left-3 top-3 bottom-3 w-px bg-border" />
+
+      {data.entries.map((entry: JobHistoryEntry, idx: number) => {
+        const isAgent = entry.trigger === "agent";
+        const label =
+          entry.trigger === "agent"
+            ? "Agent migration"
+            : entry.trigger === "human-refine"
+              ? "Refined by reviewer"
+              : "Re-reconciled by reviewer";
+
+        const statusColor =
+          entry.status === "accepted"
+            ? "text-emerald-600"
+            : entry.status === "failed"
+              ? "text-red-500"
+              : entry.status === "proposed" || entry.status === "done"
+                ? "text-amber-600"
+                : "text-muted-foreground";
+
+        return (
+          <div key={entry.job_id} className="relative pb-6 last:pb-0">
+            {/* Node */}
+            <div className="absolute -left-5 top-1 flex h-6 w-6 items-center justify-center rounded-full border-2 border-border bg-background">
+              {isAgent ? (
+                <Bot size={12} className="text-blue-500" />
+              ) : (
+                <User size={12} className="text-violet-500" />
+              )}
+            </div>
+
+            <div
+              className={cn(
+                "ml-2 rounded-lg border p-3 space-y-1 transition-colors",
+                entry.is_current
+                  ? "border-primary bg-primary/5"
+                  : "border-border bg-card cursor-pointer hover:bg-muted/50",
+              )}
+              onClick={() => {
+                if (!entry.is_current) navigate(`/jobs/${entry.job_id}`);
+              }}
+              role={entry.is_current ? undefined : "button"}
+              tabIndex={entry.is_current ? undefined : 0}
+              onKeyDown={(e) => {
+                if (!entry.is_current && (e.key === "Enter" || e.key === " ")) {
+                  e.preventDefault();
+                  navigate(`/jobs/${entry.job_id}`);
+                }
+              }}
+              aria-label={
+                entry.is_current ? undefined : `Go to version ${idx + 1}`
+              }
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-foreground">
+                  {label}
+                </span>
+                {entry.is_current && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-semibold">
+                    current
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <span className={`font-medium ${statusColor}`}>
+                  {STATUS_LABEL[entry.status] ?? entry.status}
+                </span>
+                <span>·</span>
+                <span>{new Date(entry.created_at).toLocaleString()}</span>
+              </div>
+              <p className="text-[11px] font-mono text-muted-foreground/70 truncate">
+                {entry.job_id}
+              </p>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
@@ -653,7 +1201,8 @@ export default function JobDetailPage(): React.ReactElement {
     queryFn: () => getJob(id),
     enabled: !!id,
     refetchInterval: (q) =>
-      q.state.data?.status === "queued" || q.state.data?.status === "running"
+      q.state.data?.status !== undefined &&
+      POLLING_STATUSES.includes(q.state.data.status)
         ? 3000
         : false,
   });
@@ -694,27 +1243,48 @@ export default function JobDetailPage(): React.ReactElement {
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="editor">
+      <Tabs defaultValue="plan">
         <TabsList>
+          <TabsTrigger value="plan">Plan</TabsTrigger>
           <TabsTrigger value="editor">Editor</TabsTrigger>
           <TabsTrigger value="report">Report</TabsTrigger>
           <TabsTrigger value="lineage">Lineage</TabsTrigger>
+          <TabsTrigger value="history">History</TabsTrigger>
         </TabsList>
 
+        <TabsContent value="plan" className="mt-4">
+          <PlanTab
+            jobId={id}
+            isReviewable={
+              job?.status === "proposed" || job?.status === "accepted"
+            }
+            jobStatus={job?.status ?? "queued"}
+            report={job?.report ?? null}
+          />
+        </TabsContent>
+
         <TabsContent value="editor" className="mt-4">
-          <EditorTab jobId={id} initialCode={job?.python_code ?? ""} />
+          <EditorTab
+            jobId={id}
+            initialCode={job?.python_code ?? ""}
+            generatedFiles={job?.generated_files ?? null}
+          />
         </TabsContent>
 
         <TabsContent value="report" className="mt-4">
           <ReportTab
             jobId={id}
             report={job?.report ?? null}
-            isDone={job?.status === "done"}
+            isDone={job?.status === "proposed" || job?.status === "accepted"}
           />
         </TabsContent>
 
         <TabsContent value="lineage" className="mt-4">
           <LineageTab jobId={id} />
+        </TabsContent>
+
+        <TabsContent value="history" className="mt-4">
+          <HistoryTab jobId={id} />
         </TabsContent>
       </Tabs>
     </div>

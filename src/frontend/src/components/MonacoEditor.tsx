@@ -20,7 +20,7 @@ export default function MonacoEditor({
       height={height}
       value={value}
       language={language}
-      theme="vs-dark"
+      theme="vs"
       loading={
         <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
           Loading editor…

@@ -33,6 +33,7 @@ export interface FileTreeProps {
 // Build tree from flat paths
 // ---------------------------------------------------------------------------
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function buildTree(paths: string[]): TreeNode[] {
   const root: TreeNode[] = [];
   const dirMap = new Map<string, TreeNode>();

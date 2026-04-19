@@ -6,6 +6,26 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-04-19 (session 18 — F3 proposed/accepted, S-BE5/BE6, UI fixes)
+
+- **`jobs_status_check` constraint expanded to include `proposed`/`accepted`:** migration 008 drops and recreates the constraint to allow new statuses before running the UPDATE · revisit never
+- **`done` rows migrate to `proposed` (not `accepted`):** `done` was implicit acceptance but with no review performed; landing in `proposed` gives the user a chance to explicitly accept or refine · revisit if historical data needs different treatment
+- **`"done"` kept as a frontend legacy `JobStatusValue`:** old worker images still write `"done"` between deploys; frontend maps it to amber "Under Review" and treats it as clickable/navigable · revisit when all environments rebuild
+- **ReconciliationService skips execution when no reference data supplied:** running generated code in a sandbox with no input data was always failing and reporting a false `execution: fail` check · revisit never
+- **`skip_llm` flag + `trigger` column for versioning:** `PUT /python_code` sets `skip_llm=True` and `trigger="human-rereconcile"`; `POST /refine` spawns a child job with `trigger="human-refine"`; allows the History tab to distinguish agent vs human changes · revisit never
+- **History tab walks `parent_job_id` chain:** linear parent chain enables full version history without a separate events table; siblings (branches) are collected via a second query on parent IDs · revisit if branching history is needed
+- **Refine context injected as `__refine_context__` sentinel in `job.files`:** avoids adding more DB columns while keeping prior code and hint available to the worker prompt; sentinel is stripped from sources display · revisit never
+
+---
+
+## 2026-04-19 (session 17 — F2-improvements backend: models, agents, codegen, API)
+
+- **Two-phase refinement replaces `_MAX_RETRIES` while-loop:** explicit two phases (translate all → reconcile → if fail: re-translate affected block only) is predictable and equivalent to the old max-2-retry limit; easier to reason about and test · revisit never
+- **`MigrationPlannerAgent` and `LineageEnricherAgent` are best-effort:** wrapped in try/except in orchestrator; failure logs warning but does not abort the job. Core migration correctness must not depend on enrichment agents · revisit never
+- **`CodeGenerator.assemble()` returns `dict[str, str]`; `assemble_flat()` returns str:** multi-file output needed for S-M (1:1 SAS↔Python editor); flat string still needed for reconciliation execution and `python_code` DB column · revisit never
+
+---
+
 ## 2026-04-19 (session 16 — UI polish, zip folder tree, lineage node styling)
 
 - **Zip upload stores full relative path as key:** `os.path.basename` was stripping directory structure; full path required for VSCode-style file tree; path traversal guard updated to check `".." in path.split("/")` instead of basename equality · revisit never
