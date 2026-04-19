@@ -239,7 +239,8 @@ def extract_lineage(blocks: list[SASBlock], job_id: str) -> dict:  # type: ignor
     for block in blocks:
         node_id = f"{block.source_file}::{block.start_line}"
         label = getattr(block, "name", None) or block.block_type.value
-        status = "untranslatable" if block.block_type == BlockType.UNTRANSLATABLE else "migrated"
+        has_untranslatable = "# SAS-UNTRANSLATABLE" in (block.raw_sas or "")
+        status = "untranslatable" if has_untranslatable else "migrated"
 
         nodes.append(
             {
