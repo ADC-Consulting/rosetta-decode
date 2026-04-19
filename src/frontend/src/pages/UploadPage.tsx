@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useUploadState } from "@/context/UploadStateContext";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
   Archive,
   ChevronDown,
@@ -18,7 +19,7 @@ import {
   FolderOpen,
   ScrollText,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 // ---------------------------------------------------------------------------
@@ -384,6 +385,9 @@ export default function UploadPage() {
       setManifest(data);
       setPhase("submitted");
     },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Something went wrong while submitting the migration. Please try again.");
+    },
   });
 
   const isPending = mutation.status === "pending";
@@ -413,6 +417,12 @@ export default function UploadPage() {
 
   const isDone = jobStatus?.status === "done";
   const isFailed = jobStatus?.status === "failed";
+
+  useEffect(() => {
+    if (isFailed && jobStatus?.error) {
+      toast.error("The migration could not be completed. Please check your files and try again.");
+    }
+  }, [isFailed, jobStatus?.error]);
 
   // ---------------------------------------------------------------------------
   // File list render
@@ -563,14 +573,6 @@ export default function UploadPage() {
             </>
           )}
 
-          {isFailed && jobStatus.error && (
-            <div
-              role="alert"
-              className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive"
-            >
-              {jobStatus.error}
-            </div>
-          )}
 
           <div className="flex items-center gap-3 pt-1 border-t border-border">
             <Button
@@ -696,14 +698,6 @@ export default function UploadPage() {
             <p role="alert" className="text-sm text-destructive">
               {validationError}. Accepted: .csv, .log, .sas, .sas7bdat, .xls,
               .xlsx, .zip
-            </p>
-          )}
-
-          {mutation.status === "error" && (
-            <p role="alert" className="text-sm text-destructive">
-              {mutation.error instanceof Error
-                ? mutation.error.message
-                : "An unexpected error occurred."}
             </p>
           )}
         </form>

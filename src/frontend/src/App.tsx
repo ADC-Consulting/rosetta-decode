@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import AppSidebar from "./components/AppSidebar";
+import { Toaster } from "./components/ui/sonner";
 import { UploadStateProvider } from "./context/UploadStateContext";
 import JobsPage from "./pages/JobsPage";
 import UploadPage from "./pages/UploadPage";
@@ -31,6 +32,7 @@ function App(): React.ReactElement {
         </div>
       </main>
     </div>
+    <Toaster position="top-right" richColors closeButton />
     </UploadStateProvider>
   );
 }

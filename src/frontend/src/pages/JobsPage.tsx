@@ -75,22 +75,26 @@ export default function JobsPage(): React.ReactElement {
               </tr>
             </thead>
             <tbody>
-              {jobs.map((job) => (
+              {jobs.map((job) => {
+                const isClickable = job.status === "done";
+                return (
                 <tr
                   key={job.job_id}
-                  onClick={() => navigate(`/jobs/${job.job_id}`)}
-                  role="button"
-                  tabIndex={0}
+                  onClick={() => { if (isClickable) navigate(`/jobs/${job.job_id}`); }}
+                  role={isClickable ? "button" : undefined}
+                  tabIndex={isClickable ? 0 : undefined}
                   aria-label={`${job.name ?? job.job_id.slice(0, 8)}, status ${STATUS_LABEL[job.status]}`}
+                  aria-disabled={!isClickable}
                   onKeyDown={(e) => {
+                    if (!isClickable) return;
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
                       navigate(`/jobs/${job.job_id}`);
                     }
                   }}
                   className={cn(
-                    "border-b border-border last:border-0 cursor-pointer",
-                    "hover:bg-muted/50 transition-colors",
+                    "border-b border-border last:border-0 transition-colors",
+                    isClickable ? "cursor-pointer hover:bg-muted/50" : "cursor-default opacity-70",
                   )}
                 >
                   <td className="px-4 py-3 text-foreground font-medium">
@@ -142,7 +146,7 @@ export default function JobsPage(): React.ReactElement {
                     )}
                   </td>
                 </tr>
-              ))}
+              )})}
             </tbody>
           </table>
         </div>

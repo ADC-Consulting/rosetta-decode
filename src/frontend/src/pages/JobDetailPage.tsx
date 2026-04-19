@@ -13,6 +13,7 @@ import TiptapEditor from "@/components/TiptapEditor";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 import { Editor } from "@monaco-editor/react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Download } from "lucide-react";
@@ -92,12 +93,18 @@ function EditorTab({
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Your changes could not be saved. Please try again.");
+    },
   });
 
   const refineMutation = useMutation({
     mutationFn: () => refineJob(jobId, hint.trim() || undefined),
     onSuccess: (data) => {
       navigate(`/jobs/${data.job_id}`);
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "The refinement request could not be submitted. Please try again.");
     },
   });
 
@@ -220,13 +227,6 @@ function EditorTab({
             Saved.
           </span>
         )}
-        {saveMutation.isError && (
-          <span className="text-xs text-red-500">
-            {saveMutation.error instanceof Error
-              ? saveMutation.error.message
-              : "Save failed."}
-          </span>
-        )}
       </div>
 
       {showRefine && (
@@ -249,13 +249,6 @@ function EditorTab({
           >
             {refineMutation.isPending ? "Submitting…" : "Submit refinement"}
           </Button>
-          {refineMutation.isError && (
-            <p className="text-xs text-red-500">
-              {refineMutation.error instanceof Error
-                ? refineMutation.error.message
-                : "Refinement failed."}
-            </p>
-          )}
         </div>
       )}
     </div>
@@ -354,8 +347,9 @@ function LineageTab({ jobId }: { jobId: string }): React.ReactElement {
         </p>
       );
     }
+    toast.error("Lineage data could not be loaded. Please try again later.");
     return (
-      <p className="text-sm text-red-500">Failed to load lineage: {msg}</p>
+      <p className="text-sm text-muted-foreground">Could not load lineage.</p>
     );
   }
 

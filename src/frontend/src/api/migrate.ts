@@ -1,4 +1,5 @@
 import type { MigrateResponse } from "./types";
+import { extractApiError } from "./errors";
 
 const BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
@@ -21,6 +22,6 @@ export async function submitMigration(
   }
   if (name) fd.append("name", name);
   const res = await fetch(`${BASE}/migrate`, { method: "POST", body: fd });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw new Error(await extractApiError(res));
   return res.json() as Promise<MigrateResponse>;
 }
