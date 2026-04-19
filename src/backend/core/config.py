@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     cloud: bool = False
     log_level: str = "INFO"
     upload_dir: str = "/tmp/rosetta-uploads"
+    max_zip_bytes: int = 524_288_000
     cors_origins_raw: str = Field(default="*", alias="CORS_ORIGINS")
 
     @property

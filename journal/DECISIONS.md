@@ -6,6 +6,26 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-04-19 (session 14 — UI polish, lineage DAG, Makefile fixes)
+
+- **Editor tab merges Comparison + Edit:** single tab with SAS read-only left, editable Python right; users naturally want the source visible while editing; avoids context-switching between tabs · revisit never
+- **`._` zip entries skipped silently:** macOS resource fork files are OS artefacts, not user content; no rejection entry added · revisit never
+- **`file_count` counts non-sentinel keys:** keys matching `__…__` pattern are internal sentinels (reference files); plain keys are SAS sources; count reflects user-uploaded SAS files only · revisit if supporting file count needs to be shown separately
+- **Makefile: NPM_FLAGS not passed to ESLint/Vite:** ESLint v9 flat config and Vite CLI reject `--silent`; lint and build targets now invoke `npm run lint` / `npm run build` without extra flags · revisit never
+
+---
+
+## 2026-04-18 (session 13 — JobDetailPage, UploadPage workspace, name/file_count)
+
+- **UploadPage as persistent workspace:** state lifted into `UploadStateProvider` (React context at App root) so it survives sidebar navigation; never auto-navigates away; "Start another" keeps result visible, "Accept & clear" is the explicit reset · revisit never
+- **Zip preview client-side with jszip:** zip contents parsed in browser on drop, filtered of `__MACOSX`/hidden entries, displayed as a tree; full zip still sent to server unchanged (server handles extraction) · revisit never
+- **Tabs component hand-rolled:** shadcn `base-nova` style tabs depend on `@base-ui-components/react` which is not installed and had a circular import; replaced with a self-contained React state-based tabs component · revisit if `@base-ui-components/react` is installed project-wide
+- **Markdown doc rendered via `marked` + prose:** `TiptapEditor` receives HTML but LLM doc is raw Markdown; using `marked.parse()` + `dangerouslySetInnerHTML` + Tailwind `prose` class instead of a Tiptap instance · revisit never
+- **`name` field on Job:** optional human-readable label submitted as a form field on `POST /migrate`; stored in `jobs.name` (migration 005); surfaced in `GET /jobs` list and result card · revisit never
+- **`file_count` derived at query time:** computed in `list_jobs` as count of non-`__`-prefixed keys in `job.files`; not stored as a column · revisit if query performance degrades at scale
+
+---
+
 ## 2026-04-18 (session 12 — post-MVP UI planning)
 
 - **Zone-based editor architecture:** each UI content type gets the right primitive — Monaco DiffEditor for SAS vs Python diff, Monaco Editor for inline editing, Tiptap for rich-text notes/reports, React Flow for lineage graph · revisit never
