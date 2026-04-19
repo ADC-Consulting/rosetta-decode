@@ -1,0 +1,148 @@
+"""Unit tests for ProcAgent."""
+
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+from src.worker.engine.agents.proc import ProcAgent, ProcError, ProcResult
+from src.worker.engine.models import BlockType, GeneratedBlock, JobContext, MacroVar, SASBlock
+
+# ── Fixtures ──────────────────────────────────────────────────────────────────
+
+BLOCK = SASBlock(
+    block_type=BlockType.PROC_SQL,
+    source_file="etl.sas",
+    start_line=10,
+    end_line=20,
+    raw_sas=(
+        "PROC SQL; CREATE TABLE work.summary AS SELECT dept, COUNT(*) AS n"
+        " FROM work.emp GROUP BY dept; QUIT;"
+    ),
+    input_datasets=["work.emp"],
+    output_datasets=["work.summary"],
+)
+
+CONTEXT = JobContext(
+    source_files={
+        "etl.sas": (
+            "PROC SQL; CREATE TABLE work.summary AS SELECT dept, COUNT(*) AS n"
+            " FROM work.emp GROUP BY dept; QUIT;"
+        )
+    },
+    resolved_macros=[MacroVar(name="DEPT", raw_value="SALES", source_file="etl.sas", line=1)],
+    dependency_order=["work.emp", "work.summary"],
+    risk_flags=["complex SQL join detected"],
+    blocks=[BLOCK],
+    generated=[],
+)
+
+TRANSLATION_RESULT = ProcResult(
+    python_code=(
+        "work_summary = work_emp.groupby('dept').size().reset_index(name='n')  # SAS: etl.sas:10"
+    )
+)
+
+
+def _make_run_result(result: ProcResult) -> MagicMock:
+    mock = MagicMock()
+    mock.output = result
+    return mock
+
+
+@pytest.fixture()
+def agent_with_mock() -> tuple[ProcAgent, AsyncMock]:
+    """Return a ProcAgent whose internal _agent.run is mocked."""
+    agent = ProcAgent()
+    mock_run = AsyncMock(return_value=_make_run_result(TRANSLATION_RESULT))
+    agent._agent.run = mock_run  # type: ignore[method-assign]
+    return agent, mock_run
+
+
+# ── Tests ─────────────────────────────────────────────────────────────────────
+
+
+async def test_translate_returns_generated_block(
+    agent_with_mock: tuple[ProcAgent, AsyncMock],
+) -> None:
+    agent, _ = agent_with_mock
+    result = await agent.translate(BLOCK, CONTEXT)
+    assert isinstance(result, GeneratedBlock)
+    assert result.source_block == BLOCK
+
+
+async def test_is_untranslatable_false(
+    agent_with_mock: tuple[ProcAgent, AsyncMock],
+) -> None:
+    agent, _ = agent_with_mock
+    result = await agent.translate(BLOCK, CONTEXT)
+    assert result.is_untranslatable is False
+
+
+async def test_rejects_proc_sort() -> None:
+    agent = ProcAgent()
+    bad_block = BLOCK.model_copy(update={"block_type": BlockType.PROC_SORT})
+    with pytest.raises(ValueError, match="ProcAgent only handles PROC_SQL"):
+        await agent.translate(bad_block, CONTEXT)
+
+
+async def test_rejects_data_step() -> None:
+    agent = ProcAgent()
+    bad_block = BLOCK.model_copy(update={"block_type": BlockType.DATA_STEP})
+    with pytest.raises(ValueError, match="ProcAgent only handles PROC_SQL"):
+        await agent.translate(bad_block, CONTEXT)
+
+
+async def test_rejects_untranslatable() -> None:
+    agent = ProcAgent()
+    bad_block = BLOCK.model_copy(update={"block_type": BlockType.UNTRANSLATABLE})
+    with pytest.raises(ValueError, match="ProcAgent only handles PROC_SQL"):
+        await agent.translate(bad_block, CONTEXT)
+
+
+async def test_windowed_context_used(
+    agent_with_mock: tuple[ProcAgent, AsyncMock],
+) -> None:
+    agent, mock_run = agent_with_mock
+    await agent.translate(BLOCK, CONTEXT)
+    assert mock_run.called
+    call_args = mock_run.call_args
+    prompt: str = call_args[0][0]
+    assert isinstance(prompt, str)
+
+
+async def test_llm_failure_raises_proc_error() -> None:
+    agent = ProcAgent()
+    agent._agent.run = AsyncMock(side_effect=RuntimeError("LLM timeout"))  # type: ignore[method-assign]
+
+    with pytest.raises(ProcError) as exc_info:
+        await agent.translate(BLOCK, CONTEXT)
+
+    assert isinstance(exc_info.value.cause, RuntimeError)
+
+
+async def test_max_tokens_4000(
+    agent_with_mock: tuple[ProcAgent, AsyncMock],
+) -> None:
+    agent, mock_run = agent_with_mock
+    await agent.translate(BLOCK, CONTEXT)
+    call_kwargs = mock_run.call_args[1]
+    assert call_kwargs.get("model_settings") == {"max_tokens": 4000}
+
+
+async def test_macro_vars_in_prompt(
+    agent_with_mock: tuple[ProcAgent, AsyncMock],
+) -> None:
+    agent, mock_run = agent_with_mock
+    await agent.translate(BLOCK, CONTEXT)
+    prompt: str = mock_run.call_args[0][0]
+    assert "DEPT" in prompt
+    assert "SALES" in prompt
+
+
+async def test_dependency_order_in_prompt(
+    agent_with_mock: tuple[ProcAgent, AsyncMock],
+) -> None:
+    agent, mock_run = agent_with_mock
+    await agent.translate(BLOCK, CONTEXT)
+    prompt: str = mock_run.call_args[0][0]
+    assert "work.emp" in prompt
+    assert "work.summary" in prompt
