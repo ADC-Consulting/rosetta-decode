@@ -6,6 +6,53 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-04-19 — LineageGraph UX overhaul, sonner toasts, file_count fix, undo/redo
+
+**Duration:** ~3h | **Focus:** LineageGraph interactivity, error UX, backend bug fixes
+
+### Done
+
+- **LineageGraph hover-to-focus**: replaced click-to-focus with `onNodeMouseEnter`/`onNodeMouseLeave`; 80ms debounce prevents flicker; pane click clears
+- **Undo/Redo toolbar**: `onNodeDragStop` snapshots `{id→{x,y}}` position maps (deep-copied to avoid mutation); Undo/Redo restore via `setNodes` (controlled-mode setter — `rfSetNodes` was clobbered by React Flow's controlled-mode render loop); Reset restores initial dagre layout + `fitView`
+- **Opacity transition**: `transition: "opacity 0.18s ease"` on all nodes for smooth hover-dim effect
+- **Legend → top-right, toolbar → top-left**: repositioned overlays
+- **Untranslatable status bug fixed**: `parser.py` was checking `"# SAS-UNTRANSLATABLE" in block.raw_sas` (always false); fixed to `block.block_type == BlockType.UNTRANSLATABLE`
+- **file_count fixed**: was counting only non-sentinel keys (`.sas` only); now `len(j.files or {})` counts all accepted files (SAS + CSV/log/xlsx reference sentinels)
+- **Jobs table row disabled for non-done**: running/queued/failed rows are `cursor-default opacity-70`, non-clickable; only `done` rows navigate to detail page
+- **Sonner toast for all errors**: shadcn sonner component installed; `<Toaster>` added to App root; all `onError` callbacks and failed-job status wired to `toast.error()`; removed all inline red text error displays
+- **Human-friendly error copy**: generic fallbacks rewritten ("Your changes could not be saved. Please try again."), raw technical strings never shown to user; `extractApiError` continues to pass through clean FastAPI messages verbatim
+
+### Decisions
+
+- Controlled-mode `setNodes` is the only correct setter for position restores in React Flow — `rfSetNodes` (instance) gets clobbered by the nodes prop on re-render
+- `file_count` now counts all keys including reference sentinels (they are user-uploaded files)
+- Sonner hardcoded to `theme="light"` — no `next-themes` in this Vite SPA
+
+### Open Questions
+
+- None
+
+### Next Session — Start Here
+
+1. Apply pending Alembic migrations if not yet done: `docker compose exec backend uv run alembic upgrade head`
+2. S-BE5: `PUT /jobs/{id}/python_code` re-reconciliation + `skip_llm` worker branch
+3. S-BE6: `POST /jobs/{id}/refine` + `parent_job_id`
+4. S-FE7/8/9: GlobalLineagePage, DocsPage, ExplainPage stub
+
+### Files Touched
+
+- `src/frontend/src/components/LineageGraph.tsx` (hover-to-focus, undo/redo/reset, smooth opacity, layout repositioning)
+- `src/frontend/src/components/ui/sonner.tsx` (new — fixed generated file, no next-themes)
+- `src/frontend/src/components/JobResult.tsx` (human-friendly error copy)
+- `src/frontend/src/pages/UploadPage.tsx` (useEffect toast for failed job, mutation onError, remove inline errors)
+- `src/frontend/src/pages/JobDetailPage.tsx` (mutation onError toasts, lineage error toast, remove inline errors)
+- `src/frontend/src/pages/JobsPage.tsx` (non-done rows non-clickable)
+- `src/frontend/src/App.tsx` (Toaster added)
+- `src/worker/engine/parser.py` (untranslatable status bug fix)
+- `src/backend/api/routes/jobs.py` (file_count counts all keys)
+
+---
+
 ## 2026-04-19 — UI polish: mandatory name, merged editor, lineage DAG upgrade
 
 **Duration:** ~3h | **Focus:** JobDetailPage UX, LineageGraph dagre rewrite, UploadPage, JobsPage, backend fixes

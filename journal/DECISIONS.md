@@ -6,6 +6,17 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-04-19 (session 15 — LineageGraph UX, toasts, file_count, undo/redo)
+
+- **LineageGraph hover-to-focus replaces click-to-focus:** hover is more discoverable and natural for a graph; 80ms debounce prevents flicker when crossing node boundaries · revisit never
+- **Undo/Redo history stores `{id→{x,y}}` position snapshots, not full Node objects:** full Node refs are mutated in place by ReactFlow; deep-copying only x/y is safe and minimal · revisit never
+- **Undo/Redo uses `setNodes` from `useNodesState` (controlled-mode setter):** ReactFlow in controlled mode overwrites its internal store from the nodes prop on every render; `rfSetNodes` (instance method) gets clobbered; controlled setter is the only correct path · revisit never
+- **`file_count` counts all keys in `job.files` (not just non-sentinel):** reference files (CSV/log/xlsx) stored as `__ref_*__` sentinels are still user-uploaded files; count should reflect total accepted files · revisit never
+- **Sonner (shadcn) used for all error toasts:** shadcn's official toast recommendation; no `next-themes` dependency — hardcoded `theme="light"` since project is Vite SPA with no theme switching · revisit if dark mode is added
+- **Human-readable error copy everywhere:** raw `{detail: ...}` JSON never shown to user; `extractApiError` strips FastAPI envelope; fallback strings written for humans not developers · revisit never
+
+---
+
 ## 2026-04-19 (session 14 — UI polish, lineage DAG, Makefile fixes)
 
 - **Editor tab merges Comparison + Edit:** single tab with SAS read-only left, editable Python right; users naturally want the source visible while editing; avoids context-switching between tabs · revisit never

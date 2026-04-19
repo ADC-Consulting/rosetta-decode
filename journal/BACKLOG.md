@@ -60,13 +60,15 @@
 - [x] F-UI-postmvp S-FE1: `MonacoDiffViewer` component (Monaco DiffEditor)
 - [x] F-UI-postmvp S-FE2: `MonacoEditor` component (Monaco Editor)
 - [x] F-UI-postmvp S-FE3: `TiptapEditor` component (rich text + code blocks)
-- [x] F-UI-postmvp S-FE4: `LineageGraph` component (React Flow, colour-coded)
+- [x] F-UI-postmvp S-FE4: `LineageGraph` component (React Flow, colour-coded by status, hover-to-focus, undo/redo/reset toolbar, dagre LR layout)
 - [x] F-UI-postmvp S-FE6: `JobDetailPage` (4 tabs: Comparison / Edit / Report / Lineage)
 - [ ] F-UI-postmvp S-FE7: `GlobalLineagePage`
 - [ ] F-UI-postmvp S-FE8: `DocsPage`
 - [ ] F-UI-postmvp S-FE9: `ExplainPage` stub
 - [x] F-UI-postmvp S-FE12: Upload UX — unified drop-zone (.sas/.sas7bdat/.zip/.log/.csv/.xls/.xlsx), manifest view
 - [x] F-UI-postmvp S-FE13: API client extensions (types + jobs.ts + migrate.ts)
+- [x] UI polish: sonner toast for all errors, human-friendly error copy
+- [x] UI polish: jobs table row disabled/non-clickable for non-done status
 
 ---
 
