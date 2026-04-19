@@ -1,8 +1,15 @@
 """SAS macro expansion: %LET variable substitution and zero-arg %MACRO/%MEND inlining."""
 
+from __future__ import annotations
+
 import re
+from typing import TYPE_CHECKING
 
 from src.worker.engine.models import MacroVar, SASBlock
+
+if TYPE_CHECKING:
+    from src.worker.engine.agents.macro_resolver import MacroResolverAgent
+    from src.worker.engine.models import JobContext
 
 
 class CannotExpandError(Exception):
@@ -106,6 +113,16 @@ def _has_unknown_macro_calls(text: str, macro_defs: dict[str, str]) -> bool:
 class MacroExpander:
     """Expand SAS macro variables and inline zero-arg macro definitions."""
 
+    def __init__(self, resolver: MacroResolverAgent | None = None) -> None:
+        """Initialise MacroExpander with an optional LLM-backed resolver.
+
+        Args:
+            resolver: Optional MacroResolverAgent used as a fallback when
+                deterministic expansion raises CannotExpandError.  When None,
+                CannotExpandError is re-raised to the caller.
+        """
+        self._resolver = resolver
+
     def expand(self, blocks: list[SASBlock], macro_vars: list[MacroVar]) -> list[SASBlock]:
         """Return new SASBlock list with %LET substitutions and zero-arg macro inlining applied.
 
@@ -117,7 +134,7 @@ class MacroExpander:
             New list of SASBlock instances with expanded raw_sas; input is not mutated.
 
         Raises:
-            CannotExpand: When a macro call cannot be safely inlined.
+            CannotExpand: When a macro call cannot be safely inlined and no resolver is set.
         """
         var_map: dict[str, str] = {v.name.upper(): v.raw_value for v in macro_vars}
         macro_defs = _collect_macro_definitions(blocks)
@@ -131,6 +148,53 @@ class MacroExpander:
 
             if _has_macro_calls(raw, macro_defs) or _has_unknown_macro_calls(raw, macro_defs):
                 raw = _inline_macros(raw, macro_defs)
+
+            if raw == block.raw_sas:
+                result.append(block)
+            else:
+                result.append(block.model_copy(update={"raw_sas": raw}))
+
+        return result
+
+    async def expand_with_fallback(
+        self,
+        blocks: list[SASBlock],
+        macro_vars: list[MacroVar],
+        context: JobContext,
+    ) -> list[SASBlock]:
+        """Expand macros, calling MacroResolverAgent on CannotExpandError if set.
+
+        Falls back to :meth:`expand` when no resolver is injected.
+
+        Args:
+            blocks: Parsed SAS blocks.
+            macro_vars: Resolved %LET declarations.
+            context: Current JobContext passed to the resolver agent.
+
+        Returns:
+            New list of expanded SASBlock instances.
+
+        Raises:
+            CannotExpandError: If no resolver is set, or the resolver also cannot expand.
+        """
+        if self._resolver is None:
+            return self.expand(blocks, macro_vars)
+
+        var_map: dict[str, str] = {v.name.upper(): v.raw_value for v in macro_vars}
+        macro_defs = _collect_macro_definitions(blocks)
+
+        result: list[SASBlock] = []
+        for block in blocks:
+            raw = block.raw_sas
+
+            if var_map:
+                raw = _substitute_let_vars(raw, var_map)
+
+            try:
+                if _has_macro_calls(raw, macro_defs) or _has_unknown_macro_calls(raw, macro_defs):
+                    raw = _inline_macros(raw, macro_defs)
+            except CannotExpandError:
+                raw = await self._resolver.resolve(raw, context)
 
             if raw == block.raw_sas:
                 result.append(block)
