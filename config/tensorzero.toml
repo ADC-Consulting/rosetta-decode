@@ -1,0 +1,32 @@
+[gateway]
+
+[models."gpt-5.4"]
+routing = ["azure"]
+
+[models."gpt-5.4".providers.azure]
+type = "azure"
+deployment_id = "gpt-5.4"
+endpoint = "https://ash-pls-ai-dev2.cognitiveservices.azure.com/"
+api_key_location = "env::AZURE_AI_FOUNDRY_API_KEY"
+
+[models."claude-opus-4-5"]
+routing = ["azure"]
+
+[models."claude-opus-4-5".providers.azure]
+type = "anthropic"
+model_name = "claude-opus-4-5"
+api_base = "https://ash-pls-ai-dev2.cognitiveservices.azure.com/anthropic/v1/"
+api_key_location = "env::AZURE_AI_FOUNDRY_API_KEY"
+
+[rate_limiting]
+enabled = true
+
+[[rate_limiting.rules]]
+always = true
+# Keep one unscoped rule; TensorZero treats duplicate unscoped scopes as invalid.
+# Local dev uses a self-hosted provider without reliable cost feedback,
+# so prefer a simple daily request cap over cost-based limiting.
+model_inferences_per_day = 1000
+# Long-context local models need a larger burst budget so ordinary chat turns do not
+# trip the minute limiter before actual generation starts.
+tokens_per_minute = { capacity = 750000, refill_rate = 150000 }
