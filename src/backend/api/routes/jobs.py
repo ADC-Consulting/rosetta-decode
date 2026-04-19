@@ -50,9 +50,7 @@ async def list_jobs(
                 updated_at=j.updated_at,
                 error=j.error,
                 name=j.name,
-                file_count=sum(
-                    1 for k in (j.files or {}) if not (k.startswith("__") and k.endswith("__"))
-                ),
+                file_count=len(j.files or {}),
             )
             for j in jobs
         ]
