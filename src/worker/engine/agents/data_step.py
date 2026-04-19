@@ -126,7 +126,10 @@ def _make_agent() -> "Agent[DataStepResult]":
             base_url=worker_settings.tensorzero_gateway_url,
             api_key="tensorzero",  # TensorZero ignores the key but client requires one
         )
-        model_obj = OpenAIChatModel(model_name="translation", provider=tz_provider)
+        raw = worker_settings.llm_model
+        base_name = raw.split(":", 1)[-1] if ":" in raw else raw
+        tz_model_name = f"tensorzero::model_name::{base_name}"
+        model_obj = OpenAIChatModel(model_name=tz_model_name, provider=tz_provider)
     elif worker_settings.azure_openai_endpoint:
         az_provider = AzureProvider(
             azure_endpoint=worker_settings.azure_openai_endpoint,
