@@ -10,9 +10,10 @@ from src.backend.db.models import Job
 from src.worker.compute.factory import BackendFactory
 from src.worker.core.config import worker_settings
 from src.worker.engine.codegen import CodeGenerator
+from src.worker.engine.doc_generator import DocGenerator
 from src.worker.engine.llm_client import LLMClient, LLMTranslationError
 from src.worker.engine.models import GeneratedBlock
-from src.worker.engine.parser import SASParser
+from src.worker.engine.parser import SASParser, extract_lineage
 from src.worker.validation.reconciliation import ReconciliationService
 
 logging.basicConfig(
@@ -69,6 +70,13 @@ async def _process_job(session: AsyncSession, job: Job) -> None:
 
         result = SASParser().parse(files)
         blocks = result.blocks
+
+        lineage_data: dict | None = None  # type: ignore[type-arg]
+        try:
+            lineage_data = extract_lineage(blocks, str(job.id))
+        except Exception as exc:
+            logger.warning("Lineage extraction failed for job %s: %s", job.id, exc)
+
         client = LLMClient()
         generated: list[GeneratedBlock] = []
         for idx, block in enumerate(blocks):
@@ -123,6 +131,12 @@ async def _process_job(session: AsyncSession, job: Job) -> None:
             ref_sas7bdat_path,
         )
 
+        doc: str | None = None
+        try:
+            doc = await DocGenerator().generate(job, client)
+        except Exception as exc:
+            logger.warning("Doc generation failed for job %s: %s", job.id, exc)
+
         await session.execute(
             update(Job)
             .where(Job.id == job.id)
@@ -131,6 +145,8 @@ async def _process_job(session: AsyncSession, job: Job) -> None:
                 python_code=python_code,
                 report=report,
                 llm_model=worker_settings.llm_model,
+                lineage=lineage_data,
+                doc=doc,
             )
         )
         await session.commit()

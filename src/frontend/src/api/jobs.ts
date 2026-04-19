@@ -1,4 +1,4 @@
-import type { JobStatus, JobSummary } from "./types";
+import type { JobDocResponse, JobLineageResponse, JobSourcesResponse, JobStatus, JobSummary } from "./types";
 
 const BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
@@ -25,4 +25,41 @@ export async function downloadJob(jobId: string): Promise<void> {
   a.download = `rosetta-${jobId}.zip`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+export async function getJobSources(jobId: string): Promise<JobSourcesResponse> {
+  const res = await fetch(`${BASE}/jobs/${jobId}/sources`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json() as Promise<JobSourcesResponse>;
+}
+
+export async function getJobLineage(jobId: string): Promise<JobLineageResponse> {
+  const res = await fetch(`${BASE}/jobs/${jobId}/lineage`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json() as Promise<JobLineageResponse>;
+}
+
+export async function getJobDoc(jobId: string): Promise<JobDocResponse> {
+  const res = await fetch(`${BASE}/jobs/${jobId}/doc`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json() as Promise<JobDocResponse>;
+}
+
+export async function updateJobPythonCode(jobId: string, pythonCode: string): Promise<void> {
+  const res = await fetch(`${BASE}/jobs/${jobId}/python_code`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ python_code: pythonCode }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+}
+
+export async function refineJob(jobId: string, hint?: string): Promise<{ job_id: string }> {
+  const res = await fetch(`${BASE}/jobs/${jobId}/refine`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ hint: hint ?? null }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json() as Promise<{ job_id: string }>;
 }

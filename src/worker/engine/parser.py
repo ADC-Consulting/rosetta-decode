@@ -214,6 +214,65 @@ def _topological_sort(blocks: list[SASBlock]) -> list[SASBlock]:
     return [blocks[i] for i in order]
 
 
+# ── Lineage extraction ────────────────────────────────────────────────────────
+
+
+def extract_lineage(blocks: list[SASBlock], job_id: str) -> dict:  # type: ignore[type-arg]
+    """Build a JSON-serializable lineage graph from parsed SAS blocks.
+
+    Creates one LineageNode per block and one LineageEdge per dataset flowing
+    from a producer block to a consumer block.  The returned dict matches the
+    ``JobLineageResponse`` schema used by the API.
+
+    Args:
+        blocks: Dependency-ordered list of SAS blocks from SASParser.parse().
+        job_id: String UUID of the owning job (embedded in the response).
+
+    Returns:
+        Plain dict with keys ``job_id``, ``nodes``, and ``edges``, all
+        JSON-serializable.
+    """
+    # Build node list and an index from output dataset name → node id.
+    nodes: list[dict[str, str]] = []
+    producer_map: dict[str, str] = {}  # dataset name → node id
+
+    for block in blocks:
+        node_id = f"{block.source_file}::{block.start_line}"
+        label = getattr(block, "name", None) or block.block_type.value
+        has_untranslatable = "# SAS-UNTRANSLATABLE" in (block.raw_sas or "")
+        status = "untranslatable" if has_untranslatable else "migrated"
+
+        nodes.append(
+            {
+                "id": node_id,
+                "label": label,
+                "source_file": block.source_file,
+                "block_type": block.block_type.value,
+                "status": status,
+            }
+        )
+        for ds in block.output_datasets:
+            producer_map[ds] = node_id
+
+    # Build edge list from input→output dataset flow.
+    edges: list[dict[str, object]] = []
+    for block in blocks:
+        target_id = f"{block.source_file}::{block.start_line}"
+        for ds in block.input_datasets:
+            source_id = producer_map.get(ds)
+            if source_id is not None and source_id != target_id:
+                edges.append(
+                    {
+                        "source": source_id,
+                        "target": target_id,
+                        "dataset": ds,
+                        "inferred": False,
+                    }
+                )
+
+    return {"job_id": job_id, "nodes": nodes, "edges": edges}
+
+
 # ── Public API ────────────────────────────────────────────────────────────────
 
 
