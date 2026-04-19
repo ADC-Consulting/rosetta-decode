@@ -44,6 +44,17 @@ Coverage is enforced automatically via `--cov-fail-under=90`; no separate check 
 - Report: which gate failed, the exact error output (quoted), and which gates did not run.
 - Do not attempt fixes; surface the information and stop. Verdict: **RED**.
 
+## Iterative fix cycle
+
+Work through failures one gate at a time — never try to fix everything in a single pass:
+
+1. Run `make test`. Report the first failing gate and its errors.
+2. Stop. Let the appropriate agent fix those errors.
+3. Re-run `make test`. Confirm the gate now passes, then handle the next failure.
+4. Repeat until all seven `✓` lines appear.
+
+Because `make test` short-circuits, you will only ever see one gate's failures at a time. This is by design — use it to keep fixes focused and incremental.
+
 ## Alternate targets
 
 | Target                                  | When to use                                              |

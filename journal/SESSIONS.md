@@ -6,6 +6,134 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-04-19 — F3 proposed/accepted review cycle, plan interaction UX, re-reconcile & refine with history (S-BE5/BE6)
+
+**Duration:** ~4h | **Focus:** F3 (proposed/accepted status), S-BE5 (re-reconciliation), S-BE6 (refine child job), History tab, UI fixes
+
+### Done
+
+- **Fixed `make test` regressions**: `datetime.UTC` import (mypy), `useCallback(debounce(...))` ESLint error (replaced with `useRef` manual debounce), migration 008 `CheckViolationError` (drop/recreate constraint before UPDATE)
+- **F3 T-1–T-9 (proposed/accepted review cycle)**: Alembic migration 008 (status constraint + `user_overrides`/`accepted_at`); worker writes `proposed`; `POST /accept` and `PATCH /plan` routes + tests; frontend types, status labels/colours, polling, PlanTab Accept CTA + ReconSummaryCard + inline block overrides
+- **S-BE5**: `PUT /jobs/{id}/python_code` endpoint + Alembic migration 009 (`skip_llm`, `parent_job_id`, `trigger`); worker `skip_llm=True` branch runs reconciliation only and lands in `proposed`
+- **S-BE6**: `POST /jobs/{id}/refine` spawns child job with `trigger="human-refine"`; prior code + hint injected as `__refine_context__` sentinel; LLM prompt prepends "Prior translation to improve" block
+- **`GET /jobs/{id}/history`**: walks parent chain; returns `JobHistoryResponse`; frontend History tab with Bot/User icon timeline, click-to-navigate, current version marker
+- **Reconciliation false alarm fix**: moved "no ref data" early-exit before `_exec_pipeline()` call
+- **Doc rendering fixes**: `marked.parse()` (not `parseSync`); `extractMarkdown()` unwraps `{"markdown":"..."}` JSON; LLM prompts tightened to avoid code fence wrapping
+- **All 7 `make test` gates green (EXIT:0)**
+
+### Decisions
+
+- `done` kept as legacy frontend `JobStatusValue` (amber, "Under Review") until all worker deployments are updated
+- Migration 008 drops/recreates `jobs_status_check` constraint before UPDATE to avoid `CheckViolationError`
+- Reconciliation skips execution when no reference data to avoid false `execution: fail` checks
+- Job versioning via `parent_job_id` + `trigger` column; history walks parent chain; History tab distinguishes Bot vs Human changes
+
+### Open Questions
+
+- Should `done→proposed` migration be revisited to use `done→accepted` for historical rows that were already reviewed by the old implicit acceptance flow?
+- Branching history (multiple children per parent) is not surfaced in the History tab — only the linear ancestor chain is shown
+
+### Next Session — Start Here
+
+1. Check backlog for next prioritised item (`journal/BACKLOG.md` Phase 2 section)
+2. Likely candidates: `S-FE7 GlobalLineagePage`, `F4 SAS log ingestion`, or `F10 artefact versioning`
+3. Run `make test` to confirm still green before starting
+
+### Files Touched
+
+- `alembic/versions/008_proposed_status_user_overrides.py`
+- `alembic/versions/009_add_skip_llm_parent_trigger.py`
+- `src/backend/db/models.py`
+- `src/backend/api/schemas.py`
+- `src/backend/api/routes/jobs.py`
+- `src/worker/main.py`
+- `src/worker/engine/llm_client.py`
+- `src/worker/validation/reconciliation.py`
+- `src/worker/engine/doc_generator.py`
+- `src/worker/engine/agents/documentation.py`
+- `src/frontend/src/api/types.ts`
+- `src/frontend/src/api/jobs.ts`
+- `src/frontend/src/pages/JobDetailPage.tsx`
+- `src/frontend/src/pages/JobsPage.tsx`
+- `src/frontend/src/pages/UploadPage.tsx`
+- `src/frontend/src/App.tsx`
+- `tests/test_plan_interaction_routes.py`
+- `tests/test_rereconciliation_routes.py`
+- `tests/test_worker_main.py`
+- `tests/reconciliation/test_data_step.py`
+- `docs/plans/F3-proposed-status-plan-interaction.md`
+- `journal/BACKLOG.md`
+- `journal/SESSIONS.md`
+- `journal/DECISIONS.md`
+
+---
+
+## 2026-04-19 — F2-improvements: backend agentic pipeline overhaul (S-A through S-K)
+
+**Duration:** ~2h | **Focus:** F2-agentic-workflow-improvements — all backend + API subtasks
+
+### Done
+
+- **S-D**: Replaced `_SYSTEM_PROMPT` in all 6 existing agents (AnalysisAgent, DataStepAgent, ProcAgent, MacroResolverAgent, FailureInterpreterAgent, DocumentationAgent) with richer prompts including confidence/uncertainty output contracts
+- **S-A**: Added `TranslationStrategy`, `BlockRisk`, `BlockPlan`, `MigrationPlan`, `ColumnFlow`, `MacroUsage`, `EnrichedLineage` models to `models.py`; extended `GeneratedBlock` with `confidence`/`uncertainty_notes`; extended `JobContext` with `migration_plan`/`enriched_lineage`; updated `windowed_context()` to propagate `migration_plan`
+- **S-E**: Added `_SimpleCopyHelper` to `router.py` — pure SET+KEEP/DROP DATA steps bypass LLM entirely
+- **S-H**: `CodeGenerator.assemble()` now returns `dict[str, str]` (one `.py` per SAS file + `pipeline.py`); `assemble_flat()` added for `python_code` DB column and reconciliation
+- **S-B**: Created `MigrationPlannerAgent` (`src/worker/engine/agents/migration_planner.py`) with `plan(context) -> MigrationPlan`
+- **S-C**: Created `LineageEnricherAgent` (`src/worker/engine/agents/lineage_enricher.py`) with `enrich(context) -> EnrichedLineage`
+- **S-F**: Replaced `_translate_with_refinement()` while-loop with explicit `_translate_two_phase()` — exactly two phases, no `_MAX_RETRIES`
+- **S-G**: Wired `MigrationPlannerAgent` (step 3.5) and `LineageEnricherAgent` (step 7.5) into `JobOrchestrator._execute()`; fixed all `assemble()`/`assemble_flat()` call sites; both new agents are best-effort (try/except)
+- **S-I**: Added `migration_plan` and `generated_files` JSON columns to `Job` ORM model; Alembic migration `007_add_migration_plan_generated_files.py`
+- **S-J**: Added `BlockPlanResponse`, `JobPlanResponse`, `ColumnFlowResponse`, `MacroUsageResponse` schemas; extended `JobStatusResponse` with `generated_files`; extended `JobLineageResponse` with enriched lineage fields; added `GET /jobs/{id}/plan` route
+- **S-O**: Unit test files for `MigrationPlannerAgent` (8 tests) and `LineageEnricherAgent` (7 tests) verified complete and correct
+- **S-P**: `agents/__init__.py` updated to export `MigrationPlannerAgent` and `LineageEnricherAgent`
+- **S-K**: Added `BlockPlan`, `JobPlanResponse`, `ColumnFlow`, `MacroUsage` TS types; extended `JobStatus` with `generated_files`; extended `JobLineageResponse` with enriched fields; added `getJobPlan()` API function
+
+### Decisions
+
+- **Two-phase refinement**: replaced unbounded while-loop (`_MAX_RETRIES=2`) with explicit two-phase sequence — phase 1 translates all blocks, phase 2 (on failure only) re-translates the single affected block. Rationale: predictable execution, easier to reason about, same practical retry count. Revisit: never unless we need > 1 retry.
+- **Best-effort agent pattern**: `MigrationPlannerAgent` and `LineageEnricherAgent` wrapped in try/except in orchestrator — failure logs warning but doesn't abort the job. Rationale: these are enrichment agents; core migration must not fail because of them. Revisit: never.
+- **`assemble_flat()` for reconciliation**: split `assemble()` (dict) from `assemble_flat()` (str) to preserve reconciliation correctness while enabling multi-file output. Revisit: never.
+
+### Open Questions
+
+- S-L, S-M, S-N (frontend PlanTab, Editor 1:1 view, LineageGraph edge labels) still pending
+- S-Q (`make test` full pass) not yet run — should be first thing next session
+
+### Next Session — Start Here
+
+1. Run `make test` via the tester agent to verify current suite is green before touching frontend
+2. Delegate S-L (PlanTab + tab reorder) to `frontend-builder`
+3. Delegate S-M (Editor 1:1 SAS↔Python) and S-N (LineageGraph column labels) in parallel
+4. Run S-Q (`make test` + ruff + mypy full pass) and commit
+
+### Files Touched
+
+- `src/worker/engine/models.py`
+- `src/worker/engine/router.py`
+- `src/worker/engine/codegen.py`
+- `src/worker/engine/agents/analysis.py`
+- `src/worker/engine/agents/data_step.py`
+- `src/worker/engine/agents/proc.py`
+- `src/worker/engine/agents/macro_resolver.py`
+- `src/worker/engine/agents/failure_interpreter.py`
+- `src/worker/engine/agents/documentation.py`
+- `src/worker/engine/agents/migration_planner.py` (new)
+- `src/worker/engine/agents/lineage_enricher.py` (new)
+- `src/worker/engine/agents/__init__.py`
+- `src/worker/main.py`
+- `src/backend/db/models.py`
+- `src/backend/api/schemas.py`
+- `src/backend/api/routes/jobs.py`
+- `alembic/versions/007_add_migration_plan_generated_files.py` (new)
+- `tests/test_migration_planner_agent.py` (new)
+- `tests/test_lineage_enricher_agent.py` (new)
+- `src/frontend/src/api/types.ts`
+- `src/frontend/src/api/jobs.ts`
+- `docs/plans/F2-agentic-workflow-improvements.md`
+- `journal/BACKLOG.md`
+
+---
+
 ## 2026-04-19 — UI polish: TipTap sizing, report layout, zip folder tree, lineage node styling
 
 **Duration:** ~1h | **Focus:** Quick frontend polish + backend zip path fix

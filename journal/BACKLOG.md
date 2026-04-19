@@ -54,20 +54,41 @@
 - [ ] F15: Record-level reconciliation — row-by-row diff with configurable keys and tolerances
 - [ ] F18: Refine conversion action — re-submit with previous output + reconciliation report as context → see `docs/plans/F-backend-postmvp.md` S-BE6
 
+**F2-improvements — Agentic pipeline overhaul (`docs/plans/F2-agentic-workflow-improvements.md`)**
+
+- [x] S-A: Enrich models (BlockPlan, MigrationPlan, EnrichedLineage, confidence on GeneratedBlock)
+- [x] S-B: MigrationPlannerAgent
+- [x] S-C: LineageEnricherAgent
+- [x] S-D: Improved system prompts for all 6 existing agents
+- [x] S-E: _SimpleCopyHelper — bypass LLM for trivial SET+KEEP/DROP DATA steps
+- [x] S-F: Two-phase refinement loop (replace while loop)
+- [x] S-G: Wire new agents into JobOrchestrator._execute()
+- [x] S-H: CodeGenerator multi-file output (dict[str, str])
+- [x] S-I: DB columns: migration_plan + generated_files (Alembic migration)
+- [x] S-J: API schemas + GET /jobs/{id}/plan route
+- [x] S-K: Frontend types + getJobPlan API function
+- [x] S-L: PlanTab component + tab reorder (Plan first)
+- [x] S-M: Editor 1:1 SAS↔Python comparison (generated_files per-file view)
+- [x] S-N: LineageGraph edge column-count labels
+- [x] S-O: Unit tests for 2 new agents
+- [x] S-P: agents/__init__.py exports
+- [x] S-Q: make test + ruff + mypy full pass
+
 **Post-MVP UI + Backend (active) — `docs/plans/F-UI-postmvp.md` + `docs/plans/F-backend-postmvp.md`**
 
 - [X] F-backend-postmvp S-BE1: `GET /jobs/{id}/sources` endpoint (no migration)
 - [X] F-backend-postmvp S-BE2: Zip bulk upload — `.sas`, `.sas7bdat`, `.csv`, `.log`, `.xlsx`, `.xls` (no migration)
 - [X] F-backend-postmvp S-BE3: Lineage extraction + `GET /jobs/{id}/lineage` (migration 004)
 - [X] F-backend-postmvp S-BE4: Doc generation + `GET /jobs/{id}/doc` (migration 004)
-- [ ] F-backend-postmvp S-BE5: Re-reconciliation `PUT /jobs/{id}/python_code` + `skip_llm` (migration 003)
-- [ ] F-backend-postmvp S-BE6: Refine action `POST /jobs/{id}/refine` + `parent_job_id` (migration 003)
+- [X] F-backend-postmvp S-BE5: Re-reconciliation `PUT /jobs/{id}/python_code` + `skip_llm` (migration 009)
+- [X] F-backend-postmvp S-BE6: Refine action `POST /jobs/{id}/refine` + `parent_job_id` (migration 009)
 - [X] F-UI-postmvp S-FE5/10/11: AppSidebar + routing + JobsPage refactor
 - [X] F-UI-postmvp S-FE1: `MonacoDiffViewer` component (Monaco DiffEditor)
 - [X] F-UI-postmvp S-FE2: `MonacoEditor` component (Monaco Editor)
 - [X] F-UI-postmvp S-FE3: `TiptapEditor` component (rich text + code blocks)
 - [X] F-UI-postmvp S-FE4: `LineageGraph` component (React Flow, colour-coded by status, hover-to-focus, undo/redo/reset toolbar, dagre LR layout)
-- [X] F-UI-postmvp S-FE6: `JobDetailPage` (4 tabs: Comparison / Edit / Report / Lineage)
+- [X] F-UI-postmvp S-FE6: `JobDetailPage` (5 tabs: Plan / Editor / Report / Lineage / History)
+- [X] F-UI-postmvp History tab: version timeline with agent/human icons, click-to-navigate
 - [ ] F-UI-postmvp S-FE7: `GlobalLineagePage`
 - [ ] F-UI-postmvp S-FE8: `DocsPage`
 - [ ] F-UI-postmvp S-FE9: `ExplainPage` stub

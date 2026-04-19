@@ -96,6 +96,19 @@ No pass counts, no coverage percentages, and no per-test lines appear on a green
 [RED — fix failure in <gate-name> before committing]
 ```
 
+## Iterative fix cycle
+
+Do not attempt to fix all failures in a single pass. Work incrementally:
+
+1. Run `make test`. Report the **first failing gate** and its errors (later gates did not run).
+2. Stop — the orchestrator delegates the fix to the appropriate specialist agent.
+3. Once fixes are applied, **re-run `make test`**. If the previously failing gate now passes, report the next failure (if any) using the same process.
+4. Repeat until all seven gates print `✓`.
+
+This means each tester invocation handles **at most one gate's worth of failures**. Never accumulate a list of errors across gates and attempt to fix them all at once — the short-circuit ensures you only ever see the first unresolved problem anyway.
+
+When re-running after a fix, note whether the gate that previously failed now passes before moving on. If new errors appear in a gate that previously passed, report those as a regression.
+
 ## Guardrails
 
 - Never write or edit implementation code
