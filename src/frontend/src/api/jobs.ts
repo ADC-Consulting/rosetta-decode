@@ -1,5 +1,14 @@
-import type { JobDocResponse, JobLineageResponse, JobSourcesResponse, JobStatus, JobSummary } from "./types";
 import { extractApiError } from "./errors";
+import type {
+    JobDocResponse,
+    JobHistoryResponse,
+    JobLineageResponse,
+    JobPlanResponse,
+    JobSourcesResponse,
+    JobStatus,
+    JobSummary,
+    PatchPlanRequest,
+} from "./types";
 
 const BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
@@ -55,6 +64,12 @@ export async function updateJobPythonCode(jobId: string, pythonCode: string): Pr
   if (!res.ok) throw new Error(await extractApiError(res));
 }
 
+export async function getJobPlan(jobId: string): Promise<JobPlanResponse> {
+  const res = await fetch(`${BASE}/jobs/${jobId}/plan`);
+  if (!res.ok) throw new Error(await extractApiError(res));
+  return res.json() as Promise<JobPlanResponse>;
+}
+
 export async function refineJob(jobId: string, hint?: string): Promise<{ job_id: string }> {
   const res = await fetch(`${BASE}/jobs/${jobId}/refine`, {
     method: "POST",
@@ -63,4 +78,30 @@ export async function refineJob(jobId: string, hint?: string): Promise<{ job_id:
   });
   if (!res.ok) throw new Error(await extractApiError(res));
   return res.json() as Promise<{ job_id: string }>;
+}
+
+export async function getJobHistory(jobId: string): Promise<JobHistoryResponse> {
+  const res = await fetch(`${BASE}/jobs/${jobId}/history`);
+  if (!res.ok) throw new Error(await extractApiError(res));
+  return res.json() as Promise<JobHistoryResponse>;
+}
+
+export async function acceptJob(jobId: string): Promise<JobStatus> {
+  const res = await fetch(`${BASE}/jobs/${jobId}/accept`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  if (!res.ok) throw new Error(await extractApiError(res));
+  return res.json() as Promise<JobStatus>;
+}
+
+export async function patchJobPlan(jobId: string, req: PatchPlanRequest): Promise<JobStatus> {
+  const res = await fetch(`${BASE}/jobs/${jobId}/plan`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) throw new Error(await extractApiError(res));
+  return res.json() as Promise<JobStatus>;
 }

@@ -1,18 +1,19 @@
-import { useQuery } from "@tanstack/react-query";
+import { downloadJob, getJob } from "@/api/jobs";
 import type { JobStatus, JobStatusValue } from "@/api/types";
-import { getJob, downloadJob } from "@/api/jobs";
 import { Button } from "@/components/ui/button";
+import { useQuery } from "@tanstack/react-query";
 
 interface JobResultProps {
   jobId: string;
 }
 
-const POLLING_STATUSES: JobStatusValue[] = ["queued", "running"];
+const POLLING_STATUSES: JobStatusValue[] = ["queued", "running", "proposed"];
 
 const STATUS_LABEL: Record<JobStatusValue, string> = {
   queued: "Queued",
   running: "Running",
-  done: "Completed",
+  proposed: "Under Review",
+  accepted: "Accepted",
   failed: "Failed",
 };
 
@@ -22,7 +23,9 @@ export default function JobResult({ jobId }: JobResultProps) {
     queryFn: () => getJob(jobId),
     refetchInterval: (query) => {
       const status = query.state.data?.status;
-      return status !== undefined && POLLING_STATUSES.includes(status) ? 2000 : false;
+      return status !== undefined && POLLING_STATUSES.includes(status)
+        ? 2000
+        : false;
     },
   });
 
@@ -47,7 +50,10 @@ export default function JobResult({ jobId }: JobResultProps) {
         className="rounded-md border border-destructive bg-destructive/10 px-4 py-3 text-sm text-destructive"
       >
         <p className="font-medium mb-1">Could not load job status</p>
-        <p className="text-xs opacity-80">Please refresh the page. If the problem persists, the job may have been removed.</p>
+        <p className="text-xs opacity-80">
+          Please refresh the page. If the problem persists, the job may have
+          been removed.
+        </p>
       </div>
     );
   }
@@ -61,7 +67,8 @@ export default function JobResult({ jobId }: JobResultProps) {
         <span className="inline-flex items-center rounded-full bg-black px-2.5 py-0.5 text-xs font-medium">
           <span
             style={{
-              background: "linear-gradient(90deg, #fff 25%, #888 50%, #fff 75%)",
+              background:
+                "linear-gradient(90deg, #fff 25%, #888 50%, #fff 75%)",
               backgroundSize: "200% 100%",
               WebkitBackgroundClip: "text",
               WebkitTextFillColor: "transparent",
@@ -83,7 +90,10 @@ export default function JobResult({ jobId }: JobResultProps) {
         className="rounded-md border border-destructive bg-destructive/10 px-4 py-3 text-sm text-destructive"
       >
         <p className="font-medium mb-1">Migration failed</p>
-        <p>We were unable to complete the migration. Try submitting again, or check that your SAS files are valid.</p>
+        <p>
+          We were unable to complete the migration. Try submitting again, or
+          check that your SAS files are valid.
+        </p>
       </div>
     );
   }
@@ -91,30 +101,6 @@ export default function JobResult({ jobId }: JobResultProps) {
   // status === "done"
   return (
     <div className="space-y-6">
-      {data.python_code !== null && (
-        <section aria-label="Generated Python code">
-          <h3 className="text-sm font-medium text-foreground mb-2">Generated Python</h3>
-          <div className="overflow-x-auto rounded-md border border-border bg-muted">
-            <pre className="p-4 text-xs font-mono text-foreground whitespace-pre">
-              <code>{data.python_code}</code>
-            </pre>
-          </div>
-        </section>
-      )}
-
-      {data.report !== null && (
-        <section aria-label="Reconciliation report">
-          <h3 className="text-sm font-medium text-foreground mb-2">
-            Reconciliation Report
-          </h3>
-          <div className="overflow-x-auto rounded-md border border-border bg-muted">
-            <pre className="p-4 text-xs font-mono text-foreground whitespace-pre">
-              {JSON.stringify(data.report, null, 2)}
-            </pre>
-          </div>
-        </section>
-      )}
-
       <Button
         variant="outline"
         onClick={() => void downloadJob(jobId)}

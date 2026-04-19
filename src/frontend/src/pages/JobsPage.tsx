@@ -2,11 +2,79 @@ import { downloadJob, listJobs } from "@/api/jobs";
 import type { JobStatusValue, JobSummary } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { STATUS_LABEL, StatusBadge } from "@/pages/JobDetailPage";
+import { STATUS_LABEL } from "@/pages/JobDetailPage";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 
-const POLLING_STATUSES: JobStatusValue[] = ["queued", "running"];
+const POLLING_STATUSES: JobStatusValue[] = ["queued", "running", "proposed"];
+
+function TableStatus({
+  status,
+}: {
+  status: JobStatusValue;
+}): React.ReactElement {
+  if (status === "accepted") {
+    return (
+      <span className="text-sm font-medium text-emerald-500">
+        {STATUS_LABEL.accepted}
+      </span>
+    );
+  }
+  if (status === "proposed") {
+    const gradient =
+      "linear-gradient(90deg, #f59e0b 20%, #fef3c7 50%, #f59e0b 80%)";
+    return (
+      <>
+        <style>{`@keyframes table-shimmer { from { background-position: 200% center; } to { background-position: -200% center; } }`}</style>
+        <span
+          className="text-sm font-medium"
+          style={{
+            display: "inline-block",
+            background: gradient,
+            backgroundSize: "200% 100%",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+            backgroundClip: "text",
+            animation: "table-shimmer 4s linear infinite",
+          }}
+        >
+          Under Review
+        </span>
+      </>
+    );
+  }
+  if (status === "failed") {
+    return (
+      <span className="text-sm font-medium text-red-500">
+        {STATUS_LABEL.failed}
+      </span>
+    );
+  }
+  // queued or running — shimmer text, no background pill
+  const gradient =
+    status === "running"
+      ? "linear-gradient(90deg, #93c5fd 20%, #eff6ff 50%, #93c5fd 80%)"
+      : "linear-gradient(90deg, #94a3b8 20%, #e2e8f0 50%, #94a3b8 80%)";
+  return (
+    <>
+      <style>{`@keyframes table-shimmer { from { background-position: 200% center; } to { background-position: -200% center; } }`}</style>
+      <span
+        className="text-sm font-medium"
+        style={{
+          display: "inline-block",
+          background: gradient,
+          backgroundSize: "200% 100%",
+          WebkitBackgroundClip: "text",
+          WebkitTextFillColor: "transparent",
+          backgroundClip: "text",
+          animation: "table-shimmer 4s linear infinite",
+        }}
+      >
+        {STATUS_LABEL[status]}
+      </span>
+    </>
+  );
+}
 
 export default function JobsPage(): React.ReactElement {
   const navigate = useNavigate();
@@ -72,7 +140,10 @@ export default function JobsPage(): React.ReactElement {
             </thead>
             <tbody>
               {jobs.map((job) => {
-                const isClickable = job.status === "done";
+                const isClickable =
+                  job.status === "proposed" ||
+                  job.status === "accepted" ||
+                  job.status === "done"; // legacy fallback
                 return (
                   <tr
                     key={job.job_id}
@@ -105,7 +176,7 @@ export default function JobsPage(): React.ReactElement {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <StatusBadge status={job.status} />
+                      <TableStatus status={job.status} />
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
                       {job.file_count != null ? job.file_count : "—"}
@@ -114,7 +185,7 @@ export default function JobsPage(): React.ReactElement {
                       {new Date(job.created_at).toLocaleString()}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      {job.status === "done" && (
+                      {job.status === "accepted" && (
                         <Button
                           size="sm"
                           variant="outline"

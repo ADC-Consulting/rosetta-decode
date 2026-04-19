@@ -192,19 +192,30 @@ function buildInitialNodes(lineageNodes: LineageNode[]): Node<NodeData>[] {
   });
 }
 
-function buildInitialEdges(lineageEdges: JobLineageResponse["edges"]): Edge[] {
-  return lineageEdges.map((e) => ({
-    id: `e-${e.source}-${e.target}`,
-    source: e.source,
-    target: e.target,
-    animated: false,
-    style: {
-      stroke: "#94a3b8",
-      strokeWidth: 1.5,
-      ...(e.inferred ? { strokeDasharray: "5 5" } : {}),
-    },
-    markerEnd: { type: MarkerType.ArrowClosed, color: "#94a3b8" },
-  }));
+function buildInitialEdges(
+  lineageEdges: JobLineageResponse["edges"],
+  columnFlows: JobLineageResponse["column_flows"],
+): Edge[] {
+  return lineageEdges.map((e) => {
+    const colCount = columnFlows
+      ? columnFlows.filter((cf) => cf.via_block_id === e.source).length
+      : 0;
+    return {
+      id: `e-${e.source}-${e.target}`,
+      source: e.source,
+      target: e.target,
+      animated: false,
+      label: colCount > 0 ? `${colCount} cols` : undefined,
+      labelStyle: { fontSize: 10, fill: "#6b7280" },
+      labelBgStyle: { fill: "rgba(255,255,255,0.8)" },
+      style: {
+        stroke: "#94a3b8",
+        strokeWidth: 1.5,
+        ...(e.inferred ? { strokeDasharray: "5 5" } : {}),
+      },
+      markerEnd: { type: MarkerType.ArrowClosed, color: "#94a3b8" },
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -319,7 +330,7 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
   useEffect(() => {
     if (lineage.nodes.length === 0) return;
     const rawNodes = buildInitialNodes(lineage.nodes);
-    const rawEdges = buildInitialEdges(lineage.edges);
+    const rawEdges = buildInitialEdges(lineage.edges, lineage.column_flows);
     const laid = applyDagreLayout(rawNodes, rawEdges);
     setNodes(laid);
     setEdges(rawEdges);

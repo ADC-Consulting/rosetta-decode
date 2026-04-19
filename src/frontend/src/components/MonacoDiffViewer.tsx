@@ -29,7 +29,7 @@ export default function MonacoDiffViewer({
       modified={modified}
       originalLanguage="plaintext"
       modifiedLanguage="python"
-      theme="vs-dark"
+      theme="vs"
       loading={
         <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
           Loading editor…
