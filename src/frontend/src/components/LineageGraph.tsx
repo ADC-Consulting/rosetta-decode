@@ -83,10 +83,8 @@ function abbrevBlockType(bt: string): string {
 const NODE_W = 210;
 const NODE_H = 72;
 
-// Define default node/edge types outside component to prevent React Flow warning
-// See: https://reactflow.dev/error#002
-const nodeTypes = {};
-const edgeTypes = {};
+const NODE_TYPES = {};
+const EDGE_TYPES = {};
 
 // ---------------------------------------------------------------------------
 // Dagre layout
@@ -592,8 +590,8 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
         onNodeDragStop={handleNodeDragStop}
         onPaneClick={handlePaneClick}
         nodesDraggable={true}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
+        nodeTypes={NODE_TYPES}
+        edgeTypes={EDGE_TYPES}
         fitView
         fitViewOptions={{ padding: 0.2 }}
       >

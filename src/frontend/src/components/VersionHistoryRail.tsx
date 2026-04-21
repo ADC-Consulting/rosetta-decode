@@ -14,6 +14,7 @@ interface VersionHistoryRailProps {
   jobId: string;
   tab: "plan" | "editor" | "report";
   className?: string;
+  selectedVersionId?: string | null;
   onRestore?: (content: Record<string, unknown>) => void;
 }
 
@@ -21,17 +22,21 @@ export default function VersionHistoryRail({
   jobId,
   tab,
   className,
+  selectedVersionId: controlledSelected,
   onRestore,
 }: VersionHistoryRailProps): React.ReactElement {
-  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
+  const [localSelected, setLocalSelected] = useState<string | null>(null);
   const [prevTab, setPrevTab] = useState(tab);
   const [restoring, setRestoring] = useState(false);
 
-  // Reset selection when the tab prop changes (React's recommended state-derived-from-props pattern).
+  // Reset selection when the tab prop changes.
   if (tab !== prevTab) {
     setPrevTab(tab);
-    setSelectedVersionId(null);
+    setLocalSelected(null);
   }
+
+  // Parent-controlled selection takes priority; fall back to local click state.
+  const selectedVersionId = controlledSelected ?? localSelected;
 
   const { data } = useQuery({
     queryKey: ["job", jobId, "versions", tab],
@@ -55,7 +60,7 @@ export default function VersionHistoryRail({
 
   async function handleCardClick(versionId: string): Promise<void> {
     if (restoring) return;
-    setSelectedVersionId(versionId);
+    setLocalSelected(versionId);
     setRestoring(true);
     try {
       const versionData = await getJobVersion(jobId, versionId);
@@ -64,7 +69,7 @@ export default function VersionHistoryRail({
       toast.error(
         err instanceof Error ? err.message : "Could not restore version.",
       );
-      setSelectedVersionId(null);
+      setLocalSelected(null);
     } finally {
       setRestoring(false);
     }
@@ -88,13 +93,15 @@ export default function VersionHistoryRail({
         {displayed.length === 0 ? (
           <p className="pl-4 text-xs text-muted-foreground">No history.</p>
         ) : (
-          displayed.map((v: JobVersionSummary) => {
+          displayed.map((v: JobVersionSummary, idx: number) => {
             const version = versionLabel.get(v.id) ?? 1;
             const dateStr = new Date(v.created_at).toLocaleDateString("en-GB", {
               day: "numeric",
               month: "short",
             });
             const isSelected = selectedVersionId === v.id;
+            const isLatest = idx === 0;
+            const hasSelection = !!selectedVersionId;
 
             return (
               <div
@@ -103,7 +110,9 @@ export default function VersionHistoryRail({
                   "w-29 rounded-md border px-1 py-0.5 transition-colors bg-[#f5f5f5]",
                   isSelected
                     ? "border-primary ring-1 ring-primary cursor-default"
-                    : "border-border hover:border-muted-foreground cursor-pointer",
+                    : isLatest && !hasSelection
+                      ? "border-primary cursor-pointer"
+                      : "border-border hover:border-muted-foreground cursor-pointer",
                   restoring && !isSelected && "opacity-50 pointer-events-none",
                 )}
                 onClick={() => {

@@ -100,6 +100,16 @@
 - [X] UI polish: TipTap text size fix, Report tab side-by-side layout
 - [X] UI polish: LineageGraph node background light, lucide icon on Reset button
 - [X] fix(backend): preserve zip directory structure in file tree (path as key, not basename)
+- [X] UI polish: JobDetailPage header — name+status centered and larger, buttons inline with tab bar, standalone Save button removed
+- [X] UI polish: Monaco editors use `defaultValue` + stable `key` + `pythonEditorRef` (fixes cursor repositioning root cause)
+- [X] refactor(frontend): split JobDetailPage monolith into `src/components/JobDetail/` components; `constants.tsx` → `constants.ts` + `StatusBadge.tsx` to fix Vite HMR 404
+- [X] fix(frontend): remove `asChild` from Base UI `TooltipTrigger` in EditorTab (nested button hydration error)
+- [X] fix(frontend): `NODE_TYPES`/`EDGE_TYPES` module-scope constants in LineageGraph (React Flow warning #002)
+- [X] fix(frontend): remove all `console.log` debug calls from VersionHistoryRail
+- [ ] UI bug (unresolved): TipTap toolbar cursor jumps to bottom after one keystroke — multiple fixes attempted, none confirmed working
+- [ ] UI bug (unresolved): version card not highlighted after saving — race condition fix attempted (await invalidateQueries), not confirmed
+- [ ] UI bug (unresolved): Editor tab version restore always shows original code — null sentinel + {} override fix attempted, not confirmed
+- [ ] UI bug (unresolved): tab heights not filling available space — `calc(100vh - 160px)` applied to all four tabs, not confirmed working
 
 ---
 
