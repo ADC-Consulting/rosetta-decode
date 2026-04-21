@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Override root .gitignore which excludes lib/ — shadcn/ui utilities live here
+!src/lib/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
