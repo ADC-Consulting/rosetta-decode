@@ -61,6 +61,17 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
     - Treat SAS dataset names as already-loaded pd.DataFrame variables (lowercased).
     - Macro variables are pre-resolved; use their literal values directly.
 
+    - PROC IMPORT / PROC EXPORT: set strategy to "manual_ingestion". Emit a pandas read/write
+      shell only:
+        import pandas as pd
+        # TODO: verify file path, separator, and column names
+        df_<output_dataset> = pd.read_csv("<infile_path>")  # SAS: <file>:<line>
+      Do NOT attempt to replicate PROC IMPORT options in Python.
+    - PROC PRINT / PROC CONTENTS / PROC DATASETS: set strategy to "skip". Emit nothing.
+    - PROC IML / PROC OPTMODEL / PROC FCMP: set strategy to "manual". Emit:
+        # TODO: manual implementation required — no pandas equivalent for <PROC_NAME>
+        # SAS: <file>:<line>
+
     Translation patterns:
     - JOIN → df.merge(right, on=[...], how="inner|left|right|outer")
     - GROUP BY + agg → .groupby([...]).agg({...}).reset_index()

@@ -83,6 +83,9 @@ function abbrevBlockType(bt: string): string {
 const NODE_W = 210;
 const NODE_H = 72;
 
+const NODE_TYPES = {};
+const EDGE_TYPES = {};
+
 // ---------------------------------------------------------------------------
 // Dagre layout
 // ---------------------------------------------------------------------------
@@ -587,6 +590,8 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
         onNodeDragStop={handleNodeDragStop}
         onPaneClick={handlePaneClick}
         nodesDraggable={true}
+        nodeTypes={NODE_TYPES}
+        edgeTypes={EDGE_TYPES}
         fitView
         fitViewOptions={{ padding: 0.2 }}
       >

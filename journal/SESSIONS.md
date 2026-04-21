@@ -6,6 +6,143 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-04-21 — JobDetailPage refactor: component split, header polish, Monaco defaultValue fix
+
+**Duration:** ~2h | **Focus:** JobDetailPage structural cleanup + bug fixes
+
+### Done
+
+- **Header redesign**: job name + status badge centered and larger (`text-xl font-semibold`); back button pinned absolutely left; buttons (Save Version, Refine, Accept migration) moved inline with tab bar on the right; removed standalone Save button
+- **Monaco `defaultValue`**: switched both SAS and Python `<Editor>` from `value` to `defaultValue` + stable `key`; added `pythonEditorRef` with `onMount` — prevents parent re-renders from repositioning cursor
+- **JobDetailPage split**: monolith extracted into `src/frontend/src/components/JobDetail/` — `EditorTab`, `PlanTab`, `ReportTab`, `LineageTab`, `BlockPlanTable`, `NoteDialog`, `ReconSummaryCard`, `StatusBadge`, `constants.ts`, `utils.ts`; page component stays in `src/frontend/src/pages/JobDetailPage.tsx`
+- **`constants.tsx` → `constants.ts` + `StatusBadge.tsx`**: split to fix Vite 404 (`constants.tsx` was resolved as `.ts` by HMR)
+- **VersionHistoryRail**: removed all `console.log` debug calls
+- **EditorTab tooltip nesting**: removed `asChild` from Base UI `TooltipTrigger` — it renders a `<button>` itself, so wrapping another `<button>` caused nested-button hydration error
+- **LineageGraph `nodeTypes`/`edgeTypes`**: defined `NODE_TYPES` and `EDGE_TYPES` as module-scope constants and passed them explicitly to `<ReactFlow>` to silence React Flow warning #002
+
+### Decisions
+
+- none
+
+### Open Questions
+
+- TipTap cursor jump, version highlight race, editor restore, tab heights — all still marked unresolved in backlog; not touched this session
+
+### Next Session — Start Here
+
+1. Verify dev server is clean (no 404s, no console errors) after all the component split changes
+2. Pick up unresolved UI bugs from backlog — start with tab heights (simplest to verify with DevTools)
+
+### Files Touched
+
+- `src/frontend/src/pages/JobDetailPage.tsx`
+- `src/frontend/src/components/JobDetail/EditorTab.tsx`
+- `src/frontend/src/components/JobDetail/PlanTab.tsx`
+- `src/frontend/src/components/JobDetail/ReportTab.tsx`
+- `src/frontend/src/components/JobDetail/LineageTab.tsx`
+- `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
+- `src/frontend/src/components/JobDetail/NoteDialog.tsx`
+- `src/frontend/src/components/JobDetail/ReconSummaryCard.tsx`
+- `src/frontend/src/components/JobDetail/StatusBadge.tsx` (new)
+- `src/frontend/src/components/JobDetail/constants.ts` (renamed from .tsx)
+- `src/frontend/src/components/JobDetail/utils.ts`
+- `src/frontend/src/components/JobDetail/index.ts`
+- `src/frontend/src/components/VersionHistoryRail.tsx`
+- `src/frontend/src/components/LineageGraph.tsx`
+
+---
+
+## 2026-04-21 — UI polish: Note popup, tab heights, TipTap cursor, version highlight, editor restore
+
+**Duration:** ~3h | **Focus:** JobDetailPage + TiptapEditor visual polish and bug fixes
+
+### Done
+
+- **NoteDialog**: removed "Block note — <id>" title from popup header; made dialog wider (`max-w-xl`) and taller (`min-h-48`); removed "Saving…" text label next to pen icon — pen now turns primary-colored when a note exists and pulses while saving
+- **TipTap toolbar cursor jump**: moved `onClick()` from `onMouseDown` to the actual `onClick` handler — `onMouseDown` now only calls `e.preventDefault()` to prevent blur; command fires on click when selection is stable
+- **TipTap undo boundary**: added `closeHistory(editor.state.tr)` dispatch after each `setContent` call so undo cannot remove originally-loaded content
+- **Version highlight after save**: `saveVersionMutation.onSuccess` now `await`s `invalidateQueries` before calling `setSavedVersionId` — new card is rendered before highlight state is set; `VersionHistoryRail` accepts optional controlled `selectedVersionId` prop
+- **Editor restore (`editorCode` null sentinel)**: changed `editorCode` initial state from `""` to `null`; `displayedEditorCode = editorCode ?? job?.python_code ?? ""` — null falls back to job code, but any restored value (including empty string) is preserved
+- **Editor restore (`overrideGeneratedFiles`)**: restore now sets `{}` instead of `null` when version has no `generated_files`, so `perFileCode` resolves to null and `rightCode` uses the restored python_code
+- **Tab heights**: all four tabs set to `height: calc(100vh - 160px)` — Plan/Report scroll internally, Lineage fills with React Flow, Editor uses ResizablePanelGroup
+
+### Decisions
+
+- none
+
+### Open Questions
+
+- **None of the visual/bug fixes in this session were confirmed working by the user** — TipTap cursor jump, version highlight, editor restore, and tab heights are all still reported as broken. Root causes were diagnosed but fixes did not take effect. Needs fresh debugging next session.
+- Tab heights (`calc(100vh - 160px)`) not confirmed — user says this is still not fixed.
+- TipTap cursor jump still occurs after all attempted fixes (`onMouseDown` pattern, `focus(null)`, removing `.focus()`, moving to `onClick`).
+- Version highlight race condition fix (await invalidateQueries) not confirmed.
+- Editor restore (null sentinel for editorCode) not confirmed.
+
+### Next Session — Start Here
+
+1. **Do NOT attempt further blind fixes** — open browser DevTools, add `console.log` to `handleRestore`, `ToolbarButton.onClick`, and `saveVersionMutation.onSuccess` to confirm what is actually executing
+2. Check if Docker volume mount is actually syncing files: `docker compose exec frontend cat src/components/TiptapEditor.tsx | head -60` and compare to local file
+3. Check for any Vite compilation errors in `docker compose logs frontend`
+4. Once root cause is confirmed, fix each bug one at a time with immediate verification
+
+### Files Touched
+
+- `src/frontend/src/components/TiptapEditor.tsx`
+- `src/frontend/src/components/VersionHistoryRail.tsx`
+- `src/frontend/src/pages/JobDetailPage.tsx`
+
+---
+
+## 2026-04-21 — F5 bug-fix sweep: version history, TipTap editor, Plan tab dropdowns
+
+**Duration:** ~3h | **Focus:** F5 per-tab version history polish + UI bug fixes
+
+### Done
+
+- **Root-caused "no tab selected on load"**: custom `Tabs` component only accepted `defaultValue` (uncontrolled); `JobDetailPage` was passing `value`/`onValueChange` which were silently ignored — `activeTab` state was completely disconnected from the visible tabs. Fixed `Tabs` to support controlled mode.
+- **Root-caused "history rail always shows Plan versions"**: same disconnect — `activeTab` never updated, so the rail always received `"plan"`. Fixed as a consequence of the Tabs fix above.
+- **Root-caused "TipTap headings not rendering"**: `@tailwindcss/typography` is not installed, so Tailwind Preflight stripped all browser heading/list defaults. Dropped `tiptap-markdown` extension (unnecessary complexity); switched TipTap to native HTML mode (`marked` converts markdown → HTML on load, `getHTML()` on save). Added explicit ProseMirror scoped heading/list CSS via Tailwind arbitrary variants.
+- **TipTap toolbar scroll-to-bottom**: replaced `onClick` with `onMouseDown + preventDefault` on toolbar buttons — standard WYSIWYG pattern to keep focus in the editor and suppress browser scroll-into-view.
+- **Undo deletes entire report**: patched `editor.view.dispatch` around `setContent` calls to tag transactions with `addToHistory: false` — loaded content never enters the undo stack.
+- **Report tab edits not captured**: wired `TiptapEditor onChange` → `setOverrideDoc` so user edits flow into state before "Save version" fires.
+- **Editor save loses `generated_files`**: was hard-coded `{}`; now uses `overrideGeneratedFiles ?? job?.generated_files ?? {}`.
+- **Python editor always read-only**: `rightReadOnly` was derived from `perFileCode !== null`; set to `false` unconditionally.
+- **Shadcn Select for Plan tab dropdowns**: installed `@base-ui/react/select` shadcn component; replaced both native `<select>` in `BlockPlanTable`. Fixed circular import in generated `select.tsx`.
+- **Risk dropdown shows raw value ("low") instead of label ("Low")**: Base UI `SelectValue` only resolves labels after items register (portal not rendered until open). Fixed by using `SelectValue` render-prop children to map value → label directly.
+- **Dropdown popup alignment**: changed `SelectContent` default `align` from `"center"` to `"start"`.
+- **Table reflow flicker on risk change**: pinned `w-44` / `w-20` on Strategy/Risk `<th>` elements so column widths are stable.
+- **Risk label values**: `Low` / `Mid` / `High` (capitalised); color-coded on trigger and items via `RISK_CELL` map.
+- **Version restore not working for Report**: `overrideDoc` was set but `TiptapEditor` content sync guard (`content !== current`) could mismatch on subsequent restores; now always calls `setContent` when `content` prop changes.
+- **`staleTime: 0` on version rail query**: forces fresh fetch on tab switch so each tab's history loads immediately.
+
+### Decisions
+
+- **Dropped `tiptap-markdown`**: native HTML mode is simpler, more predictable, and doesn't require `@tailwindcss/typography`. `marked` handles markdown→HTML on load; `getHTML()` returns HTML on save. Stored doc content may now be HTML (not markdown) for versions saved after this session. · revisit if markdown round-trip is needed.
+- **`Tabs` component now supports controlled mode**: `value` + `onValueChange` props added alongside existing `defaultValue`. Uncontrolled callers are unaffected. · revisit never.
+
+### Open Questions
+
+- `make test` not run this session — tests cover backend only (Python) and should be unaffected by frontend-only changes, but should be verified before PR.
+- The stray `src/frontend/@/components/ui/` directory (shadcn CLI output artefact) should be deleted before merging.
+
+### Next Session — Start Here
+
+1. Delete `src/frontend/@/` (shadcn CLI artefact): `rm -rf src/frontend/@`
+2. Run `make test` to confirm backend tests still pass
+3. Manually smoke-test: Plan tab default on load → version rail shows correct per-tab history → Save version → restore version → TipTap headings render correctly
+4. Mark F5 subtask 13 complete in `docs/plans/F5-tab-versions.md`, then commit + PR
+
+### Files Touched
+
+- `src/frontend/src/components/ui/tabs.tsx`
+- `src/frontend/src/components/ui/select.tsx` (new)
+- `src/frontend/src/components/TiptapEditor.tsx`
+- `src/frontend/src/pages/JobDetailPage.tsx`
+- `src/frontend/src/components/VersionHistoryRail.tsx`
+- `src/frontend/package.json` / `package-lock.json`
+
+---
+
 ## 2026-04-19 — F3 proposed/accepted review cycle, plan interaction UX, re-reconcile & refine with history (S-BE5/BE6)
 
 **Duration:** ~4h | **Focus:** F3 (proposed/accepted status), S-BE5 (re-reconciliation), S-BE6 (refine child job), History tab, UI fixes

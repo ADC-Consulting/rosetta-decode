@@ -15,13 +15,23 @@ function useTabsCtx() {
 }
 
 interface TabsProps {
-  defaultValue: string;
+  defaultValue?: string;
+  value?: string;
+  onValueChange?: (v: string) => void;
   children: React.ReactNode;
   className?: string;
 }
 
-function Tabs({ defaultValue, children, className }: TabsProps) {
-  const [active, setActive] = useState(defaultValue);
+function Tabs({ defaultValue = "", value, onValueChange, children, className }: TabsProps) {
+  const [internalActive, setInternalActive] = useState(defaultValue);
+  const isControlled = value !== undefined;
+  const active = isControlled ? value : internalActive;
+
+  function setActive(v: string) {
+    if (!isControlled) setInternalActive(v);
+    onValueChange?.(v);
+  }
+
   return (
     <TabsCtx.Provider value={{ active, setActive }}>
       <div className={cn("flex flex-col gap-2", className)}>{children}</div>

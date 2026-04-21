@@ -5,6 +5,7 @@
       "Edit",
       "Write",
       "Bash(cat *)",
+      "Bash(echo *)",
       "Bash(head *)",
       "Bash(tail *)",
       "Bash(wc *)",

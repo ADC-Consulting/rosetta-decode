@@ -7,7 +7,11 @@ import type {
     JobSourcesResponse,
     JobStatus,
     JobSummary,
+    JobVersionDetail,
+    JobVersionSummary,
     PatchPlanRequest,
+    SaveVersionRequest,
+    SaveVersionResponse,
 } from "./types";
 
 const BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
@@ -104,4 +108,33 @@ export async function patchJobPlan(jobId: string, req: PatchPlanRequest): Promis
   });
   if (!res.ok) throw new Error(await extractApiError(res));
   return res.json() as Promise<JobStatus>;
+}
+
+export async function getJobVersions(jobId: string, tab: string): Promise<JobVersionSummary[]> {
+  const res = await fetch(`${BASE}/jobs/${jobId}/versions?tab=${encodeURIComponent(tab)}`);
+  if (!res.ok) throw new Error(await extractApiError(res));
+  return res.json() as Promise<JobVersionSummary[]>;
+}
+
+export async function getJobVersion(jobId: string, versionId: string): Promise<JobVersionDetail> {
+  const res = await fetch(`${BASE}/jobs/${jobId}/versions/${versionId}`);
+  if (!res.ok) throw new Error(await extractApiError(res));
+  return res.json() as Promise<JobVersionDetail>;
+}
+
+export async function saveVersion(
+  jobId: string,
+  tab: string,
+  body: SaveVersionRequest,
+): Promise<SaveVersionResponse> {
+  const res = await fetch(
+    `${BASE}/jobs/${jobId}/versions?tab=${encodeURIComponent(tab)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!res.ok) throw new Error(await extractApiError(res));
+  return res.json() as Promise<SaveVersionResponse>;
 }

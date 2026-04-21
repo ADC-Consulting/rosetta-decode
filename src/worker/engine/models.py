@@ -103,7 +103,9 @@ class TranslationStrategy(StrEnum):
     """Strategy to apply when migrating a SAS block."""
 
     TRANSLATE = "translate"
-    STUB = "stub"
+    TRANSLATE_WITH_REVIEW = "translate_with_review"
+    MANUAL_INGESTION = "manual_ingestion"
+    MANUAL = "manual"
     SKIP = "skip"
 
 

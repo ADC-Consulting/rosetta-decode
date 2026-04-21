@@ -1,3 +1,9 @@
+import {
+  MONACO_THEME,
+  getMonacoOptions,
+  handleEditorMount,
+  type MonacoEditorOptions,
+} from "@/config/monacoConfig";
 import { Editor } from "@monaco-editor/react";
 
 interface MonacoEditorProps {
@@ -6,6 +12,8 @@ interface MonacoEditorProps {
   onChange?: (value: string) => void;
   readOnly?: boolean;
   height?: string;
+  theme?: string;
+  editorOptions?: MonacoEditorOptions;
 }
 
 export default function MonacoEditor({
@@ -14,26 +22,30 @@ export default function MonacoEditor({
   onChange,
   readOnly = false,
   height = "500px",
+  theme = MONACO_THEME,
+  editorOptions,
 }: MonacoEditorProps): React.ReactElement {
+  const mergedOptions = getMonacoOptions({
+    readOnly,
+    ...editorOptions,
+  });
+
   return (
     <Editor
       height={height}
       value={value}
       language={language}
-      theme="vs"
+      theme={theme}
       loading={
         <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
           Loading editor…
         </div>
       }
-      options={{
-        readOnly,
-        fontSize: 13,
-        minimap: { enabled: false },
-      }}
+      options={mergedOptions}
       onChange={(val) => {
         if (val !== undefined) onChange?.(val);
       }}
+      onMount={handleEditorMount}
     />
   );
 }

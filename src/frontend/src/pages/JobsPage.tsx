@@ -30,7 +30,7 @@ function TableStatus({
           className="text-sm font-medium"
           style={{
             display: "inline-block",
-            background: gradient,
+            backgroundImage: gradient,
             backgroundSize: "200% 100%",
             WebkitBackgroundClip: "text",
             WebkitTextFillColor: "transparent",
@@ -62,7 +62,7 @@ function TableStatus({
         className="text-sm font-medium"
         style={{
           display: "inline-block",
-          background: gradient,
+          backgroundImage: gradient,
           backgroundSize: "200% 100%",
           WebkitBackgroundClip: "text",
           WebkitTextFillColor: "transparent",

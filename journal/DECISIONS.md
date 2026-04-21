@@ -18,6 +18,14 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-04-21 (session 19 — F5 bug-fix sweep)
+
+- **TipTap switches to native HTML mode, `tiptap-markdown` dropped:** `@tailwindcss/typography` is absent so `prose` classes did nothing; extension's `html: false` mode mangled headings. Native HTML + `marked` for load + `getHTML()` for save is simpler and fully functional. Stored `content.doc` in versions saved after this session will be HTML, not raw markdown · revisit if markdown round-trip fidelity becomes a requirement.
+- **`Tabs` component now supports controlled mode (`value`/`onValueChange`):** the original component was uncontrolled-only; `JobDetailPage` was passing controlled props that were silently ignored, disconnecting `activeTab` state from the visible tab entirely · revisit never.
+- **Shadcn `Select` (Base UI variant) replaces native `<select>`:** `@base-ui/react/select` is already in the dependency tree; provides consistent styling and accessible keyboard behaviour · revisit never.
+
+---
+
 ## 2026-04-19 (session 17 — F2-improvements backend: models, agents, codegen, API)
 
 - **Two-phase refinement replaces `_MAX_RETRIES` while-loop:** explicit two phases (translate all → reconcile → if fail: re-translate affected block only) is predictable and equivalent to the old max-2-retry limit; easier to reason about and test · revisit never
