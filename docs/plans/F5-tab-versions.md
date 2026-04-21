@@ -1,6 +1,6 @@
 # F5 — Per-Tab Version History + Unified Save Button
 
-**Status: in-progress**  
+**Status: complete**  
 **Branch: feat/F5-tab-versions**  
 **Created: 2026-04-20**
 
@@ -49,7 +49,7 @@ Content shapes:
 - [x] 10. Lift `reportDoc` state into `JobDetailPage`; wire Report tab as controlled
 - [x] 11. Update `VersionHistoryRail` to accept `tab` prop; switch to `getJobVersions`
 - [x] 12. Version preview `Dialog` with Restore button
-- [ ] 13. `make test` full pass + commit gate (pending — delete `src/frontend/@/` artefact first)
+- [x] 13. `make test` full pass + commit gate
 
 ## Key Risks
 

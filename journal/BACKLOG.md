@@ -89,7 +89,7 @@
 - [X] F-UI-postmvp S-FE4: `LineageGraph` component (React Flow, colour-coded by status, hover-to-focus, undo/redo/reset toolbar, dagre LR layout)
 - [X] F-UI-postmvp S-FE6: `JobDetailPage` (5 tabs: Plan / Editor / Report / Lineage / History)
 - [X] F-UI-postmvp History tab: version timeline with agent/human icons, click-to-navigate
-- [ ] F5 S-13: `make test` pass + delete `src/frontend/@/` artefact + commit gate → see `docs/plans/F5-tab-versions.md`
+- [x] F5 S-13: `make test` pass + delete `src/frontend/@/` artefact + commit gate → see `docs/plans/F5-tab-versions.md`
 - [ ] F-UI-postmvp S-FE7: `GlobalLineagePage`
 - [ ] F-UI-postmvp S-FE8: `DocsPage`
 - [ ] F-UI-postmvp S-FE9: `ExplainPage` stub
