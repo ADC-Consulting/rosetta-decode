@@ -250,6 +250,11 @@ async def get_job_lineage(
         macro_usages=lineage.get("macro_usages", []),
         cross_file_edges=lineage.get("cross_file_edges", []),
         dataset_summaries=lineage.get("dataset_summaries", {}),
+        file_nodes=lineage.get("file_nodes", []),
+        file_edges=lineage.get("file_edges", []),
+        pipeline_steps=lineage.get("pipeline_steps", []),
+        block_status=lineage.get("block_status", []),
+        log_links=lineage.get("log_links", []),
     )
 
 

@@ -76,6 +76,11 @@ export interface JobLineageResponse {
   macro_usages?: MacroUsage[];
   cross_file_edges?: Record<string, string>[];
   dataset_summaries?: Record<string, string>;
+  file_nodes?: FileNode[];
+  file_edges?: FileEdge[];
+  pipeline_steps?: PipelineStep[];
+  block_status?: BlockStatus[];
+  log_links?: LogLink[];
 }
 
 export type TranslationStrategy =
@@ -117,6 +122,44 @@ export interface MacroUsage {
   macro_name: string;
   macro_value: string;
   used_in_block_id: string;
+}
+
+export interface FileNode {
+  filename: string;
+  file_type: "PROGRAM" | "MACRO" | "AUTOEXEC" | "LOG" | "OTHER";
+  blocks: string[];
+  status: "OK" | "UNTRANSLATABLE" | "ERROR_PRONE" | null;
+  status_reason: string | null;
+}
+
+export interface FileEdge {
+  source_file: string;
+  target_file: string;
+  reason: "INCLUDE" | "MACRO_CALL" | "READS_DATASET" | "WRITES_DATASET";
+  via_block_id: string;
+}
+
+export interface PipelineStep {
+  step_id: string;
+  name: string;
+  description: string;
+  files: string[];
+  blocks: string[];
+  inputs: string[];
+  outputs: string[];
+}
+
+export interface BlockStatus {
+  block_id: string;
+  status: "OK" | "UNTRANSLATABLE" | "ERROR_PRONE";
+  reason: string | null;
+}
+
+export interface LogLink {
+  log_file: string;
+  related_files: string[];
+  related_blocks: string[];
+  severity: "INFO" | "WARNING" | "ERROR";
 }
 
 export interface JobDocResponse {

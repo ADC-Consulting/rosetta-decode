@@ -12,9 +12,11 @@ from src.worker.engine.models import (
     BlockType,
     ColumnFlow,
     EnrichedLineage,
+    FileNode,
     JobContext,
     MacroUsage,
     MacroVar,
+    PipelineStep,
     SASBlock,
 )
 
@@ -71,6 +73,11 @@ _ENRICHMENT_RESULT = LineageEnrichmentResult(
         "work.in": "Source dataset containing id and name columns.",
         "work.out": "Output dataset with id and name kept from work.in.",
     },
+    file_nodes=[],
+    file_edges=[],
+    pipeline_steps=[],
+    block_status=[],
+    log_links=[],
 )
 
 
@@ -147,7 +154,7 @@ async def test_enrich_passes_max_tokens_to_llm(
     agent, mock_run = agent_with_mock
     await agent.enrich(_JOB_CONTEXT)
     _, kwargs = mock_run.call_args
-    assert kwargs.get("model_settings", {}).get("max_tokens") == 8000
+    assert kwargs.get("model_settings", {}).get("max_tokens") == 16000
 
 
 async def test_enrich_raises_lineage_enricher_error_on_llm_failure() -> None:
@@ -159,3 +166,67 @@ async def test_enrich_raises_lineage_enricher_error_on_llm_failure() -> None:
 
     assert "LineageEnricherAgent failed" in str(exc_info.value)
     assert isinstance(exc_info.value.cause, RuntimeError)
+
+
+async def test_enrich_populates_file_nodes(
+    agent_with_mock: tuple[LineageEnricherAgent, AsyncMock],
+) -> None:
+    agent, mock_run = agent_with_mock
+    populated = LineageEnrichmentResult(
+        column_flows=[],
+        macro_usages=[],
+        cross_file_edges=[],
+        dataset_summaries={},
+        file_nodes=[
+            FileNode(
+                filename="etl.sas",
+                file_type="PROGRAM",
+                blocks=["etl.sas:2"],
+                status="OK",
+                status_reason=None,
+            )
+        ],
+        file_edges=[],
+        pipeline_steps=[],
+        block_status=[],
+        log_links=[],
+    )
+    mock_run.return_value = _make_run_result(populated)
+    result = await agent.enrich(_JOB_CONTEXT)
+    assert len(result.file_nodes) == 1
+    assert result.file_nodes[0].filename == "etl.sas"
+    assert result.file_nodes[0].file_type == "PROGRAM"
+    assert result.file_nodes[0].status == "OK"
+
+
+async def test_enrich_populates_pipeline_steps(
+    agent_with_mock: tuple[LineageEnricherAgent, AsyncMock],
+) -> None:
+    agent, mock_run = agent_with_mock
+    populated = LineageEnrichmentResult(
+        column_flows=[],
+        macro_usages=[],
+        cross_file_edges=[],
+        dataset_summaries={},
+        file_nodes=[],
+        file_edges=[],
+        pipeline_steps=[
+            PipelineStep(
+                step_id="step_1",
+                name="Load and filter",
+                description="Reads work.in and writes work.out.",
+                files=["etl.sas"],
+                blocks=["etl.sas:2"],
+                inputs=["work.in"],
+                outputs=["work.out"],
+            )
+        ],
+        block_status=[],
+        log_links=[],
+    )
+    mock_run.return_value = _make_run_result(populated)
+    result = await agent.enrich(_JOB_CONTEXT)
+    assert len(result.pipeline_steps) == 1
+    assert result.pipeline_steps[0].step_id == "step_1"
+    assert result.pipeline_steps[0].inputs == ["work.in"]
+    assert result.pipeline_steps[0].outputs == ["work.out"]

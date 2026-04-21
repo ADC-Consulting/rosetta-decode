@@ -6,6 +6,53 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-04-21 — LineageEnricher pipeline-level extension + multi-level lineage graph
+
+**Duration:** ~2h | **Focus:** Extend LineageEnricherAgent with 5 new fields; add Blocks/Files/Pipeline view toggle to LineageGraph
+
+### Done
+
+- **New branch:** `feat/S-lineage-enricher-pipeline-levels` branched from latest main (pulled 9 commits)
+- **`FileNode`, `FileEdge`, `PipelineStep`, `BlockStatus`, `LogLink` models:** added to `src/worker/engine/models.py` with `Literal` import; all optional with `Field(default_factory=list)` defaults
+- **`EnrichedLineage` extended:** 5 new optional list fields; `LineageEnrichmentResult` extended to match
+- **`LineageEnricherAgent` system prompt rewritten:** 9 tasks (kept 1–4, added 5–9 for file/step/block/log levels); `max_tokens` bumped 8k → 16k; `enrich()` passes all 9 fields through
+- **Backend API:** 5 new `*Response` models in `schemas.py`; `JobLineageResponse` extended; `get_job_lineage` route passes 5 new `.get()` keys — no DB migration needed (schemaless JSON column)
+- **Frontend types:** 5 new TS interfaces in `types.ts`; `JobLineageResponse` extended with optional fields
+- **Tests:** `_ENRICHMENT_RESULT` fixture updated; 2 new tests (`test_enrich_populates_file_nodes`, `test_enrich_populates_pipeline_steps`); ruff fix for 3 unused imports
+- **Multi-level LineageGraph:** view toggle (Blocks | Files | Pipeline) added to toolbar; `FileNodeCard`, `PipelineStepCard` custom React Flow nodes; `LineageDetailPanel` slide-in panel on file node click showing blocks + status + log links; `buildFileNodes/Edges`, `buildPipelineNodes/Edges` builders; `applyDagreLayout` generalized for per-view node sizes; `NODE_TYPES` registered at module level (React Flow stability)
+- **All 7 gates green:** ruff, mypy, pytest, tsc, frontend-lint, frontend-build
+
+### Decisions
+
+- `LineageEnricherAgent` `max_tokens` raised to 16 000 — 9-field JSON output can exceed 8k for multi-file projects
+- No DB migration required — new fields merge into existing schemaless `Job.lineage` JSON column
+- `NODE_TYPES` for custom React Flow nodes must be module-level constant (not inside component) — moving it inside would remount all nodes on every render
+
+### Open Questions
+
+- `log_links.related_files/related_blocks` are empty for all log files (log content is not parsed, only filename referenced) — expected for now; would need a log parser to populate
+- CSV/XLSX reference files appear as `__ref_csv_...__` / `__ref_xlsx_...__` in `file_nodes` — artefact of worker sentinel naming; cosmetic issue, not blocking
+
+### Next Session — Start Here
+
+1. Commit `feat/S-lineage-enricher-pipeline-levels` branch (journal + code in one commit)
+2. Continue unresolved UI bugs from backlog (TipTap cursor, version highlight, editor restore, tab heights)
+
+### Files Touched
+
+- `src/worker/engine/models.py`
+- `src/worker/engine/agents/lineage_enricher.py`
+- `src/backend/api/schemas.py`
+- `src/backend/api/routes/jobs.py`
+- `src/frontend/src/api/types.ts`
+- `src/frontend/src/components/LineageGraph.tsx`
+- `src/frontend/src/components/JobDetail/FileNodeCard.tsx` (new)
+- `src/frontend/src/components/JobDetail/PipelineStepCard.tsx` (new)
+- `src/frontend/src/components/JobDetail/LineageDetailPanel.tsx` (new)
+- `tests/test_lineage_enricher_agent.py`
+
+---
+
 ## 2026-04-21 — JobDetailPage refactor: component split, header polish, Monaco defaultValue fix
 
 **Duration:** ~2h | **Focus:** JobDetailPage structural cleanup + bug fixes

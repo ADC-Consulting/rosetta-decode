@@ -6,14 +6,24 @@
 import logging
 import textwrap
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 from pydantic_ai.models import KnownModelName
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.azure import AzureProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 from src.worker.core.config import worker_settings
-from src.worker.engine.models import ColumnFlow, EnrichedLineage, JobContext, MacroUsage
+from src.worker.engine.models import (
+    BlockStatus,
+    ColumnFlow,
+    EnrichedLineage,
+    FileEdge,
+    FileNode,
+    JobContext,
+    LogLink,
+    MacroUsage,
+    PipelineStep,
+)
 
 logger = logging.getLogger("src.worker.engine.agents.lineage_enricher")
 
@@ -28,6 +38,11 @@ class LineageEnrichmentResult(BaseModel):
     macro_usages: list[MacroUsage]
     cross_file_edges: list[dict[str, str]]
     dataset_summaries: dict[str, str]
+    file_nodes: list[FileNode] = Field(default_factory=list)
+    file_edges: list[FileEdge] = Field(default_factory=list)
+    pipeline_steps: list[PipelineStep] = Field(default_factory=list)
+    block_status: list[BlockStatus] = Field(default_factory=list)
+    log_links: list[LogLink] = Field(default_factory=list)
 
 
 # ── Error ─────────────────────────────────────────────────────────────────────
@@ -54,7 +69,8 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
 
     You are a SAS data lineage analyst. Given the original SAS source files, resolved
     macro variables, and the dependency-ordered list of parsed blocks, produce an enriched
-    lineage map that goes beyond block-to-block edges.
+    lineage map that goes beyond block-to-block edges. Reconstruct the full SAS pipeline at
+    three levels: dataset level, block/file level, and pipeline-step level.
 
     Input:
     - SAS source files with filenames.
@@ -80,12 +96,55 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
        contains, inferred from column names and SAS logic. Write "No description available."
        if nothing can be inferred.
 
+    5. file_nodes: One entry per distinct SAS source file present in the input.
+       Classify file_type as one of: PROGRAM | MACRO | AUTOEXEC | LOG | OTHER.
+         PROGRAM  — a standard SAS program (%include'd or run directly)
+         MACRO    — a file whose primary purpose is defining SAS macros
+         AUTOEXEC — a file named autoexec.sas or fulfilling that role
+         LOG      — a SAS log file (.log)
+         OTHER    — anything that does not fit the above
+       List all block_ids belonging to that file in `blocks`.
+       Set status (OK | UNTRANSLATABLE | ERROR_PRONE) only when you have evidence; otherwise null.
+       Each entry: { filename, file_type, blocks, status, status_reason }
+
+    6. file_edges: One edge per directly observable file-to-file dependency
+       (%INCLUDE, macro call resolving to another file, shared dataset written in one file
+       and read in another).
+       reason must be one of: INCLUDE | MACRO_CALL | READS_DATASET | WRITES_DATASET
+       Omit any edge you cannot support with evidence in the source.
+       Each entry: { source_file, target_file, reason, via_block_id }
+
+    7. pipeline_steps: Group the pipeline into logical named stages a human analyst would
+       recognise (e.g. "Ingest raw data", "Apply business rules", "Write output").
+       step_id must be "step_1", "step_2", etc. in execution order.
+       Only emit steps you can justify from the SAS logic; do not invent stages.
+       Each entry: { step_id, name, description, files, blocks, inputs, outputs }
+
+    8. block_status: Per-block health — only emit when status is UNTRANSLATABLE or ERROR_PRONE.
+       OK blocks may be omitted unless there is a specific reason to flag them.
+       Each entry: { block_id, status, reason }
+
+    9. log_links: Only applicable when one or more LOG files are present in the input.
+       Link each log file to the source files and block_ids it references.
+       severity must reflect the highest level found: INFO | WARNING | ERROR
+       Each entry: { log_file, related_files, related_blocks, severity }
+
+    General rules:
+    - Only emit entries you can support with evidence from the provided SAS source.
+    - If you are unsure about a field value, omit the entry rather than guessing.
+    - All new list fields default to [] — it is correct to return an empty list.
+
     Return ONLY a JSON object — no prose, no markdown fences:
     {
       "column_flows": [...],
       "macro_usages": [...],
       "cross_file_edges": [...],
-      "dataset_summaries": {"dataset_name": "description", ...}
+      "dataset_summaries": {"dataset_name": "description", ...},
+      "file_nodes": [...],
+      "file_edges": [...],
+      "pipeline_steps": [...],
+      "block_status": [...],
+      "log_links": [...]
     }
 """)
 
@@ -152,7 +211,8 @@ class LineageEnricherAgent:
 
         Returns:
             An EnrichedLineage with column_flows, macro_usages, cross_file_edges,
-            and dataset_summaries populated.
+            dataset_summaries, file_nodes, file_edges, pipeline_steps, block_status,
+            and log_links populated.
 
         Raises:
             LineageEnricherError: If the LLM call fails after retries.
@@ -161,7 +221,7 @@ class LineageEnricherAgent:
         try:
             result = await self._agent.run(
                 prompt,
-                model_settings={"max_tokens": 8000},
+                model_settings={"max_tokens": 16000},
             )
         except Exception as exc:
             logger.exception("LineageEnricherAgent LLM call failed")
@@ -173,6 +233,11 @@ class LineageEnricherAgent:
             macro_usages=enrichment.macro_usages,
             cross_file_edges=enrichment.cross_file_edges,
             dataset_summaries=enrichment.dataset_summaries,
+            file_nodes=enrichment.file_nodes,
+            file_edges=enrichment.file_edges,
+            pipeline_steps=enrichment.pipeline_steps,
+            block_status=enrichment.block_status,
+            log_links=enrichment.log_links,
         )
 
 

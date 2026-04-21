@@ -1,6 +1,7 @@
 """Pydantic models shared across the migration engine (parser → LLM → codegen)."""
 
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -191,20 +192,66 @@ class MacroUsage(BaseModel):
     used_in_block_id: str
 
 
-class EnrichedLineage(BaseModel):
-    """Full enriched lineage graph produced by the lineage agent.
+class FileNode(BaseModel):
+    """A single SAS source file node in the lineage graph."""
 
-    Attributes:
-        column_flows: All column-level lineage edges across the pipeline.
-        macro_usages: All macro variable usages resolved across blocks.
-        cross_file_edges: Edges that cross file boundaries (serialised as dicts).
-        dataset_summaries: Human-readable summaries keyed by dataset name.
-    """
+    filename: str
+    file_type: Literal["PROGRAM", "MACRO", "AUTOEXEC", "LOG", "OTHER"]
+    blocks: list[str] = Field(default_factory=list)
+    status: Literal["OK", "UNTRANSLATABLE", "ERROR_PRONE"] | None = None
+    status_reason: str | None = None
+
+
+class FileEdge(BaseModel):
+    """A directed dependency edge between two SAS source files."""
+
+    source_file: str
+    target_file: str
+    reason: Literal["INCLUDE", "MACRO_CALL", "READS_DATASET", "WRITES_DATASET"]
+    via_block_id: str
+
+
+class PipelineStep(BaseModel):
+    """A higher-level named pipeline stage grouping files and blocks."""
+
+    step_id: str
+    name: str
+    description: str
+    files: list[str] = Field(default_factory=list)
+    blocks: list[str] = Field(default_factory=list)
+    inputs: list[str] = Field(default_factory=list)
+    outputs: list[str] = Field(default_factory=list)
+
+
+class BlockStatus(BaseModel):
+    """Per-block translation/health status."""
+
+    block_id: str
+    status: Literal["OK", "UNTRANSLATABLE", "ERROR_PRONE"]
+    reason: str | None = None
+
+
+class LogLink(BaseModel):
+    """Links a SAS log file to related source files and blocks."""
+
+    log_file: str
+    related_files: list[str] = Field(default_factory=list)
+    related_blocks: list[str] = Field(default_factory=list)
+    severity: Literal["INFO", "WARNING", "ERROR"]
+
+
+class EnrichedLineage(BaseModel):
+    """Full enriched lineage graph produced by the lineage agent."""
 
     column_flows: list[ColumnFlow]
     macro_usages: list[MacroUsage]
     cross_file_edges: list[dict[str, str]]
     dataset_summaries: dict[str, str]
+    file_nodes: list[FileNode] = Field(default_factory=list)
+    file_edges: list[FileEdge] = Field(default_factory=list)
+    pipeline_steps: list[PipelineStep] = Field(default_factory=list)
+    block_status: list[BlockStatus] = Field(default_factory=list)
+    log_links: list[LogLink] = Field(default_factory=list)
 
 
 class JobContext(BaseModel):

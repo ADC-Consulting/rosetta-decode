@@ -147,6 +147,54 @@ class MacroUsageResponse(BaseModel):
     used_in_block_id: str
 
 
+class FileNodeResponse(BaseModel):
+    """A single SAS source file node in the lineage graph."""
+
+    filename: str
+    file_type: Literal["PROGRAM", "MACRO", "AUTOEXEC", "LOG", "OTHER"]
+    blocks: list[str] = []
+    status: Literal["OK", "UNTRANSLATABLE", "ERROR_PRONE"] | None = None
+    status_reason: str | None = None
+
+
+class FileEdgeResponse(BaseModel):
+    """A directed dependency edge between two SAS source files."""
+
+    source_file: str
+    target_file: str
+    reason: Literal["INCLUDE", "MACRO_CALL", "READS_DATASET", "WRITES_DATASET"]
+    via_block_id: str
+
+
+class PipelineStepResponse(BaseModel):
+    """A higher-level named pipeline stage."""
+
+    step_id: str
+    name: str
+    description: str
+    files: list[str] = []
+    blocks: list[str] = []
+    inputs: list[str] = []
+    outputs: list[str] = []
+
+
+class BlockStatusResponse(BaseModel):
+    """Per-block translation/health status."""
+
+    block_id: str
+    status: Literal["OK", "UNTRANSLATABLE", "ERROR_PRONE"]
+    reason: str | None = None
+
+
+class LogLinkResponse(BaseModel):
+    """Links a SAS log file to related source files and blocks."""
+
+    log_file: str
+    related_files: list[str] = []
+    related_blocks: list[str] = []
+    severity: Literal["INFO", "WARNING", "ERROR"]
+
+
 class JobLineageResponse(BaseModel):
     """Response body for GET /jobs/{id}/lineage."""
 
@@ -157,6 +205,11 @@ class JobLineageResponse(BaseModel):
     macro_usages: list[MacroUsageResponse] = []
     cross_file_edges: list[dict[str, Any]] = []
     dataset_summaries: dict[str, str] = {}
+    file_nodes: list[FileNodeResponse] = []
+    file_edges: list[FileEdgeResponse] = []
+    pipeline_steps: list[PipelineStepResponse] = []
+    block_status: list[BlockStatusResponse] = []
+    log_links: list[LogLinkResponse] = []
 
 
 class JobDocResponse(BaseModel):

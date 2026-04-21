@@ -90,6 +90,7 @@
 - [X] F-UI-postmvp S-FE6: `JobDetailPage` (5 tabs: Plan / Editor / Report / Lineage / History)
 - [X] F-UI-postmvp History tab: version timeline with agent/human icons, click-to-navigate
 - [x] F5 S-13: `make test` pass + delete `src/frontend/@/` artefact + commit gate → see `docs/plans/F5-tab-versions.md`
+- [x] feat(lineage): extend LineageEnricherAgent with FileNode, FileEdge, PipelineStep, BlockStatus, LogLink; multi-level view toggle (Blocks/Files/Pipeline) in LineageGraph (`feat/S-lineage-enricher-pipeline-levels`)
 - [ ] F-UI-postmvp S-FE7: `GlobalLineagePage`
 - [ ] F-UI-postmvp S-FE8: `DocsPage`
 - [ ] F-UI-postmvp S-FE9: `ExplainPage` stub

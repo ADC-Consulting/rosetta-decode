@@ -1,4 +1,7 @@
-import type { JobLineageResponse, LineageNode } from "@/api/types";
+import type { FileEdge, FileNode, JobLineageResponse, LineageNode, PipelineStep } from "@/api/types";
+import { FileNodeCard, type FileNodeData } from "@/components/JobDetail/FileNodeCard";
+import { LineageDetailPanel } from "@/components/JobDetail/LineageDetailPanel";
+import { PipelineStepCard, type PipelineStepData } from "@/components/JobDetail/PipelineStepCard";
 import dagre from "dagre";
 import { RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -82,29 +85,39 @@ function abbrevBlockType(bt: string): string {
 
 const NODE_W = 210;
 const NODE_H = 72;
+const NODE_FILE_W = 220;
+const NODE_FILE_H = 90;
+const NODE_PIPELINE_W = 240;
+const NODE_PIPELINE_H = 80;
 
-const NODE_TYPES = {};
+// CRITICAL: module-level, never inside a component
+const NODE_TYPES = {
+  fileNode: FileNodeCard,
+  pipelineNode: PipelineStepCard,
+};
 const EDGE_TYPES = {};
 
 // ---------------------------------------------------------------------------
 // Dagre layout
 // ---------------------------------------------------------------------------
 
-function applyDagreLayout(
-  nodes: Node<NodeData>[],
+function applyDagreLayout<T extends object>(
+  nodes: Node<T>[],
   edges: Edge[],
-): Node<NodeData>[] {
+  nodeW: number,
+  nodeH: number,
+): Node<T>[] {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
   g.setGraph({ rankdir: "LR", nodesep: 40, ranksep: 80 });
-  nodes.forEach((n) => g.setNode(n.id, { width: NODE_W, height: NODE_H }));
+  nodes.forEach((n) => g.setNode(n.id, { width: nodeW, height: nodeH }));
   edges.forEach((e) => g.setEdge(e.source, e.target));
   dagre.layout(g);
   return nodes.map((n) => {
     const pos = g.node(n.id);
     return {
       ...n,
-      position: { x: pos.x - NODE_W / 2, y: pos.y - NODE_H / 2 },
+      position: { x: pos.x - nodeW / 2, y: pos.y - nodeH / 2 },
       sourcePosition: Position.Right,
       targetPosition: Position.Left,
     };
@@ -112,7 +125,7 @@ function applyDagreLayout(
 }
 
 // ---------------------------------------------------------------------------
-// Builders
+// Builders — blocks view
 // ---------------------------------------------------------------------------
 
 function buildInitialNodes(lineageNodes: LineageNode[]): Node<NodeData>[] {
@@ -186,7 +199,7 @@ function buildInitialNodes(lineageNodes: LineageNode[]): Node<NodeData>[] {
         color: "#333",
         borderRadius: 8,
         padding: "8px 12px",
-        boxShadow: "0 1px 4px rgba(0,0,0,0.15)",
+        boxShadow: "0  1px 4px rgba(0,0,0,0.15)",
         width: NODE_W,
         minHeight: NODE_H,
         transition: "opacity 0.18s ease",
@@ -219,6 +232,98 @@ function buildInitialEdges(
       markerEnd: { type: MarkerType.ArrowClosed, color: "#94a3b8" },
     };
   });
+}
+
+// ---------------------------------------------------------------------------
+// Builders — file view
+// ---------------------------------------------------------------------------
+
+function buildFileNodes(
+  fileNodes: FileNode[],
+  selectedPath: string | null,
+): Node<FileNodeData>[] {
+  return fileNodes.map((fn) => {
+    const basename = fn.filename.split("/").pop() ?? fn.filename;
+    return {
+      id: `file-${fn.filename}`,
+      type: "fileNode",
+      position: { x: 0, y: 0 },
+      data: {
+        filename: basename,
+        fullPath: fn.filename,
+        file_type: fn.file_type,
+        status: fn.status,
+        blockCount: fn.blocks.length,
+        isSelected: fn.filename === selectedPath,
+      },
+    };
+  });
+}
+
+function humanizeReason(r: string): string {
+  return r.toLowerCase().replace(/_/g, " ");
+}
+
+function buildFileEdges(fileEdges: FileEdge[]): Edge[] {
+  const grouped = new Map<string, string[]>();
+  for (const fe of fileEdges) {
+    const key = `${fe.source_file}||${fe.target_file}`;
+    const reasons = grouped.get(key) ?? [];
+    reasons.push(humanizeReason(fe.reason));
+    grouped.set(key, reasons);
+  }
+  return Array.from(grouped.entries()).map(([key, reasons]) => {
+    const [src, tgt] = key.split("||");
+    return {
+      id: `fe-${src}-${tgt}`,
+      source: `file-${src}`,
+      target: `file-${tgt}`,
+      label: reasons.join(", "),
+      labelStyle: { fontSize: 10, fill: "#64748b" },
+      style: { stroke: "#94a3b8", strokeWidth: 1.5 },
+      markerEnd: { type: MarkerType.ArrowClosed, color: "#94a3b8" },
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Builders — pipeline view
+// ---------------------------------------------------------------------------
+
+function buildPipelineNodes(steps: PipelineStep[]): Node<PipelineStepData>[] {
+  return steps.map((s, i) => ({
+    id: `step-${s.step_id}`,
+    type: "pipelineNode",
+    position: { x: 0, y: 0 },
+    data: {
+      stepNumber: i + 1,
+      name: s.name,
+      description: s.description,
+      inputCount: s.inputs.length,
+      outputCount: s.outputs.length,
+    },
+  }));
+}
+
+function buildPipelineEdges(steps: PipelineStep[]): Edge[] {
+  const edges: Edge[] = [];
+  for (let i = 0; i < steps.length; i++) {
+    for (let j = i + 1; j < steps.length; j++) {
+      const shared = steps[i].outputs.filter((o) => steps[j].inputs.includes(o));
+      if (shared.length > 0) {
+        edges.push({
+          id: `pe-${steps[i].step_id}-${steps[j].step_id}`,
+          source: `step-${steps[i].step_id}`,
+          target: `step-${steps[j].step_id}`,
+          label: shared.join(", "),
+          labelStyle: { fontSize: 10, fill: "#6366f1" },
+          style: { stroke: "#a5b4fc", strokeWidth: 1.5 },
+          markerEnd: { type: MarkerType.ArrowClosed, color: "#a5b4fc" },
+        });
+      }
+    }
+  }
+  return edges;
 }
 
 // ---------------------------------------------------------------------------
@@ -296,6 +401,8 @@ function Legend(): React.ReactElement {
 // Inner graph
 // ---------------------------------------------------------------------------
 
+type ViewMode = "blocks" | "files" | "pipeline";
+
 function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
   const { fitView } = useReactFlow();
   const [nodes, setNodes, onNodesChange] = useNodesState<NodeData>([]);
@@ -305,7 +412,10 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
     hoveredIdRef.current = id;
   };
 
-  // Undo/redo history — store {id → position} maps only; merging back preserves ReactFlow's internal state
+  const [view, setView] = useState<ViewMode>("blocks");
+  const [selectedFile, setSelectedFile] = useState<FileNode | null>(null);
+
+  // Undo/redo history — store {id → position} maps only
   type PosSnapshot = Record<string, { x: number; y: number }>;
   const historyRef = useRef<PosSnapshot[]>([]);
   const historyIdxRef = useRef<number>(-1);
@@ -317,7 +427,7 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
   // Initial layout ref for reset
   const initialLayoutRef = useRef<Node<NodeData>[]>([]);
 
-  // Mirror of current nodes — always up-to-date, readable from stable callbacks
+  // Mirror of current nodes
   const nodesRef = useRef<Node<NodeData>[]>([]);
   useEffect(() => {
     nodesRef.current = nodes;
@@ -326,28 +436,57 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
   // Hover debounce timer
   const leaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // When true, onNodesChange is suppressed for one frame so undo/redo/reset
-  // position restores are not overwritten by RF's own queued change events.
+  // Suppress ReactFlow change events during programmatic position restores
   const suppressChangesRef = useRef(false);
 
   useEffect(() => {
-    if (lineage.nodes.length === 0) return;
-    const rawNodes = buildInitialNodes(lineage.nodes);
-    const rawEdges = buildInitialEdges(lineage.edges, lineage.column_flows);
-    const laid = applyDagreLayout(rawNodes, rawEdges);
-    setNodes(laid);
-    setEdges(rawEdges);
-    trackHoveredId(null);
-    initialLayoutRef.current = laid;
+    let newNodes: Node[];
+    let newEdges: Edge[];
+
+    if (view === "files" && lineage.file_nodes?.length) {
+      const fEdges = buildFileEdges(lineage.file_edges ?? []);
+      newNodes = applyDagreLayout(
+        buildFileNodes(lineage.file_nodes, selectedFile?.filename ?? null),
+        fEdges,
+        NODE_FILE_W,
+        NODE_FILE_H,
+      );
+      newEdges = fEdges;
+    } else if (view === "pipeline" && lineage.pipeline_steps?.length) {
+      const pEdges = buildPipelineEdges(lineage.pipeline_steps);
+      newNodes = applyDagreLayout(
+        buildPipelineNodes(lineage.pipeline_steps),
+        pEdges,
+        NODE_PIPELINE_W,
+        NODE_PIPELINE_H,
+      );
+      newEdges = pEdges;
+    } else {
+      // blocks view (default)
+      if (lineage.nodes.length === 0) return;
+      const rawNodes = buildInitialNodes(lineage.nodes);
+      const rawEdges = buildInitialEdges(lineage.edges, lineage.column_flows);
+      newNodes = applyDagreLayout(rawNodes, rawEdges, NODE_W, NODE_H);
+      newEdges = rawEdges;
+    }
+
+    suppressChangesRef.current = true;
+    setNodes(newNodes);
+    setEdges(newEdges);
+    initialLayoutRef.current = newNodes as Node<NodeData>[];
     historyRef.current = [
       Object.fromEntries(
-        laid.map((n) => [n.id, { x: n.position.x, y: n.position.y }]),
+        newNodes.map((n) => [n.id, { x: n.position.x, y: n.position.y }]),
       ),
     ];
     historyIdxRef.current = 0;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: re-init derived state on lineage change
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional
     setHistoryState({ idx: 0, len: 1 });
-  }, [lineage, setNodes, setEdges]);
+    setSelectedFile(null);
+    setTimeout(() => {
+      suppressChangesRef.current = false;
+    }, 50);
+  }, [lineage, view]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
@@ -403,7 +542,6 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
   }, [setNodes]);
 
   const handleNodeDragStop = useCallback(() => {
-    // Snapshot ALL current nodes (not just the dragged one — RF only passes dragged nodes)
     const all = nodesRef.current;
     const posSnapshot: PosSnapshot = Object.fromEntries(
       all.map((n) => [n.id, { x: n.position.x, y: n.position.y }]),
@@ -497,7 +635,23 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
     requestAnimationFrame(() => fitView({ padding: 0.2, duration: 300 }));
   }, [setNodes, fitView]);
 
-  if (lineage.nodes.length === 0) {
+  const handleNodeClick = useCallback(
+    (_: React.MouseEvent, node: Node) => {
+      if (view !== "files") return;
+      const fileNode =
+        lineage.file_nodes?.find((fn) => `file-${fn.filename}` === node.id) ?? null;
+      setSelectedFile(fileNode);
+      setNodes((prev) =>
+        prev.map((n) => ({
+          ...n,
+          data: { ...n.data, isSelected: n.id === node.id },
+        })),
+      );
+    },
+    [view, lineage.file_nodes, setNodes],
+  );
+
+  if (lineage.nodes.length === 0 && view === "blocks") {
     return (
       <div className="flex items-center justify-center h-150 text-sm text-muted-foreground">
         No lineage data available
@@ -539,6 +693,7 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
           padding: "4px 6px",
           display: "flex",
           gap: 4,
+          alignItems: "center",
         }}
       >
         <button
@@ -579,7 +734,48 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
         >
           <RotateCcw size={12} /> Reset
         </button>
+
+        {/* Divider */}
+        <div style={{ width: 1, height: 20, background: "#e2e8f0", margin: "0 6px" }} />
+
+        {(["blocks", "files", "pipeline"] as ViewMode[]).map((v) => {
+          const disabled =
+            (v === "files" && !lineage.file_nodes?.length) ||
+            (v === "pipeline" && !lineage.pipeline_steps?.length);
+          const label = v.charAt(0).toUpperCase() + v.slice(1);
+          return (
+            <button
+              key={v}
+              onClick={() => setView(v)}
+              disabled={disabled}
+              style={{
+                ...btnBase,
+                ...(view === v
+                  ? { background: "#1e293b", color: "#fff", borderColor: "#1e293b" }
+                  : {}),
+                ...(disabled ? btnDisabled : {}),
+                fontSize: 11,
+                padding: "2px 8px",
+              }}
+            >
+              {label}
+            </button>
+          );
+        })}
       </div>
+
+      {/* Empty state overlays */}
+      {view === "files" && !lineage.file_nodes?.length && (
+        <div className="absolute inset-0 flex items-center justify-center text-slate-400 text-sm">
+          No file-level lineage data available
+        </div>
+      )}
+      {view === "pipeline" && !lineage.pipeline_steps?.length && (
+        <div className="absolute inset-0 flex items-center justify-center text-slate-400 text-sm">
+          No pipeline step data available
+        </div>
+      )}
+
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -589,6 +785,7 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
         onNodeMouseLeave={handleNodeMouseLeave}
         onNodeDragStop={handleNodeDragStop}
         onPaneClick={handlePaneClick}
+        onNodeClick={handleNodeClick}
         nodesDraggable={true}
         nodeTypes={NODE_TYPES}
         edgeTypes={EDGE_TYPES}
@@ -599,7 +796,19 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
         <Background />
         {nodes.length > 15 && <MiniMap />}
       </ReactFlow>
-      <Legend />
+      {view === "blocks" && <Legend />}
+
+      <LineageDetailPanel
+        file={selectedFile}
+        blockStatuses={lineage.block_status ?? []}
+        logLinks={lineage.log_links ?? []}
+        onClose={() => {
+          setSelectedFile(null);
+          setNodes((prev) =>
+            prev.map((n) => ({ ...n, data: { ...n.data, isSelected: false } })),
+          );
+        }}
+      />
     </div>
   );
 }

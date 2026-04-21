@@ -18,6 +18,14 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-04-21 (session 20 — LineageEnricher pipeline-level extension)
+
+- **`LineageEnricherAgent` max_tokens raised 8k → 16k:** 9-field JSON output (5 new fields) can exceed 8k for multi-file SAS projects; conservative doubling; revisit if latency becomes a concern
+- **New lineage fields stored in existing schemaless JSON column — no migration:** `Job.lineage` is PostgreSQL JSON (nullable); new fields merge in via `{**lineage_data, **enriched.model_dump()}`; backward-compatible (old jobs simply lack the new keys) · revisit never
+- **React Flow `NODE_TYPES` must be module-level constant:** if defined inside a component, React Flow remounts all nodes on every parent re-render; all custom node type registrations are at module scope · revisit never
+
+---
+
 ## 2026-04-21 (session 19 — F5 bug-fix sweep)
 
 - **TipTap switches to native HTML mode, `tiptap-markdown` dropped:** `@tailwindcss/typography` is absent so `prose` classes did nothing; extension's `html: false` mode mangled headings. Native HTML + `marked` for load + `getHTML()` for save is simpler and fully functional. Stored `content.doc` in versions saved after this session will be HTML, not raw markdown · revisit if markdown round-trip fidelity becomes a requirement.
