@@ -76,8 +76,20 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
     1. Write a 2-3 sentence plain-English summary of what this SAS codebase does as a
        whole, at a business level (not technical). Assume the reader is a business analyst.
     2. For each block, assign:
-       - strategy: "translate" (automated), "stub" (needs manual completion), or "skip"
-         (already handled, e.g. simple PROC SORT).
+       - strategy: one of the values below (use exactly these strings).
+
+    Translation strategy values (use exactly these strings):
+    - "translate"             Fully auto-translated. DATA steps, PROC SQL, PROC SORT,
+                              PROC MEANS — anything the agents handle reliably.
+    - "translate_with_review" Translated but flagged for human check. Use when date/time
+                              semantics differ (INTNX, INTCK, SAS date literals), format
+                              conversions (PICTURE, INFORMATs), or ambiguous merges.
+    - "manual_ingestion"      PROC IMPORT / PROC EXPORT / any file I/O. Emit a pandas
+                              read/write shell with TODOs only.
+    - "manual"                PROC IML, PROC OPTMODEL, PROC FCMP, no pandas equivalent.
+                              Emit a # TODO placeholder comment only.
+    - "skip"                  PROC PRINT, PROC CONTENTS, PROC DATASETS, standalone
+                              comments, title/footnote statements. Emit nothing.
        - risk: "low", "medium", or "high" based on:
            HIGH  — CALL SYMPUT/SYMPUTX, dynamic dataset names, nested macros, %INCLUDE,
                    PROC types we don't handle, deeply nested DO loops with RETAIN
@@ -103,7 +115,7 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
           "source_file": "...",
           "start_line": <int>,
           "block_type": "DATA_STEP|PROC_SQL|PROC_SORT|UNTRANSLATABLE",
-          "strategy": "translate|stub|skip",
+          "strategy": "translate|translate_with_review|manual_ingestion|manual|skip",
           "risk": "low|medium|high",
           "rationale": "...",
           "estimated_effort": "low|medium|high"

@@ -1,38 +1,53 @@
 import {
   acceptJob,
-  downloadJob,
   getJob,
   getJobDoc,
-  getJobHistory,
   getJobLineage,
   getJobPlan,
   getJobSources,
   patchJobPlan,
   refineJob,
+  saveVersion,
   updateJobPythonCode,
 } from "@/api/jobs";
 import type {
   BlockOverride,
   BlockPlan,
-  JobHistoryEntry,
   JobStatusValue,
   PatchPlanRequest,
 } from "@/api/types";
 import FileTree from "@/components/FileTree";
 import LineageGraph from "@/components/LineageGraph";
+import TabSaveBar from "@/components/TabSaveBar";
 import TiptapEditor from "@/components/TiptapEditor";
+import VersionHistoryRail from "@/components/VersionHistoryRail";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import type { Monaco } from "@monaco-editor/react";
 import { Editor } from "@monaco-editor/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Bot, Download, Moon, Sun, User } from "lucide-react";
+import { ArrowLeft, Moon, Pencil, Sun } from "lucide-react";
+
 import { marked } from "marked";
 import { Suspense, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -77,6 +92,14 @@ const STATUS_PILL_CLASS: Record<JobStatusValue, string> = {
   done: "bg-amber-500", // legacy
   accepted: "bg-emerald-600",
   failed: "bg-red-600",
+};
+
+const STRATEGY_LABELS: Record<string, string> = {
+  translate: "Auto-translate",
+  translate_with_review: "Translate + review",
+  manual_ingestion: "Manual ingestion",
+  manual: "Manual",
+  skip: "Skip",
 };
 
 const STATUS_SHIMMER: Record<JobStatusValue, boolean> = {
@@ -137,7 +160,10 @@ export function StatusBadge({
 // ---------------------------------------------------------------------------
 
 function registerSasLanguage(monaco: Monaco): void {
-  if (monaco.languages.getLanguages().some((l) => l.id === "sas")) return;
+  if (
+    monaco.languages.getLanguages().some((l: { id: string }) => l.id === "sas")
+  )
+    return;
 
   monaco.languages.register({ id: "sas" });
 
@@ -312,20 +338,24 @@ function registerSasLanguage(monaco: Monaco): void {
 
 function EditorTab({
   jobId,
-  initialCode,
   generatedFiles,
+  code,
+  setCode,
+  saveMutation,
+  saved,
 }: {
   jobId: string;
-  initialCode: string;
   generatedFiles: Record<string, string> | null;
+  code: string;
+  setCode: (code: string) => void;
+  saveMutation: { mutate: (vars?: undefined) => void; isPending: boolean };
+  saved: boolean;
 }): React.ReactElement {
   const navigate = useNavigate();
   const [editorDark, setEditorDark] = useState(false);
   const monacoTheme = editorDark
     ? { sas: "sas-dark", python: "vs-dark" }
     : { sas: "sas-light", python: "vs" };
-  const [code, setCode] = useState(initialCode);
-  const [saved, setSaved] = useState(false);
   const [showRefine, setShowRefine] = useState(false);
   const [hint, setHint] = useState("");
   const [selectedSasKey, setSelectedSasKey] = useState<string>("");
@@ -350,22 +380,7 @@ function EditorTab({
     return generatedFiles[pyKey] ?? null;
   })();
   const rightCode = perFileCode ?? code;
-  const rightReadOnly = perFileCode !== null;
-
-  const saveMutation = useMutation({
-    mutationFn: () => updateJobPythonCode(jobId, code),
-    onSuccess: () => {
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
-    },
-    onError: (err) => {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : "Your changes could not be saved. Please try again.",
-      );
-    },
-  });
+  const rightReadOnly = false;
 
   const refineMutation = useMutation({
     mutationFn: () => refineJob(jobId, hint.trim() || undefined),
@@ -416,7 +431,7 @@ function EditorTab({
         style={{ height: "calc(100vh - 240px)" }}
       >
         {/* Left: file tree */}
-        <ResizablePanel defaultSize="22%" minSize="15%" maxSize="40%">
+        <ResizablePanel defaultSize="15%" minSize="10%" maxSize="30%">
           <div
             className="flex flex-col h-full"
             style={{ background: editorDark ? "#1e1e1e" : "#fafafa" }}
@@ -510,11 +525,11 @@ function EditorTab({
                       {breadcrumbParts.join(" / ")}
                     </span>
                   )}
-                  {rightReadOnly && (
+                  {/* {rightReadOnly && (
                     <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-200 font-semibold">
                       per-file view
                     </span>
-                  )}
+                  )} */}
                 </div>
                 <Suspense
                   fallback={
@@ -549,16 +564,12 @@ function EditorTab({
         </ResizablePanel>
       </ResizablePanelGroup>
 
-      {/* Action row */}
-      <div className="flex items-center gap-3">
-        <Button
-          size="sm"
-          onClick={() => saveMutation.mutate()}
-          disabled={saveMutation.isPending}
-          className="cursor-pointer"
-        >
-          {saveMutation.isPending ? "Saving…" : "Save & Re-reconcile"}
-        </Button>
+      <TabSaveBar
+        saveLabel="Save & Re-reconcile"
+        onSave={() => saveMutation.mutate(undefined)}
+        isSaving={saveMutation.isPending}
+        saved={saved}
+      >
         <Button
           variant="outline"
           size="sm"
@@ -567,12 +578,7 @@ function EditorTab({
         >
           Refine migration
         </Button>
-        {saved && (
-          <span className="text-xs text-emerald-500 transition-opacity">
-            Saved.
-          </span>
-        )}
-      </div>
+      </TabSaveBar>
 
       {showRefine && (
         <div className="space-y-2 rounded-md border border-border p-4 bg-muted/20">
@@ -613,6 +619,12 @@ const RISK_CELL: Record<"low" | "medium" | "high", string> = {
   low: "text-green-700",
   medium: "text-amber-700",
   high: "text-red-700",
+};
+
+const RISK_LABELS: Record<"low" | "medium" | "high", string> = {
+  low: "Low",
+  medium: "Mid",
+  high: "High",
 };
 
 function ReconSummaryCard({
@@ -661,6 +673,73 @@ function ReconSummaryCard({
   );
 }
 
+function NoteDialog({
+  blockId,
+  currentNote,
+  onSave,
+}: {
+  blockId: string;
+  currentNote: string;
+  onSave: (blockId: string, value: string) => void;
+}): React.ReactElement {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState("");
+
+  const handleOpen = (): void => {
+    setDraft(currentNote);
+    setOpen(true);
+  };
+
+  const handleSave = (): void => {
+    onSave(blockId, draft);
+    setOpen(false);
+  };
+
+  return (
+    <>
+      <button
+        onClick={handleOpen}
+        className="cursor-pointer flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
+        aria-label={`Edit note for ${blockId}`}
+      >
+        <Pencil className="size-3 shrink-0" />
+        {currentNote ? (
+          <span
+            className="size-1.5 rounded-full bg-primary shrink-0"
+            aria-hidden
+          />
+        ) : null}
+      </button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Block note — {blockId}</DialogTitle>
+          </DialogHeader>
+          <textarea
+            className={cn(
+              "w-full min-h-24 resize-y rounded-md border border-input bg-background",
+              "px-3 py-2 text-sm placeholder:text-muted-foreground",
+              "focus:outline-none focus:ring-1 focus:ring-ring",
+            )}
+            placeholder="Add a reviewer note for this block…"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            autoFocus
+          />
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button size="sm" onClick={handleSave}>
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 function BlockPlanTable({
   blockPlans,
   isProposed,
@@ -686,13 +765,16 @@ function BlockPlanTable({
             <th className="px-3 py-2 font-medium text-muted-foreground">
               Block
             </th>
+            <th className="px-3 py-2 font-medium text-muted-foreground text-right w-12">
+              Line
+            </th>
             <th className="px-3 py-2 font-medium text-muted-foreground">
               Type
             </th>
-            <th className="px-3 py-2 font-medium text-muted-foreground">
+            <th className="px-3 py-2 font-medium text-muted-foreground w-44">
               Strategy
             </th>
-            <th className="px-3 py-2 font-medium text-muted-foreground">
+            <th className="px-3 py-2 font-medium text-muted-foreground w-20">
               Risk
             </th>
             <th className="px-3 py-2 font-medium text-muted-foreground">
@@ -710,45 +792,90 @@ function BlockPlanTable({
           {blockPlans.map((bp) => (
             <tr key={bp.block_id} className="hover:bg-muted/30">
               <td className="px-3 py-2 font-mono text-xs text-muted-foreground">
-                {bp.block_id}
+                {bp.block_id.replace(/:\d+$/, "")}
+              </td>
+              <td className="px-3 py-2 font-mono text-xs text-muted-foreground text-right tabular-nums w-12">
+                {bp.start_line ?? "—"}
               </td>
               <td className="px-3 py-2 font-mono text-xs">{bp.block_type}</td>
               <td className="px-3 py-2 text-xs">
                 {isProposed ? (
-                  <select
+                  <Select
                     value={overrides[bp.block_id]?.strategy ?? bp.strategy}
-                    onChange={(e) =>
-                      onStrategyChange(bp.block_id, e.target.value)
-                    }
-                    className="rounded border border-border bg-background px-1 py-0.5 text-xs"
-                    aria-label={`Strategy for ${bp.block_id}`}
+                    onValueChange={(v) => v && onStrategyChange(bp.block_id, v)}
                   >
-                    <option value="translate">translate</option>
-                    <option value="stub">stub</option>
-                    <option value="skip">skip</option>
-                  </select>
+                    <SelectTrigger size="sm" className="text-xs h-6 w-40">
+                      <SelectValue>
+                        {(v: string | null) =>
+                          v ? (STRATEGY_LABELS[v] ?? v) : ""
+                        }
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(STRATEGY_LABELS).map(([value, label]) => (
+                        <SelectItem
+                          key={value}
+                          value={value}
+                          className="text-xs"
+                        >
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 ) : (
-                  <span className="capitalize">
-                    {overrides[bp.block_id]?.strategy ?? bp.strategy}
+                  <span>
+                    {STRATEGY_LABELS[
+                      overrides[bp.block_id]?.strategy ?? bp.strategy
+                    ] ??
+                      overrides[bp.block_id]?.strategy ??
+                      bp.strategy}
                   </span>
                 )}
               </td>
-              <td
-                className={`px-3 py-2 text-xs font-semibold capitalize ${RISK_CELL[bp.risk]}`}
-              >
+              <td className="px-3 py-2 text-xs">
                 {isProposed ? (
-                  <select
+                  <Select
                     value={overrides[bp.block_id]?.risk ?? bp.risk}
-                    onChange={(e) => onRiskChange(bp.block_id, e.target.value)}
-                    className="rounded border border-border bg-background px-1 py-0.5 text-xs font-normal"
-                    aria-label={`Risk for ${bp.block_id}`}
+                    onValueChange={(v) => v && onRiskChange(bp.block_id, v)}
                   >
-                    <option value="low">low</option>
-                    <option value="medium">medium</option>
-                    <option value="high">high</option>
-                  </select>
+                    <SelectTrigger
+                      size="sm"
+                      className={`text-xs h-6 w-20 font-semibold ${RISK_CELL[(overrides[bp.block_id]?.risk ?? bp.risk) as "low" | "medium" | "high"]}`}
+                    >
+                      <SelectValue>
+                        {(v: string | null) =>
+                          v
+                            ? (RISK_LABELS[v as "low" | "medium" | "high"] ?? v)
+                            : ""
+                        }
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(["low", "medium", "high"] as const).map((r) => (
+                        <SelectItem
+                          key={r}
+                          value={r}
+                          className={`text-xs font-semibold ${RISK_CELL[r]}`}
+                        >
+                          {RISK_LABELS[r]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 ) : (
-                  (overrides[bp.block_id]?.risk ?? bp.risk)
+                  <span
+                    className={`font-semibold ${RISK_CELL[(overrides[bp.block_id]?.risk ?? bp.risk) as "low" | "medium" | "high"]}`}
+                  >
+                    {
+                      RISK_LABELS[
+                        (overrides[bp.block_id]?.risk ?? bp.risk) as
+                          | "low"
+                          | "medium"
+                          | "high"
+                      ]
+                    }
+                  </span>
                 )}
               </td>
               <td className="px-3 py-2 text-xs capitalize">
@@ -760,15 +887,10 @@ function BlockPlanTable({
               <td className="px-3 py-2 text-xs">
                 {isProposed ? (
                   <div className="flex items-center gap-1">
-                    <input
-                      type="text"
-                      placeholder="Add note…"
-                      value={overrides[bp.block_id]?.note ?? ""}
-                      onChange={(e) =>
-                        onNoteChange(bp.block_id, e.target.value)
-                      }
-                      className="rounded border border-border bg-background px-1.5 py-0.5 text-xs w-28"
-                      aria-label={`Note for ${bp.block_id}`}
+                    <NoteDialog
+                      blockId={bp.block_id}
+                      currentNote={overrides[bp.block_id]?.note ?? ""}
+                      onSave={onNoteChange}
                     />
                     {savingBlockId === bp.block_id && (
                       <span className="text-[10px] text-muted-foreground">
@@ -795,29 +917,24 @@ function PlanTab({
   isReviewable,
   jobStatus,
   report,
+  overrides,
+  setOverrides,
 }: {
   jobId: string;
   isReviewable: boolean;
   jobStatus: JobStatusValue;
   report: Record<string, unknown> | null;
+  overrides: Record<string, BlockOverride>;
+  setOverrides: React.Dispatch<
+    React.SetStateAction<Record<string, BlockOverride>>
+  >;
 }): React.ReactElement {
-  const queryClient = useQueryClient();
-  const [overrides, setOverrides] = useState<Record<string, BlockOverride>>({});
   const [savingBlockId, setSavingBlockId] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["job", jobId, "plan"],
     queryFn: () => getJobPlan(jobId),
     enabled: !!jobId && isReviewable,
-  });
-
-  const acceptMutation = useMutation({
-    mutationFn: () => acceptJob(jobId),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["job", jobId] });
-      toast.success("Migration accepted.");
-    },
-    onError: () => toast.error("Could not accept migration. Please try again."),
   });
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -895,21 +1012,6 @@ function PlanTab({
     <div className="space-y-6">
       <ReconSummaryCard report={report} />
 
-      {isProposed && (
-        <Button
-          onClick={() => acceptMutation.mutate()}
-          disabled={acceptMutation.isPending}
-          className="w-full"
-        >
-          {acceptMutation.isPending ? "Accepting…" : "Accept migration"}
-        </Button>
-      )}
-      {jobStatus === "accepted" && (
-        <p className="text-sm text-emerald-600 font-medium">
-          ✓ Migration accepted
-        </p>
-      )}
-
       {/* Summary card */}
       <div className="rounded-lg border border-border bg-card p-4 space-y-3">
         <div className="flex items-center gap-2">
@@ -976,20 +1078,14 @@ function PlanTab({
 // ---------------------------------------------------------------------------
 
 function ReportTab({
-  jobId,
-  report,
   isDone,
+  doc,
+  onDocChange,
 }: {
-  jobId: string;
-  report: Record<string, unknown> | null;
   isDone: boolean;
+  doc: string | null;
+  onDocChange?: (doc: string) => void;
 }): React.ReactElement {
-  const { data: docData } = useQuery({
-    queryKey: ["job", jobId, "doc"],
-    queryFn: () => getJobDoc(jobId),
-    enabled: !!jobId && isDone,
-  });
-
   if (!isDone) {
     return (
       <p className="text-sm text-muted-foreground">
@@ -998,34 +1094,21 @@ function ReportTab({
     );
   }
 
-  const reportHtml = `<pre><code>${JSON.stringify(report, null, 2)}</code></pre>`;
-
   return (
-    <div className="flex gap-4 h-[calc(100vh-320px)] min-h-[300px]">
-      <div className="flex flex-col flex-1 min-w-0">
-        <h3 className="text-sm font-semibold mb-2 shrink-0">
-          Reconciliation report
-        </h3>
-        <div className="flex-1 overflow-y-auto">
-          <TiptapEditor content={reportHtml} readOnly={false} />
-        </div>
-      </div>
-      <div className="flex flex-col flex-1 min-w-0">
-        <h3 className="text-sm font-semibold mb-2 shrink-0">
-          Migration summary
-        </h3>
-        <div className="flex-1 overflow-y-auto">
-          {docData?.doc ? (
-            <TiptapEditor
-              content={String(marked.parse(extractMarkdown(docData.doc)))}
-              readOnly={false}
-            />
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Summary not yet generated.
-            </p>
-          )}
-        </div>
+    <div className="flex flex-col h-[calc(100vh-320px)] min-h-[300px]">
+      <h3 className="text-sm font-semibold mb-2 shrink-0">Migration summary</h3>
+      <div className="flex-1 overflow-y-auto">
+        {doc ? (
+          <TiptapEditor
+            content={String(marked.parse(extractMarkdown(doc)))}
+            readOnly={false}
+            onChange={onDocChange}
+          />
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Summary not yet generated.
+          </p>
+        )}
       </div>
     </div>
   );
@@ -1078,123 +1161,26 @@ function LineageTab({ jobId }: { jobId: string }): React.ReactElement {
 }
 
 // ---------------------------------------------------------------------------
-// History tab
-// ---------------------------------------------------------------------------
-
-function HistoryTab({ jobId }: { jobId: string }): React.ReactElement {
-  const navigate = useNavigate();
-
-  const { data, isLoading } = useQuery({
-    queryKey: ["job", jobId, "history"],
-    queryFn: () => getJobHistory(jobId),
-    enabled: !!jobId,
-  });
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
-        Loading history…
-      </div>
-    );
-  }
-
-  if (!data || data.entries.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground">No history available.</p>
-    );
-  }
-
-  return (
-    <div className="relative space-y-0 pl-8">
-      {/* Vertical line */}
-      <div className="absolute left-3 top-3 bottom-3 w-px bg-border" />
-
-      {data.entries.map((entry: JobHistoryEntry, idx: number) => {
-        const isAgent = entry.trigger === "agent";
-        const label =
-          entry.trigger === "agent"
-            ? "Agent migration"
-            : entry.trigger === "human-refine"
-              ? "Refined by reviewer"
-              : "Re-reconciled by reviewer";
-
-        const statusColor =
-          entry.status === "accepted"
-            ? "text-emerald-600"
-            : entry.status === "failed"
-              ? "text-red-500"
-              : entry.status === "proposed" || entry.status === "done"
-                ? "text-amber-600"
-                : "text-muted-foreground";
-
-        return (
-          <div key={entry.job_id} className="relative pb-6 last:pb-0">
-            {/* Node */}
-            <div className="absolute -left-5 top-1 flex h-6 w-6 items-center justify-center rounded-full border-2 border-border bg-background">
-              {isAgent ? (
-                <Bot size={12} className="text-blue-500" />
-              ) : (
-                <User size={12} className="text-violet-500" />
-              )}
-            </div>
-
-            <div
-              className={cn(
-                "ml-2 rounded-lg border p-3 space-y-1 transition-colors",
-                entry.is_current
-                  ? "border-primary bg-primary/5"
-                  : "border-border bg-card cursor-pointer hover:bg-muted/50",
-              )}
-              onClick={() => {
-                if (!entry.is_current) navigate(`/jobs/${entry.job_id}`);
-              }}
-              role={entry.is_current ? undefined : "button"}
-              tabIndex={entry.is_current ? undefined : 0}
-              onKeyDown={(e) => {
-                if (!entry.is_current && (e.key === "Enter" || e.key === " ")) {
-                  e.preventDefault();
-                  navigate(`/jobs/${entry.job_id}`);
-                }
-              }}
-              aria-label={
-                entry.is_current ? undefined : `Go to version ${idx + 1}`
-              }
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-semibold text-foreground">
-                  {label}
-                </span>
-                {entry.is_current && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-semibold">
-                    current
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                <span className={`font-medium ${statusColor}`}>
-                  {STATUS_LABEL[entry.status] ?? entry.status}
-                </span>
-                <span>·</span>
-                <span>{new Date(entry.created_at).toLocaleString()}</span>
-              </div>
-              <p className="text-[11px] font-mono text-muted-foreground/70 truncate">
-                {entry.job_id}
-              </p>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
 export default function JobDetailPage(): React.ReactElement {
   const { id = "" } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState("plan");
+  const [editorCode, setEditorCode] = useState("");
+  const [editorRestoreKey, setEditorRestoreKey] = useState(0);
+  const [overrideGeneratedFiles, setOverrideGeneratedFiles] = useState<Record<
+    string,
+    string
+  > | null>(null);
+  const [overrideDoc, setOverrideDoc] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [planOverrides, setPlanOverrides] = useState<
+    Record<string, BlockOverride>
+  >({});
+
+  const queryClient = useQueryClient();
 
   const { data: job } = useQuery({
     queryKey: ["job", id],
@@ -1207,86 +1193,219 @@ export default function JobDetailPage(): React.ReactElement {
         : false,
   });
 
+  // editorCode starts empty; fall back to job.python_code until the user edits or restores.
+  const displayedEditorCode = editorCode || job?.python_code || "";
+
+  const { data: docData } = useQuery({
+    queryKey: ["job", id, "doc"],
+    queryFn: () => getJobDoc(id),
+    enabled: !!id && (job?.status === "proposed" || job?.status === "accepted"),
+  });
+
+  const currentDoc = overrideDoc ?? docData?.doc ?? null;
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      await updateJobPythonCode(id, displayedEditorCode);
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["job", id] });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    },
+    onError: (err) => {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Your changes could not be saved. Please try again.",
+      );
+    },
+  });
+
+  const saveVersionMutation = useMutation({
+    mutationFn: async () => {
+      if (activeTab === "plan") {
+        await saveVersion(id, "plan", {
+          content: { block_overrides: Object.values(planOverrides) },
+        });
+      } else if (activeTab === "editor") {
+        await saveVersion(id, "editor", {
+          content: {
+            python_code: displayedEditorCode,
+            generated_files:
+              overrideGeneratedFiles ?? job?.generated_files ?? {},
+          },
+        });
+      } else if (activeTab === "report") {
+        await saveVersion(id, "report", {
+          content: { doc: currentDoc ?? "" },
+        });
+      }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ["job", id, "versions", activeTab],
+      });
+      toast.success("Version saved.");
+    },
+    onError: (err) => {
+      toast.error(
+        err instanceof Error ? err.message : "Could not save version.",
+      );
+    },
+  });
+
+  function handleRestore(content: Record<string, unknown>): void {
+    if (activeTab === "plan" && Array.isArray(content.block_overrides)) {
+      const arr = content.block_overrides as BlockOverride[];
+      setPlanOverrides(Object.fromEntries(arr.map((o) => [o.block_id, o])));
+    } else if (
+      activeTab === "editor" &&
+      typeof content.python_code === "string"
+    ) {
+      setEditorCode(content.python_code);
+      const gf = content.generated_files;
+      setOverrideGeneratedFiles(
+        gf && typeof gf === "object" && !Array.isArray(gf)
+          ? (gf as Record<string, string>)
+          : null,
+      );
+      setEditorRestoreKey((k) => k + 1);
+    } else if (activeTab === "report" && typeof content.doc === "string") {
+      setOverrideDoc(content.doc);
+    }
+  }
+
+  const acceptMutation = useMutation({
+    mutationFn: () => acceptJob(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["job", id] });
+      toast.success("Migration accepted.");
+    },
+    onError: () => toast.error("Could not accept migration. Please try again."),
+  });
+
   const shortId = id.length >= 8 ? `${id.slice(0, 8)}…` : id;
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          onClick={() => navigate("/jobs")}
-          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-          aria-label="Back to migrations list"
-        >
-          <ArrowLeft size={15} />
-          Migrations
-        </button>
-        <div className="flex flex-col gap-0">
-          <span className="text-sm font-medium text-foreground">
+    <Tabs value={activeTab} onValueChange={setActiveTab}>
+      {/* Single sticky bar: no gap, solid background, bottom border */}
+      <div className="sticky top-0 z-20 bg-background border-border border-b pb-2">
+        {/* Row 1: nav + name + status + actions — all inline, no justify-between */}
+        <div className="flex items-center gap-3 py-2">
+          <button
+            type="button"
+            onClick={() => navigate("/jobs")}
+            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer shrink-0"
+            aria-label="Back to migrations list"
+          >
+            <ArrowLeft size={15} />
+            Migrations
+          </button>
+          <span className="text-sm font-medium text-foreground truncate">
             {job?.name ?? shortId}
           </span>
+          {job && <StatusBadge status={job.status} />}
+          <div className="ml-auto flex items-center gap-2">
+            {job?.status === "proposed" && (
+              <Button
+                size="sm"
+                onClick={() => acceptMutation.mutate()}
+                disabled={acceptMutation.isPending}
+                className="cursor-pointer"
+              >
+                {acceptMutation.isPending ? "Accepting…" : "Accept migration"}
+              </Button>
+            )}
+            {job?.status === "accepted" && (
+              <span className="text-sm text-emerald-600 font-medium">
+                ✓ Accepted
+              </span>
+            )}
+            {activeTab === "editor" && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => saveMutation.mutate()}
+                disabled={saveMutation.isPending}
+                className="cursor-pointer"
+              >
+                {saveMutation.isPending ? "Saving…" : saved ? "Saved." : "Save"}
+              </Button>
+            )}
+            {activeTab !== "lineage" && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => saveVersionMutation.mutate()}
+                disabled={saveVersionMutation.isPending}
+                className="cursor-pointer"
+              >
+                {saveVersionMutation.isPending ? "Saving…" : "Save version"}
+              </Button>
+            )}
+          </div>
         </div>
-        {job && <StatusBadge status={job.status} />}
-        <div className="ml-auto">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => downloadJob(id)}
-            className="flex items-center gap-1.5 cursor-pointer"
-            aria-label="Download migration output"
-          >
-            <Download size={14} />
-            Download
-          </Button>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <Tabs defaultValue="plan">
+        {/* Row 2: tabs bar */}
         <TabsList>
           <TabsTrigger value="plan">Plan</TabsTrigger>
           <TabsTrigger value="editor">Editor</TabsTrigger>
           <TabsTrigger value="report">Report</TabsTrigger>
           <TabsTrigger value="lineage">Lineage</TabsTrigger>
-          <TabsTrigger value="history">History</TabsTrigger>
         </TabsList>
+      </div>
 
-        <TabsContent value="plan" className="mt-4">
-          <PlanTab
+      {/* Scrollable content + history rail */}
+      <div className="flex gap-3 items-start pt-4">
+        <div className="flex-1 min-w-0">
+          <TabsContent value="plan" className="mt-0">
+            <PlanTab
+              jobId={id}
+              isReviewable={
+                job?.status === "proposed" || job?.status === "accepted"
+              }
+              jobStatus={job?.status ?? "queued"}
+              report={job?.report ?? null}
+              overrides={planOverrides}
+              setOverrides={setPlanOverrides}
+            />
+          </TabsContent>
+
+          <TabsContent value="editor" className="mt-0">
+            <EditorTab
+              key={editorRestoreKey}
+              jobId={id}
+              generatedFiles={
+                overrideGeneratedFiles ?? job?.generated_files ?? null
+              }
+              code={displayedEditorCode}
+              setCode={setEditorCode}
+              saveMutation={saveMutation}
+              saved={saved}
+            />
+          </TabsContent>
+
+          <TabsContent value="report" className="mt-0">
+            <ReportTab
+              isDone={job?.status === "proposed" || job?.status === "accepted"}
+              doc={currentDoc}
+              onDocChange={setOverrideDoc}
+            />
+          </TabsContent>
+
+          <TabsContent value="lineage" className="mt-0">
+            <LineageTab jobId={id} />
+          </TabsContent>
+        </div>
+        {activeTab !== "lineage" && (
+          <VersionHistoryRail
             jobId={id}
-            isReviewable={
-              job?.status === "proposed" || job?.status === "accepted"
-            }
-            jobStatus={job?.status ?? "queued"}
-            report={job?.report ?? null}
+            tab={activeTab as "plan" | "editor" | "report"}
+            className="shrink-0"
+            onRestore={handleRestore}
           />
-        </TabsContent>
-
-        <TabsContent value="editor" className="mt-4">
-          <EditorTab
-            jobId={id}
-            initialCode={job?.python_code ?? ""}
-            generatedFiles={job?.generated_files ?? null}
-          />
-        </TabsContent>
-
-        <TabsContent value="report" className="mt-4">
-          <ReportTab
-            jobId={id}
-            report={job?.report ?? null}
-            isDone={job?.status === "proposed" || job?.status === "accepted"}
-          />
-        </TabsContent>
-
-        <TabsContent value="lineage" className="mt-4">
-          <LineageTab jobId={id} />
-        </TabsContent>
-
-        <TabsContent value="history" className="mt-4">
-          <HistoryTab jobId={id} />
-        </TabsContent>
-      </Tabs>
-    </div>
+        )}
+      </div>
+    </Tabs>
   );
 }

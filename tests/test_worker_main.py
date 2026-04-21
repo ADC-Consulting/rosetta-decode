@@ -357,7 +357,8 @@ async def test_orchestrator_execute_success() -> None:
         await orch._execute(session, job)
 
     session.execute.assert_called_once()
-    session.commit.assert_called_once()
+    # Two commits: one for the main job persist, one for auto-saved version rows.
+    assert session.commit.call_count == 2
 
 
 @pytest.mark.asyncio
@@ -397,7 +398,7 @@ async def test_orchestrator_execute_doc_failure_swallowed() -> None:
         await orch._execute(session, job)
 
     session.execute.assert_called_once()
-    session.commit.assert_called_once()
+    assert session.commit.call_count == 2
 
 
 @pytest.mark.asyncio
@@ -686,7 +687,7 @@ async def test_orchestrator_execute_with_macro_expansion_warning() -> None:
         await orch._execute(session, job)
 
     session.execute.assert_called_once()
-    session.commit.assert_called_once()
+    assert session.commit.call_count == 2
 
 
 # ── _translate_two_phase — dict raw_report branch ────────────────────────────

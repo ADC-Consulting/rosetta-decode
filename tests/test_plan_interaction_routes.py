@@ -166,14 +166,14 @@ async def test_patch_plan_merges_block_overrides(
         status="proposed",
         user_overrides={
             "block_overrides": [
-                {"block_id": "block_1", "strategy": "auto", "risk": "low", "note": None}
+                {"block_id": "block_1", "strategy": "translate", "risk": "low", "note": None}
             ]
         },
     )
     payload = {
         "block_overrides": [
             {"block_id": "block_1", "strategy": "manual", "risk": "high", "note": "updated"},
-            {"block_id": "block_2", "strategy": "auto", "risk": "low", "note": None},
+            {"block_id": "block_2", "strategy": "translate", "risk": "low", "note": None},
         ]
     }
     response = await client.patch(f"/jobs/{job_id}/plan", json=payload)
@@ -182,7 +182,7 @@ async def test_patch_plan_merges_block_overrides(
     assert len(overrides) == 2
     by_id = {o["block_id"]: o for o in overrides}
     assert by_id["block_1"]["strategy"] == "manual"
-    assert by_id["block_2"]["strategy"] == "auto"
+    assert by_id["block_2"]["strategy"] == "translate"
 
 
 @pytest.mark.asyncio
@@ -206,3 +206,51 @@ async def test_patch_plan_not_found(client: AsyncClient) -> None:
     """Unknown job returns 404."""
     response = await client.patch(f"/jobs/{uuid.uuid4()}/plan", json={"block_overrides": []})
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_patch_plan_translate_with_review_strategy(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """translate_with_review strategy is persisted in block_overrides."""
+    job_id = await _insert_job(db_session, status="proposed")
+    payload = {
+        "block_overrides": [
+            {
+                "block_id": "block_1",
+                "strategy": "translate_with_review",
+                "risk": "medium",
+                "note": None,
+            }
+        ]
+    }
+    response = await client.patch(f"/jobs/{job_id}/plan", json=payload)
+    assert response.status_code == 200
+    body = response.json()
+    overrides = body["user_overrides"]["block_overrides"]
+    assert len(overrides) == 1
+    assert overrides[0]["strategy"] == "translate_with_review"
+
+
+@pytest.mark.asyncio
+async def test_patch_plan_manual_ingestion_strategy(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """manual_ingestion strategy is persisted in block_overrides."""
+    job_id = await _insert_job(db_session, status="proposed")
+    payload = {
+        "block_overrides": [
+            {
+                "block_id": "block_2",
+                "strategy": "manual_ingestion",
+                "risk": "high",
+                "note": "PROC IMPORT — verify path",
+            }
+        ]
+    }
+    response = await client.patch(f"/jobs/{job_id}/plan", json=payload)
+    assert response.status_code == 200
+    body = response.json()
+    overrides = body["user_overrides"]["block_overrides"]
+    assert len(overrides) == 1
+    assert overrides[0]["strategy"] == "manual_ingestion"

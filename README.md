@@ -257,6 +257,66 @@ ReconciliationService.run(ref_csv, python_code, backend)
 job updated: status=done, python_code=..., report=JSONB
 ```
 
+### Agentic pipeline
+
+Each job runs through a sequence of LLM agents. All agents use structured Pydantic AI output. Best-effort agents (marked ✦) are wrapped in `try/except` — failure logs a warning but never aborts the job.
+
+```
+SASParser.parse()
+  │
+  ├─► MacroResolverAgent ──── resolves %macro/%mend definitions; LLM fallback for
+  │                           complex parameterised macros that regex cannot expand
+  │
+  ├─► AnalysisAgent ─────────── reads the full ParseResult; produces a risk score,
+  │                              identifies complex constructs, and sets translation
+  │                              strategy hints for downstream agents
+  │
+  ├─► MigrationPlannerAgent ✦ ── reads AnalysisAgent output; assigns per-block
+  │                               strategy (translate / stub / skip), risk level,
+  │                               and confidence; persisted as migration_plan JSONB
+  │
+  ├─► TranslationRouter ──────── routes each block to the correct translation agent
+  │       │                      based on block_type; trivial SET+KEEP/DROP DATA
+  │       │                      steps are handled by _SimpleCopyHelper (no LLM)
+  │       ├─► DataStepAgent ──── DATA step blocks → pandas DataFrame operations;
+  │       │                      emits confidence + uncertainty_notes per block
+  │       └─► ProcAgent ──────── PROC SQL / PROC SORT / PROC MEANS / other PROCs
+  │                               → pandas/SQLAlchemy equivalents; stubs unknown PROCs
+  │
+  ├─► CodeGenerator.assemble() ── merges GeneratedBlocks into per-file .py modules
+  │                                + pipeline.py; every group gets # SAS:<f>:<ln>
+  │
+  ├─► ReconciliationService ───── runs generated code against reference data;
+  │                                schema / row-count / aggregate parity checks;
+  │                                on failure: FailureInterpreterAgent is invoked
+  │       │
+  │       └─► FailureInterpreterAgent ✦ ── reads the reconciliation report +
+  │                                        generated code; explains the root cause
+  │                                        in plain language; feeds back into
+  │                                        second-phase re-translation if needed
+  │
+  ├─► LineageEnricherAgent ✦ ── traces column-level data flow across blocks;
+  │                              identifies source/target tables and macro usage;
+  │                              persisted as enriched_lineage in the job record
+  │
+  └─► DocumentationAgent ✦ ──── generates a plain-language Markdown summary of
+                                 what the SAS program does, keyed to the
+                                 business domain; returned by GET /jobs/{id}/doc
+```
+
+**Agent summary:**
+
+| Agent | Role | Output |
+|---|---|---|
+| `MacroResolverAgent` | Expands `%macro`/`%mend` definitions, including parameterised macros the regex pre-processor can't handle | Resolved macro text |
+| `AnalysisAgent` | Scores overall complexity, flags high-risk constructs, sets strategy hints | `AnalysisResult` (risk, flags, hints) |
+| `MigrationPlannerAgent` ✦ | Assigns per-block strategy/risk/confidence; produces the plan shown in the UI Plan tab | `MigrationPlan` → `migration_plan` JSONB |
+| `DataStepAgent` | Translates SAS DATA steps to pandas — merges, filters, column derivations, conditionals | `GeneratedBlock` with provenance comments |
+| `ProcAgent` | Translates PROC SQL / PROC SORT / PROC MEANS and others; stubs anything unrecognised with a clear comment | `GeneratedBlock` with provenance comments |
+| `FailureInterpreterAgent` ✦ | Explains reconciliation failures in plain English; diagnoses mismatches between SAS and generated Python output | Human-readable failure summary |
+| `LineageEnricherAgent` ✦ | Traces column-level data flow; maps source/target tables and macro dependencies across blocks | `EnrichedLineage` → lineage JSONB |
+| `DocumentationAgent` ✦ | Writes a business-readable Markdown summary of what the program does | Markdown string → `GET /jobs/{id}/doc` |
+
 ### PostgreSQL schema
 
 ```sql

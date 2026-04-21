@@ -6,6 +6,56 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-04-21 — F5 bug-fix sweep: version history, TipTap editor, Plan tab dropdowns
+
+**Duration:** ~3h | **Focus:** F5 per-tab version history polish + UI bug fixes
+
+### Done
+
+- **Root-caused "no tab selected on load"**: custom `Tabs` component only accepted `defaultValue` (uncontrolled); `JobDetailPage` was passing `value`/`onValueChange` which were silently ignored — `activeTab` state was completely disconnected from the visible tabs. Fixed `Tabs` to support controlled mode.
+- **Root-caused "history rail always shows Plan versions"**: same disconnect — `activeTab` never updated, so the rail always received `"plan"`. Fixed as a consequence of the Tabs fix above.
+- **Root-caused "TipTap headings not rendering"**: `@tailwindcss/typography` is not installed, so Tailwind Preflight stripped all browser heading/list defaults. Dropped `tiptap-markdown` extension (unnecessary complexity); switched TipTap to native HTML mode (`marked` converts markdown → HTML on load, `getHTML()` on save). Added explicit ProseMirror scoped heading/list CSS via Tailwind arbitrary variants.
+- **TipTap toolbar scroll-to-bottom**: replaced `onClick` with `onMouseDown + preventDefault` on toolbar buttons — standard WYSIWYG pattern to keep focus in the editor and suppress browser scroll-into-view.
+- **Undo deletes entire report**: patched `editor.view.dispatch` around `setContent` calls to tag transactions with `addToHistory: false` — loaded content never enters the undo stack.
+- **Report tab edits not captured**: wired `TiptapEditor onChange` → `setOverrideDoc` so user edits flow into state before "Save version" fires.
+- **Editor save loses `generated_files`**: was hard-coded `{}`; now uses `overrideGeneratedFiles ?? job?.generated_files ?? {}`.
+- **Python editor always read-only**: `rightReadOnly` was derived from `perFileCode !== null`; set to `false` unconditionally.
+- **Shadcn Select for Plan tab dropdowns**: installed `@base-ui/react/select` shadcn component; replaced both native `<select>` in `BlockPlanTable`. Fixed circular import in generated `select.tsx`.
+- **Risk dropdown shows raw value ("low") instead of label ("Low")**: Base UI `SelectValue` only resolves labels after items register (portal not rendered until open). Fixed by using `SelectValue` render-prop children to map value → label directly.
+- **Dropdown popup alignment**: changed `SelectContent` default `align` from `"center"` to `"start"`.
+- **Table reflow flicker on risk change**: pinned `w-44` / `w-20` on Strategy/Risk `<th>` elements so column widths are stable.
+- **Risk label values**: `Low` / `Mid` / `High` (capitalised); color-coded on trigger and items via `RISK_CELL` map.
+- **Version restore not working for Report**: `overrideDoc` was set but `TiptapEditor` content sync guard (`content !== current`) could mismatch on subsequent restores; now always calls `setContent` when `content` prop changes.
+- **`staleTime: 0` on version rail query**: forces fresh fetch on tab switch so each tab's history loads immediately.
+
+### Decisions
+
+- **Dropped `tiptap-markdown`**: native HTML mode is simpler, more predictable, and doesn't require `@tailwindcss/typography`. `marked` handles markdown→HTML on load; `getHTML()` returns HTML on save. Stored doc content may now be HTML (not markdown) for versions saved after this session. · revisit if markdown round-trip is needed.
+- **`Tabs` component now supports controlled mode**: `value` + `onValueChange` props added alongside existing `defaultValue`. Uncontrolled callers are unaffected. · revisit never.
+
+### Open Questions
+
+- `make test` not run this session — tests cover backend only (Python) and should be unaffected by frontend-only changes, but should be verified before PR.
+- The stray `src/frontend/@/components/ui/` directory (shadcn CLI output artefact) should be deleted before merging.
+
+### Next Session — Start Here
+
+1. Delete `src/frontend/@/` (shadcn CLI artefact): `rm -rf src/frontend/@`
+2. Run `make test` to confirm backend tests still pass
+3. Manually smoke-test: Plan tab default on load → version rail shows correct per-tab history → Save version → restore version → TipTap headings render correctly
+4. Mark F5 subtask 13 complete in `docs/plans/F5-tab-versions.md`, then commit + PR
+
+### Files Touched
+
+- `src/frontend/src/components/ui/tabs.tsx`
+- `src/frontend/src/components/ui/select.tsx` (new)
+- `src/frontend/src/components/TiptapEditor.tsx`
+- `src/frontend/src/pages/JobDetailPage.tsx`
+- `src/frontend/src/components/VersionHistoryRail.tsx`
+- `src/frontend/package.json` / `package-lock.json`
+
+---
+
 ## 2026-04-19 — F3 proposed/accepted review cycle, plan interaction UX, re-reconcile & refine with history (S-BE5/BE6)
 
 **Duration:** ~4h | **Focus:** F3 (proposed/accepted status), S-BE5 (re-reconciliation), S-BE6 (refine child job), History tab, UI fixes

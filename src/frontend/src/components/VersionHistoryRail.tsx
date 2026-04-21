@@ -3,7 +3,7 @@ import type { JobVersionSummary } from "@/api/types";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { Bot, Clock, User } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 // ---------------------------------------------------------------------------
@@ -23,14 +23,15 @@ export default function VersionHistoryRail({
   className,
   onRestore,
 }: VersionHistoryRailProps): React.ReactElement {
-  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(
-    null,
-  );
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
+  const [prevTab, setPrevTab] = useState(tab);
   const [restoring, setRestoring] = useState(false);
 
-  // Reset selection whenever the user switches tabs so stale highlights don't linger.
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { setSelectedVersionId(null); }, [tab]);
+  // Reset selection when the tab prop changes (React's recommended state-derived-from-props pattern).
+  if (tab !== prevTab) {
+    setPrevTab(tab);
+    setSelectedVersionId(null);
+  }
 
   const { data } = useQuery({
     queryKey: ["job", jobId, "versions", tab],
