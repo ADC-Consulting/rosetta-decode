@@ -3,6 +3,7 @@ import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { common, createLowlight } from "lowlight";
+import { closeHistory } from "prosemirror-history";
 import {
   Bold,
   FileCode,
@@ -47,13 +48,13 @@ function ToolbarButton({
         aria-label={label}
         aria-pressed={active}
         disabled={disabled}
-        // Use onMouseDown + preventDefault so the editor never loses focus and the
-        // browser doesn't scroll the cursor into view when the button is clicked.
         onMouseDown={(e) => {
+          e.preventDefault();
+        }}
+        onClick={(e) => {
           e.preventDefault();
           if (!disabled) onClick();
         }}
-        onClick={(e) => e.preventDefault()}
         className={cn(
           "h-7 w-7 flex items-center justify-center rounded text-sm transition-colors cursor-pointer",
           active
@@ -88,21 +89,21 @@ function Toolbar({
   return (
     <div className="flex flex-wrap items-center gap-0.5 p-1 border-b border-border bg-muted/30">
       <ToolbarButton
-        onClick={() => editor.chain().focus().toggleBold().run()}
+        onClick={() => editor.chain().toggleBold().run()}
         active={editor.isActive("bold")}
         label="Bold"
       >
         <Bold size={13} />
       </ToolbarButton>
       <ToolbarButton
-        onClick={() => editor.chain().focus().toggleItalic().run()}
+        onClick={() => editor.chain().toggleItalic().run()}
         active={editor.isActive("italic")}
         label="Italic"
       >
         <Italic size={13} />
       </ToolbarButton>
       <ToolbarButton
-        onClick={() => editor.chain().focus().toggleStrike().run()}
+        onClick={() => editor.chain().toggleStrike().run()}
         active={editor.isActive("strike")}
         label="Strikethrough"
       >
@@ -110,21 +111,21 @@ function Toolbar({
       </ToolbarButton>
       <Divider />
       <ToolbarButton
-        onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+        onClick={() => editor.chain().toggleHeading({ level: 1 }).run()}
         active={editor.isActive("heading", { level: 1 })}
         label="Heading 1"
       >
         <span className="text-[11px] font-bold leading-none">H1</span>
       </ToolbarButton>
       <ToolbarButton
-        onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+        onClick={() => editor.chain().toggleHeading({ level: 2 }).run()}
         active={editor.isActive("heading", { level: 2 })}
         label="Heading 2"
       >
         <span className="text-[11px] font-bold leading-none">H2</span>
       </ToolbarButton>
       <ToolbarButton
-        onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
+        onClick={() => editor.chain().toggleHeading({ level: 3 }).run()}
         active={editor.isActive("heading", { level: 3 })}
         label="Heading 3"
       >
@@ -132,14 +133,14 @@ function Toolbar({
       </ToolbarButton>
       <Divider />
       <ToolbarButton
-        onClick={() => editor.chain().focus().toggleBulletList().run()}
+        onClick={() => editor.chain().toggleBulletList().run()}
         active={editor.isActive("bulletList")}
         label="Bullet list"
       >
         <List size={13} />
       </ToolbarButton>
       <ToolbarButton
-        onClick={() => editor.chain().focus().toggleOrderedList().run()}
+        onClick={() => editor.chain().toggleOrderedList().run()}
         active={editor.isActive("orderedList")}
         label="Ordered list"
       >
@@ -147,35 +148,35 @@ function Toolbar({
       </ToolbarButton>
       <Divider />
       <ToolbarButton
-        onClick={() => editor.chain().focus().toggleBlockquote().run()}
+        onClick={() => editor.chain().toggleBlockquote().run()}
         active={editor.isActive("blockquote")}
         label="Blockquote"
       >
         <Quote size={13} />
       </ToolbarButton>
       <ToolbarButton
-        onClick={() => editor.chain().focus().toggleCodeBlock().run()}
+        onClick={() => editor.chain().toggleCodeBlock().run()}
         active={editor.isActive("codeBlock")}
         label="Code block"
       >
         <FileCode size={13} />
       </ToolbarButton>
       <ToolbarButton
-        onClick={() => editor.chain().focus().setHorizontalRule().run()}
+        onClick={() => editor.chain().setHorizontalRule().run()}
         label="Horizontal rule"
       >
         <Minus size={13} />
       </ToolbarButton>
       <Divider />
       <ToolbarButton
-        onClick={() => editor.chain().focus().undo().run()}
+        onClick={() => editor.chain().undo().run()}
         disabled={!editor.can().undo()}
         label="Undo"
       >
         <Undo2 size={13} />
       </ToolbarButton>
       <ToolbarButton
-        onClick={() => editor.chain().focus().redo().run()}
+        onClick={() => editor.chain().redo().run()}
         disabled={!editor.can().redo()}
         label="Redo"
       >
@@ -219,6 +220,8 @@ export default function TiptapEditor({
     settingContent.current = true;
     editor.commands.setContent(content, false);
     settingContent.current = false;
+    // Close the history group at the load boundary so undo can't remove loaded content.
+    editor.view.dispatch(closeHistory(editor.state.tr));
   }, [editor, content]);
 
   return (
