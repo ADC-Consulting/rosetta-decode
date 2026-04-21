@@ -19,7 +19,7 @@ function App(): React.ReactElement {
         <div className="flex h-screen overflow-hidden bg-background text-foreground">
           <AppSidebar />
           <main className="flex-1 overflow-y-auto">
-            <div className="max-w-[1600px] mx-auto px-4 py-8">
+            <div className="max-w-500 mx-auto px-4 py-8">
               <Suspense
                 fallback={
                   <div className="text-sm text-muted-foreground">Loading…</div>
