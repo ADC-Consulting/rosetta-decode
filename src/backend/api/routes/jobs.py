@@ -24,12 +24,16 @@ from src.backend.api.schemas import (
     JobSourcesResponse,
     JobStatusResponse,
     JobSummary,
+    JobVersionDetail,
+    JobVersionSummary,
     PatchPlanRequest,
     RefineRequest,
     RefineResponse,
+    SaveVersionRequest,
+    SaveVersionResponse,
     UpdatePythonCodeRequest,
 )
-from src.backend.db.models import Job
+from src.backend.db.models import Job, JobVersion
 from src.backend.db.session import get_async_session
 
 logger = logging.getLogger(__name__)
@@ -614,3 +618,163 @@ async def get_job_history(
         for j in chain
     ]
     return JobHistoryResponse(entries=entries)
+
+
+_VALID_TABS = frozenset({"plan", "editor", "report"})
+
+
+@router.post("/jobs/{job_id}/versions", response_model=SaveVersionResponse, status_code=201)
+async def save_job_version(
+    job_id: uuid.UUID,
+    request: SaveVersionRequest,
+    tab: str,
+    session: AsyncSession = Depends(get_async_session),
+) -> SaveVersionResponse:
+    """Save a new version snapshot for a specific editor tab.
+
+    Writes the snapshot to ``job_versions`` and syncs write-through fields on the
+    parent ``Job`` row (``python_code`` for editor, ``doc`` for report, and
+    ``user_overrides["block_overrides"]`` for plan).
+
+    Args:
+        job_id: UUID of the migration job.
+        request: Content dict and optional trigger label.
+        tab: One of ``plan``, ``editor``, ``report``.
+        session: Injected async database session.
+
+    Returns:
+        SaveVersionResponse with the new version ID and creation timestamp.
+
+    Raises:
+        HTTPException: 404 if the job does not exist, 422 if tab is invalid.
+    """
+    if tab not in _VALID_TABS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid tab '{tab}'. Must be one of: {sorted(_VALID_TABS)}.",
+        )
+
+    result = await session.execute(select(Job).where(Job.id == str(job_id)))
+    job = result.scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+
+    version = JobVersion(
+        id=str(uuid.uuid4()),
+        job_id=str(job_id),
+        tab=tab,
+        content=request.content,
+        trigger=request.trigger,
+    )
+    session.add(version)
+
+    # Write-through: sync relevant fields on the parent job.
+    update_values: dict[str, Any] = {}
+    if tab == "editor" and "python_code" in request.content:
+        update_values["python_code"] = request.content["python_code"]
+    elif tab == "report" and "doc" in request.content:
+        update_values["doc"] = request.content["doc"]
+    elif tab == "plan" and "block_overrides" in request.content:
+        overrides: dict[str, Any] = dict(job.user_overrides or {})
+        overrides["block_overrides"] = request.content["block_overrides"]
+        update_values["user_overrides"] = overrides
+
+    if update_values:
+        await session.execute(update(Job).where(Job.id == str(job_id)).values(**update_values))
+
+    await session.flush()
+    created_at = version.created_at
+    await session.commit()
+
+    return SaveVersionResponse(
+        id=version.id,
+        job_id=version.job_id,
+        tab=version.tab,
+        created_at=created_at,
+    )
+
+
+@router.get("/jobs/{job_id}/versions", response_model=list[JobVersionSummary])
+async def list_job_versions(
+    job_id: uuid.UUID,
+    tab: str,
+    session: AsyncSession = Depends(get_async_session),
+) -> list[JobVersionSummary]:
+    """Return all version snapshots for a job tab, newest first.
+
+    Args:
+        job_id: UUID of the migration job.
+        tab: One of ``plan``, ``editor``, ``report``.
+        session: Injected async database session.
+
+    Returns:
+        List of JobVersionSummary ordered by ``created_at`` descending.
+
+    Raises:
+        HTTPException: 404 if the job does not exist, 422 if tab is invalid.
+    """
+    if tab not in _VALID_TABS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid tab '{tab}'. Must be one of: {sorted(_VALID_TABS)}.",
+        )
+
+    result = await session.execute(select(Job).where(Job.id == str(job_id)))
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+
+    rows = await session.execute(
+        select(JobVersion)
+        .where(JobVersion.job_id == str(job_id), JobVersion.tab == tab)
+        .order_by(JobVersion.created_at.desc())
+    )
+    versions = rows.scalars().all()
+    return [
+        JobVersionSummary(
+            id=v.id,
+            job_id=v.job_id,
+            tab=v.tab,
+            trigger=v.trigger,
+            created_at=v.created_at,
+        )
+        for v in versions
+    ]
+
+
+@router.get("/jobs/{job_id}/versions/{version_id}", response_model=JobVersionDetail)
+async def get_job_version(
+    job_id: uuid.UUID,
+    version_id: str,
+    session: AsyncSession = Depends(get_async_session),
+) -> JobVersionDetail:
+    """Return a single version snapshot including its full content.
+
+    Args:
+        job_id: UUID of the migration job.
+        version_id: ID of the specific version to retrieve.
+        session: Injected async database session.
+
+    Returns:
+        JobVersionDetail with the full content dict.
+
+    Raises:
+        HTTPException: 404 if the version does not exist or belongs to a different job.
+    """
+    result = await session.execute(
+        select(JobVersion).where(
+            JobVersion.id == version_id,
+            JobVersion.job_id == str(job_id),
+        )
+    )
+    version = result.scalar_one_or_none()
+    if version is None:
+        raise HTTPException(status_code=404, detail=f"Version '{version_id}' not found.")
+
+    return JobVersionDetail(
+        id=version.id,
+        job_id=version.job_id,
+        tab=version.tab,
+        trigger=version.trigger,
+        created_at=version.created_at,
+        content=version.content,
+    )

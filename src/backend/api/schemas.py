@@ -196,11 +196,20 @@ class AcceptJobRequest(BaseModel):
     notes: str | None = None
 
 
+StrategyLiteral = Literal[
+    "translate",
+    "translate_with_review",
+    "manual_ingestion",
+    "manual",
+    "skip",
+]
+
+
 class BlockOverride(BaseModel):
     """A single per-block reviewer override."""
 
     block_id: str
-    strategy: str | None = None
+    strategy: StrategyLiteral | None = None
     risk: str | None = None
     note: str | None = None
 
@@ -209,3 +218,40 @@ class PatchPlanRequest(BaseModel):
     """Request body for PATCH /jobs/{id}/plan."""
 
     block_overrides: list[BlockOverride] = []
+
+
+class JobVersionSummary(BaseModel):
+    """Summary of a job version (no content field)."""
+
+    id: str
+    job_id: str
+    tab: str
+    trigger: str
+    created_at: datetime
+
+
+class JobVersionDetail(BaseModel):
+    """Full detail of a job version including content."""
+
+    id: str
+    job_id: str
+    tab: str
+    trigger: str
+    created_at: datetime
+    content: dict[str, Any]
+
+
+class SaveVersionRequest(BaseModel):
+    """Request body for POST /jobs/{id}/versions."""
+
+    content: dict[str, Any]
+    trigger: str = "human-save"
+
+
+class SaveVersionResponse(BaseModel):
+    """Response body for POST /jobs/{id}/versions."""
+
+    id: str
+    job_id: str
+    tab: str
+    created_at: datetime

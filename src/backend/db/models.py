@@ -5,8 +5,8 @@ from datetime import datetime
 from typing import Any
 
 import sqlalchemy as sa
-from sqlalchemy import JSON, DateTime, String, Text, func
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import JSON, DateTime, ForeignKey, String, Text, func
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
@@ -60,3 +60,24 @@ class Job(Base):
         onupdate=func.now(),
         nullable=False,
     )
+    versions: Mapped[list["JobVersion"]] = relationship(
+        "JobVersion", back_populates="job", cascade="all, delete-orphan"
+    )
+
+
+class JobVersion(Base):
+    """A saved snapshot of a specific editor tab for a migration job."""
+
+    __tablename__ = "job_versions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    job_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False
+    )
+    tab: Mapped[str] = mapped_column(String(16), nullable=False)
+    content: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    trigger: Mapped[str] = mapped_column(String(32), nullable=False, default="human-save")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    job: Mapped["Job"] = relationship("Job", back_populates="versions")

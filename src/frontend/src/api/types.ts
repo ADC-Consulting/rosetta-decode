@@ -78,12 +78,19 @@ export interface JobLineageResponse {
   dataset_summaries?: Record<string, string>;
 }
 
+export type TranslationStrategy =
+  | "translate"
+  | "translate_with_review"
+  | "manual_ingestion"
+  | "manual"
+  | "skip";
+
 export interface BlockPlan {
   block_id: string;
   source_file: string;
   start_line: number;
   block_type: string;
-  strategy: "translate" | "stub" | "skip";
+  strategy: TranslationStrategy;
   risk: "low" | "medium" | "high";
   rationale: string;
   estimated_effort: "low" | "medium" | "high";
@@ -129,4 +136,28 @@ export interface JobHistoryEntry {
 
 export interface JobHistoryResponse {
   entries: JobHistoryEntry[];
+}
+
+export interface JobVersionSummary {
+  id: string;
+  job_id: string;
+  tab: "plan" | "editor" | "report";
+  trigger: string;
+  created_at: string;
+}
+
+export interface JobVersionDetail extends JobVersionSummary {
+  content: Record<string, unknown>;
+}
+
+export interface SaveVersionRequest {
+  content: Record<string, unknown>;
+  trigger?: string;
+}
+
+export interface SaveVersionResponse {
+  id: string;
+  job_id: string;
+  tab: string;
+  created_at: string;
 }

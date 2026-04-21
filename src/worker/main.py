@@ -4,12 +4,13 @@ import asyncio
 import json
 import logging
 import sys
+import uuid as _uuid
 from typing import Any
 
 import httpx
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from src.backend.db.models import Job
+from src.backend.db.models import Job, JobVersion
 from src.worker.compute.factory import BackendFactory
 from src.worker.core.config import worker_settings
 from src.worker.engine.agents.analysis import AnalysisAgent
@@ -249,6 +250,39 @@ class JobOrchestrator:
         )
         await session.commit()
         logger.info("Job %s completed successfully", job.id)
+
+        # Auto-save initial v1 for every tab so the rail shows the agent-generated baseline.
+        plan_overrides = (
+            context.migration_plan.model_dump().get("block_overrides", [])
+            if context.migration_plan
+            else []
+        )
+        initial_versions = [
+            JobVersion(
+                id=str(_uuid.uuid4()),
+                job_id=str(job.id),
+                tab="editor",
+                content={"python_code": python_code, "generated_files": generated_files},
+                trigger="agent",
+            ),
+            JobVersion(
+                id=str(_uuid.uuid4()),
+                job_id=str(job.id),
+                tab="report",
+                content={"doc": doc or ""},
+                trigger="agent",
+            ),
+            JobVersion(
+                id=str(_uuid.uuid4()),
+                job_id=str(job.id),
+                tab="plan",
+                content={"block_overrides": plan_overrides},
+                trigger="agent",
+            ),
+        ]
+        for v in initial_versions:
+            session.add(v)
+        await session.commit()
 
     async def _translate_two_phase(
         self,
