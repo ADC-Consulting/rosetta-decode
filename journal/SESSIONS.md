@@ -6,6 +6,168 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-04-22 — GlobalLineagePage Pipeline tab
+
+**Duration:** ~1h | **Focus:** FE7 Global Lineage — migration selector + merged ReactFlow pipeline graph
+
+### Done
+
+- **`GlobalLineagePage` — full rewrite:** replaced CSS placeholder with a functional page featuring a **Pipeline tab**, a left-side migration checklist (filtered to `proposed`/`accepted`/`done` jobs), and a **Connect** button that fetches lineage for all selected migrations in parallel and renders a merged `LineageGraph`
+- **`src/frontend/src/lib/lineage-merge.ts` (new):** pure `mergePipelineLineages()` utility — prefixes all node/edge/step IDs with `{jobId}_` to prevent collisions, concatenates all arrays, and infers synthetic cross-migration `LineageEdge` entries where a step's `outputs` match another step's `inputs` across migrations
+- **Reused `<LineageGraph>` without modification:** the component's existing pipeline view mode renders the merged `JobLineageResponse` unchanged; no `initialView` prop was needed
+
+### Decisions
+
+- **ID namespacing via `{jobId}_` prefix:** simplest collision-free strategy for merging multiple jobs' lineage graphs into one ReactFlow canvas; no UUID generation needed · revisit never
+- **Synthetic cross-migration edges inferred from `inputs`/`outputs` overlap:** enables dataset-level cross-job dependency visibility without backend changes · revisit if explicit cross-job edges should be computed server-side
+
+### Open Questions
+
+- none
+
+### Next Session — Start Here
+
+1. Smoke-test GlobalLineagePage: navigate to Global Lineage, select ≥1 migration, click Connect, verify graph renders in pipeline view
+2. Next backlog items: Datasets + Columns tabs on GlobalLineagePage (FE7 remainder), or pick from Phase 2 backend extensions
+
+### Files Touched
+
+- `src/frontend/src/pages/GlobalLineagePage.tsx` (full rewrite)
+- `src/frontend/src/lib/lineage-merge.ts` (new)
+- `journal/BACKLOG.md`
+- `journal/SESSIONS.md`
+
+---
+
+## 2026-04-22 — Reconciliation coverage fix + DocsPage UX polish
+
+**Duration:** ~30m | **Focus:** test coverage gate + two UI tweaks on DocsPage / ReportTab
+
+### Done
+
+- **Reconciliation coverage** — added `tests/reconciliation/test_reconciliation_service.py` (10 new tests) to cover previously untested branches in `ReconciliationService` and its helpers; coverage lifted from 79% → 100%, all 26 reconciliation tests pass
+- **BlockPlanTable: Rationale column** — removed `Tooltip` popup; text now renders inline with `line-clamp-2`, no hover tooltip
+- **ReportTab: Report editor header** — grey header bar is now always visible for both Technical and Plain English views; Modify/Lock button is always present for both modes; when Modify is clicked (`readOnly=false`), TiptapEditor renders its writing toolbar; Plain English doc also respects `readOnly` state (was always locked before)
+
+### Decisions
+
+- none
+
+### Open Questions
+
+- none
+
+### Next Session — Start Here
+
+1. Smoke-test ReportTab: open a completed job, confirm grey header visible for both tabs before and after clicking Modify; confirm toolbar buttons appear only after Modify click
+2. Next backlog item: `F-UI-postmvp S-FE7: GlobalLineagePage`
+
+### Files Touched
+
+- `tests/reconciliation/test_reconciliation_service.py` (new)
+- `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
+- `src/frontend/src/components/JobDetail/ReportTab.tsx`
+- `journal/BACKLOG.md`
+- `journal/SESSIONS.md`
+
+---
+
+## 2026-04-22 — FE8: DocsPage — migration documentation cards + popup
+
+**Duration:** ~1h | **Focus:** DocsPage full implementation (`feat/FE8-docs-page` branch from main)
+
+### Done
+
+- **Pulled main** (7 commits merged in from remote) and created `feat/FE8-docs-page` branch
+- **DocsPage** (`src/frontend/src/pages/DocsPage.tsx`) — full replacement of stub:
+  - Responsive card grid (`grid-cols-1 md:grid-cols-2 xl:grid-cols-3`) — only `proposed` / `accepted` jobs shown
+  - Card: status chip (amber shimmer "Under Review" / emerald "Accepted"), risk badge (green/amber/red), job name, plan summary snippet, lucide `FolderOpen` file count, confidence badge, auto-verified/needs-review/failed counts
+  - Per-card footer buttons: "Plain English" + "Technical" (pre-select popup tab before opening)
+  - Dialog popup (`85vh`, `max-w-5xl`) with header tab toggle (Plain English first, then Technical), TiptapEditor `readOnly` for both views (`marked.parse` + `extractMarkdown` — matches `ReportTab` pattern), read-only collapsible file tree (lazy-loaded via `getJobSources`, closed by default), footer with block summary counts + Close
+  - Fixed `DialogContent` base `grid gap-4` override using `flex! flex-col! gap-0! p-0!` Tailwind important modifiers
+- **Fixed ruff E501** (pre-existing, came in from main): wrapped long prompt lines in `data_step.py`, `generic_proc.py`, `proc.py`
+- **All 7 gates GREEN** after fixes
+
+### Decisions
+
+- none
+
+### Open Questions
+
+- none
+
+### Next Session — Start Here
+
+1. `make docker-build` — verify worker container starts cleanly (possible `ModuleNotFoundError: No module named 'src.worker'` flagged in earlier session, not yet confirmed fixed)
+2. Smoke-test DocsPage end-to-end: navigate to `/docs`, confirm cards appear for proposed/accepted jobs, open popup, toggle tabs, expand file tree
+3. Next backlog item: `F-UI-postmvp S-FE7: GlobalLineagePage`
+
+### Files Touched
+
+- `src/frontend/src/pages/DocsPage.tsx`
+- `src/worker/engine/agents/data_step.py`
+- `src/worker/engine/agents/generic_proc.py`
+- `src/worker/engine/agents/proc.py`
+- `journal/BACKLOG.md`
+- `journal/SESSIONS.md`
+
+---
+
+## 2026-04-22 — FE9: ExplainPage full implementation
+
+**Duration:** ~2h | **Focus:** ExplainPage — chat UI with file upload mode + migration context mode
+
+### Done
+
+- **Plan**: Designed ExplainPage with fullstack-planner + Plan agents; approved two-mode chat layout (file upload / migration selector)
+- **Backend**: `POST /explain` (multipart file Q&A, stateless, pydantic-ai inline) and `POST /explain/job` (job context Q&A using stored plan/doc/python_code); new `ExplainMessage`, `ExplainJobRequest`, `ExplainResponse` schemas in `schemas.py`
+- **Backend**: `GET /jobs` gains optional `?status=` comma-separated filter (e.g. `?status=proposed,accepted,done`)
+- **Backend**: `src/backend/api/routes/explain.py` new route file registered in `main.py`
+- **Frontend**: `src/frontend/src/api/explain.ts` — `explainFiles()` + `explainJob()` API functions
+- **Frontend**: 9 new components under `src/frontend/src/components/Explain/` — `shared.tsx`, `utils.ts`, `MarkdownRenderer.tsx` (Monaco for code blocks), `EmptyState.tsx`, `ContextBanner.tsx`, `MigrationCard.tsx`, `MigrationPanel.tsx`, `MessageList.tsx`, `ChatInput.tsx`
+- **Frontend**: `ExplainPage.tsx` full replacement — `useReducer` state, desktop right panel (280px) + mobile drawer overlay, mode-switch confirmation dialog, auto-scroll, file attachment chips, suggested prompts
+- **Tests**: 11 new tests in `tests/test_explain_routes.py`; coverage held at 90%
+- **Pre-existing fixes**: `BlockPlanTable.tsx` unused Tooltip imports removed; `monacoConfig.ts` `import type` for `OnMount`; `scroll-area.tsx` + `checkbox.tsx` shadcn components added (required by `GlobalLineagePage`)
+- **F4 plan**: marked `Status: complete`, S12 ticked off
+- **All 7 gates GREEN**
+
+### Decisions
+
+- **ExplainPage is stateless on the backend**: frontend owns conversation history array and sends accumulated `messages` on each request — avoids session storage for an ephemeral chat feature
+- **LLM called inline in backend process** (not via worker queue): explain questions need to feel fast; worker queue would add polling overhead inappropriate for chat; backend already imports from `src.worker.engine.agents`
+- **Code blocks in chat rendered as read-only Monaco editors**: user preference; `MarkdownRenderer` detects triple-backtick fences and renders `<MonacoEditor readOnly height="160px" />`
+
+### Open Questions
+
+- Docker build not re-verified this session — `make docker-build` should be run before deploying if Dockerfile was not changed (it wasn't this session)
+
+### Next Session — Start Here
+
+1. Implement `S-FE8: DocsPage` (branch `feat/FE8-docs-page` already exists, `DocsPage.tsx` has uncommitted changes)
+2. Then `S-FE7: GlobalLineagePage`
+3. Several unresolved UI bugs from earlier sessions remain in backlog (TipTap cursor, version card highlight, Editor tab restore, tab heights)
+
+### Files Touched
+
+- `src/backend/api/schemas.py`
+- `src/backend/api/routes/explain.py` (new)
+- `src/backend/api/routes/jobs.py`
+- `src/backend/main.py`
+- `src/frontend/src/api/types.ts`
+- `src/frontend/src/api/explain.ts` (new)
+- `src/frontend/src/components/Explain/` (9 new files)
+- `src/frontend/src/pages/ExplainPage.tsx`
+- `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
+- `src/frontend/src/config/monacoConfig.ts`
+- `src/frontend/src/components/ui/scroll-area.tsx` (new)
+- `src/frontend/src/components/ui/checkbox.tsx` (new)
+- `tests/test_explain_routes.py` (new)
+- `tests/reconciliation/test_reconciliation_service.py`
+- `docs/plans/latest/F4-confidence-refine-history.md`
+- `journal/SESSIONS.md`, `journal/BACKLOG.md`, `journal/DECISIONS.md`
+
+---
+
 ## 2026-04-22 — Fix overall confidence metric + bar width (UX polish)
 
 **Duration:** ~1h | **Focus:** Confidence accuracy — align overall % with per-block LLM scores

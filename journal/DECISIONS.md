@@ -31,6 +31,15 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-04-22 (session 22 — FE9 ExplainPage)
+
+- **ExplainPage backend is stateless:** frontend owns the accumulated `messages` array and sends it on each request; avoids session storage for an ephemeral chat feature · revisit if multi-turn context management becomes complex
+- **LLM called inline in backend process (not worker queue):** explain questions need to feel synchronous; worker queue polling latency is inappropriate for chat; backend already imports worker agents · revisit if LLM calls become slow enough to time out the HTTP request
+- **Separate `/explain` and `/explain/job` endpoints (not one unified endpoint):** multipart form data and JSON body cannot be cleanly unified; different validation and auth requirements; keeps route logic simple · revisit never
+- **Code blocks in chat rendered as read-only Monaco editors:** user preference over styled `<pre>` blocks; consistent with editor components used elsewhere in the app · revisit never
+
+---
+
 ## 2026-04-21 (session 20 — LineageEnricher pipeline-level extension)
 
 - **`LineageEnricherAgent` max_tokens raised 8k → 16k:** 9-field JSON output (5 new fields) can exceed 8k for multi-file SAS projects; conservative doubling; revisit if latency becomes a concern
