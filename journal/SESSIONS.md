@@ -6,6 +6,69 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-04-22 — F4: Graded confidence-aware translation, per-block refine loop, change history
+
+**Duration:** ~4h | **Focus:** Full F4 feature — S1–S11 implemented, all 7 gates green
+
+### Done
+
+- **Committed** `feat/S-lineage-enricher-pipeline-levels` branch (was outstanding from previous session)
+- **Created** `feat/F4-confidence-refine-history` branch from previous branch HEAD
+- **S1:** `DataStepResult` and `ProcResult` now capture `confidence` + `uncertainty_notes` from LLM; both translation agents pass them through to `GeneratedBlock`
+- **S2:** `TranslationRouter.route()` accepts optional `block_plan`; routes MANUAL/MANUAL_INGESTION/SKIP to stub; caps confidence for TRANSLATE_WITH_REVIEW (high→medium) and TRANSLATE_BEST_EFFORT (any→low); added `TRANSLATE_BEST_EFFORT` to `TranslationStrategy` StrEnum
+- **S3:** `_apply_verified_confidence()` helper in `main.py` — sets `verified_confidence` post-reconcile and propagates `verified_low` to downstream files via `enriched_lineage.cross_file_edges`; stores `block_confidence` map in `job.lineage`
+- **S4:** `BlockRevision` ORM model + Alembic migration 011 (`block_revisions` table with index on `job_id, block_id`)
+- **S5:** `POST /jobs/{id}/blocks/{block_id}/refine`, `GET /jobs/{id}/blocks/{block_id}/revisions`, `POST /jobs/{id}/blocks/{block_id}/revisions/{revision_id}/restore`; patched existing whole-job refine with 409 guard for accepted jobs
+- **S6:** `GET /jobs/{id}/changelog` — all block revisions newest-first
+- **S7:** `GET /jobs/{id}/trust-report` — project/file/block confidence summary, review queue sorted by needs_attention/blast_radius/confidence
+- **S8:** Frontend TS types (`BlockRevision`, `TrustReportResponse`, `ChangelogEntry`, etc.) + API client functions (`refineBlock`, `getBlockRevisions`, `restoreBlockRevision`, `getJobChangelog`, `getJobTrustReport`)
+- **S9:** PlanTab trust report summary bar (auto-verified/needs-review/manual-todo cards); BlockPlanTable confidence + recon columns with `needs_attention` sort and amber ⚠ indicator
+- **S10:** `BlockRefineDialog` (notes-first textarea, optional hint field, sonner toast on success); `BlockRevisionDrawer` (revision list with trigger icons, diff toggle, Restore button); Refine + History buttons per row in BlockPlanTable
+- **S11:** `TrustReportTab` (summary cards, review queue, per-file breakdown, lineage notice) + `ChangelogFeed` (timeline with diff expand); both wired into JobDetailPage as new tabs
+
+### Decisions
+
+- See `journal/DECISIONS.md` session 21 block for all 8 architectural decisions
+
+### Open Questions
+
+- Docker worker container shows `ModuleNotFoundError: No module named 'src.worker'` at runtime — the Dockerfile COPY structure looks correct (`COPY src/worker ./src/worker`, `PYTHONPATH=/app`); may require `make docker-build` after adding new files in this session; not yet verified
+
+### Next Session — Start Here
+
+1. Run `make docker-build` and `docker compose up` to verify the worker starts correctly
+2. Smoke-test F4 features end-to-end: upload a SAS file, check Trust Report tab, refine a block, check revision history
+3. If Docker issue is resolved, commit F4 code (tests pass locally, 7 gates green); use `git-committer` skill
+4. Consider S12 reconciliation integration tests if coverage or confidence requires it
+
+### Files Touched
+
+- `src/worker/engine/models.py` — `TRANSLATE_BEST_EFFORT`, `verified_confidence` on `GeneratedBlock`
+- `src/worker/engine/agents/data_step.py` — confidence capture
+- `src/worker/engine/agents/proc.py` — confidence capture
+- `src/worker/engine/router.py` — planner-driven routing
+- `src/worker/main.py` — `_translate_blocks` strategy caps, `_apply_verified_confidence`, `block_confidence` merge
+- `src/backend/db/models.py` — `BlockRevision` model
+- `alembic/versions/011_add_block_revisions.py` — new migration
+- `src/backend/api/schemas.py` — 9 new schemas
+- `src/backend/api/routes/jobs.py` — 5 new endpoints + 409 patch + helpers
+- `src/frontend/src/api/types.ts` — 9 new TS interfaces
+- `src/frontend/src/api/jobs.ts` — 5 new API functions
+- `src/frontend/src/components/JobDetail/PlanTab.tsx` — trust report query + summary bar
+- `src/frontend/src/components/JobDetail/BlockPlanTable.tsx` — confidence/recon columns, Refine/History buttons
+- `src/frontend/src/components/JobDetail/BlockRefineDialog.tsx` — new
+- `src/frontend/src/components/JobDetail/BlockRevisionDrawer.tsx` — new
+- `src/frontend/src/components/JobDetail/TrustReportTab.tsx` — new
+- `src/frontend/src/components/JobDetail/ChangelogFeed.tsx` — new
+- `src/frontend/src/pages/JobDetailPage.tsx` — Trust Report + History tab wiring
+- `tests/test_data_step_agent.py`, `tests/test_proc_agent.py` — confidence propagation tests
+- `tests/test_translation_router.py` — strategy routing tests
+- `tests/test_worker_main.py` — `_apply_verified_confidence` tests
+- `tests/test_block_refine_routes.py` — new
+- `tests/test_changelog_trust_report.py` — new
+
+---
+
 ## 2026-04-21 — LineageEnricher pipeline-level extension + multi-level lineage graph
 
 **Duration:** ~2h | **Focus:** Extend LineageEnricherAgent with 5 new fields; add Blocks/Files/Pipeline view toggle to LineageGraph

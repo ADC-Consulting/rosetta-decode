@@ -1,5 +1,7 @@
 """GET /jobs/{id} — retrieve job status, audit record, and downloadable artefacts."""
 
+import asyncio
+import difflib
 import io
 import json
 import logging
@@ -15,6 +17,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.backend.api.schemas import (
     AcceptJobRequest,
     AuditResponse,
+    BlockRefineRequest,
+    BlockRefineResponse,
+    BlockRevisionListResponse,
+    BlockRevisionResponse,
+    ChangelogEntry,
+    JobChangelogResponse,
     JobDocResponse,
     JobHistoryEntry,
     JobHistoryResponse,
@@ -31,10 +39,22 @@ from src.backend.api.schemas import (
     RefineResponse,
     SaveVersionRequest,
     SaveVersionResponse,
+    TrustReportBlock,
+    TrustReportFile,
+    TrustReportResponse,
     UpdatePythonCodeRequest,
 )
-from src.backend.db.models import Job, JobVersion
+from src.backend.db.models import BlockRevision, Job, JobVersion
 from src.backend.db.session import get_async_session
+from src.worker.compute.local import LocalBackend
+from src.worker.engine.agents.data_step import DataStepAgent
+from src.worker.engine.agents.generic_proc import GenericProcAgent
+from src.worker.engine.agents.proc import ProcAgent
+from src.worker.engine.models import JobContext, SASBlock
+from src.worker.engine.parser import SASParser
+from src.worker.engine.router import TranslationRouter
+from src.worker.engine.stub_generator import StubGenerator
+from src.worker.validation.reconciliation import ReconciliationService
 
 logger = logging.getLogger(__name__)
 
@@ -524,6 +544,8 @@ async def refine_job(
     parent = result.scalar_one_or_none()
     if parent is None:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+    if parent.accepted_at is not None:
+        raise HTTPException(status_code=409, detail="Job has been accepted and cannot be refined.")
 
     child_files: dict[str, Any] = dict(parent.files or {})
     child_files["__refine_context__"] = json.dumps(
@@ -782,4 +804,703 @@ async def get_job_version(
         trigger=version.trigger,
         created_at=version.created_at,
         content=version.content,
+    )
+
+
+def _build_translation_router() -> TranslationRouter:
+    """Construct a TranslationRouter with default agents.
+
+    Returns:
+        A TranslationRouter ready for single-block translation.
+    """
+    return TranslationRouter(
+        data_step_agent=DataStepAgent(),
+        proc_agent=ProcAgent(),
+        stub_generator=StubGenerator(),
+        generic_proc_agent=GenericProcAgent(),
+    )
+
+
+def _replace_block_in_code(
+    full_code: str, source_file: str, start_line: int, new_block: str
+) -> str:
+    """Replace a single block's code in the full assembled python_code string.
+
+    Finds the provenance comment ``# SAS: source_file:start_line`` and replaces
+    the text up to (but not including) the next provenance comment or EOF.
+
+    Args:
+        full_code: The full assembled python_code string.
+        source_file: Source SAS file name.
+        start_line: 1-based start line of the block in the source file.
+        new_block: Replacement Python code for the block.
+
+    Returns:
+        Updated python_code with the block replaced. Returns full_code unchanged
+        if the provenance marker is not found.
+    """
+    marker = f"# SAS: {source_file}:{start_line}"
+    idx = full_code.find(marker)
+    if idx == -1:
+        return full_code
+
+    # Find the start of the provenance marker line (go back to start of line)
+    line_start = full_code.rfind("\n", 0, idx)
+    line_start = line_start + 1 if line_start != -1 else 0
+
+    # Find the next provenance comment after this one
+    next_marker_idx = full_code.find("# SAS:", idx + len(marker))
+    if next_marker_idx == -1:
+        # This is the last block — replace to end of string
+        block_end = len(full_code)
+    else:
+        # Go back to the start of the next marker's line
+        prev_newline = full_code.rfind("\n", idx, next_marker_idx)
+        block_end = prev_newline + 1 if prev_newline != -1 else next_marker_idx
+
+    replacement = new_block if new_block.endswith("\n") else new_block + "\n"
+    return full_code[:line_start] + replacement + full_code[block_end:]
+
+
+@router.post("/jobs/{job_id}/blocks/{block_id:path}/refine", response_model=BlockRefineResponse)
+async def refine_block(
+    job_id: uuid.UUID,
+    block_id: str,
+    request: BlockRefineRequest,
+    session: AsyncSession = Depends(get_async_session),
+) -> BlockRefineResponse:
+    """Re-translate a single SAS block in-process and persist the revision.
+
+    Translates the specified block using the current translator pipeline, applies
+    user notes and hint into the translation context, runs reconciliation, persists
+    a BlockRevision row, and updates job.python_code.
+
+    Args:
+        job_id: UUID of the migration job.
+        block_id: Block identifier in ``basename.sas:start_line`` form (URL-encoded).
+        request: Optional notes and hint to guide the LLM retranslation.
+        session: Injected async database session.
+
+    Returns:
+        BlockRefineResponse with the new revision number, confidence, and
+        reconciliation status.
+
+    Raises:
+        HTTPException: 404 if job or block not found; 409 if job is accepted.
+    """
+    result = await session.execute(select(Job).where(Job.id == str(job_id)))
+    job = result.scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+    if job.accepted_at is not None:
+        raise HTTPException(status_code=409, detail="Job has been accepted and cannot be refined.")
+
+    # Find the BlockPlan for this block_id
+    migration_plan: dict[str, Any] | None = job.migration_plan
+    block_plan_data: dict[str, Any] | None = None
+    if migration_plan:
+        for bp in migration_plan.get("block_plans", []):
+            if bp.get("block_id") == block_id:
+                block_plan_data = bp
+                break
+
+    # Parse block_id to extract source_file and start_line
+    colon_idx = block_id.rfind(":")
+    if colon_idx == -1:
+        raise HTTPException(status_code=404, detail=f"Block '{block_id}' not found.")
+    source_file = block_id[:colon_idx]
+    try:
+        start_line = int(block_id[colon_idx + 1 :])
+    except ValueError:
+        raise HTTPException(  # noqa: B904
+            status_code=404, detail=f"Block '{block_id}' not found."
+        )
+
+    source_text = (job.files or {}).get(source_file)
+    if source_text is None:
+        raise HTTPException(status_code=404, detail=f"Source file '{source_file}' not found.")
+
+    # Re-parse the file and find the matching block
+    parse_result = SASParser().parse({source_file: source_text})
+    target_block: SASBlock | None = next(
+        (b for b in parse_result.blocks if b.start_line == start_line), None
+    )
+    if target_block is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Block '{block_id}' not found in parsed output.",
+        )
+
+    # Build risk_flags from notes and hint
+    risk_flags: list[str] = []
+    if request.notes:
+        risk_flags.append(f"user_instruction: {request.notes}")
+    if request.hint:
+        risk_flags.append(f"retry_hint: {request.hint}")
+
+    context = JobContext(
+        source_files={source_file: source_text},
+        resolved_macros=[],
+        dependency_order=[],
+        risk_flags=risk_flags,
+        blocks=[target_block],
+        generated=[],
+    )
+
+    # Translate the block
+    router = _build_translation_router()
+    translator = router.route(target_block)
+    gb = await translator.translate(target_block, context)
+
+    # Determine strategy and confidence
+    strategy = block_plan_data.get("strategy", "translate") if block_plan_data else "translate"
+
+    # Determine next revision_number
+    rev_result = await session.execute(
+        select(BlockRevision)
+        .where(BlockRevision.job_id == str(job_id), BlockRevision.block_id == block_id)
+        .order_by(BlockRevision.revision_number.desc())
+    )
+    existing_revisions = rev_result.scalars().all()
+    is_first_refine = len(existing_revisions) == 0
+
+    if is_first_refine:
+        # Insert revision 1 = prior code (from job.python_code, extracted by provenance)
+        prior_code = job.python_code or ""
+        rev1 = BlockRevision(
+            id=str(uuid.uuid4()),
+            job_id=str(job_id),
+            block_id=block_id,
+            revision_number=1,
+            python_code=prior_code,
+            strategy=strategy,
+            confidence="high",
+            uncertainty_notes=[],
+            trigger="agent",
+            notes=None,
+            hint=None,
+            diff_vs_previous=None,
+        )
+        session.add(rev1)
+        next_revision_number = 2
+        prior_python_code = prior_code
+    else:
+        next_revision_number = existing_revisions[0].revision_number + 1
+        prior_python_code = existing_revisions[0].python_code
+
+    # Compute diff vs prior
+    diff_lines = list(
+        difflib.unified_diff(
+            prior_python_code.splitlines(keepends=True),
+            gb.python_code.splitlines(keepends=True),
+            fromfile=f"{block_id}@rev{next_revision_number - 1}",
+            tofile=f"{block_id}@rev{next_revision_number}",
+        )
+    )
+    diff_vs_previous = "".join(diff_lines) if diff_lines else ""
+
+    # Reassemble full python_code by replacing the block's code
+    current_full_code = job.python_code or ""
+    new_full_code = _replace_block_in_code(
+        current_full_code, source_file, start_line, gb.python_code
+    )
+
+    # Run reconciliation
+    ref_csv_path: str = str((job.files or {}).get("__ref_csv__", ""))
+    ref_sas7bdat_path: str = str((job.files or {}).get("__ref_sas7bdat__", ""))
+    reconciliation_status: str | None = None
+    try:
+        backend = LocalBackend()
+        recon_report = await asyncio.to_thread(
+            ReconciliationService().run,
+            ref_csv_path,
+            new_full_code,
+            backend,
+            ref_sas7bdat_path,
+        )
+        if isinstance(recon_report, dict):
+            checks = recon_report.get("checks", [])
+            passed = all(c.get("status") == "pass" for c in checks) if checks else True
+        else:
+            passed = getattr(recon_report, "passed", True)
+        reconciliation_status = "pass" if passed else "fail"
+    except Exception as exc:
+        logger.warning(
+            "Block refine reconciliation failed for job %s block %s: %s",
+            job_id,
+            block_id,
+            exc,
+        )
+        reconciliation_status = "fail"
+
+    # Persist new revision
+    new_revision = BlockRevision(
+        id=str(uuid.uuid4()),
+        job_id=str(job_id),
+        block_id=block_id,
+        revision_number=next_revision_number,
+        python_code=gb.python_code,
+        strategy=strategy,
+        confidence=gb.confidence,
+        uncertainty_notes=gb.uncertainty_notes,
+        reconciliation_status=reconciliation_status,
+        trigger="human-refine",
+        notes=request.notes,
+        hint=request.hint,
+        diff_vs_previous=diff_vs_previous,
+    )
+    session.add(new_revision)
+
+    # Update job.python_code and updated_at
+    await session.execute(
+        update(Job)
+        .where(Job.id == str(job_id))
+        .values(python_code=new_full_code, updated_at=datetime.now(UTC))
+    )
+    await session.commit()
+
+    return BlockRefineResponse(
+        block_id=block_id,
+        revision_number=next_revision_number,
+        confidence=gb.confidence,
+        reconciliation_status=reconciliation_status,
+        python_code=new_full_code,
+    )
+
+
+@router.get(
+    "/jobs/{job_id}/blocks/{block_id:path}/revisions", response_model=BlockRevisionListResponse
+)
+async def get_block_revisions(
+    job_id: uuid.UUID,
+    block_id: str,
+    session: AsyncSession = Depends(get_async_session),
+) -> BlockRevisionListResponse:
+    """Return all block revisions for a given block, newest first.
+
+    Args:
+        job_id: UUID of the migration job.
+        block_id: Block identifier in ``basename.sas:start_line`` form.
+        session: Injected async database session.
+
+    Returns:
+        BlockRevisionListResponse with all revisions ordered by revision_number descending.
+
+    Raises:
+        HTTPException: 404 if the job does not exist.
+    """
+    result = await session.execute(select(Job).where(Job.id == str(job_id)))
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+
+    rows = await session.execute(
+        select(BlockRevision)
+        .where(BlockRevision.job_id == str(job_id), BlockRevision.block_id == block_id)
+        .order_by(BlockRevision.revision_number.desc())
+    )
+    revisions = rows.scalars().all()
+    return BlockRevisionListResponse(
+        block_id=block_id,
+        revisions=[
+            BlockRevisionResponse(
+                id=r.id,
+                job_id=r.job_id,
+                block_id=r.block_id,
+                revision_number=r.revision_number,
+                python_code=r.python_code,
+                strategy=r.strategy,
+                confidence=r.confidence,
+                uncertainty_notes=r.uncertainty_notes,
+                reconciliation_status=r.reconciliation_status,
+                trigger=r.trigger,
+                notes=r.notes,
+                hint=r.hint,
+                diff_vs_previous=r.diff_vs_previous,
+                created_at=r.created_at,
+            )
+            for r in revisions
+        ],
+    )
+
+
+@router.post(
+    "/jobs/{job_id}/blocks/{block_id:path}/revisions/{revision_id}/restore",
+    response_model=BlockRefineResponse,
+)
+async def restore_block_revision(
+    job_id: uuid.UUID,
+    block_id: str,
+    revision_id: str,
+    session: AsyncSession = Depends(get_async_session),
+) -> BlockRefineResponse:
+    """Restore a block to a previous revision, inserting a new revision with trigger=restore.
+
+    Loads the specified revision, computes a diff vs current job.python_code, inserts a new
+    revision row, reassembles the full python_code, and persists the updated job.
+
+    Args:
+        job_id: UUID of the migration job.
+        block_id: Block identifier in ``basename.sas:start_line`` form.
+        revision_id: ID of the revision to restore.
+        session: Injected async database session.
+
+    Returns:
+        BlockRefineResponse with the new revision number.
+
+    Raises:
+        HTTPException: 404 if job or revision not found; 409 if job is accepted.
+    """
+    result = await session.execute(select(Job).where(Job.id == str(job_id)))
+    job = result.scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+    if job.accepted_at is not None:
+        raise HTTPException(status_code=409, detail="Job has been accepted and cannot be refined.")
+
+    # Load the target revision
+    rev_result = await session.execute(
+        select(BlockRevision).where(
+            BlockRevision.id == revision_id,
+            BlockRevision.job_id == str(job_id),
+            BlockRevision.block_id == block_id,
+        )
+    )
+    target_revision = rev_result.scalar_one_or_none()
+    if target_revision is None:
+        raise HTTPException(status_code=404, detail=f"Revision '{revision_id}' not found.")
+
+    # Get current max revision number
+    all_revs_result = await session.execute(
+        select(BlockRevision)
+        .where(BlockRevision.job_id == str(job_id), BlockRevision.block_id == block_id)
+        .order_by(BlockRevision.revision_number.desc())
+    )
+    all_revisions = all_revs_result.scalars().all()
+    next_revision_number = (all_revisions[0].revision_number + 1) if all_revisions else 1
+
+    # Compute diff vs current job.python_code
+    current_full_code = job.python_code or ""
+    diff_lines = list(
+        difflib.unified_diff(
+            current_full_code.splitlines(keepends=True),
+            target_revision.python_code.splitlines(keepends=True),
+            fromfile=f"{block_id}@current",
+            tofile=f"{block_id}@restore-{target_revision.revision_number}",
+        )
+    )
+    diff_vs_previous = "".join(diff_lines) if diff_lines else ""
+
+    # Parse block_id to extract source_file and start_line
+    colon_idx = block_id.rfind(":")
+    source_file = block_id[:colon_idx] if colon_idx != -1 else block_id
+    try:
+        start_line = int(block_id[colon_idx + 1 :]) if colon_idx != -1 else 0
+    except ValueError:
+        start_line = 0
+
+    # Reassemble full python_code
+    new_full_code = _replace_block_in_code(
+        current_full_code, source_file, start_line, target_revision.python_code
+    )
+
+    # Insert new restore revision
+    restore_revision = BlockRevision(
+        id=str(uuid.uuid4()),
+        job_id=str(job_id),
+        block_id=block_id,
+        revision_number=next_revision_number,
+        python_code=target_revision.python_code,
+        strategy=target_revision.strategy,
+        confidence=target_revision.confidence,
+        uncertainty_notes=target_revision.uncertainty_notes,
+        reconciliation_status=target_revision.reconciliation_status,
+        trigger="restore",
+        notes=None,
+        hint=None,
+        diff_vs_previous=diff_vs_previous,
+    )
+    session.add(restore_revision)
+
+    # Update job.python_code
+    await session.execute(
+        update(Job)
+        .where(Job.id == str(job_id))
+        .values(python_code=new_full_code, updated_at=datetime.now(UTC))
+    )
+    await session.commit()
+
+    return BlockRefineResponse(
+        block_id=block_id,
+        revision_number=next_revision_number,
+        confidence=target_revision.confidence,
+        reconciliation_status=target_revision.reconciliation_status,
+        python_code=new_full_code,
+    )
+
+
+# ---------------------------------------------------------------------------
+# S6 — Job-level changelog
+# ---------------------------------------------------------------------------
+
+
+@router.get("/jobs/{job_id}/changelog", response_model=JobChangelogResponse)
+async def get_job_changelog(
+    job_id: uuid.UUID,
+    session: AsyncSession = Depends(get_async_session),
+) -> JobChangelogResponse:
+    """Return all block revision entries for a job, newest first.
+
+    Args:
+        job_id: UUID of the migration job.
+        session: Injected async database session.
+
+    Returns:
+        JobChangelogResponse listing every BlockRevision ordered by created_at DESC.
+
+    Raises:
+        HTTPException: 404 if the job does not exist.
+    """
+    result = await session.execute(select(Job).where(Job.id == str(job_id)))
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+
+    rows = await session.execute(
+        select(BlockRevision)
+        .where(BlockRevision.job_id == str(job_id))
+        .order_by(BlockRevision.created_at.desc())
+    )
+    revisions = rows.scalars().all()
+
+    entries = [
+        ChangelogEntry(
+            id=r.id,
+            block_id=r.block_id,
+            revision_number=r.revision_number,
+            trigger=r.trigger,
+            strategy=r.strategy,
+            confidence=r.confidence,
+            reconciliation_status=r.reconciliation_status,
+            notes=r.notes,
+            hint=r.hint,
+            diff_vs_previous=r.diff_vs_previous,
+            created_at=r.created_at,
+        )
+        for r in revisions
+    ]
+    return JobChangelogResponse(job_id=str(job_id), entries=entries)
+
+
+# ---------------------------------------------------------------------------
+# S7 — Tiered trust report
+# ---------------------------------------------------------------------------
+
+_MANUAL_STRATEGIES = frozenset({"manual", "manual_ingestion", "skip"})
+_AUTO_VERIFIED_CONFIDENCES = frozenset({"verified_high", "verified_medium"})
+_CONFIDENCE_ORDER = {"low": 0, "medium": 1, "high": 2, "unknown": -1}
+
+
+def _blast_radius_map(cross_file_edges: list[dict[str, Any]]) -> dict[str, int]:
+    """Count downstream edges per source file from cross-file lineage edges.
+
+    Args:
+        cross_file_edges: List of edge dicts with ``source_file`` keys.
+
+    Returns:
+        Mapping from source_file to count of outgoing edges.
+    """
+    counts: dict[str, int] = {}
+    for edge in cross_file_edges:
+        src = edge.get("source_file", "")
+        if src:
+            counts[src] = counts.get(src, 0) + 1
+    return counts
+
+
+def _block_sort_key(block: TrustReportBlock) -> tuple[int, int, int]:
+    """Return a sort key: needs_attention DESC, blast_radius DESC, confidence ASC."""
+    attention = 0 if block.needs_attention else 1
+    radius = -(block.blast_radius if block.blast_radius is not None else -1)
+    confidence_rank = _CONFIDENCE_ORDER.get(block.self_confidence, -1)
+    return (attention, radius, confidence_rank)
+
+
+def _aggregate_file_metrics(
+    blocks: list[TrustReportBlock],
+) -> list[TrustReportFile]:
+    """Group blocks by source_file and compute per-file aggregates.
+
+    Args:
+        blocks: Flat list of TrustReportBlock instances.
+
+    Returns:
+        List of TrustReportFile with aggregated counts.
+    """
+    file_map: dict[str, list[TrustReportBlock]] = {}
+    for b in blocks:
+        file_map.setdefault(b.source_file, []).append(b)
+
+    result: list[TrustReportFile] = []
+    for source_file, file_blocks in file_map.items():
+        result.append(
+            TrustReportFile(
+                source_file=source_file,
+                total_blocks=len(file_blocks),
+                auto_verified=sum(
+                    1 for b in file_blocks if b.verified_confidence in _AUTO_VERIFIED_CONFIDENCES
+                ),
+                needs_review=sum(
+                    1
+                    for b in file_blocks
+                    if b.needs_attention and b.strategy not in _MANUAL_STRATEGIES
+                ),
+                manual_todo=sum(1 for b in file_blocks if b.strategy in _MANUAL_STRATEGIES),
+                failed_reconciliation=sum(
+                    1 for b in file_blocks if b.reconciliation_status == "fail"
+                ),
+            )
+        )
+    return result
+
+
+def _overall_confidence(total: int, auto_verified: int) -> str:
+    """Compute overall confidence label from auto-verified ratio.
+
+    Args:
+        total: Total number of blocks.
+        auto_verified: Number of auto-verified blocks.
+
+    Returns:
+        ``"unknown"`` if no blocks; ``"high"`` />80%, ``"medium"`` />50%,
+        ``"low"`` otherwise.
+    """
+    if total == 0:
+        return "unknown"
+    ratio = auto_verified / total
+    if ratio > 0.8:
+        return "high"
+    if ratio > 0.5:
+        return "medium"
+    return "low"
+
+
+@router.get("/jobs/{job_id}/trust-report", response_model=TrustReportResponse)
+async def get_job_trust_report(
+    job_id: uuid.UUID,
+    session: AsyncSession = Depends(get_async_session),
+) -> TrustReportResponse:
+    """Return a tiered trust report for all blocks in a completed migration job.
+
+    Aggregates confidence, reconciliation status, and blast radius for every
+    block in the migration plan. Blocks are sorted by needs_attention DESC,
+    blast_radius DESC, then self_confidence ASC.
+
+    Args:
+        job_id: UUID of the migration job.
+        session: Injected async database session.
+
+    Returns:
+        TrustReportResponse with block-level and file-level trust aggregates.
+
+    Raises:
+        HTTPException: 404 if the job does not exist.
+    """
+    result = await session.execute(select(Job).where(Job.id == str(job_id)))
+    job = result.scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+
+    # If job not yet in a reviewable state, return an empty report.
+    if job.status not in ("proposed", "accepted", "done") or job.migration_plan is None:
+        return TrustReportResponse(
+            job_id=str(job_id),
+            lineage_available=job.lineage is not None,
+            overall_confidence="unknown",
+            total_blocks=0,
+            auto_verified=0,
+            needs_review=0,
+            manual_todo=0,
+            failed_reconciliation=0,
+            files=[],
+            blocks=[],
+            review_queue=[],
+        )
+
+    # Build block_confidence map from lineage if available.
+    lineage: dict[str, Any] = job.lineage or {}
+    block_confidence: dict[str, Any] = lineage.get("block_confidence", {})
+    cross_file_edges: list[dict[str, Any]] = lineage.get("cross_file_edges", [])
+    blast_map = _blast_radius_map(cross_file_edges)
+
+    # Query the most recent BlockRevision per block_id (Python-side groupby).
+    rev_rows = await session.execute(
+        select(BlockRevision)
+        .where(BlockRevision.job_id == str(job_id))
+        .order_by(BlockRevision.block_id, BlockRevision.revision_number.desc())
+    )
+    all_revisions = rev_rows.scalars().all()
+
+    latest_revision: dict[str, BlockRevision] = {}
+    for rev in all_revisions:
+        if rev.block_id not in latest_revision:
+            latest_revision[rev.block_id] = rev
+
+    # Build TrustReportBlock list from migration_plan.block_plans.
+    block_plans: list[dict[str, Any]] = job.migration_plan.get("block_plans", [])
+    blocks: list[TrustReportBlock] = []
+
+    for bp in block_plans:
+        block_id: str = bp.get("block_id", "")
+        source_file: str = bp.get("source_file", "")
+        strategy: str = bp.get("strategy", "translate")
+
+        conf_entry: dict[str, Any] = block_confidence.get(block_id, {})
+        self_confidence: str = conf_entry.get("confidence", "unknown")
+        verified_confidence: str | None = conf_entry.get("verified_confidence")
+
+        latest_rev: BlockRevision | None = latest_revision.get(block_id)
+        reconciliation_status: str | None = latest_rev.reconciliation_status if latest_rev else None
+
+        needs_attention: bool = (
+            verified_confidence in ("verified_low", None) and reconciliation_status == "fail"
+        ) or strategy in _MANUAL_STRATEGIES
+
+        radius: int | None = blast_map.get(source_file) if lineage else None
+
+        blocks.append(
+            TrustReportBlock(
+                block_id=block_id,
+                source_file=source_file,
+                start_line=bp.get("start_line", 0),
+                block_type=bp.get("block_type", ""),
+                strategy=strategy,
+                self_confidence=self_confidence,
+                verified_confidence=verified_confidence,
+                reconciliation_status=reconciliation_status,
+                needs_attention=needs_attention,
+                blast_radius=radius,
+            )
+        )
+
+    blocks.sort(key=_block_sort_key)
+
+    total = len(blocks)
+    auto_verified = sum(1 for b in blocks if b.verified_confidence in _AUTO_VERIFIED_CONFIDENCES)
+    manual_todo = sum(1 for b in blocks if b.strategy in _MANUAL_STRATEGIES)
+    failed_reconciliation = sum(1 for b in blocks if b.reconciliation_status == "fail")
+    needs_review = sum(
+        1 for b in blocks if b.needs_attention and b.strategy not in _MANUAL_STRATEGIES
+    )
+
+    return TrustReportResponse(
+        job_id=str(job_id),
+        lineage_available=job.lineage is not None,
+        overall_confidence=_overall_confidence(total, auto_verified),
+        total_blocks=total,
+        auto_verified=auto_verified,
+        needs_review=needs_review,
+        manual_todo=manual_todo,
+        failed_reconciliation=failed_reconciliation,
+        files=_aggregate_file_metrics(blocks),
+        blocks=blocks,
+        review_queue=[b for b in blocks if b.needs_attention],
     )

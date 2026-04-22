@@ -38,7 +38,9 @@ CONTEXT = JobContext(
 TRANSLATION_RESULT = ProcResult(
     python_code=(
         "work_summary = work_emp.groupby('dept').size().reset_index(name='n')  # SAS: etl.sas:10"
-    )
+    ),
+    confidence_band="high",
+    uncertainty_notes=[],
 )
 
 
@@ -128,6 +130,32 @@ async def test_max_tokens_4000(
     assert call_kwargs.get("model_settings") == {"max_tokens": 4000}
 
 
+async def test_confidence_propagated_to_generated_block(
+    agent_with_mock: tuple[ProcAgent, AsyncMock],
+) -> None:
+    agent, mock_run = agent_with_mock
+    medium_result = ProcResult(
+        python_code="work_summary = work_emp.groupby('dept').size().reset_index(name='n')",
+        confidence_band="medium",
+        uncertainty_notes=["HAVING clause equivalent may differ from SAS post-agg filter"],
+    )
+    mock_run.return_value = _make_run_result(medium_result)
+    result = await agent.translate(BLOCK, CONTEXT)
+    assert result.confidence == "medium"
+    assert result.uncertainty_notes == [
+        "HAVING clause equivalent may differ from SAS post-agg filter"
+    ]
+
+
+async def test_high_confidence_empty_notes_propagated(
+    agent_with_mock: tuple[ProcAgent, AsyncMock],
+) -> None:
+    agent, _ = agent_with_mock
+    result = await agent.translate(BLOCK, CONTEXT)
+    assert result.confidence == "high"
+    assert result.uncertainty_notes == []
+
+
 async def test_macro_vars_in_prompt(
     agent_with_mock: tuple[ProcAgent, AsyncMock],
 ) -> None:
@@ -146,3 +174,31 @@ async def test_dependency_order_in_prompt(
     prompt: str = mock_run.call_args[0][0]
     assert "work.emp" in prompt
     assert "work.summary" in prompt
+
+
+def test_make_agent_azure_provider_path() -> None:
+    """_make_agent() takes the Azure branch when azure_openai_endpoint is set."""
+    from unittest.mock import MagicMock, patch
+
+    mock_settings = MagicMock()
+    mock_settings.tensorzero_gateway_url = None
+    mock_settings.azure_openai_endpoint = "https://my-azure.openai.azure.com/"
+    mock_settings.azure_openai_api_key = "fake-key"
+    mock_settings.openai_api_version = "2024-02-01"
+    mock_settings.llm_model = "azure:gpt-4o"
+
+    mock_azure_provider = MagicMock()
+    mock_model = MagicMock()
+    mock_agent = MagicMock()
+
+    with (
+        patch("src.worker.engine.agents.proc.worker_settings", mock_settings),
+        patch("src.worker.engine.agents.proc.AzureProvider", return_value=mock_azure_provider),
+        patch("src.worker.engine.agents.proc.OpenAIChatModel", return_value=mock_model),
+        patch("src.worker.engine.agents.proc.Agent", return_value=mock_agent),
+    ):
+        from src.worker.engine.agents.proc import _make_agent
+
+        result = _make_agent()
+
+    assert result is mock_agent

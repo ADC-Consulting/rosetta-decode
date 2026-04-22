@@ -1,13 +1,28 @@
-import type { FileEdge, FileNode, JobLineageResponse, LineageNode, PipelineStep } from "@/api/types";
-import { FileNodeCard, type FileNodeData } from "@/components/JobDetail/FileNodeCard";
+import type {
+  FileEdge,
+  FileNode,
+  JobLineageResponse,
+  LineageNode,
+  PipelineStep,
+} from "@/api/types";
+import {
+  FileNodeCard,
+  type FileNodeData,
+} from "@/components/JobDetail/FileNodeCard";
 import { LineageDetailPanel } from "@/components/JobDetail/LineageDetailPanel";
-import { PipelineStepCard, type PipelineStepData } from "@/components/JobDetail/PipelineStepCard";
+import {
+  PipelineStepCard,
+  type PipelineStepData,
+} from "@/components/JobDetail/PipelineStepCard";
 import dagre from "dagre";
 import { RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Background,
+  BaseEdge,
   Controls,
+  EdgeLabelRenderer,
+  getBezierPath,
   MarkerType,
   MiniMap,
   Position,
@@ -18,6 +33,7 @@ import {
   useReactFlow,
   type Edge,
   type EdgeChange,
+  type EdgeProps,
   type Node,
   type NodeChange,
 } from "reactflow";
@@ -86,16 +102,108 @@ function abbrevBlockType(bt: string): string {
 const NODE_W = 210;
 const NODE_H = 72;
 const NODE_FILE_W = 220;
-const NODE_FILE_H = 90;
+const NODE_FILE_H = 96;
 const NODE_PIPELINE_W = 240;
-const NODE_PIPELINE_H = 80;
+const NODE_PIPELINE_H = 86;
+
+// ---------------------------------------------------------------------------
+// Edge reason colors — files view
+// ---------------------------------------------------------------------------
+
+const REASON_COLORS: Record<string, string> = {
+  dataset_use: "#3b82f6",
+  include: "#8b5cf6",
+  macro_call: "#f59e0b",
+  proc_use: "#10b981",
+  output_use: "#06b6d4",
+};
+
+function reasonColor(reason: string): string {
+  return REASON_COLORS[reason.toLowerCase().replace(/ /g, "_")] ?? "#64748b";
+}
+
+// ---------------------------------------------------------------------------
+// HoverLabelEdge — shows label only on hover, fades when not hovered
+// ---------------------------------------------------------------------------
+
+function HoverLabelEdge({
+  id,
+  sourceX,
+  sourceY,
+  sourcePosition,
+  targetX,
+  targetY,
+  targetPosition,
+  data,
+  markerEnd,
+  style,
+}: EdgeProps<{ label?: string }>) {
+  const [hovered, setHovered] = useState(false);
+  const [edgePath, labelX, labelY] = getBezierPath({
+    sourceX,
+    sourceY,
+    sourcePosition,
+    targetX,
+    targetY,
+    targetPosition,
+  });
+  return (
+    <>
+      <BaseEdge
+        id={id}
+        path={edgePath}
+        markerEnd={markerEnd}
+        style={{
+          ...style,
+          strokeWidth: hovered ? 2.5 : 1.5,
+          opacity: hovered ? 1 : (style?.opacity ?? 0.45),
+          transition: "stroke-width 0.1s ease, opacity 0.1s ease",
+        }}
+      />
+      {/* Invisible wide hit-area so hovering is easy */}
+      <path
+        d={edgePath}
+        fill="none"
+        strokeWidth={14}
+        stroke="transparent"
+        style={{ cursor: "pointer" }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+      />
+      {hovered && data?.label && (
+        <EdgeLabelRenderer>
+          <div
+            style={{
+              position: "absolute",
+              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+              background: "#1e293b",
+              color: "#e2e8f0",
+              fontSize: 10,
+              fontWeight: 500,
+              borderRadius: 4,
+              padding: "2px 8px",
+              pointerEvents: "none",
+              whiteSpace: "nowrap",
+              border: "1px solid #334155",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.35)",
+              fontFamily: "ui-monospace, monospace",
+              zIndex: 1000,
+            }}
+          >
+            {data.label}
+          </div>
+        </EdgeLabelRenderer>
+      )}
+    </>
+  );
+}
 
 // CRITICAL: module-level, never inside a component
 const NODE_TYPES = {
   fileNode: FileNodeCard,
   pipelineNode: PipelineStepCard,
 };
-const EDGE_TYPES = {};
+const EDGE_TYPES = { hover: HoverLabelEdge };
 
 // ---------------------------------------------------------------------------
 // Dagre layout
@@ -106,10 +214,17 @@ function applyDagreLayout<T extends object>(
   edges: Edge[],
   nodeW: number,
   nodeH: number,
+  opts?: { ranksep?: number; nodesep?: number },
 ): Node<T>[] {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: "LR", nodesep: 40, ranksep: 80 });
+  g.setGraph({
+    rankdir: "LR",
+    nodesep: opts?.nodesep ?? 50,
+    ranksep: opts?.ranksep ?? 90,
+    marginx: 20,
+    marginy: 20,
+  });
   nodes.forEach((n) => g.setNode(n.id, { width: nodeW, height: nodeH }));
   edges.forEach((e) => g.setEdge(e.source, e.target));
   dagre.layout(g);
@@ -240,8 +355,14 @@ function buildInitialEdges(
 
 function buildFileNodes(
   fileNodes: FileNode[],
+  fileEdges: FileEdge[],
   selectedPath: string | null,
 ): Node<FileNodeData>[] {
+  const degree = new Map<string, number>();
+  for (const fe of fileEdges) {
+    degree.set(fe.source_file, (degree.get(fe.source_file) ?? 0) + 1);
+    degree.set(fe.target_file, (degree.get(fe.target_file) ?? 0) + 1);
+  }
   return fileNodes.map((fn) => {
     const basename = fn.filename.split("/").pop() ?? fn.filename;
     return {
@@ -254,6 +375,7 @@ function buildFileNodes(
         file_type: fn.file_type,
         status: fn.status,
         blockCount: fn.blocks.length,
+        connectionCount: degree.get(fn.filename) ?? 0,
         isSelected: fn.filename === selectedPath,
       },
     };
@@ -274,14 +396,15 @@ function buildFileEdges(fileEdges: FileEdge[]): Edge[] {
   }
   return Array.from(grouped.entries()).map(([key, reasons]) => {
     const [src, tgt] = key.split("||");
+    const color = reasonColor(reasons[0]);
     return {
       id: `fe-${src}-${tgt}`,
       source: `file-${src}`,
       target: `file-${tgt}`,
-      label: reasons.join(", "),
-      labelStyle: { fontSize: 10, fill: "#64748b" },
-      style: { stroke: "#94a3b8", strokeWidth: 1.5 },
-      markerEnd: { type: MarkerType.ArrowClosed, color: "#94a3b8" },
+      type: "hover",
+      data: { label: reasons.join(", ") },
+      style: { stroke: color, strokeWidth: 1.5 },
+      markerEnd: { type: MarkerType.ArrowClosed, color },
     };
   });
 }
@@ -309,14 +432,16 @@ function buildPipelineEdges(steps: PipelineStep[]): Edge[] {
   const edges: Edge[] = [];
   for (let i = 0; i < steps.length; i++) {
     for (let j = i + 1; j < steps.length; j++) {
-      const shared = steps[i].outputs.filter((o) => steps[j].inputs.includes(o));
+      const shared = steps[i].outputs.filter((o) =>
+        steps[j].inputs.includes(o),
+      );
       if (shared.length > 0) {
         edges.push({
           id: `pe-${steps[i].step_id}-${steps[j].step_id}`,
           source: `step-${steps[i].step_id}`,
           target: `step-${steps[j].step_id}`,
-          label: shared.join(", "),
-          labelStyle: { fontSize: 10, fill: "#6366f1" },
+          type: "hover",
+          data: { label: shared.join(", ") },
           style: { stroke: "#a5b4fc", strokeWidth: 1.5 },
           markerEnd: { type: MarkerType.ArrowClosed, color: "#a5b4fc" },
         });
@@ -446,10 +571,15 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
     if (view === "files" && lineage.file_nodes?.length) {
       const fEdges = buildFileEdges(lineage.file_edges ?? []);
       newNodes = applyDagreLayout(
-        buildFileNodes(lineage.file_nodes, selectedFile?.filename ?? null),
+        buildFileNodes(
+          lineage.file_nodes,
+          lineage.file_edges ?? [],
+          selectedFile?.filename ?? null,
+        ),
         fEdges,
         NODE_FILE_W,
         NODE_FILE_H,
+        { ranksep: 160, nodesep: 75 },
       );
       newEdges = fEdges;
     } else if (view === "pipeline" && lineage.pipeline_steps?.length) {
@@ -459,6 +589,7 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
         pEdges,
         NODE_PIPELINE_W,
         NODE_PIPELINE_H,
+        { ranksep: 145, nodesep: 65 },
       );
       newEdges = pEdges;
     } else {
@@ -515,8 +646,17 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
           style: { ...n.style, opacity: related.has(n.id) ? 1 : 0.2 },
         })),
       );
+      setEdges((prev) =>
+        prev.map((e) => ({
+          ...e,
+          style: {
+            ...e.style,
+            opacity: related.has(e.source) && related.has(e.target) ? 1 : 0.08,
+          },
+        })),
+      );
     },
-    [edges, setNodes],
+    [edges, setNodes, setEdges],
   );
 
   const handleNodeMouseLeave = useCallback(() => {
@@ -526,9 +666,12 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
       setNodes((prev) =>
         prev.map((n) => ({ ...n, style: { ...n.style, opacity: 1 } })),
       );
+      setEdges((prev) =>
+        prev.map((e) => ({ ...e, style: { ...e.style, opacity: 1 } })),
+      );
       leaveTimerRef.current = null;
     }, 80);
-  }, [setNodes]);
+  }, [setNodes, setEdges]);
 
   const handlePaneClick = useCallback(() => {
     if (leaveTimerRef.current !== null) {
@@ -539,7 +682,10 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
     setNodes((prev) =>
       prev.map((n) => ({ ...n, style: { ...n.style, opacity: 1 } })),
     );
-  }, [setNodes]);
+    setEdges((prev) =>
+      prev.map((e) => ({ ...e, style: { ...e.style, opacity: 1 } })),
+    );
+  }, [setNodes, setEdges]);
 
   const handleNodeDragStop = useCallback(() => {
     const all = nodesRef.current;
@@ -639,7 +785,8 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
     (_: React.MouseEvent, node: Node) => {
       if (view !== "files") return;
       const fileNode =
-        lineage.file_nodes?.find((fn) => `file-${fn.filename}` === node.id) ?? null;
+        lineage.file_nodes?.find((fn) => `file-${fn.filename}` === node.id) ??
+        null;
       setSelectedFile(fileNode);
       setNodes((prev) =>
         prev.map((n) => ({
@@ -736,7 +883,14 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
         </button>
 
         {/* Divider */}
-        <div style={{ width: 1, height: 20, background: "#e2e8f0", margin: "0 6px" }} />
+        <div
+          style={{
+            width: 1,
+            height: 20,
+            background: "#e2e8f0",
+            margin: "0 6px",
+          }}
+        />
 
         {(["blocks", "files", "pipeline"] as ViewMode[]).map((v) => {
           const disabled =
@@ -751,7 +905,11 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
               style={{
                 ...btnBase,
                 ...(view === v
-                  ? { background: "#1e293b", color: "#fff", borderColor: "#1e293b" }
+                  ? {
+                      background: "#1e293b",
+                      color: "#fff",
+                      borderColor: "#1e293b",
+                    }
                   : {}),
                 ...(disabled ? btnDisabled : {}),
                 fontSize: 11,
@@ -797,6 +955,114 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
         {nodes.length > 15 && <MiniMap />}
       </ReactFlow>
       {view === "blocks" && <Legend />}
+
+      {/* Files view: edge type color legend */}
+      {view === "files" && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: 50,
+            left: 10,
+            zIndex: 10,
+            background: "rgba(255,255,255,0.93)",
+            backdropFilter: "blur(6px)",
+            borderRadius: 8,
+            border: "1px solid #e2e8f0",
+            padding: "7px 10px",
+            boxShadow: "0 1px 6px rgba(0,0,0,0.08)",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 9.5,
+              fontWeight: 700,
+              color: "#94a3b8",
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              marginBottom: 5,
+            }}
+          >
+            Edge types
+          </div>
+          {(Object.entries(REASON_COLORS) as [string, string][]).map(
+            ([reason, color]) => (
+              <div
+                key={reason}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  marginBottom: 3,
+                }}
+              >
+                <div
+                  style={{
+                    width: 18,
+                    height: 2.5,
+                    background: color,
+                    borderRadius: 2,
+                    flexShrink: 0,
+                  }}
+                />
+                <span
+                  style={{
+                    fontSize: 10,
+                    color: "#475569",
+                    fontFamily: "ui-monospace, monospace",
+                  }}
+                >
+                  {reason.replace(/_/g, " ")}
+                </span>
+              </div>
+            ),
+          )}
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div
+              style={{
+                width: 18,
+                height: 2.5,
+                background: "#64748b",
+                borderRadius: 2,
+                flexShrink: 0,
+              }}
+            />
+            <span
+              style={{
+                fontSize: 10,
+                color: "#475569",
+                fontFamily: "ui-monospace, monospace",
+              }}
+            >
+              other
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Dense graph notice — appears when edges outnumber nodes */}
+      {(view === "files" || view === "pipeline") &&
+        edges.length > nodes.length && (
+          <div
+            style={{
+              position: "absolute",
+              top: 54,
+              left: 10,
+              zIndex: 10,
+              background: "#fffbeb",
+              border: "1px solid #fcd34d",
+              borderRadius: 6,
+              padding: "3px 10px",
+              fontSize: 10.5,
+              color: "#92400e",
+              display: "flex",
+              alignItems: "center",
+              gap: 5,
+              pointerEvents: "none",
+            }}
+          >
+            <span aria-hidden>⚡</span> Dense graph — hover edges to read labels
+          </div>
+        )}
 
       <LineageDetailPanel
         file={selectedFile}

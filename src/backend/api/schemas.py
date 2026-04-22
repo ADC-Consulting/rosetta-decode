@@ -308,3 +308,117 @@ class SaveVersionResponse(BaseModel):
     job_id: str
     tab: str
     created_at: datetime
+
+
+class BlockRefineRequest(BaseModel):
+    """Request body for POST /jobs/{id}/blocks/{block_id}/refine."""
+
+    notes: str | None = None  # primary: user instructions, injected first into LLM
+    hint: str | None = None  # secondary: structured hint (e.g. from reconciliation failure)
+
+
+class BlockRefineResponse(BaseModel):
+    """Response body for POST /jobs/{id}/blocks/{block_id}/refine."""
+
+    block_id: str
+    revision_number: int
+    confidence: str
+    reconciliation_status: str | None
+    python_code: str | None = None  # full updated job python_code after the refine
+
+
+class BlockRevisionResponse(BaseModel):
+    """A single block revision record."""
+
+    id: str
+    job_id: str
+    block_id: str
+    revision_number: int
+    python_code: str
+    strategy: str
+    confidence: str
+    uncertainty_notes: list[str]
+    reconciliation_status: str | None
+    trigger: str
+    notes: str | None
+    hint: str | None
+    diff_vs_previous: str | None
+    created_at: datetime
+
+
+class BlockRevisionListResponse(BaseModel):
+    """Response body for GET /jobs/{id}/blocks/{block_id}/revisions."""
+
+    block_id: str
+    revisions: list[BlockRevisionResponse]
+
+
+# S6 — Job-level changelog schemas
+
+
+class ChangelogEntry(BaseModel):
+    """A single block revision entry in the job-level changelog."""
+
+    id: str
+    block_id: str
+    revision_number: int
+    trigger: str
+    strategy: str
+    confidence: str
+    reconciliation_status: str | None
+    notes: str | None
+    hint: str | None
+    diff_vs_previous: str | None
+    created_at: datetime
+
+
+class JobChangelogResponse(BaseModel):
+    """Response body for GET /jobs/{id}/changelog."""
+
+    job_id: str
+    entries: list[ChangelogEntry]
+
+
+# S7 — Tiered trust report schemas
+
+
+class TrustReportBlock(BaseModel):
+    """Per-block trust data for the tiered trust report."""
+
+    block_id: str
+    source_file: str
+    start_line: int
+    block_type: str
+    strategy: str
+    self_confidence: str
+    verified_confidence: str | None
+    reconciliation_status: str | None
+    needs_attention: bool
+    blast_radius: int | None  # null if lineage unavailable
+
+
+class TrustReportFile(BaseModel):
+    """Per-source-file aggregated trust metrics."""
+
+    source_file: str
+    total_blocks: int
+    auto_verified: int
+    needs_review: int
+    manual_todo: int
+    failed_reconciliation: int
+
+
+class TrustReportResponse(BaseModel):
+    """Response body for GET /jobs/{id}/trust-report."""
+
+    job_id: str
+    lineage_available: bool
+    overall_confidence: str  # "high" / "medium" / "low" / "unknown"
+    total_blocks: int
+    auto_verified: int
+    needs_review: int
+    manual_todo: int
+    failed_reconciliation: int
+    files: list[TrustReportFile]
+    blocks: list[TrustReportBlock]  # sorted by needs_attention DESC, then blast_radius DESC
+    review_queue: list[TrustReportBlock]  # only needs_attention=True blocks

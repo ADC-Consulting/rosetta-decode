@@ -1,5 +1,11 @@
-import { getJobPlan, patchJobPlan } from "@/api/jobs";
-import type { BlockOverride, JobStatusValue, PatchPlanRequest } from "@/api/types";
+import { getJobPlan, getJobTrustReport, patchJobPlan } from "@/api/jobs";
+import type {
+  BlockOverride,
+  JobStatusValue,
+  PatchPlanRequest,
+  TrustReportBlock,
+  TrustReportResponse,
+} from "@/api/types";
 import { useQuery } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import BlockPlanTable from "./BlockPlanTable";
@@ -25,11 +31,24 @@ export default function PlanTab({
 }): React.ReactElement {
   const [savingBlockId, setSavingBlockId] = useState<string | null>(null);
 
+  const trustReportEnabled =
+    !!jobId && (jobStatus === "proposed" || jobStatus === "accepted" || jobStatus === "done");
+
   const { data, isLoading } = useQuery({
     queryKey: ["job", jobId, "plan"],
     queryFn: () => getJobPlan(jobId),
     enabled: !!jobId && isReviewable,
   });
+
+  const { data: trustReport } = useQuery<TrustReportResponse>({
+    queryKey: ["trust-report", jobId],
+    queryFn: () => getJobTrustReport(jobId),
+    enabled: trustReportEnabled,
+  });
+
+  const trustBlocks: Record<string, TrustReportBlock> = trustReport
+    ? Object.fromEntries(trustReport.blocks.map((b) => [b.block_id, b]))
+    : {};
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -146,6 +165,23 @@ export default function PlanTab({
         </div>
       )}
 
+      {trustReport && (
+        <div className="grid grid-cols-3 gap-3">
+          <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-center">
+            <p className="text-2xl font-bold text-green-700">{trustReport.auto_verified}</p>
+            <p className="text-xs font-medium text-green-600 mt-0.5">Auto-verified</p>
+          </div>
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-center">
+            <p className="text-2xl font-bold text-amber-700">{trustReport.needs_review}</p>
+            <p className="text-xs font-medium text-amber-600 mt-0.5">Needs review</p>
+          </div>
+          <div className="rounded-lg border border-border bg-muted/50 p-3 text-center">
+            <p className="text-2xl font-bold text-muted-foreground">{trustReport.manual_todo}</p>
+            <p className="text-xs font-medium text-muted-foreground mt-0.5">Manual TODO</p>
+          </div>
+        </div>
+      )}
+
       {data.block_plans.length > 0 && (
         <div className="space-y-2">
           <h3 className="text-sm font-semibold">Block plan</h3>
@@ -157,6 +193,9 @@ export default function PlanTab({
             onStrategyChange={handleStrategyChange}
             onRiskChange={handleRiskChange}
             onNoteChange={handleNoteChange}
+            trustBlocks={trustBlocks}
+            jobId={jobId}
+            isAccepted={jobStatus === "accepted"}
           />
         </div>
       )}

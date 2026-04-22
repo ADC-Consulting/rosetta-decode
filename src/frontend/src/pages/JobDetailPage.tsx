@@ -6,11 +6,13 @@ import {
   saveVersion,
 } from "@/api/jobs";
 import type { BlockOverride, JobStatusValue } from "@/api/types";
+import ChangelogFeed from "@/components/JobDetail/ChangelogFeed";
 import EditorTab from "@/components/JobDetail/EditorTab";
 import LineageTab from "@/components/JobDetail/LineageTab";
 import PlanTab from "@/components/JobDetail/PlanTab";
 import ReportTab from "@/components/JobDetail/ReportTab";
 import { StatusBadge } from "@/components/JobDetail/StatusBadge";
+import TrustReportTab from "@/components/JobDetail/TrustReportTab";
 import {
   POLLING_STATUSES,
   TAB_CONTENT_HEIGHT,
@@ -201,10 +203,16 @@ export default function JobDetailPage(): React.ReactElement {
             <TabsTrigger value="lineage" className="cursor-pointer">
               Lineage
             </TabsTrigger>
+            <TabsTrigger value="trust" className="cursor-pointer">
+              Trust Report
+            </TabsTrigger>
+            <TabsTrigger value="history" className="cursor-pointer">
+              History
+            </TabsTrigger>
           </TabsList>
 
           <div className="ml-auto flex items-center gap-2">
-            {activeTab !== "lineage" && (
+            {activeTab !== "lineage" && activeTab !== "trust" && activeTab !== "history" && (
               <Button
                 size="sm"
                 variant="secondary"
@@ -290,9 +298,20 @@ export default function JobDetailPage(): React.ReactElement {
           <TabsContent value="lineage" className="mt-0 flex-1 min-h-0">
             <LineageTab jobId={id} />
           </TabsContent>
+
+          <TabsContent value="trust" className="mt-0 flex-1 min-h-0">
+            <TrustReportTab jobId={id} jobStatus={job?.status ?? "queued"} />
+          </TabsContent>
+
+          <TabsContent value="history" className="mt-0 flex-1 min-h-0 overflow-y-auto">
+            <div className="px-4 py-4">
+              <h2 className="text-sm font-semibold text-foreground mb-4">Refinement History</h2>
+              <ChangelogFeed jobId={id} />
+            </div>
+          </TabsContent>
         </div>
 
-        {activeTab !== "lineage" && (
+        {activeTab !== "lineage" && activeTab !== "trust" && activeTab !== "history" && (
           <VersionHistoryRail
             jobId={id}
             tab={activeTab as "plan" | "editor" | "report"}

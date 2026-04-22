@@ -6,11 +6,35 @@ import logging
 import re
 from typing import TYPE_CHECKING, Any
 
-from src.worker.engine.models import BlockType, GeneratedBlock, JobContext, SASBlock
-from src.worker.engine.stub_generator import StubGenerator
+from src.worker.engine.models import (
+    BlockPlan,
+    BlockType,
+    GeneratedBlock,
+    JobContext,
+    SASBlock,
+    TranslationStrategy,
+)
+
+# Block types that the GenericProcAgent handles (everything that isn't DATA/SQL/SORT)
+_GENERIC_PROC_TYPES: frozenset[BlockType] = frozenset(
+    {
+        BlockType.PROC_IML,
+        BlockType.PROC_FCMP,
+        BlockType.PROC_MEANS,
+        BlockType.PROC_FREQ,
+        BlockType.PROC_TRANSPOSE,
+        BlockType.PROC_IMPORT,
+        BlockType.PROC_EXPORT,
+        BlockType.PROC_PRINT,
+        BlockType.PROC_CONTENTS,
+        BlockType.PROC_DATASETS,
+        BlockType.PROC_OPTMODEL,
+        BlockType.PROC_UNKNOWN,
+    }
+)
 
 if TYPE_CHECKING:
-    pass
+    from src.worker.engine.stub_generator import StubGenerator
 
 logger = logging.getLogger("src.worker.engine.router")
 
@@ -189,6 +213,7 @@ class TranslationRouter:
         data_step_agent: Translator for DATA_STEP blocks.
         proc_agent: Translator for PROC_SQL blocks.
         stub_generator: Translator for UNTRANSLATABLE blocks.
+        generic_proc_agent: Translator for all other PROC_* block types.
     """
 
     def __init__(
@@ -196,19 +221,29 @@ class TranslationRouter:
         data_step_agent: Any,
         proc_agent: Any,
         stub_generator: StubGenerator,
+        generic_proc_agent: Any | None = None,
     ) -> None:
         """Initialise the router with pre-constructed translator instances."""
         self._data_step_agent = data_step_agent
         self._proc_agent = proc_agent
         self._stub_generator = stub_generator
+        self._generic_proc_agent = generic_proc_agent
         self._sort_helper = _ProcSortHelper()
         self._simple_copy = _SimpleCopyHelper()
 
-    def route(self, block: SASBlock) -> Any:
+    def route(self, block: SASBlock, block_plan: BlockPlan | None = None) -> Any:
         """Return the translator responsible for *block*.
+
+        When a *block_plan* is provided, strategy-based overrides are applied
+        before falling through to the block_type dispatch:
+        - ``manual`` / ``manual_ingestion`` → stub generator (human must write code)
+        - ``skip`` → stub generator (block is intentionally omitted)
+        - all other strategies → normal block_type routing
 
         Args:
             block: The SAS block to route.
+            block_plan: Optional per-block plan from the MigrationPlan. When
+                present the plan strategy may override block-type routing.
 
         Returns:
             The translator instance that should handle the block.
@@ -216,6 +251,15 @@ class TranslationRouter:
         Raises:
             ValueError: When block.block_type is not a recognised BlockType value.
         """
+        if block_plan is not None:
+            match block_plan.strategy:
+                case TranslationStrategy.MANUAL | TranslationStrategy.MANUAL_INGESTION:
+                    return self._stub_generator
+                case TranslationStrategy.SKIP:
+                    return self._stub_generator
+                case _:
+                    pass  # translate / translate_with_review / translate_best_effort fall through
+
         match block.block_type:
             case BlockType.DATA_STEP:
                 if _SimpleCopyHelper.is_simple(block):
@@ -227,5 +271,13 @@ class TranslationRouter:
                 return self._sort_helper
             case BlockType.UNTRANSLATABLE:
                 return self._stub_generator
+            case _ if block.block_type in _GENERIC_PROC_TYPES:
+                if self._generic_proc_agent is not None:
+                    return self._generic_proc_agent
+                # Fallback: stub (only if GenericProcAgent was not injected)
+                return self._stub_generator
             case _:
-                raise ValueError(f"Unhandled block type: {block.block_type!r}")
+                # Unknown future block types → generic proc agent or stub
+                if self._generic_proc_agent is not None:
+                    return self._generic_proc_agent
+                return self._stub_generator

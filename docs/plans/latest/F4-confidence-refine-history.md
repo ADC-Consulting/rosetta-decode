@@ -14,18 +14,18 @@ Move from binary "translate vs manual" to a graded, confidence-aware translation
 
 ## Subtasks
 
-- [ ] S1 — Fix confidence capture in translation agents
-- [ ] S2 — Planner-driven routing
-- [ ] S3 — Reconciliation overrides confidence + risk propagation
-- [ ] S4 — Block-level revision table (DB migration)
-- [ ] S5 — Block-level refine + revision API endpoints
-- [ ] S6 — Job-level changelog API
-- [ ] S7 — Tiered trust report API
-- [ ] S8 — Frontend types + API client
-- [ ] S9 — Frontend: PlanTab prioritized review queue
-- [ ] S10 — Frontend: per-block refine dialog + revision history drawer
-- [ ] S11 — Frontend: TrustReportTab + ChangelogFeed
-- [ ] S12 — Tests (backend)
+- [x] S1 — Fix confidence capture in translation agents
+- [x] S2 — Planner-driven routing
+- [x] S3 — Reconciliation overrides confidence + risk propagation
+- [x] S4 — Block-level revision table (DB migration)
+- [x] S5 — Block-level refine + revision API endpoints
+- [x] S6 — Job-level changelog API
+- [x] S7 — Tiered trust report API
+- [x] S8 — Frontend types + API client
+- [x] S9 — Frontend: PlanTab prioritized review queue
+- [x] S10 — Frontend: per-block refine dialog + revision history drawer
+- [x] S11 — Frontend: TrustReportTab + ChangelogFeed
+- [ ] S12 — Tests (backend) — unit tests added per subtask; reconciliation integration tests deferred
 
 ---
 

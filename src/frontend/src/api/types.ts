@@ -86,6 +86,7 @@ export interface JobLineageResponse {
 export type TranslationStrategy =
   | "translate"
   | "translate_with_review"
+  | "translate_best_effort"
   | "manual_ingestion"
   | "manual"
   | "skip";
@@ -203,4 +204,98 @@ export interface SaveVersionResponse {
   job_id: string;
   tab: string;
   created_at: string;
+}
+
+// ── F4: Block revisions ───────────────────────────────────────────────────────
+
+export interface BlockRevision {
+  id: string;
+  job_id: string;
+  block_id: string;
+  revision_number: number;
+  python_code: string;
+  strategy: TranslationStrategy;
+  confidence: string;
+  uncertainty_notes: string[];
+  reconciliation_status: "pass" | "fail" | null;
+  trigger: string;
+  notes: string | null;
+  hint: string | null;
+  diff_vs_previous: string | null;
+  created_at: string;
+}
+
+export interface BlockRevisionHistory {
+  block_id: string;
+  revisions: BlockRevision[];
+}
+
+export interface BlockRefineRequest {
+  notes?: string | null;
+  hint?: string | null;
+}
+
+export interface BlockRefineResponse {
+  block_id: string;
+  revision_number: number;
+  confidence: string;
+  reconciliation_status: "pass" | "fail" | null;  python_code: string | null;}
+
+// ── F4: Changelog ─────────────────────────────────────────────────────────────
+
+export interface ChangelogEntry {
+  id: string;
+  block_id: string;
+  revision_number: number;
+  trigger: string;
+  strategy: TranslationStrategy;
+  confidence: string;
+  reconciliation_status: "pass" | "fail" | null;
+  notes: string | null;
+  hint: string | null;
+  diff_vs_previous: string | null;
+  created_at: string;
+}
+
+export interface JobChangelogResponse {
+  job_id: string;
+  entries: ChangelogEntry[];
+}
+
+// ── F4: Trust report ─────────────────────────────────────────────────────────
+
+export interface TrustReportBlock {
+  block_id: string;
+  source_file: string;
+  start_line: number;
+  block_type: string;
+  strategy: TranslationStrategy;
+  self_confidence: string;
+  verified_confidence: string | null;
+  reconciliation_status: "pass" | "fail" | null;
+  needs_attention: boolean;
+  blast_radius: number | null;
+}
+
+export interface TrustReportFile {
+  source_file: string;
+  total_blocks: number;
+  auto_verified: number;
+  needs_review: number;
+  manual_todo: number;
+  failed_reconciliation: number;
+}
+
+export interface TrustReportResponse {
+  job_id: string;
+  lineage_available: boolean;
+  overall_confidence: "high" | "medium" | "low" | "unknown";
+  total_blocks: number;
+  auto_verified: number;
+  needs_review: number;
+  manual_todo: number;
+  failed_reconciliation: number;
+  files: TrustReportFile[];
+  blocks: TrustReportBlock[];
+  review_queue: TrustReportBlock[];
 }
