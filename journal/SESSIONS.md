@@ -6,6 +6,48 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-04-22 — Fix overall confidence metric + bar width (UX polish)
+
+**Duration:** ~1h | **Focus:** Confidence accuracy — align overall % with per-block LLM scores
+
+### Done
+
+- **Backend**: `_overall_confidence()` now takes the **average LLM `confidence_score`** across all `block_plans` (was using reconciliation `auto_verified/total` ratio — different metric, caused overall to show 40% while blocks showed 100%)
+- **Backend**: `TrustReportResponse` gains `overall_confidence_score: float` (0.0–1.0) so frontend can use the exact value
+- **Frontend**: `PlanTab.tsx` confidence bar width now reflects the actual `overall_confidence_score * 100` (not a hardcoded band-to-% mapping)
+- **Frontend**: "Overall Confidence" label has dotted underline + browser tooltip explaining the metric; sub-label "avg of N blocks" added below bar
+- **Lint/type fixes**: sorted `plain_english` import in `worker/main.py`; fixed mypy errors (`result.output` cast, `str | None` → `str or ""`); fixed `_make_fallback_plan` return type; fixed `__init__.py` `__all__` line length; ESLint unused-var fixes in `BlockPlanTable.tsx`, `EditorTab.tsx`, `PlanTab.tsx`
+- **Coverage**: added `test_overall_confidence_labels` and `test_plain_english_agent_generate_returns_doc` tests to close 89%→90% gap
+- **All 7 gates GREEN** (ruff-check, ruff-format, mypy, pytest+coverage ≥90%, tsc, frontend-lint, frontend-build)
+
+### Decisions
+
+- Overall confidence metric is now **average LLM self-reported score** (consistent with per-block display), not reconciliation ratio. Reconciliation metrics are still shown separately (auto_verified / needs_review / manual_todo counts).
+
+### Open Questions
+
+- none
+
+### Next Session — Start Here
+
+1. `make docker-build && docker compose up` — verify worker container starts (prior session noted possible `ModuleNotFoundError: No module named 'src.worker'`)
+2. Smoke-test F4 end-to-end: upload SAS file, confirm overall confidence bar reflects actual block scores
+
+### Files Touched
+
+- `src/backend/api/routes/jobs.py`
+- `src/backend/api/schemas.py`
+- `src/worker/main.py`
+- `src/worker/engine/agents/plain_english.py`
+- `src/worker/engine/agents/__init__.py`
+- `src/frontend/src/api/types.ts`
+- `src/frontend/src/components/JobDetail/PlanTab.tsx`
+- `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
+- `src/frontend/src/components/JobDetail/EditorTab.tsx`
+- `tests/test_changelog_trust_report.py`
+
+---
+
 ## 2026-04-22 — F4: Graded confidence-aware translation, per-block refine loop, change history
 
 **Duration:** ~4h | **Focus:** Full F4 feature — S1–S11 implemented, all 7 gates green
