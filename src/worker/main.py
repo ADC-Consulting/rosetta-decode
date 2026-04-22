@@ -39,43 +39,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def _make_fallback_plan(context: JobContext) -> Any:  # returns MigrationPlan, imported locally
-    """Generate a basic fallback migration plan when the planning agent fails.
-
-    Args:
-        context: The job context with parsed blocks.
-
-    Returns:
-        A MigrationPlan with one entry per block, all marked as translate/high-risk.
-    """
-    from src.worker.engine.models import BlockPlan, BlockRisk, MigrationPlan, TranslationStrategy
-
-    block_plans = [
-        BlockPlan(
-            block_id=f"{block.source_file}:{block.start_line}",
-            source_file=block.source_file,
-            start_line=block.start_line,
-            block_type=block.block_type.value,
-            strategy=TranslationStrategy.TRANSLATE,
-            risk=BlockRisk.HIGH,
-            rationale="Auto-generated fallback plan (planning agent unavailable).",
-            estimated_effort="unknown",
-            confidence_score=0.0,
-            confidence_band="very_low",
-            detected_features=[],
-        )
-        for block in context.blocks
-    ]
-    return MigrationPlan(
-        summary="Auto-generated fallback plan due to planning agent unavailability.",
-        block_plans=block_plans,
-        overall_risk=BlockRisk.HIGH,
-        recommended_review_blocks=[bp.block_id for bp in block_plans],
-        cross_file_dependencies=[],
-        risk_explanation="Planning agent failed; all blocks marked for manual review.",
-    )
-
-
 def _make_session_factory() -> async_sessionmaker[AsyncSession]:
     """Create an async SQLAlchemy session factory from settings."""
     engine = create_async_engine(worker_settings.database_url, pool_pre_ping=True)
@@ -206,11 +169,8 @@ class JobOrchestrator:
             plan = await self._migration_planner.plan(context)
             context = context.model_copy(update={"migration_plan": plan})
         except Exception as exc:
-            logger.warning(
-                "Job %s: migration planning failed, using fallback plan: %s", job.id, exc
-            )
-            fallback_plan = _make_fallback_plan(context)
-            context = context.model_copy(update={"migration_plan": fallback_plan})
+            logger.error("Job %s: migration planning failed: %s", job.id, exc)
+            raise RuntimeError(f"Migration planning failed: {exc}") from exc
 
         # Steps 4-7: Translate + two-phase refinement
         prior_python_code: str | None = None

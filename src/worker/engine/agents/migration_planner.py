@@ -73,8 +73,12 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
       (DATA_STEP | PROC_SQL | PROC_SORT | UNTRANSLATABLE), input_datasets, output_datasets.
 
     Your tasks:
-    1. Write a 2-3 sentence plain-English summary of what this SAS codebase does as a
-       whole, at a business level (not technical). Assume the reader is a business analyst.
+    1. Write 1-2 sentences describing what this SAS codebase does at a business level.
+       Write as if explaining to a non-technical business stakeholder — what business
+       process does it support, what decision or report does it produce? Do NOT mention
+       SAS, Python, datasets, files, code, or any technical terms. Focus solely on the
+       business outcome (e.g. "This pipeline calculates monthly revenue by region and
+       flags anomalies for the finance team's risk review.").
     2. For each block, assign:
        - strategy: one of the values below (use exactly these strings).
 
@@ -264,16 +268,22 @@ def _build_migration_plan(result: PlannerResult) -> MigrationPlan:
     """
     block_plans: list[BlockPlan] = []
     for bp in result.block_plans:
+        strategy = TranslationStrategy(bp.get("strategy", "translate"))
+        block_type = bp.get("block_type", "")
+        detected_features: list[str] = bp.get("detected_features") or []
+        if strategy == TranslationStrategy.MANUAL and not detected_features:
+            detected_features = [block_type] if block_type else ["UNSUPPORTED"]
         block_plans.append(
             BlockPlan(
                 block_id=bp.get("block_id", ""),
                 source_file=bp.get("source_file", ""),
                 start_line=int(bp.get("start_line", 1)),
-                block_type=bp.get("block_type", ""),
-                strategy=TranslationStrategy(bp.get("strategy", "translate")),
+                block_type=block_type,
+                strategy=strategy,
                 risk=BlockRisk(bp.get("risk", "low")),
                 rationale=bp.get("rationale", ""),
                 estimated_effort=bp.get("estimated_effort", "low"),
+                detected_features=detected_features,
             )
         )
 
