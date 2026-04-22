@@ -10,7 +10,7 @@ import zipfile
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -63,17 +63,25 @@ router = APIRouter()
 
 @router.get("/jobs", response_model=JobListResponse)
 async def list_jobs(
+    status: str | None = Query(default=None),
     session: AsyncSession = Depends(get_async_session),
 ) -> JobListResponse:
     """Return a summary list of all migration jobs, newest first.
 
     Args:
+        status: Optional comma-separated list of statuses to filter by
+            (e.g. ``proposed,accepted,done``).
         session: Injected async database session.
 
     Returns:
         JobListResponse containing a list of JobSummary entries.
     """
-    result = await session.execute(select(Job).order_by(Job.created_at.desc()))
+    query = select(Job).order_by(Job.created_at.desc())
+    if status is not None:
+        statuses = [s.strip() for s in status.split(",") if s.strip()]
+        if statuses:
+            query = query.where(Job.status.in_(statuses))
+    result = await session.execute(query)
     jobs = result.scalars().all()
     return JobListResponse(
         jobs=[

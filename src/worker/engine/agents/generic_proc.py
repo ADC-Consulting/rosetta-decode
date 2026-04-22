@@ -66,8 +66,9 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
     The target environment has: PySpark, pandas, numpy, pyarrow, scipy, scikit-learn, statsmodels,
     sqlalchemy, duckdb, matplotlib.
     PREFER PySpark for all data transformations. Fall back to pandas/numpy only when PySpark
-    cannot handle the specific construct. The code must run in a Databricks notebook (PySpark
-    native) or plain Python 3.12 environment without SAS.
+    cannot handle the specific construct.
+    The code must run in a Databricks notebook (PySpark native) or plain Python 3.12 environment
+    without SAS.
 
     Your job is to translate ANY SAS PROC block into idiomatic Python.
     DEFAULT ASSUMPTION: translation is POSSIBLE. Only choose strategy="manual" when the
@@ -95,9 +96,9 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
        PROC IMPORT / PROC EXPORT file I/O only. Emit a PySpark read/write shell with TODO comments.
        Example:
          # TODO: verify file path, format, and schema
-          df_output = spark.read.csv(
-              "<infile_path>", header=True, inferSchema=True
-          )  # SAS: <file>:<line>
+         df_output = spark.read.csv(  # SAS: <file>:<line>
+             "<infile_path>", header=True, inferSchema=True
+         )
          # pandas fallback: df_output = pd.read_csv("<infile_path>")
 
     4. "manual"

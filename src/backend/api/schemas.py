@@ -432,3 +432,31 @@ class TrustReportResponse(BaseModel):
     files: list[TrustReportFile]
     blocks: list[TrustReportBlock]  # sorted by needs_attention DESC, then blast_radius DESC
     review_queue: list[TrustReportBlock]  # only needs_attention=True blocks
+
+
+# FE8 — ExplainPage schemas
+
+
+class ExplainMessage(BaseModel):
+    """A single turn in an explain conversation."""
+
+    role: Literal["user", "assistant"]
+    content: str
+
+
+class ExplainJobRequest(BaseModel):
+    """Request body for POST /explain/job."""
+
+    job_id: uuid.UUID
+    question: str
+    messages: list[ExplainMessage] = []
+    context_fields: list[Literal["plan", "doc", "python_code"]] = ["plan", "doc"]
+
+
+class ExplainResponse(BaseModel):
+    """Response body for POST /explain and POST /explain/job."""
+
+    answer: str
+    context_files: list[str] = []
+    tokens_used: int | None = None
+    job_id: uuid.UUID | None = None

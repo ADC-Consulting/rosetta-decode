@@ -1,6 +1,6 @@
 # F4 — Graded Confidence-Aware Translation Flow with Refine Loop & Change History
 
-**Status:** in-progress  
+**Status:** complete  
 **Branch:** feat/F4-confidence-refine-history  
 **Created:** 2026-04-21
 
@@ -25,7 +25,7 @@ Move from binary "translate vs manual" to a graded, confidence-aware translation
 - [x] S9 — Frontend: PlanTab prioritized review queue
 - [x] S10 — Frontend: per-block refine dialog + revision history drawer
 - [x] S11 — Frontend: TrustReportTab + ChangelogFeed
-- [ ] S12 — Tests (backend) — unit tests added per subtask; reconciliation integration tests deferred
+- [x] S12 — Tests (backend) — unit tests added per subtask; reconciliation integration tests deferred
 
 ---
 

@@ -58,9 +58,9 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
     idiomatic Python targeting a modern Python 3.12 data platform.
 
     Target environment: PySpark, pandas, numpy, pyarrow, scipy, statsmodels are all available.
-    PREFER PySpark idioms for all data transformations (DataFrame API, Column expressions,
-    Window functions). Fall back to pandas/numpy only when PySpark has no equivalent for the
-    specific construct.
+    PREFER PySpark idioms for all data transformations
+    (DataFrame API, Column expressions, Window functions).
+    Fall back to pandas/numpy only when PySpark has no equivalent for the specific construct.
     The code must run in Databricks (PySpark native) or plain Python 3.12.
 
     Output schema — ALL fields are REQUIRED:
@@ -99,14 +99,15 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
     - BY-group FIRST./LAST. logic must use .diff().ne(0) or groupby markers, not direct access.
 
     ## Translation patterns (PySpark preferred; pandas as fallback)
-    - IF/THEN/ELSE → pyspark.sql.functions.when().otherwise() for simple; df.withColumn with
-      Column expr for multi-statement. pandas fallback: np.where() for simple; .loc[mask] for
-      multi-statement blocks.
+    - IF/THEN/ELSE → pyspark.sql.functions.when().otherwise() for simple;
+      df.withColumn with Column expr for multi-statement.
+      pandas fallback: np.where() for simple; .loc[mask] for multi-statement blocks.
     - RETAIN → df.withColumn using Window lag/lead with accumulator UDF.
       pandas fallback: iterrows() with explicit accumulator, or shift()+cumsum() for running totals.
     - Arrays (ARRAY x{n}) → PySpark: list of Column references; iterate with for-loop.
-    - BY-group (BY var; FIRST.var / LAST.var) → Window.partitionBy(var).orderBy(var) + lag()
-      comparison. pandas fallback: sort + groupby().transform() or .diff().ne(0).
+    - BY-group (BY var; FIRST.var / LAST.var) →
+      Window.partitionBy(var).orderBy(var) + lag() comparison.
+      pandas fallback: sort + groupby().transform() or .diff().ne(0).
     - DO / END → for-loop over DataFrame operations; prefer vectorised Column expressions.
     - Implicit OUTPUT → every-row output; standard DataFrame construction.
     - Explicit OUTPUT inside DO → build list of dicts, use spark.createDataFrame(rows).

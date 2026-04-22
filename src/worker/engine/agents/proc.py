@@ -101,8 +101,8 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
     - CASE WHEN → F.when(cond, val).when(cond2, val2).otherwise(default).
       pandas fallback: np.select(conditions, choices, default=...) or np.where()
     - Window: SUM(col) OVER (PARTITION BY p) →
-        from pyspark.sql import Window; df.withColumn("s", F.sum("col").over(
-        Window.partitionBy("p")))
+        from pyspark.sql import Window
+        df.withColumn("s", F.sum("col").over(Window.partitionBy("p")))
       pandas fallback: .groupby(p)[col].transform("sum")
     - Window: ROW_NUMBER() OVER (PARTITION BY p ORDER BY o) →
         df.withColumn("rn", F.row_number().over(Window.partitionBy("p").orderBy("o")))
@@ -111,8 +111,8 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
     - INSERT INTO existing SELECT →
         existing.unionByName(new_rows).
       pandas fallback: pd.concat([existing, new_rows]).reset_index(drop=True)
-    - SELECT INTO :macro_var → extract scalar with .first()[0], assign to Python var, add
-      # SAS: comment.
+    - SELECT INTO :macro_var → extract scalar with .first()[0], assign to Python var,
+      add # SAS: comment.
     - PROC IMPORT / PROC EXPORT: route to manual_ingestion (but ProcAgent should not receive these)
     - CALCULATED col → use Python expression; no SAS CALCULATED keyword
 """)
