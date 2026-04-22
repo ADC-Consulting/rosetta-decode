@@ -1,4 +1,5 @@
-import { getJobSources } from "@/api/jobs";
+import { getJobChangelog, getJobSources } from "@/api/jobs";
+import type { ChangelogEntry } from "@/api/types";
 import FileTree from "@/components/FileTree";
 import {
   ResizableHandle,
@@ -13,11 +14,11 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { Editor } from "@monaco-editor/react";
-import { registerSasLanguage } from "./registerSasLanguage";
 import { useQuery } from "@tanstack/react-query";
-import { Lock, Moon, Pencil, Sun } from "lucide-react";
+import { ChevronDown, ChevronUp, Lock, Moon, Pencil, Sun } from "lucide-react";
 import type { editor } from "monaco-editor";
 import { Suspense, useRef, useState } from "react";
+import { registerSasLanguage } from "./registerSasLanguage";
 
 export default function EditorTab({
   jobId,
@@ -34,6 +35,7 @@ export default function EditorTab({
 }): React.ReactElement {
   const [editorDark, setEditorDark] = useState(false);
   const [pythonEditable, setPythonEditable] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const pythonEditorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const monacoTheme = editorDark
     ? { sas: "sas-dark", python: "vs-dark" }
@@ -44,6 +46,12 @@ export default function EditorTab({
     queryKey: ["job", jobId, "sources"],
     queryFn: () => getJobSources(jobId),
     enabled: !!jobId,
+  });
+
+  const { data: changelog } = useQuery({
+    queryKey: ["job", jobId, "changelog"],
+    queryFn: () => getJobChangelog(jobId),
+    enabled: !!jobId && showHistory,
   });
 
   const allPaths = sources ? Object.keys(sources.sources) : [];
@@ -64,6 +72,8 @@ export default function EditorTab({
       : null;
   const rightCode = perFileCode ?? code;
   const rightReadOnly = !pythonEditable;
+  // eslint-disable-next-line react-hooks/purity
+  const renderNow = Date.now();
 
   if (isLoading) {
     return (
@@ -263,6 +273,81 @@ export default function EditorTab({
           </ResizablePanelGroup>
         </ResizablePanel>
       </ResizablePanelGroup>
+
+      {/* History panel */}
+      <div className="shrink-0 border-t border-border">
+        <button
+          onClick={() => setShowHistory((v) => !v)}
+          className="flex items-center gap-1.5 w-full px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors cursor-pointer"
+          aria-expanded={showHistory}
+        >
+          {showHistory ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+          {showHistory ? "Hide history" : "Show history"}
+        </button>
+        {showHistory && (
+          <div className="max-h-56 overflow-y-auto divide-y divide-border">
+            {!changelog && (
+              <p className="px-3 py-3 text-xs text-muted-foreground">
+                Loading…
+              </p>
+            )}
+            {changelog && changelog.entries.length === 0 && (
+              <p className="px-3 py-3 text-xs text-muted-foreground">
+                No history yet.
+              </p>
+            )}
+            {changelog &&
+              [...changelog.entries]
+                .sort(
+                  (a: ChangelogEntry, b: ChangelogEntry) =>
+                    new Date(b.created_at).getTime() -
+                    new Date(a.created_at).getTime(),
+                )
+                .map((entry: ChangelogEntry) => {
+                  const isHuman =
+                    entry.trigger === "human-refine" ||
+                    entry.trigger === "restore";
+                  const icon = isHuman ? "👤" : "🤖";
+                  const shortBlock = entry.block_id.replace(/:\d+$/, "");
+                  const diffMs =
+                    renderNow - new Date(entry.created_at).getTime();
+                  const diffMin = Math.floor(diffMs / 60_000);
+                  const relTime =
+                    diffMin < 1
+                      ? "just now"
+                      : diffMin < 60
+                        ? `${diffMin}m ago`
+                        : diffMin < 1440
+                          ? `${Math.floor(diffMin / 60)}h ago`
+                          : `${Math.floor(diffMin / 1440)}d ago`;
+                  return (
+                    <div
+                      key={entry.id}
+                      className="flex items-center gap-2 px-3 py-2 text-xs hover:bg-muted/30"
+                    >
+                      <span aria-hidden>{icon}</span>
+                      <span className="font-mono text-muted-foreground truncate max-w-40">
+                        {shortBlock}
+                      </span>
+                      {isHuman && (
+                        <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold bg-amber-100 text-amber-800">
+                          User modified
+                        </span>
+                      )}
+                      {entry.notes && (
+                        <span className="text-muted-foreground/70 truncate max-w-30">
+                          {entry.notes}
+                        </span>
+                      )}
+                      <span className="ml-auto text-muted-foreground/60 tabular-nums shrink-0">
+                        {relTime}
+                      </span>
+                    </div>
+                  );
+                })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

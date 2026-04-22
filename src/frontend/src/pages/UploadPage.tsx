@@ -530,9 +530,9 @@ export default function UploadPage() {
 
           <div className="flex items-start justify-between gap-4">
             <div className="space-y-1">
-              <p className="text-sm font-semibold text-foreground">
+              {/* <p className="text-sm font-semibold text-foreground">
                 Migration submitted
-              </p>
+              </p> */}
               {(manifest.name ?? migrationName) ? (
                 <p className="text-base font-semibold text-foreground">
                   {manifest.name ?? migrationName}

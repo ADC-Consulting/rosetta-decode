@@ -6,7 +6,7 @@
 import logging
 import textwrap
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 from pydantic_ai.models import KnownModelName
 from pydantic_ai.models.openai import OpenAIChatModel
@@ -25,6 +25,11 @@ class DataStepResult(BaseModel):
     """Structured output from the DataStepAgent LLM call."""
 
     python_code: str
+    strategy_used: str = "translate"
+    confidence_score: float = 0.9
+    confidence_band: str = "high"
+    uncertainty_notes: list[str] = Field(default_factory=list)
+    assumptions: list[str] = Field(default_factory=list)
 
 
 # ── Error ─────────────────────────────────────────────────────────────────────
@@ -50,34 +55,68 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
     # agent: DataStepAgent
 
     You are a SAS-to-Python migration engineer. Translate the SAS DATA step below into
-    idiomatic pandas code.
+    idiomatic Python targeting a modern Python 3.12 data platform.
 
-    Rules:
-    - Emit only Python code. No prose. No markdown fences.
-    - Return: {"python_code": "...", "confidence": "high|medium|low", "uncertainty_notes": [...]}
-    - Set confidence: "high" if certain; "medium" if pattern applied but logic is ambiguous;
-      "low" if one or more constructs cannot be confidently translated.
-    - For each uncertain construct, add to uncertainty_notes a short human-readable note.
+    Target environment: PySpark, pandas, numpy, pyarrow, scipy, statsmodels are all available.
+    PREFER PySpark idioms for all data transformations (DataFrame API, Column expressions,
+    Window functions). Fall back to pandas/numpy only when PySpark has no equivalent for the
+    specific construct.
+    The code must run in Databricks (PySpark native) or plain Python 3.12.
+
+    Output schema — ALL fields are REQUIRED:
+    {
+      "python_code": "<translated Python source>",
+      "strategy_used": "translate|translate_with_review",
+      "confidence_score": <float 0.0-1.0>,
+      "confidence_band": "high|medium|low|very_low",
+      "uncertainty_notes": ["<one sentence per uncertain construct>"],
+      "assumptions": ["<SAS semantic quirk this translation relies on>"]
+    }
+    - Emit only the JSON object. No prose. No markdown fences.
+    - confidence_score: 1.0=certain translation, 0.0=highly uncertain. Required.
+      1.00-0.85 high / 0.84-0.65 medium / 0.64-0.40 low / 0.39-0.00 very_low
+    - confidence_band: derived from confidence_score (see above). Required.
+    - uncertainty_notes: REQUIRED list (may be empty [] for high confidence). Each entry must be
+      one sentence naming the specific SAS construct or pattern that may not translate cleanly.
+    - assumptions: list SAS semantic quirks your translation relies on.
+    - strategy_used: "translate" or "translate_with_review" (DATA steps are always translated).
     - For low/medium confidence constructs, insert before the relevant lines:
         # UNCERTAIN: <reason> — human review required
     - Add # SAS: <source_file>:<line_number> after each logical section.
-    - Use pd.DataFrame and numpy only. No PySpark, no SQL, no pandasql.
     - Preserve SAS column names exactly, lowercased.
-    - Treat each SAS dataset name as an already-loaded pd.DataFrame variable (lowercased).
+    - Treat each SAS dataset name as an already-loaded Spark DataFrame variable (lowercased).
+      If falling back to pandas, treat as pd.DataFrame.
     - Macro variables are pre-resolved; use their literal values directly.
 
-    Translation patterns:
-    - IF/THEN/ELSE → np.where() for simple; .loc[mask] for multi-statement blocks.
-    - RETAIN → iterrows() with explicit accumulator, or shift()+cumsum() for running totals.
-    - Arrays (ARRAY x{n}) → Python list of column names; iterate with for-loop.
-    - BY-group (BY var; FIRST.var / LAST.var) → sort + groupby().transform() or .diff().ne(0).
-    - DO / END → for-loop or vectorised; prefer vectorised.
-    - Implicit OUTPUT → every-row output; use standard DataFrame construction.
-    - Explicit OUTPUT inside DO → build list of dicts, convert with pd.DataFrame(rows).
-    - MERGE with BY → df.merge(..., how="outer") + sort_values(BY).
-    - KEEP / DROP → df[kept_cols] or df.drop(columns=[...]).
+    ## SAS semantic preservation rules (MUST follow)
+    - SAS std() = sample std (ddof=1). NumPy default is ddof=0 — always specify ddof=1
+      when computing standard deviations.
+    - SAS date origin = 1 January 1960.
+      Conversion: pd.Timestamp('1960-01-01') + pd.to_timedelta(sas_date_value, unit='D')
+    - SAS missing numeric = . (propagates as NaN in pandas — correct by default).
+    - SAS special missings .A-.Z are not representable in float64.
+      Add to uncertainty_notes when present in the source.
+    - BY-group FIRST./LAST. logic must use .diff().ne(0) or groupby markers, not direct access.
+
+    ## Translation patterns (PySpark preferred; pandas as fallback)
+    - IF/THEN/ELSE → pyspark.sql.functions.when().otherwise() for simple; df.withColumn with
+      Column expr for multi-statement. pandas fallback: np.where() for simple; .loc[mask] for
+      multi-statement blocks.
+    - RETAIN → df.withColumn using Window lag/lead with accumulator UDF.
+      pandas fallback: iterrows() with explicit accumulator, or shift()+cumsum() for running totals.
+    - Arrays (ARRAY x{n}) → PySpark: list of Column references; iterate with for-loop.
+    - BY-group (BY var; FIRST.var / LAST.var) → Window.partitionBy(var).orderBy(var) + lag()
+      comparison. pandas fallback: sort + groupby().transform() or .diff().ne(0).
+    - DO / END → for-loop over DataFrame operations; prefer vectorised Column expressions.
+    - Implicit OUTPUT → every-row output; standard DataFrame construction.
+    - Explicit OUTPUT inside DO → build list of dicts, use spark.createDataFrame(rows).
+    - MERGE with BY → df.join(right, on=key, how="outer").
+      pandas fallback: df.merge(..., how="outer") + sort_values(BY).
+    - KEEP / DROP → df.select([kept_cols]) or df.drop(col).
     - LENGTH / FORMAT / INFORMAT → comment out with # SAS: preserved as metadata.
-    - SET with multiple datasets → pd.concat([...], ignore_index=True).
+    - SET with multiple datasets → df1.unionByName(df2).
+      pandas fallback: pd.concat([...], ignore_index=True).
+    - CALL SYMPUT/SYMPUTX → assign to a Python variable; add uncertainty note.
 
     Assign final output to lowercased OUTPUT dataset name (dots → underscores).
 """)
@@ -198,6 +237,12 @@ class DataStepAgent:
             return GeneratedBlock(
                 source_block=block,
                 python_code=output.python_code,
+                confidence=output.confidence_band,
+                confidence_score=output.confidence_score,
+                confidence_band=output.confidence_band,
+                uncertainty_notes=output.uncertainty_notes,
+                assumptions=output.assumptions,
+                strategy_used=output.strategy_used,
                 is_untranslatable=False,
             )
         except Exception as e:

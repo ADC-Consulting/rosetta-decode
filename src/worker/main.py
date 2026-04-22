@@ -19,6 +19,7 @@ from src.worker.engine.agents.documentation import DocumentationAgent
 from src.worker.engine.agents.failure_interpreter import FailureInterpreterAgent
 from src.worker.engine.agents.lineage_enricher import LineageEnricherAgent
 from src.worker.engine.agents.migration_planner import MigrationPlannerAgent
+from src.worker.engine.agents.plain_english import PlainEnglishAgent
 from src.worker.engine.agents.proc import ProcAgent
 from src.worker.engine.codegen import CodeGenerator
 from src.worker.engine.doc_generator import DocGenerator
@@ -36,6 +37,43 @@ logging.basicConfig(
     stream=sys.stdout,
 )
 logger = logging.getLogger(__name__)
+
+
+def _make_fallback_plan(context: JobContext) -> Any:  # returns MigrationPlan, imported locally
+    """Generate a basic fallback migration plan when the planning agent fails.
+
+    Args:
+        context: The job context with parsed blocks.
+
+    Returns:
+        A MigrationPlan with one entry per block, all marked as translate/high-risk.
+    """
+    from src.worker.engine.models import BlockPlan, BlockRisk, MigrationPlan, TranslationStrategy
+
+    block_plans = [
+        BlockPlan(
+            block_id=f"{block.source_file}:{block.start_line}",
+            source_file=block.source_file,
+            start_line=block.start_line,
+            block_type=block.block_type.value,
+            strategy=TranslationStrategy.TRANSLATE,
+            risk=BlockRisk.HIGH,
+            rationale="Auto-generated fallback plan (planning agent unavailable).",
+            estimated_effort="unknown",
+            confidence_score=0.0,
+            confidence_band="very_low",
+            detected_features=[],
+        )
+        for block in context.blocks
+    ]
+    return MigrationPlan(
+        summary="Auto-generated fallback plan due to planning agent unavailability.",
+        block_plans=block_plans,
+        overall_risk=BlockRisk.HIGH,
+        recommended_review_blocks=[bp.block_id for bp in block_plans],
+        cross_file_dependencies=[],
+        risk_explanation="Planning agent failed; all blocks marked for manual review.",
+    )
 
 
 def _make_session_factory() -> async_sessionmaker[AsyncSession]:
@@ -79,6 +117,7 @@ class JobOrchestrator:
         self._reconciler = ReconciliationService()
         self._failure_interpreter = FailureInterpreterAgent()
         self._doc_agent = DocumentationAgent()
+        self._plain_english_agent = PlainEnglishAgent()
         self._expander = MacroExpander()
         self._migration_planner = MigrationPlannerAgent()
         self._lineage_enricher = LineageEnricherAgent()
@@ -162,12 +201,16 @@ class JobOrchestrator:
                 update={"risk_flags": context.risk_flags + expansion_warnings}
             )
 
-        # Step 3.5: Migration planning (best-effort)
+        # Step 3.5: Migration planning (best-effort with fallback)
         try:
             plan = await self._migration_planner.plan(context)
             context = context.model_copy(update={"migration_plan": plan})
         except Exception as exc:
-            logger.warning("Job %s: migration planning failed, continuing: %s", job.id, exc)
+            logger.warning(
+                "Job %s: migration planning failed, using fallback plan: %s", job.id, exc
+            )
+            fallback_plan = _make_fallback_plan(context)
+            context = context.model_copy(update={"migration_plan": fallback_plan})
 
         # Steps 4-7: Translate + two-phase refinement
         prior_python_code: str | None = None
@@ -213,10 +256,24 @@ class JobOrchestrator:
         # Step 8: Documentation
         recon_summary = _recon_summary(report)
         doc: str | None = None
-        try:
-            doc = await self._doc_agent.generate(context, python_code, recon_summary)
-        except Exception as exc:
-            logger.warning("Job %s: doc generation failed: %s", job.id, exc)
+        doc_result, plain_english = await asyncio.gather(
+            self._doc_agent.generate(context, python_code, recon_summary or ""),
+            self._plain_english_agent.generate(context, python_code, recon_summary or ""),
+            return_exceptions=True,
+        )
+        if isinstance(doc_result, str):
+            doc = doc_result
+        else:
+            logger.warning("Job %s: doc generation failed: %s", job.id, doc_result)
+        plain_english_text: str | None = (
+            plain_english
+            if isinstance(plain_english, str)
+            else (context.migration_plan.summary if context.migration_plan else None)
+        )
+        if not isinstance(plain_english, str):
+            logger.warning("Job %s: plain-English generation failed: %s", job.id, plain_english)
+        if plain_english_text:
+            report = {**(report or {}), "non_technical_doc": plain_english_text}
 
         # Step 9: Lineage extraction + merge enriched fields (best-effort)
         lineage_data = None

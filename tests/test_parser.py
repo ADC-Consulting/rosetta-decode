@@ -107,26 +107,29 @@ def test_dependency_ordering(parser: SASParser) -> None:
     assert data_idx < sql_idx, "DATA step must precede the PROC SQL that consumes its output"
 
 
-# ── Untranslatable construct flagging ─────────────────────────────────────────
+# ── PROC type detection ───────────────────────────────────────────────────────
 
 
-def test_flags_unsupported_proc(parser: SASParser) -> None:
+def test_flags_unsupported_proc_as_proc_unknown(parser: SASParser) -> None:
+    """Unfamiliar PROCs should yield PROC_UNKNOWN, not UNTRANSLATABLE."""
     sas = "PROC MIXED;\n    MODEL y = x;\nRUN;\n"
     result = parser.parse({"test.sas": sas})
     blocks = result.blocks
-    untrans = [b for b in blocks if b.block_type == BlockType.UNTRANSLATABLE]
-    assert len(untrans) == 1
-    assert untrans[0].untranslatable_reason is not None
-    assert "MIXED" in untrans[0].untranslatable_reason
+    unknown = [b for b in blocks if b.block_type == BlockType.PROC_UNKNOWN]
+    assert len(unknown) == 1
+    assert "MIXED" in unknown[0].raw_sas.upper()
+    # untranslatable_reason is NOT set on PROC_UNKNOWN blocks
+    assert unknown[0].untranslatable_reason is None
 
 
 def test_untranslatable_preserves_raw_sas(parser: SASParser) -> None:
     sas = "PROC REPORT DATA=src;\n    COLUMN a b;\nRUN;\n"
     result = parser.parse({"test.sas": sas})
     blocks = result.blocks
-    untrans = [b for b in blocks if b.block_type == BlockType.UNTRANSLATABLE]
-    assert len(untrans) == 1
-    assert "PROC REPORT" in untrans[0].raw_sas
+    # PROC REPORT → PROC_UNKNOWN (not UNTRANSLATABLE)
+    unknown = [b for b in blocks if b.block_type == BlockType.PROC_UNKNOWN]
+    assert len(unknown) == 1
+    assert "PROC REPORT" in unknown[0].raw_sas
 
 
 # ── Sample file smoke test ────────────────────────────────────────────────────

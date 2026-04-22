@@ -1,8 +1,9 @@
 """Pydantic models shared across the migration engine (parser → LLM → codegen)."""
 
 from enum import StrEnum
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class BlockType(StrEnum):
@@ -11,7 +12,19 @@ class BlockType(StrEnum):
     DATA_STEP = "DATA_STEP"
     PROC_SQL = "PROC_SQL"
     PROC_SORT = "PROC_SORT"
-    UNTRANSLATABLE = "UNTRANSLATABLE"
+    PROC_IML = "PROC_IML"
+    PROC_FCMP = "PROC_FCMP"
+    PROC_MEANS = "PROC_MEANS"
+    PROC_FREQ = "PROC_FREQ"
+    PROC_TRANSPOSE = "PROC_TRANSPOSE"
+    PROC_IMPORT = "PROC_IMPORT"
+    PROC_EXPORT = "PROC_EXPORT"
+    PROC_PRINT = "PROC_PRINT"
+    PROC_CONTENTS = "PROC_CONTENTS"
+    PROC_DATASETS = "PROC_DATASETS"
+    PROC_OPTMODEL = "PROC_OPTMODEL"
+    PROC_UNKNOWN = "PROC_UNKNOWN"  # parseable body but unfamiliar PROC name
+    UNTRANSLATABLE = "UNTRANSLATABLE"  # genuinely unparsable SAS only
 
 
 class MacroVar(BaseModel):
@@ -80,13 +93,24 @@ class GeneratedBlock(BaseModel):
             Untranslatable blocks contain only a ``# SAS-UNTRANSLATABLE: <reason>``
             comment with no executable code.
         is_untranslatable: True when the block could not be reliably translated.
+        confidence_score: Self-reported LLM confidence, 0.0-1.0.
+        confidence_band: Derived band: "high" ≥0.85, "medium" ≥0.65, "low" ≥0.40,
+            "very_low" <0.40.
+        assumptions: SAS semantic quirks the translation relies on.
+        strategy_used: Actual strategy applied during translation.
     """
 
     source_block: SASBlock
     python_code: str
     is_untranslatable: bool = False
+    # Legacy string confidence kept for backward compat — equals confidence_band
     confidence: str = "high"
+    confidence_score: float = 1.0
+    confidence_band: str = "high"
     uncertainty_notes: list[str] = []
+    assumptions: list[str] = []
+    strategy_used: str = "translate"
+    verified_confidence: str | None = None
 
 
 class ReconciliationReport(BaseModel):
@@ -104,6 +128,7 @@ class TranslationStrategy(StrEnum):
 
     TRANSLATE = "translate"
     TRANSLATE_WITH_REVIEW = "translate_with_review"
+    TRANSLATE_BEST_EFFORT = "translate_best_effort"
     MANUAL_INGESTION = "manual_ingestion"
     MANUAL = "manual"
     SKIP = "skip"
@@ -129,6 +154,9 @@ class BlockPlan(BaseModel):
         risk: Risk level for this block.
         rationale: Explanation of the chosen strategy and risk level.
         estimated_effort: Human-readable effort estimate (e.g. "low", "2h").
+        confidence_score: Planner-estimated confidence, 0.0-1.0.
+        confidence_band: Derived band from confidence_score.
+        detected_features: SAS features detected; REQUIRED non-empty when strategy=manual.
     """
 
     block_id: str
@@ -139,6 +167,18 @@ class BlockPlan(BaseModel):
     risk: BlockRisk
     rationale: str
     estimated_effort: str
+    confidence_score: float = 1.0
+    confidence_band: str = "high"
+    detected_features: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _require_features_for_manual(self) -> "BlockPlan":
+        if self.strategy == TranslationStrategy.MANUAL and not self.detected_features:
+            raise ValueError(
+                f"BlockPlan '{self.block_id}': strategy='manual' requires non-empty"
+                " detected_features"
+            )
+        return self
 
 
 class MigrationPlan(BaseModel):
@@ -157,6 +197,7 @@ class MigrationPlan(BaseModel):
     overall_risk: BlockRisk
     recommended_review_blocks: list[str]
     cross_file_dependencies: list[str]
+    risk_explanation: str = ""
 
 
 class ColumnFlow(BaseModel):
@@ -191,20 +232,66 @@ class MacroUsage(BaseModel):
     used_in_block_id: str
 
 
-class EnrichedLineage(BaseModel):
-    """Full enriched lineage graph produced by the lineage agent.
+class FileNode(BaseModel):
+    """A single SAS source file node in the lineage graph."""
 
-    Attributes:
-        column_flows: All column-level lineage edges across the pipeline.
-        macro_usages: All macro variable usages resolved across blocks.
-        cross_file_edges: Edges that cross file boundaries (serialised as dicts).
-        dataset_summaries: Human-readable summaries keyed by dataset name.
-    """
+    filename: str
+    file_type: Literal["PROGRAM", "MACRO", "AUTOEXEC", "LOG", "OTHER"]
+    blocks: list[str] = Field(default_factory=list)
+    status: Literal["OK", "UNTRANSLATABLE", "ERROR_PRONE"] | None = None
+    status_reason: str | None = None
+
+
+class FileEdge(BaseModel):
+    """A directed dependency edge between two SAS source files."""
+
+    source_file: str
+    target_file: str
+    reason: Literal["INCLUDE", "MACRO_CALL", "READS_DATASET", "WRITES_DATASET"]
+    via_block_id: str
+
+
+class PipelineStep(BaseModel):
+    """A higher-level named pipeline stage grouping files and blocks."""
+
+    step_id: str
+    name: str
+    description: str
+    files: list[str] = Field(default_factory=list)
+    blocks: list[str] = Field(default_factory=list)
+    inputs: list[str] = Field(default_factory=list)
+    outputs: list[str] = Field(default_factory=list)
+
+
+class BlockStatus(BaseModel):
+    """Per-block translation/health status."""
+
+    block_id: str
+    status: Literal["OK", "UNTRANSLATABLE", "ERROR_PRONE"]
+    reason: str | None = None
+
+
+class LogLink(BaseModel):
+    """Links a SAS log file to related source files and blocks."""
+
+    log_file: str
+    related_files: list[str] = Field(default_factory=list)
+    related_blocks: list[str] = Field(default_factory=list)
+    severity: Literal["INFO", "WARNING", "ERROR"]
+
+
+class EnrichedLineage(BaseModel):
+    """Full enriched lineage graph produced by the lineage agent."""
 
     column_flows: list[ColumnFlow]
     macro_usages: list[MacroUsage]
     cross_file_edges: list[dict[str, str]]
     dataset_summaries: dict[str, str]
+    file_nodes: list[FileNode] = Field(default_factory=list)
+    file_edges: list[FileEdge] = Field(default_factory=list)
+    pipeline_steps: list[PipelineStep] = Field(default_factory=list)
+    block_status: list[BlockStatus] = Field(default_factory=list)
+    log_links: list[LogLink] = Field(default_factory=list)
 
 
 class JobContext(BaseModel):

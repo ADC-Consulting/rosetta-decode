@@ -6,6 +6,158 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-04-22 — Fix overall confidence metric + bar width (UX polish)
+
+**Duration:** ~1h | **Focus:** Confidence accuracy — align overall % with per-block LLM scores
+
+### Done
+
+- **Backend**: `_overall_confidence()` now takes the **average LLM `confidence_score`** across all `block_plans` (was using reconciliation `auto_verified/total` ratio — different metric, caused overall to show 40% while blocks showed 100%)
+- **Backend**: `TrustReportResponse` gains `overall_confidence_score: float` (0.0–1.0) so frontend can use the exact value
+- **Frontend**: `PlanTab.tsx` confidence bar width now reflects the actual `overall_confidence_score * 100` (not a hardcoded band-to-% mapping)
+- **Frontend**: "Overall Confidence" label has dotted underline + browser tooltip explaining the metric; sub-label "avg of N blocks" added below bar
+- **Lint/type fixes**: sorted `plain_english` import in `worker/main.py`; fixed mypy errors (`result.output` cast, `str | None` → `str or ""`); fixed `_make_fallback_plan` return type; fixed `__init__.py` `__all__` line length; ESLint unused-var fixes in `BlockPlanTable.tsx`, `EditorTab.tsx`, `PlanTab.tsx`
+- **Coverage**: added `test_overall_confidence_labels` and `test_plain_english_agent_generate_returns_doc` tests to close 89%→90% gap
+- **All 7 gates GREEN** (ruff-check, ruff-format, mypy, pytest+coverage ≥90%, tsc, frontend-lint, frontend-build)
+
+### Decisions
+
+- Overall confidence metric is now **average LLM self-reported score** (consistent with per-block display), not reconciliation ratio. Reconciliation metrics are still shown separately (auto_verified / needs_review / manual_todo counts).
+
+### Open Questions
+
+- none
+
+### Next Session — Start Here
+
+1. `make docker-build && docker compose up` — verify worker container starts (prior session noted possible `ModuleNotFoundError: No module named 'src.worker'`)
+2. Smoke-test F4 end-to-end: upload SAS file, confirm overall confidence bar reflects actual block scores
+
+### Files Touched
+
+- `src/backend/api/routes/jobs.py`
+- `src/backend/api/schemas.py`
+- `src/worker/main.py`
+- `src/worker/engine/agents/plain_english.py`
+- `src/worker/engine/agents/__init__.py`
+- `src/frontend/src/api/types.ts`
+- `src/frontend/src/components/JobDetail/PlanTab.tsx`
+- `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
+- `src/frontend/src/components/JobDetail/EditorTab.tsx`
+- `tests/test_changelog_trust_report.py`
+
+---
+
+## 2026-04-22 — F4: Graded confidence-aware translation, per-block refine loop, change history
+
+**Duration:** ~4h | **Focus:** Full F4 feature — S1–S11 implemented, all 7 gates green
+
+### Done
+
+- **Committed** `feat/S-lineage-enricher-pipeline-levels` branch (was outstanding from previous session)
+- **Created** `feat/F4-confidence-refine-history` branch from previous branch HEAD
+- **S1:** `DataStepResult` and `ProcResult` now capture `confidence` + `uncertainty_notes` from LLM; both translation agents pass them through to `GeneratedBlock`
+- **S2:** `TranslationRouter.route()` accepts optional `block_plan`; routes MANUAL/MANUAL_INGESTION/SKIP to stub; caps confidence for TRANSLATE_WITH_REVIEW (high→medium) and TRANSLATE_BEST_EFFORT (any→low); added `TRANSLATE_BEST_EFFORT` to `TranslationStrategy` StrEnum
+- **S3:** `_apply_verified_confidence()` helper in `main.py` — sets `verified_confidence` post-reconcile and propagates `verified_low` to downstream files via `enriched_lineage.cross_file_edges`; stores `block_confidence` map in `job.lineage`
+- **S4:** `BlockRevision` ORM model + Alembic migration 011 (`block_revisions` table with index on `job_id, block_id`)
+- **S5:** `POST /jobs/{id}/blocks/{block_id}/refine`, `GET /jobs/{id}/blocks/{block_id}/revisions`, `POST /jobs/{id}/blocks/{block_id}/revisions/{revision_id}/restore`; patched existing whole-job refine with 409 guard for accepted jobs
+- **S6:** `GET /jobs/{id}/changelog` — all block revisions newest-first
+- **S7:** `GET /jobs/{id}/trust-report` — project/file/block confidence summary, review queue sorted by needs_attention/blast_radius/confidence
+- **S8:** Frontend TS types (`BlockRevision`, `TrustReportResponse`, `ChangelogEntry`, etc.) + API client functions (`refineBlock`, `getBlockRevisions`, `restoreBlockRevision`, `getJobChangelog`, `getJobTrustReport`)
+- **S9:** PlanTab trust report summary bar (auto-verified/needs-review/manual-todo cards); BlockPlanTable confidence + recon columns with `needs_attention` sort and amber ⚠ indicator
+- **S10:** `BlockRefineDialog` (notes-first textarea, optional hint field, sonner toast on success); `BlockRevisionDrawer` (revision list with trigger icons, diff toggle, Restore button); Refine + History buttons per row in BlockPlanTable
+- **S11:** `TrustReportTab` (summary cards, review queue, per-file breakdown, lineage notice) + `ChangelogFeed` (timeline with diff expand); both wired into JobDetailPage as new tabs
+
+### Decisions
+
+- See `journal/DECISIONS.md` session 21 block for all 8 architectural decisions
+
+### Open Questions
+
+- Docker worker container shows `ModuleNotFoundError: No module named 'src.worker'` at runtime — the Dockerfile COPY structure looks correct (`COPY src/worker ./src/worker`, `PYTHONPATH=/app`); may require `make docker-build` after adding new files in this session; not yet verified
+
+### Next Session — Start Here
+
+1. Run `make docker-build` and `docker compose up` to verify the worker starts correctly
+2. Smoke-test F4 features end-to-end: upload a SAS file, check Trust Report tab, refine a block, check revision history
+3. If Docker issue is resolved, commit F4 code (tests pass locally, 7 gates green); use `git-committer` skill
+4. Consider S12 reconciliation integration tests if coverage or confidence requires it
+
+### Files Touched
+
+- `src/worker/engine/models.py` — `TRANSLATE_BEST_EFFORT`, `verified_confidence` on `GeneratedBlock`
+- `src/worker/engine/agents/data_step.py` — confidence capture
+- `src/worker/engine/agents/proc.py` — confidence capture
+- `src/worker/engine/router.py` — planner-driven routing
+- `src/worker/main.py` — `_translate_blocks` strategy caps, `_apply_verified_confidence`, `block_confidence` merge
+- `src/backend/db/models.py` — `BlockRevision` model
+- `alembic/versions/011_add_block_revisions.py` — new migration
+- `src/backend/api/schemas.py` — 9 new schemas
+- `src/backend/api/routes/jobs.py` — 5 new endpoints + 409 patch + helpers
+- `src/frontend/src/api/types.ts` — 9 new TS interfaces
+- `src/frontend/src/api/jobs.ts` — 5 new API functions
+- `src/frontend/src/components/JobDetail/PlanTab.tsx` — trust report query + summary bar
+- `src/frontend/src/components/JobDetail/BlockPlanTable.tsx` — confidence/recon columns, Refine/History buttons
+- `src/frontend/src/components/JobDetail/BlockRefineDialog.tsx` — new
+- `src/frontend/src/components/JobDetail/BlockRevisionDrawer.tsx` — new
+- `src/frontend/src/components/JobDetail/TrustReportTab.tsx` — new
+- `src/frontend/src/components/JobDetail/ChangelogFeed.tsx` — new
+- `src/frontend/src/pages/JobDetailPage.tsx` — Trust Report + History tab wiring
+- `tests/test_data_step_agent.py`, `tests/test_proc_agent.py` — confidence propagation tests
+- `tests/test_translation_router.py` — strategy routing tests
+- `tests/test_worker_main.py` — `_apply_verified_confidence` tests
+- `tests/test_block_refine_routes.py` — new
+- `tests/test_changelog_trust_report.py` — new
+
+---
+
+## 2026-04-21 — LineageEnricher pipeline-level extension + multi-level lineage graph
+
+**Duration:** ~2h | **Focus:** Extend LineageEnricherAgent with 5 new fields; add Blocks/Files/Pipeline view toggle to LineageGraph
+
+### Done
+
+- **New branch:** `feat/S-lineage-enricher-pipeline-levels` branched from latest main (pulled 9 commits)
+- **`FileNode`, `FileEdge`, `PipelineStep`, `BlockStatus`, `LogLink` models:** added to `src/worker/engine/models.py` with `Literal` import; all optional with `Field(default_factory=list)` defaults
+- **`EnrichedLineage` extended:** 5 new optional list fields; `LineageEnrichmentResult` extended to match
+- **`LineageEnricherAgent` system prompt rewritten:** 9 tasks (kept 1–4, added 5–9 for file/step/block/log levels); `max_tokens` bumped 8k → 16k; `enrich()` passes all 9 fields through
+- **Backend API:** 5 new `*Response` models in `schemas.py`; `JobLineageResponse` extended; `get_job_lineage` route passes 5 new `.get()` keys — no DB migration needed (schemaless JSON column)
+- **Frontend types:** 5 new TS interfaces in `types.ts`; `JobLineageResponse` extended with optional fields
+- **Tests:** `_ENRICHMENT_RESULT` fixture updated; 2 new tests (`test_enrich_populates_file_nodes`, `test_enrich_populates_pipeline_steps`); ruff fix for 3 unused imports
+- **Multi-level LineageGraph:** view toggle (Blocks | Files | Pipeline) added to toolbar; `FileNodeCard`, `PipelineStepCard` custom React Flow nodes; `LineageDetailPanel` slide-in panel on file node click showing blocks + status + log links; `buildFileNodes/Edges`, `buildPipelineNodes/Edges` builders; `applyDagreLayout` generalized for per-view node sizes; `NODE_TYPES` registered at module level (React Flow stability)
+- **All 7 gates green:** ruff, mypy, pytest, tsc, frontend-lint, frontend-build
+
+### Decisions
+
+- `LineageEnricherAgent` `max_tokens` raised to 16 000 — 9-field JSON output can exceed 8k for multi-file projects
+- No DB migration required — new fields merge into existing schemaless `Job.lineage` JSON column
+- `NODE_TYPES` for custom React Flow nodes must be module-level constant (not inside component) — moving it inside would remount all nodes on every render
+
+### Open Questions
+
+- `log_links.related_files/related_blocks` are empty for all log files (log content is not parsed, only filename referenced) — expected for now; would need a log parser to populate
+- CSV/XLSX reference files appear as `__ref_csv_...__` / `__ref_xlsx_...__` in `file_nodes` — artefact of worker sentinel naming; cosmetic issue, not blocking
+
+### Next Session — Start Here
+
+1. Commit `feat/S-lineage-enricher-pipeline-levels` branch (journal + code in one commit)
+2. Continue unresolved UI bugs from backlog (TipTap cursor, version highlight, editor restore, tab heights)
+
+### Files Touched
+
+- `src/worker/engine/models.py`
+- `src/worker/engine/agents/lineage_enricher.py`
+- `src/backend/api/schemas.py`
+- `src/backend/api/routes/jobs.py`
+- `src/frontend/src/api/types.ts`
+- `src/frontend/src/components/LineageGraph.tsx`
+- `src/frontend/src/components/JobDetail/FileNodeCard.tsx` (new)
+- `src/frontend/src/components/JobDetail/PipelineStepCard.tsx` (new)
+- `src/frontend/src/components/JobDetail/LineageDetailPanel.tsx` (new)
+- `tests/test_lineage_enricher_agent.py`
+
+---
+
 ## 2026-04-21 — JobDetailPage refactor: component split, header polish, Monaco defaultValue fix
 
 **Duration:** ~2h | **Focus:** JobDetailPage structural cleanup + bug fixes

@@ -18,6 +18,27 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-04-22 (session 21 — F4 confidence-refine-history)
+
+- **`TranslationStrategy.TRANSLATE_BEST_EFFORT` added to StrEnum:** was referenced in F4 plan but missing from the model; added alongside TRANSLATE, TRANSLATE_WITH_REVIEW, MANUAL_INGESTION, MANUAL, SKIP · revisit never
+- **block_id format normalised to basename-only (`"file.sas:12"`):** avoids URL path encoding issues with directory separators; client always `encodeURIComponent()` before URL interpolation · revisit never
+- **Block revisions created only on explicit refine (not on job completion):** initial agent output is already captured by `job_versions[tab=editor]`; first refine inserts revision 1 (prior) + revision 2 (new) · revisit never
+- **Trust report returns 200 with partial data when lineage unavailable:** `blast_radius: null` per block + `lineage_available: false` flag; no 202 polling — degrades gracefully · revisit never
+- **409 Conflict on refine when job is accepted:** both whole-job (`POST /jobs/{id}/refine`) and block-level (`POST /jobs/{id}/blocks/{block_id}/refine`) return 409 when `accepted_at IS NOT NULL` · revisit never
+- **`diff_vs_previous` computed in FastAPI route handler:** both old and new code available at insert time; uses `difflib.unified_diff`; worker has no access to prior revision · revisit never
+- **`verified_confidence` stored under `job.lineage["block_confidence"]`:** piggybacks on existing schemaless JSON column; no DB migration needed; backward-compatible (old jobs lack the key) · revisit never
+- **Refine dialog: user notes are primary input, injected first into LLM context:** user-authored instructions take precedence over auto-generated hints; injected as leading `risk_flags` entry · revisit never
+
+---
+
+## 2026-04-21 (session 20 — LineageEnricher pipeline-level extension)
+
+- **`LineageEnricherAgent` max_tokens raised 8k → 16k:** 9-field JSON output (5 new fields) can exceed 8k for multi-file SAS projects; conservative doubling; revisit if latency becomes a concern
+- **New lineage fields stored in existing schemaless JSON column — no migration:** `Job.lineage` is PostgreSQL JSON (nullable); new fields merge in via `{**lineage_data, **enriched.model_dump()}`; backward-compatible (old jobs simply lack the new keys) · revisit never
+- **React Flow `NODE_TYPES` must be module-level constant:** if defined inside a component, React Flow remounts all nodes on every parent re-render; all custom node type registrations are at module scope · revisit never
+
+---
+
 ## 2026-04-21 (session 19 — F5 bug-fix sweep)
 
 - **TipTap switches to native HTML mode, `tiptap-markdown` dropped:** `@tailwindcss/typography` is absent so `prose` classes did nothing; extension's `html: false` mode mangled headings. Native HTML + `marked` for load + `getHTML()` for save is simpler and fully functional. Stored `content.doc` in versions saved after this session will be HTML, not raw markdown · revisit if markdown round-trip fidelity becomes a requirement.

@@ -13,6 +13,7 @@ RUN uv sync --no-dev --frozen
 
 # Copy source
 COPY src/backend ./src/backend
+COPY src/worker ./src/worker
 COPY alembic ./alembic
 COPY alembic.ini ./alembic.ini
 

@@ -13,7 +13,12 @@ import re
 from collections.abc import Iterator
 
 import networkx as nx
-from src.worker.engine.models import BlockType, MacroVar, ParseResult, SASBlock
+from src.worker.engine.models import (
+    BlockType,
+    MacroVar,
+    ParseResult,
+    SASBlock,
+)
 
 # ── Regex patterns ────────────────────────────────────────────────────────────
 
@@ -34,6 +39,24 @@ _UNSUPPORTED_PROC_RE = re.compile(
     r"(?i)(PROC\s+(?!SQL\b)\w+\b.*?(?:RUN|QUIT)\s*;)",
     re.DOTALL,
 )
+
+# Map PROC name (uppercase) → BlockType; unfamiliar PROCs → PROC_UNKNOWN
+_KNOWN_PROCS: dict[str, BlockType] = {
+    "SORT": BlockType.PROC_SORT,
+    "SQL": BlockType.PROC_SQL,
+    "IML": BlockType.PROC_IML,
+    "FCMP": BlockType.PROC_FCMP,
+    "MEANS": BlockType.PROC_MEANS,
+    "SUMMARY": BlockType.PROC_MEANS,  # PROC SUMMARY ≈ PROC MEANS
+    "FREQ": BlockType.PROC_FREQ,
+    "TRANSPOSE": BlockType.PROC_TRANSPOSE,
+    "IMPORT": BlockType.PROC_IMPORT,
+    "EXPORT": BlockType.PROC_EXPORT,
+    "PRINT": BlockType.PROC_PRINT,
+    "CONTENTS": BlockType.PROC_CONTENTS,
+    "DATASETS": BlockType.PROC_DATASETS,
+    "OPTMODEL": BlockType.PROC_OPTMODEL,
+}
 
 # Extract DATA output name(s) from "DATA name1 name2;"
 _DATA_OUTPUT_RE = re.compile(r"(?i)DATA\s+([\w\s.]+?)\s*;")
@@ -159,9 +182,13 @@ def _extract_macro_vars(source: str, filename: str) -> list[MacroVar]:
 def _extract_unsupported_procs(
     source: str, filename: str, covered_spans: list[tuple[int, int]]
 ) -> Iterator[SASBlock]:
-    """Yield UNTRANSLATABLE blocks for PROC types other than PROC SQL.
+    """Yield typed PROC blocks for PROC types other than PROC SQL/SORT.
 
-    Skips any match whose span overlaps an already-covered (DATA/PROC SQL) span.
+    Each matched PROC is assigned the most specific BlockType available from
+    ``_KNOWN_PROCS``.  Unfamiliar PROCs receive ``BlockType.PROC_UNKNOWN``.
+    ``BlockType.UNTRANSLATABLE`` is reserved for genuinely unparsable SAS only.
+
+    Skips any match whose span overlaps an already-covered (DATA/PROC SQL/SORT) span.
     """
     for match in _UNSUPPORTED_PROC_RE.finditer(source):
         span = (match.start(), match.end())
@@ -170,15 +197,22 @@ def _extract_unsupported_procs(
         raw = match.group(1)
         proc_name_match = re.search(r"(?i)PROC\s+(\w+)", raw)
         proc_name = proc_name_match.group(1).upper() if proc_name_match else "UNKNOWN"
+        block_type = _KNOWN_PROCS.get(proc_name, BlockType.PROC_UNKNOWN)
         start = _line_of(source, match.start())
         end = _line_of(source, match.end() - 1)
+        # Best-effort dataset extraction for known I/O-producing PROCs
+        data_match = re.search(r"(?i)\bDATA\s*=\s*(\w[\w.]*)", raw)
+        out_match = re.search(r"(?i)\bOUT\s*=\s*(\w[\w.]*)", raw)
+        inputs = [data_match.group(1).lower()] if data_match else []
+        outputs = [out_match.group(1).lower()] if out_match else []
         yield SASBlock(
-            block_type=BlockType.UNTRANSLATABLE,
+            block_type=block_type,
             source_file=filename,
             start_line=start,
             end_line=end,
             raw_sas=raw,
-            untranslatable_reason=f"PROC {proc_name} has no automated translation rule",
+            input_datasets=inputs,
+            output_datasets=outputs,
         )
 
 

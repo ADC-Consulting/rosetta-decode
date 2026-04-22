@@ -1,9 +1,16 @@
 import { getJobLineage } from "@/api/jobs";
+import type { BlockPlan } from "@/api/types";
 import LineageGraph from "@/components/LineageGraph";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-export default function LineageTab({ jobId }: { jobId: string }): React.ReactElement {
+export default function LineageTab({
+  jobId,
+  blockPlans,
+}: {
+  jobId: string;
+  blockPlans?: BlockPlan[];
+}): React.ReactElement {
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["job", jobId, "lineage"],
     queryFn: () => getJobLineage(jobId),
@@ -44,7 +51,7 @@ export default function LineageTab({ jobId }: { jobId: string }): React.ReactEle
 
   return (
     <div className="h-full min-h-0 pb-6">
-      <LineageGraph lineage={data} />
+      <LineageGraph lineage={data} blockPlans={blockPlans} />
     </div>
   );
 }

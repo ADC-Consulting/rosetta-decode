@@ -3,7 +3,14 @@
 from unittest.mock import MagicMock
 
 import pytest
-from src.worker.engine.models import BlockType, JobContext, SASBlock
+from src.worker.engine.models import (
+    BlockPlan,
+    BlockRisk,
+    BlockType,
+    JobContext,
+    SASBlock,
+    TranslationStrategy,
+)
 from src.worker.engine.router import TranslationRouter, _ProcSortHelper
 from src.worker.engine.stub_generator import StubGenerator
 
@@ -69,13 +76,15 @@ def test_routes_untranslatable() -> None:
     assert router.route(block) is stub_generator
 
 
-def test_unknown_block_type_raises() -> None:
-    router, _, _, _ = _make_router()
+def test_unknown_block_type_routes_to_generic_or_stub() -> None:
+    """An unrecognised block_type should route to generic_proc or stub, not raise."""
+    router, _, _, stub_generator = _make_router()
     block = _make_block(BlockType.DATA_STEP)
     # Forcibly set an invalid block_type value via object.__setattr__ to bypass Pydantic
     invalid_block = block.model_copy(update={"block_type": "TOTALLY_UNKNOWN"})
-    with pytest.raises(ValueError, match="Unhandled block type"):
-        router.route(invalid_block)
+    # With no generic_proc_agent injected, falls back to stub
+    result = router.route(invalid_block)
+    assert result is stub_generator
 
 
 # ── StubGenerator tests ───────────────────────────────────────────────────────
@@ -137,6 +146,45 @@ async def test_proc_sort_helper_out_dataset() -> None:
     helper = _ProcSortHelper()
     result = await helper.translate(block, ctx)
     assert result.python_code.splitlines()[1].startswith("work2 = source.sort_values(")
+
+
+# ── Strategy-based routing tests ─────────────────────────────────────────────
+
+
+def _make_block_plan(strategy: TranslationStrategy) -> BlockPlan:
+    detected: list[str] = ["manual_flag"] if strategy == TranslationStrategy.MANUAL else []
+    return BlockPlan(
+        block_id="test.sas:1",
+        source_file="test.sas",
+        start_line=1,
+        block_type="DATA_STEP",
+        strategy=strategy,
+        risk=BlockRisk.LOW,
+        rationale="test",
+        estimated_effort="low",
+        detected_features=detected,
+    )
+
+
+def test_routes_manual_strategy_to_stub() -> None:
+    router, _, _, stub_generator = _make_router()
+    block = _make_block(BlockType.DATA_STEP, raw_sas="DATA out; SET in; IF flag = 1; RUN;")
+    block_plan = _make_block_plan(TranslationStrategy.MANUAL)
+    assert router.route(block, block_plan=block_plan) is stub_generator
+
+
+def test_routes_manual_ingestion_strategy_to_stub() -> None:
+    router, _, _, stub_generator = _make_router()
+    block = _make_block(BlockType.DATA_STEP, raw_sas="DATA out; SET in; IF flag = 1; RUN;")
+    block_plan = _make_block_plan(TranslationStrategy.MANUAL_INGESTION)
+    assert router.route(block, block_plan=block_plan) is stub_generator
+
+
+def test_routes_skip_strategy_to_stub() -> None:
+    router, _, _, stub_generator = _make_router()
+    block = _make_block(BlockType.DATA_STEP, raw_sas="DATA out; SET in; IF flag = 1; RUN;")
+    block_plan = _make_block_plan(TranslationStrategy.SKIP)
+    assert router.route(block, block_plan=block_plan) is stub_generator
 
 
 @pytest.mark.asyncio

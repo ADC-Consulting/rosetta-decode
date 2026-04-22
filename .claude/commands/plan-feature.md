@@ -1,7 +1,6 @@
 ---
 description: Plan a new feature — reads context, writes docs/plans/F<N>-<slug>.md, enters plan mode
 ---
-
 Read the following before doing anything else:
 
 1. `CLAUDE.md`
@@ -21,7 +20,7 @@ Derive exact service names and directory paths from the **Directory Structure** 
 - Frontend: API client → component → page wiring
 - Always last: run `make test`, confirm exit 0, mark feature done in backlog
 
-Write a plan file at `docs/plans/F<N>-<slug>.md` using this structure:
+Write a plan file at `docs/plans/latest/F<N>-<slug>.md` using this structure:
 
 ```
 # F<N> — <Feature Name>
@@ -54,6 +53,7 @@ One paragraph: what this feature does, why it matters, what done looks like.
 ```
 
 Add entries to `journal/BACKLOG.md` under the correct phase:
+
 ```
 - [ ] F<N>: <subtask name> → see `docs/plans/F<N>-<slug>.md`
 ```

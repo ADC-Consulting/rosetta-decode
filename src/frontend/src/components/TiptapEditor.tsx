@@ -211,6 +211,12 @@ export default function TiptapEditor({
     },
   });
 
+  // Sync editable state when readOnly prop changes dynamically.
+  useEffect(() => {
+    if (!editor) return;
+    editor.setEditable(!readOnly);
+  }, [editor, readOnly]);
+
   // Load content whenever the prop changes. The ref guards against the echo loop:
   // onUpdate → onChange → parent state → content prop → setContent → onUpdate.
   useEffect(() => {

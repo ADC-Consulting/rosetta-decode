@@ -1,5 +1,9 @@
 import { extractApiError } from "./errors";
 import type {
+    BlockRefineRequest,
+    BlockRefineResponse,
+    BlockRevisionHistory,
+    JobChangelogResponse,
     JobDocResponse,
     JobHistoryResponse,
     JobLineageResponse,
@@ -12,6 +16,7 @@ import type {
     PatchPlanRequest,
     SaveVersionRequest,
     SaveVersionResponse,
+    TrustReportResponse,
 } from "./types";
 
 const BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
@@ -68,8 +73,9 @@ export async function updateJobPythonCode(jobId: string, pythonCode: string): Pr
   if (!res.ok) throw new Error(await extractApiError(res));
 }
 
-export async function getJobPlan(jobId: string): Promise<JobPlanResponse> {
+export async function getJobPlan(jobId: string): Promise<JobPlanResponse | null> {
   const res = await fetch(`${BASE}/jobs/${jobId}/plan`);
+  if (res.status === 202) return null;
   if (!res.ok) throw new Error(await extractApiError(res));
   return res.json() as Promise<JobPlanResponse>;
 }
@@ -137,4 +143,65 @@ export async function saveVersion(
   );
   if (!res.ok) throw new Error(await extractApiError(res));
   return res.json() as Promise<SaveVersionResponse>;
+}
+
+// ── F4: Block-level refine ────────────────────────────────────────────────────
+
+export async function refineBlock(
+  jobId: string,
+  blockId: string,
+  request: BlockRefineRequest,
+): Promise<BlockRefineResponse> {
+  const encodedBlockId = encodeURIComponent(blockId);
+  const res = await fetch(`${BASE}/jobs/${jobId}/blocks/${encodedBlockId}/refine`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!res.ok) throw new Error(await extractApiError(res));
+  return res.json() as Promise<BlockRefineResponse>;
+}
+
+// ── F4: Block revision history ────────────────────────────────────────────────
+
+export async function getBlockRevisions(
+  jobId: string,
+  blockId: string,
+): Promise<BlockRevisionHistory> {
+  const encodedBlockId = encodeURIComponent(blockId);
+  const res = await fetch(`${BASE}/jobs/${jobId}/blocks/${encodedBlockId}/revisions`);
+  if (!res.ok) throw new Error(await extractApiError(res));
+  return res.json() as Promise<BlockRevisionHistory>;
+}
+
+// ── F4: Restore a prior block revision ───────────────────────────────────────
+
+export async function restoreBlockRevision(
+  jobId: string,
+  blockId: string,
+  revisionId: string,
+): Promise<BlockRefineResponse> {
+  const encodedBlockId = encodeURIComponent(blockId);
+  const res = await fetch(
+    `${BASE}/jobs/${jobId}/blocks/${encodedBlockId}/revisions/${revisionId}/restore`,
+    { method: "POST" },
+  );
+  if (!res.ok) throw new Error(await extractApiError(res));
+  return res.json() as Promise<BlockRefineResponse>;
+}
+
+// ── F4: Job changelog ─────────────────────────────────────────────────────────
+
+export async function getJobChangelog(jobId: string): Promise<JobChangelogResponse> {
+  const res = await fetch(`${BASE}/jobs/${jobId}/changelog`);
+  if (!res.ok) throw new Error(await extractApiError(res));
+  return res.json() as Promise<JobChangelogResponse>;
+}
+
+// ── F4: Trust report ──────────────────────────────────────────────────────────
+
+export async function getJobTrustReport(jobId: string): Promise<TrustReportResponse> {
+  const res = await fetch(`${BASE}/jobs/${jobId}/trust-report`);
+  if (!res.ok) throw new Error(await extractApiError(res));
+  return res.json() as Promise<TrustReportResponse>;
 }

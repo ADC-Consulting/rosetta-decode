@@ -147,6 +147,54 @@ class MacroUsageResponse(BaseModel):
     used_in_block_id: str
 
 
+class FileNodeResponse(BaseModel):
+    """A single SAS source file node in the lineage graph."""
+
+    filename: str
+    file_type: Literal["PROGRAM", "MACRO", "AUTOEXEC", "LOG", "OTHER"]
+    blocks: list[str] = []
+    status: Literal["OK", "UNTRANSLATABLE", "ERROR_PRONE"] | None = None
+    status_reason: str | None = None
+
+
+class FileEdgeResponse(BaseModel):
+    """A directed dependency edge between two SAS source files."""
+
+    source_file: str
+    target_file: str
+    reason: Literal["INCLUDE", "MACRO_CALL", "READS_DATASET", "WRITES_DATASET"]
+    via_block_id: str
+
+
+class PipelineStepResponse(BaseModel):
+    """A higher-level named pipeline stage."""
+
+    step_id: str
+    name: str
+    description: str
+    files: list[str] = []
+    blocks: list[str] = []
+    inputs: list[str] = []
+    outputs: list[str] = []
+
+
+class BlockStatusResponse(BaseModel):
+    """Per-block translation/health status."""
+
+    block_id: str
+    status: Literal["OK", "UNTRANSLATABLE", "ERROR_PRONE"]
+    reason: str | None = None
+
+
+class LogLinkResponse(BaseModel):
+    """Links a SAS log file to related source files and blocks."""
+
+    log_file: str
+    related_files: list[str] = []
+    related_blocks: list[str] = []
+    severity: Literal["INFO", "WARNING", "ERROR"]
+
+
 class JobLineageResponse(BaseModel):
     """Response body for GET /jobs/{id}/lineage."""
 
@@ -157,6 +205,11 @@ class JobLineageResponse(BaseModel):
     macro_usages: list[MacroUsageResponse] = []
     cross_file_edges: list[dict[str, Any]] = []
     dataset_summaries: dict[str, str] = {}
+    file_nodes: list[FileNodeResponse] = []
+    file_edges: list[FileEdgeResponse] = []
+    pipeline_steps: list[PipelineStepResponse] = []
+    block_status: list[BlockStatusResponse] = []
+    log_links: list[LogLinkResponse] = []
 
 
 class JobDocResponse(BaseModel):
@@ -164,6 +217,7 @@ class JobDocResponse(BaseModel):
 
     job_id: uuid.UUID
     doc: str | None
+    non_technical_doc: str | None = None
 
 
 class BlockPlanResponse(BaseModel):
@@ -177,6 +231,8 @@ class BlockPlanResponse(BaseModel):
     risk: str
     rationale: str
     estimated_effort: str
+    confidence_score: float = 0.0
+    confidence_band: str = "unknown"
 
 
 class JobPlanResponse(BaseModel):
@@ -188,6 +244,7 @@ class JobPlanResponse(BaseModel):
     block_plans: list[BlockPlanResponse]
     recommended_review_blocks: list[str]
     cross_file_dependencies: list[str]
+    risk_explanation: str = ""
 
 
 class AcceptJobRequest(BaseModel):
@@ -199,6 +256,7 @@ class AcceptJobRequest(BaseModel):
 StrategyLiteral = Literal[
     "translate",
     "translate_with_review",
+    "translate_best_effort",
     "manual_ingestion",
     "manual",
     "skip",
@@ -255,3 +313,122 @@ class SaveVersionResponse(BaseModel):
     job_id: str
     tab: str
     created_at: datetime
+
+
+class BlockRefineRequest(BaseModel):
+    """Request body for POST /jobs/{id}/blocks/{block_id}/refine."""
+
+    notes: str | None = None  # primary: user instructions, injected first into LLM
+    hint: str | None = None  # secondary: structured hint (e.g. from reconciliation failure)
+
+
+class BlockRefineResponse(BaseModel):
+    """Response body for POST /jobs/{id}/blocks/{block_id}/refine."""
+
+    block_id: str
+    revision_number: int
+    confidence: str = "high"
+    confidence_score: float = 0.0
+    confidence_band: str = "unknown"
+    reconciliation_status: str | None
+    python_code: str | None = None  # full updated job python_code after the refine
+
+
+class BlockRevisionResponse(BaseModel):
+    """A single block revision record."""
+
+    id: str
+    job_id: str
+    block_id: str
+    revision_number: int
+    python_code: str
+    strategy: str
+    confidence: str
+    confidence_score: float = 0.0
+    confidence_band: str = "unknown"
+    uncertainty_notes: list[str]
+    reconciliation_status: str | None
+    trigger: str
+    notes: str | None
+    hint: str | None
+    diff_vs_previous: str | None
+    created_at: datetime
+
+
+class BlockRevisionListResponse(BaseModel):
+    """Response body for GET /jobs/{id}/blocks/{block_id}/revisions."""
+
+    block_id: str
+    revisions: list[BlockRevisionResponse]
+
+
+# S6 — Job-level changelog schemas
+
+
+class ChangelogEntry(BaseModel):
+    """A single block revision entry in the job-level changelog."""
+
+    id: str
+    block_id: str
+    revision_number: int
+    trigger: str
+    strategy: str
+    confidence: str
+    reconciliation_status: str | None
+    notes: str | None
+    hint: str | None
+    diff_vs_previous: str | None
+    created_at: datetime
+
+
+class JobChangelogResponse(BaseModel):
+    """Response body for GET /jobs/{id}/changelog."""
+
+    job_id: str
+    entries: list[ChangelogEntry]
+
+
+# S7 — Tiered trust report schemas
+
+
+class TrustReportBlock(BaseModel):
+    """Per-block trust data for the tiered trust report."""
+
+    block_id: str
+    source_file: str
+    start_line: int
+    block_type: str
+    strategy: str
+    self_confidence: str
+    verified_confidence: str | None
+    reconciliation_status: str | None
+    needs_attention: bool
+    blast_radius: int | None  # null if lineage unavailable
+
+
+class TrustReportFile(BaseModel):
+    """Per-source-file aggregated trust metrics."""
+
+    source_file: str
+    total_blocks: int
+    auto_verified: int
+    needs_review: int
+    manual_todo: int
+    failed_reconciliation: int
+
+
+class TrustReportResponse(BaseModel):
+    """Response body for GET /jobs/{id}/trust-report."""
+
+    job_id: str
+    lineage_available: bool
+    overall_confidence: str  # "high" / "medium" / "low" / "unknown"
+    overall_confidence_score: float  # 0.0-1.0 average of block confidence_scores
+    total_blocks: int
+    auto_verified: int
+    needs_review: int
+    manual_todo: int
+    failed_reconciliation: int
+    files: list[TrustReportFile]
+    blocks: list[TrustReportBlock]  # sorted by needs_attention DESC, then blast_radius DESC
+    review_queue: list[TrustReportBlock]  # only needs_attention=True blocks
