@@ -118,66 +118,78 @@ function GlossaryDialog({
         <div className="space-y-4 text-sm">
           <div>
             <p className="font-semibold mb-1">Risk levels</p>
-            <ul className="space-y-1 text-muted-foreground">
+            <p className="text-xs text-muted-foreground mb-1.5">
+              Assigned by the migration planner before translation, based on static analysis of each
+              block's SAS constructs. Reflects how likely the block is to need human intervention —
+              not whether translation succeeded.
+            </p>
+            <ul className="space-y-1 text-muted-foreground text-xs">
               <li>
                 <span className="font-medium text-green-700">Low</span> —
-                Routine transformations, clear translation path
+                Simple SET/filter/rename or straightforward PROC SQL SELECT.
               </li>
               <li>
                 <span className="font-medium text-amber-700">Medium</span> —
-                Complex joins, BY-group logic, multi-output steps
+                BY-group processing, MERGE with complex BY, multi-output DATA steps, CASE expressions.
               </li>
               <li>
-                <span className="font-medium text-red-700">High</span> — Dynamic
-                code, CALL SYMPUT, nested macros, solver calls
+                <span className="font-medium text-red-700">High</span> —
+                CALL SYMPUT, dynamic dataset names, nested macros, %INCLUDE, deeply nested RETAIN loops, or unsupported PROC types.
               </li>
             </ul>
           </div>
           <div>
             <p className="font-semibold mb-1">Confidence score</p>
-            <ul className="space-y-1 text-muted-foreground">
-              <li>
-                <span className="font-medium">0.85–1.0</span> = High — LLM is
-                certain
-              </li>
-              <li>
-                <span className="font-medium">0.65–0.84</span> = Medium
-              </li>
-              <li>
-                <span className="font-medium">0.40–0.64</span> = Low
-              </li>
-              <li>
-                <span className="font-medium">&lt;0.40</span> = Very Low
-              </li>
+            <p className="text-xs text-muted-foreground mb-1.5">
+              After translating each block, the LLM self-reports a score (0–1) reflecting how certain
+              it is that the generated Python is semantically equivalent to the SAS source. Factors that
+              lower confidence: complex RETAIN logic, ambiguous date arithmetic, macro-dependent variable
+              names, or SAS idioms that required approximation. The overall confidence is the average
+              across all translated blocks.
+            </p>
+            <ul className="space-y-1 text-muted-foreground text-xs">
+              <li><span className="font-medium">0.85–1.0</span> — <span className="text-green-700 font-medium">High</span>: LLM is certain, minimal review needed.</li>
+              <li><span className="font-medium">0.65–0.84</span> — <span className="text-amber-700 font-medium">Medium</span>: review recommended, especially edge cases.</li>
+              <li><span className="font-medium">0.40–0.64</span> — <span className="text-red-600 font-medium">Low</span>: manual inspection required before accepting.</li>
+              <li><span className="font-medium">&lt;0.40</span> — <span className="text-red-700 font-medium">Very Low</span>: high risk of incorrect output.</li>
             </ul>
           </div>
           <div>
             <p className="font-semibold mb-1">Strategies</p>
-            <ul className="space-y-1 text-muted-foreground">
+            <ul className="space-y-1 text-muted-foreground text-xs">
               <li>
                 <span className="font-medium text-blue-700">translate</span> —
-                Auto-translated
+                Fully auto-converted to Python/PySpark.
               </li>
               <li>
-                <span className="font-medium text-amber-700">
-                  translate_with_review
-                </span>{" "}
-                — Translated but needs human check
+                <span className="font-medium text-amber-700">translate_with_review</span> —
+                Converted but flagged for human check (date semantics, format conversions, ambiguous merges).
               </li>
               <li>
-                <span className="font-medium text-orange-700">
-                  translate_best_effort
-                </span>{" "}
-                — Partial translation, may be incomplete
+                <span className="font-medium text-orange-700">translate_best_effort</span> —
+                Partial translation; complex constructs approximated, may be incomplete.
               </li>
               <li>
                 <span className="font-medium text-red-700">manual</span> —
-                Cannot be auto-translated, needs human
+                No Python equivalent exists; placeholder comment only. Requires human rewrite.
               </li>
               <li>
-                <span className="font-medium text-muted-foreground">skip</span>{" "}
-                — Intentionally excluded
+                <span className="font-medium text-muted-foreground">skip</span> —
+                PROC PRINT / housekeeping; nothing emitted to the output pipeline.
               </li>
+            </ul>
+          </div>
+          <div>
+            <p className="font-semibold mb-1">Reconciliation status</p>
+            <p className="text-xs text-muted-foreground mb-1.5">
+              After translation, the generated Python is executed against the same input data as the
+              original SAS. The output is compared on schema, row count, and aggregate values.
+            </p>
+            <ul className="space-y-1 text-muted-foreground text-xs">
+              <li><span className="font-medium text-green-700">Auto-verified</span> — schema, row count, and aggregates all match. Safe to accept.</li>
+              <li><span className="font-medium text-amber-700">Needs review</span> — translation ran but reconciliation flagged differences. Human check recommended.</li>
+              <li><span className="font-medium text-foreground">Manual TODO</span> — block has strategy manual or manual_ingestion; Python output requires human authoring.</li>
+              <li><span className="font-medium text-red-700">Failed recon</span> — Python code executed but output did not match the SAS reference data.</li>
             </ul>
           </div>
         </div>

@@ -175,7 +175,18 @@ export default function FileTree({
     } catch {
       // ignore
     }
-    return new Set<string>();
+    // Default: all directories expanded
+    const allDirs = new Set<string>();
+    const collectDirs = (nodes: TreeNode[]) => {
+      for (const n of nodes) {
+        if (n.type === "dir") {
+          allDirs.add(n.path);
+          if (n.children) collectDirs(n.children);
+        }
+      }
+    };
+    collectDirs(buildTree(paths));
+    return allDirs;
   });
 
   const [search, setSearch] = useState("");

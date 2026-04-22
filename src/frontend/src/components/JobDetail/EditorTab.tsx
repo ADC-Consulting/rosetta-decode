@@ -133,7 +133,8 @@ export default function EditorTab({
       <ResizablePanelGroup
         id="editor-panel-group"
         orientation="horizontal"
-        className="rounded-md border border-border overflow-hidden flex-1 min-h-0"
+        className="rounded-md overflow-hidden flex-1 min-h-0"
+        style={{ border: editorDark ? "1px solid #3e3e3e" : "1px solid var(--border)" }}
       >
         <ResizablePanel defaultSize="15%" minSize="10%" maxSize="30%">
           <div
@@ -141,8 +142,12 @@ export default function EditorTab({
             style={{ background: editorDark ? "#1e1e1e" : "#fafafa" }}
           >
             <div
-              className="h-8 flex items-center px-3 text-[10px] font-semibold tracking-widest uppercase shrink-0 text-muted-foreground border-b border-border"
-              style={{ background: editorDark ? "#1e1e1e" : "#fafafa" }}
+              className="h-8 flex items-center px-3 text-[10px] font-semibold tracking-widest uppercase shrink-0"
+              style={{
+                background: editorDark ? "#1e1e1e" : "#fafafa",
+                color: editorDark ? "#858585" : undefined,
+                borderBottom: editorDark ? "1px solid #3e3e3e" : "1px solid var(--border)",
+              }}
             >
               Explorer
             </div>
@@ -168,12 +173,16 @@ export default function EditorTab({
             <ResizablePanel defaultSize="50%">
               <div className="flex flex-col h-full">
                 <div
-                  className="h-8 px-3 text-xs font-medium text-muted-foreground border-b border-border shrink-0 flex items-center"
-                  style={{ background: editorDark ? "#1e1e1e" : "#fafafa" }}
+                  className="h-8 px-3 text-xs font-medium shrink-0 flex items-center"
+                  style={{
+                    background: editorDark ? "#1e1e1e" : "#fafafa",
+                    color: editorDark ? "#858585" : undefined,
+                    borderBottom: editorDark ? "1px solid #3e3e3e" : "1px solid var(--border)",
+                  }}
                 >
                   SAS Source
                   {effectiveSasKey && (
-                    <span className="ml-2 text-[11px] text-muted-foreground/60">
+                    <span className="ml-2 text-[11px]" style={{ opacity: 0.5 }}>
                       {effectiveSasKey}
                     </span>
                   )}
@@ -218,12 +227,16 @@ export default function EditorTab({
             <ResizablePanel defaultSize="50%">
               <div className="flex flex-col h-full">
                 <div
-                  className="h-8 px-3 text-xs font-medium text-muted-foreground border-b border-border shrink-0 flex items-center gap-2"
-                  style={{ background: editorDark ? "#1e1e1e" : "#fafafa" }}
+                  className="h-8 px-3 text-xs font-medium shrink-0 flex items-center gap-2"
+                  style={{
+                    background: editorDark ? "#1e1e1e" : "#fafafa",
+                    color: editorDark ? "#858585" : undefined,
+                    borderBottom: editorDark ? "1px solid #3e3e3e" : "1px solid var(--border)",
+                  }}
                 >
                   <span>Generated Python</span>
                   {breadcrumbParts.length > 0 && (
-                    <span className="text-[11px] text-muted-foreground/60">
+                    <span className="text-[11px]" style={{ opacity: 0.5 }}>
                       {breadcrumbParts.join(" / ")}
                     </span>
                   )}
