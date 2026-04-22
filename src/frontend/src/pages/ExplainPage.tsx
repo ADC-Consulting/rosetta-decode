@@ -5,7 +5,7 @@ import ChatInput from "@/components/Explain/ChatInput";
 import ContextBanner from "@/components/Explain/ContextBanner";
 import type { ChatMessage } from "@/components/Explain/MessageList";
 import MessageList from "@/components/Explain/MessageList";
-import MigrationPanel from "@/components/Explain/MigrationPanel";
+import RightSidebar from "@/components/RightSidebar";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -165,7 +165,7 @@ export default function ExplainPage(): React.ReactElement {
   const [state, dispatch] = useReducer(reducer, undefined, initialState);
   const messageListRef = useRef<HTMLDivElement>(null);
 
-  const { data: allJobs, isLoading: jobsLoading } = useQuery({
+  const { data: allJobs } = useQuery({
     queryKey: ["jobs"],
     queryFn: listJobs,
     staleTime: 30_000,
@@ -259,78 +259,67 @@ export default function ExplainPage(): React.ReactElement {
   const inputDisabled = !hasContext;
 
   return (
-    <div className="flex flex-col" style={{ height: "calc(100vh - 128px)" }}>
-      {/* Heading */}
-      <div className="mb-4 flex items-center justify-between shrink-0">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground">Explain</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Ask questions about your SAS code and migrations.
-          </p>
+    <div className="flex -mx-4 -mb-8" style={{ height: "calc(100vh - 64px)" }}>
+      {/* Main chat area */}
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+        {/* Mobile header */}
+        <div className="flex items-center justify-between px-4 h-10 border-b border-border shrink-0 md:hidden">
+          <span className="text-sm font-semibold text-foreground">Explain</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => dispatch({ type: "SET_DRAWER_OPEN", open: true })}
+          >
+            Migrations
+          </Button>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="md:hidden"
-          onClick={() => dispatch({ type: "SET_DRAWER_OPEN", open: true })}
-        >
-          Migrations
-        </Button>
+
+        <ContextBanner
+          mode={state.mode}
+          jobName={state.selectedJobName}
+          fileCount={state.attachedFiles.length}
+          onClear={() => dispatch({ type: "CLEAR_CONTEXT" })}
+        />
+        <MessageList
+          messages={state.messages}
+          listRef={messageListRef}
+          mode={state.mode}
+          hasContext={hasContext}
+          onSuggest={handleSuggest}
+        />
+        <ChatInput
+          value={state.inputValue}
+          onChange={(v) => dispatch({ type: "SET_INPUT", value: v })}
+          onSend={handleSend}
+          onFilesAttached={(files) => {
+            if (state.mode !== "upload") {
+              dispatch({ type: "REQUEST_SWITCH", mode: "upload" });
+            }
+            dispatch({ type: "ATTACH_FILES", files });
+          }}
+          isLoading={explainMutation.isPending}
+          disabled={inputDisabled}
+          attachedFiles={state.attachedFiles}
+          onRemoveFile={(name) => dispatch({ type: "REMOVE_FILE", name })}
+        />
       </div>
 
-      {/* Two-column layout */}
-      <div className="flex flex-1 overflow-hidden gap-0 min-h-0">
-        {/* Chat column */}
-        <div className="flex flex-col flex-1 overflow-hidden min-w-0">
-          <ContextBanner
-            mode={state.mode}
-            jobName={state.selectedJobName}
-            fileCount={state.attachedFiles.length}
-            onClear={() => dispatch({ type: "CLEAR_CONTEXT" })}
-          />
-          <MessageList
-            messages={state.messages}
-            listRef={messageListRef}
-            mode={state.mode}
-            hasContext={hasContext}
-            onSuggest={handleSuggest}
-          />
-          <ChatInput
-            value={state.inputValue}
-            onChange={(v) => dispatch({ type: "SET_INPUT", value: v })}
-            onSend={handleSend}
-            onFilesAttached={(files) => {
-              if (state.mode !== "upload") {
-                dispatch({ type: "REQUEST_SWITCH", mode: "upload" });
+      {/* Right panel — desktop */}
+      <div className="hidden md:flex h-full">
+        <RightSidebar
+          title="Migrations"
+          items={(usableJobs ?? []).map((job) => ({
+            id: job.job_id,
+            label: job.name ?? `Job ${job.job_id.slice(0, 8)}`,
+            isSelected: job.job_id === state.selectedJobId,
+            onClick: () => {
+              if (state.mode !== "migration") {
+                dispatch({ type: "REQUEST_SWITCH", mode: "migration" });
               }
-              dispatch({ type: "ATTACH_FILES", files });
-            }}
-            isLoading={explainMutation.isPending}
-            disabled={inputDisabled}
-            attachedFiles={state.attachedFiles}
-            onRemoveFile={(name) => dispatch({ type: "REMOVE_FILE", name })}
-          />
-        </div>
-
-        {/* Migration panel — desktop */}
-        {state.panelOpen && (
-          <div className="hidden md:flex flex-col w-70 shrink-0 border-l border-border ml-4 pl-4 overflow-hidden">
-            <MigrationPanel
-              jobs={usableJobs}
-              isLoading={jobsLoading}
-              selectedJobId={state.selectedJobId}
-              searchQuery={state.jobSearchQuery}
-              onSearchChange={(q) => dispatch({ type: "SET_JOB_SEARCH", query: q })}
-              onSelectJob={(job) => {
-                if (state.mode !== "migration") {
-                  dispatch({ type: "REQUEST_SWITCH", mode: "migration" });
-                }
-                dispatch({ type: "SELECT_JOB", job });
-              }}
-              onSwitchToUpload={() => dispatch({ type: "REQUEST_SWITCH", mode: "upload" })}
-            />
-          </div>
-        )}
+              dispatch({ type: "SELECT_JOB", job });
+            },
+          }))}
+        />
       </div>
 
       {/* Mobile drawer */}
@@ -340,23 +329,22 @@ export default function ExplainPage(): React.ReactElement {
           onClick={() => dispatch({ type: "SET_DRAWER_OPEN", open: false })}
         >
           <div
-            className="absolute inset-y-0 right-0 w-72 bg-background border-l border-border shadow-xl flex flex-col p-4"
+            className="absolute inset-y-0 right-0 bg-background shadow-xl flex h-full"
             onClick={(e) => e.stopPropagation()}
           >
-            <MigrationPanel
-              jobs={usableJobs}
-              isLoading={jobsLoading}
-              selectedJobId={state.selectedJobId}
-              searchQuery={state.jobSearchQuery}
-              onSearchChange={(q) => dispatch({ type: "SET_JOB_SEARCH", query: q })}
-              onSelectJob={(job) => {
-                if (state.mode !== "migration") {
-                  dispatch({ type: "REQUEST_SWITCH", mode: "migration" });
-                }
-                dispatch({ type: "SELECT_JOB", job });
-              }}
-              onSwitchToUpload={() => dispatch({ type: "REQUEST_SWITCH", mode: "upload" })}
-              onClose={() => dispatch({ type: "SET_DRAWER_OPEN", open: false })}
+            <RightSidebar
+              title="Migrations"
+              items={(usableJobs ?? []).map((job) => ({
+                id: job.job_id,
+                label: job.name ?? `Job ${job.job_id.slice(0, 8)}`,
+                isSelected: job.job_id === state.selectedJobId,
+                onClick: () => {
+                  if (state.mode !== "migration") {
+                    dispatch({ type: "REQUEST_SWITCH", mode: "migration" });
+                  }
+                  dispatch({ type: "SELECT_JOB", job });
+                },
+              }))}
             />
           </div>
         </div>

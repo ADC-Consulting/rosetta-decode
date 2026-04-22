@@ -11,7 +11,7 @@ export interface ChatMessage {
 
 interface MessageListProps {
   messages: ChatMessage[];
-  listRef: React.RefObject<HTMLDivElement>;
+  listRef: React.RefObject<HTMLDivElement | null>;
   mode: "migration" | "upload";
   hasContext: boolean;
   onSuggest: (prompt: string) => void;
