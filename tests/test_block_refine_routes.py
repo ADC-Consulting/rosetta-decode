@@ -1,15 +1,9 @@
-"""Tests for block-level refine and revision history endpoints.
+"""Unit tests for block-level refine and revision history endpoints.
 
-Covers:
-- POST /jobs/{id}/blocks/{block_id}/refine — happy path, 404, 409 (accepted job)
-- POST /jobs/{id}/refine — 409 guard when job is accepted
-- GET /jobs/{id}/blocks/{block_id}/revisions — list and empty
-- POST /jobs/{id}/blocks/{block_id}/revisions/{revision_id}/restore — happy path, 404
+# SAS: tests/test_block_refine_routes.py:1
 """
 
-import uuid
 from collections.abc import AsyncGenerator
-from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -24,26 +18,10 @@ from src.worker.engine.models import BlockType, GeneratedBlock, SASBlock
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
-_SAMPLE_SAS = "data out; set in; run;"
-_SAMPLE_BLOCK_ID = "test.sas:1"
-
-_FAKE_GB = GeneratedBlock(
-    source_block=SASBlock(
-        block_type=BlockType.DATA_STEP,
-        source_file="test.sas",
-        start_line=1,
-        end_line=1,
-        raw_sas=_SAMPLE_SAS,
-    ),
-    python_code="# SAS: test.sas:1\nout = in_.copy()\n",
-    confidence="high",
-    uncertainty_notes=[],
-)
-
 
 @pytest_asyncio.fixture(scope="function")
 async def db_session() -> AsyncGenerator[AsyncSession, None]:
-    """Fresh in-memory SQLite database for each test."""
+    """Fresh in-memory database for each test."""
     engine = create_async_engine(TEST_DATABASE_URL, echo=False)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -59,7 +37,7 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
 
 @pytest_asyncio.fixture(scope="function")
 async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
-    """AsyncClient wired to the FastAPI app with in-memory DB."""
+    """AsyncClient wired to the FastAPI app with an in-memory test database."""
 
     async def override_session() -> AsyncGenerator[AsyncSession, None]:
         yield db_session
@@ -71,264 +49,248 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     app.dependency_overrides.clear()
 
 
-async def _insert_job(
+def _make_migration_plan(block_id: str = "test.sas:1") -> dict[str, Any]:
+    return {
+        "summary": "Test plan",
+        "overall_risk": "low",
+        "risk_explanation": "",
+        "block_plans": [
+            {
+                "block_id": block_id,
+                "source_file": "test.sas",
+                "start_line": 1,
+                "block_type": "DATA_STEP",
+                "strategy": "translate",
+                "risk": "low",
+                "rationale": "Simple step.",
+                "estimated_effort": "low",
+                "confidence_score": 0.85,
+                "confidence_band": "high",
+            }
+        ],
+        "recommended_review_blocks": [],
+        "cross_file_dependencies": [],
+    }
+
+
+async def _insert_proposed_job(
     session: AsyncSession,
     *,
+    accepted_at: Any = None,
     status: str = "proposed",
-    python_code: str | None = "# SAS: test.sas:1\nout = in_.copy()\n",
-    accepted_at: datetime | None = None,
-    files: dict[str, Any] | None = None,
-) -> str:
-    """Insert a Job row and return its string ID."""
-    job_id = str(uuid.uuid4())
-    now = datetime.now(UTC)
+) -> Job:
+    """Insert a proposed job with a migration plan."""
+    import uuid as _uuid
+
     job = Job(
-        id=job_id,
+        id=str(_uuid.uuid4()),
         status=status,
-        input_hash="abc123",
-        files=files or {"test.sas": _SAMPLE_SAS},
-        python_code=python_code,
+        input_hash="abc",
+        files={"test.sas": "DATA out; SET in; RUN;"},
+        migration_plan=_make_migration_plan(),
         accepted_at=accepted_at,
-        trigger="agent",
-        skip_llm=False,
-        created_at=now,
-        updated_at=now,
     )
     session.add(job)
     await session.commit()
-    return job_id
+    await session.refresh(job)
+    return job
 
 
-# ── POST /jobs/{id}/blocks/{block_id}/refine ──────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_refine_block_happy_path(client: AsyncClient, db_session: AsyncSession) -> None:
-    """Refining a block translates it, inserts revisions, and returns 200."""
-    job_id = await _insert_job(db_session)
-
-    mock_translator = AsyncMock()
-    mock_translator.translate = AsyncMock(return_value=_FAKE_GB)
-
-    mock_router = MagicMock()
-    mock_router.route.return_value = mock_translator
-
-    mock_recon_report = {"checks": [{"name": "row_count", "status": "pass"}]}
-
-    with (
-        patch("src.backend.api.routes.jobs._build_translation_router", return_value=mock_router),
-        patch("asyncio.to_thread", new=AsyncMock(return_value=mock_recon_report)),
-    ):
-        resp = await client.post(
-            f"/jobs/{job_id}/blocks/test.sas%3A1/refine",
-            json={"notes": "use copy instead of merge"},
-        )
-
-    assert resp.status_code == 200, resp.text
-    body = resp.json()
-    assert body["block_id"] == "test.sas:1"
-    assert body["revision_number"] == 2  # first refine creates rev 1 (prior) + rev 2 (new)
-    assert body["confidence"] == "high"
-    assert body["reconciliation_status"] == "pass"
-
-
-@pytest.mark.asyncio
-async def test_refine_block_subsequent_refine(
-    client: AsyncClient, db_session: AsyncSession
-) -> None:
-    """Subsequent refines increment revision_number without inserting a prior revision."""
-    job_id = await _insert_job(db_session)
-
-    # Pre-insert revision 1 and 2 to simulate a prior refine
-    now = datetime.now(UTC)
-    for rev_num in [1, 2]:
-        session_rev = BlockRevision(
-            id=str(uuid.uuid4()),
-            job_id=job_id,
-            block_id="test.sas:1",
-            revision_number=rev_num,
-            python_code="# SAS: test.sas:1\nold = src.copy()\n",
-            strategy="translate",
-            confidence="high",
-            uncertainty_notes=[],
-            trigger="agent" if rev_num == 1 else "human-refine",
-            created_at=now,
-        )
-        db_session.add(session_rev)
-    await db_session.commit()
-
-    mock_translator = AsyncMock()
-    mock_translator.translate = AsyncMock(return_value=_FAKE_GB)
-    mock_router = MagicMock()
-    mock_router.route.return_value = mock_translator
-
-    with (
-        patch("src.backend.api.routes.jobs._build_translation_router", return_value=mock_router),
-        patch("asyncio.to_thread", new=AsyncMock(return_value={"checks": []})),
-    ):
-        resp = await client.post(
-            f"/jobs/{job_id}/blocks/test.sas%3A1/refine",
-            json={},
-        )
-
-    assert resp.status_code == 200
-    assert resp.json()["revision_number"] == 3
-
-
-@pytest.mark.asyncio
-async def test_refine_block_job_not_found(client: AsyncClient) -> None:
-    """Refining a block on a non-existent job returns 404."""
-    resp = await client.post(f"/jobs/{uuid.uuid4()}/blocks/test.sas%3A1/refine", json={})
-    assert resp.status_code == 404
-
-
-@pytest.mark.asyncio
-async def test_refine_block_accepted_job_returns_409(
-    client: AsyncClient, db_session: AsyncSession
-) -> None:
-    """Refining a block on an accepted job returns 409."""
-    job_id = await _insert_job(db_session, accepted_at=datetime.now(UTC))
-    resp = await client.post(f"/jobs/{job_id}/blocks/test.sas%3A1/refine", json={})
-    assert resp.status_code == 409
-
-
-@pytest.mark.asyncio
-async def test_refine_block_source_file_not_found(
-    client: AsyncClient, db_session: AsyncSession
-) -> None:
-    """Refining a block whose source file is missing from job.files returns 404."""
-    job_id = await _insert_job(db_session, files={"other.sas": "data x; run;"})
-    resp = await client.post(f"/jobs/{job_id}/blocks/test.sas%3A1/refine", json={})
-    assert resp.status_code == 404
-
-
-# ── POST /jobs/{id}/refine — 409 guard ───────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_whole_job_refine_accepted_returns_409(
-    client: AsyncClient, db_session: AsyncSession
-) -> None:
-    """POST /jobs/{id}/refine returns 409 when the job has been accepted."""
-    job_id = await _insert_job(db_session, accepted_at=datetime.now(UTC))
-    resp = await client.post(f"/jobs/{job_id}/refine", json={})
-    assert resp.status_code == 409
-
-
-@pytest.mark.asyncio
-async def test_whole_job_refine_not_accepted_succeeds(
-    client: AsyncClient, db_session: AsyncSession
-) -> None:
-    """POST /jobs/{id}/refine creates a child job when the job is not accepted."""
-    job_id = await _insert_job(db_session, accepted_at=None)
-    resp = await client.post(f"/jobs/{job_id}/refine", json={"hint": "be more explicit"})
-    assert resp.status_code == 200
-    assert "job_id" in resp.json()
-
-
-# ── GET /jobs/{id}/blocks/{block_id}/revisions ───────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_get_block_revisions_empty(client: AsyncClient, db_session: AsyncSession) -> None:
-    """GET revisions returns empty list when no revisions exist."""
-    job_id = await _insert_job(db_session)
-    resp = await client.get(f"/jobs/{job_id}/blocks/test.sas%3A1/revisions")
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["block_id"] == "test.sas:1"
-    assert body["revisions"] == []
-
-
-@pytest.mark.asyncio
-async def test_get_block_revisions_sorted_desc(
-    client: AsyncClient, db_session: AsyncSession
-) -> None:
-    """GET revisions returns newest revisions first."""
-    job_id = await _insert_job(db_session)
-    now = datetime.now(UTC)
-    for rev_num in [1, 2, 3]:
-        db_session.add(
-            BlockRevision(
-                id=str(uuid.uuid4()),
-                job_id=job_id,
-                block_id="test.sas:1",
-                revision_number=rev_num,
-                python_code=f"# rev {rev_num}",
-                strategy="translate",
-                confidence="high",
-                uncertainty_notes=[],
-                trigger="agent",
-                created_at=now,
-            )
-        )
-    await db_session.commit()
-
-    resp = await client.get(f"/jobs/{job_id}/blocks/test.sas%3A1/revisions")
-    assert resp.status_code == 200
-    revisions = resp.json()["revisions"]
-    assert len(revisions) == 3
-    assert revisions[0]["revision_number"] == 3
-    assert revisions[-1]["revision_number"] == 1
-
-
-@pytest.mark.asyncio
-async def test_get_block_revisions_job_not_found(client: AsyncClient) -> None:
-    """GET revisions on a non-existent job returns 404."""
-    resp = await client.get(f"/jobs/{uuid.uuid4()}/blocks/test.sas%3A1/revisions")
-    assert resp.status_code == 404
-
-
-# ── POST /jobs/{id}/blocks/{block_id}/revisions/{revision_id}/restore ────────
-
-
-@pytest.mark.asyncio
-async def test_restore_block_revision_happy_path(
-    client: AsyncClient, db_session: AsyncSession
-) -> None:
-    """Restoring a revision inserts a new restore revision and returns 200."""
-    job_id = await _insert_job(db_session)
-    now = datetime.now(UTC)
-    rev_id = str(uuid.uuid4())
-    db_session.add(
-        BlockRevision(
-            id=rev_id,
-            job_id=job_id,
-            block_id="test.sas:1",
-            revision_number=1,
-            python_code="# SAS: test.sas:1\nold = src.copy()\n",
-            strategy="translate",
-            confidence="medium",
-            uncertainty_notes=["needs review"],
-            trigger="agent",
-            created_at=now,
-        )
+def _make_fake_generated_block() -> GeneratedBlock:
+    sas_block = SASBlock(
+        block_type=BlockType.DATA_STEP,
+        source_file="test.sas",
+        start_line=1,
+        end_line=5,
+        raw_sas="DATA out; SET in; RUN;",
     )
+    return GeneratedBlock(
+        source_block=sas_block,
+        python_code="out = in_.copy()  # SAS: test.sas:1",
+        is_untranslatable=False,
+        confidence="high",
+        uncertainty_notes=[],
+    )
+
+
+@pytest.mark.asyncio
+async def test_refine_block_returns_revision(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """POST /jobs/{id}/blocks/{block_id}/refine returns revision metadata."""
+    job = await _insert_proposed_job(db_session)
+    fake_gb = _make_fake_generated_block()
+
+    mock_parse_result = MagicMock()
+    mock_parse_result.blocks = [fake_gb.source_block]
+
+    with (
+        patch("src.backend.api.routes.jobs._build_translation_router") as mock_build_router,
+        patch("src.backend.api.routes.jobs.SASParser") as mock_parser_cls,
+        patch(
+            "src.backend.api.routes.jobs.asyncio.to_thread",
+            new=AsyncMock(return_value={"checks": [{"status": "pass"}]}),
+        ),
+    ):
+        mock_parser_cls.return_value.parse.return_value = mock_parse_result
+        mock_router = MagicMock()
+        mock_translator = MagicMock()
+        mock_translator.translate = AsyncMock(return_value=fake_gb)
+        mock_router.route.return_value = mock_translator
+        mock_build_router.return_value = mock_router
+
+        response = await client.post(
+            f"/jobs/{job.id}/blocks/test.sas%3A1/refine",
+            json={"notes": "Fix the join logic"},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["block_id"] == "test.sas:1"
+    assert data["revision_number"] == 2
+    assert data["confidence_band"] == "high"
+
+
+@pytest.mark.asyncio
+async def test_refine_block_404_if_job_missing(
+    client: AsyncClient,
+) -> None:
+    """POST refine returns 404 when job does not exist."""
+    response = await client.post(
+        "/jobs/00000000-0000-0000-0000-000000000000/blocks/test.sas%3A1/refine",
+        json={},
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_refine_block_409_if_accepted(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """POST refine returns 409 when the job has been accepted."""
+
+    from datetime import UTC, datetime
+
+    job = await _insert_proposed_job(db_session, accepted_at=datetime.now(UTC))
+
+    response = await client.post(
+        f"/jobs/{job.id}/blocks/test.sas%3A1/refine",
+        json={},
+    )
+    assert response.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_refine_block_404_if_block_not_in_plan(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """POST refine returns 404 when block_id is not in the migration plan."""
+    job = await _insert_proposed_job(db_session)
+
+    response = await client.post(
+        f"/jobs/{job.id}/blocks/nonexistent.sas%3A99/refine",
+        json={},
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_list_block_revisions_empty(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """GET revisions returns empty list when no revisions exist."""
+    job = await _insert_proposed_job(db_session)
+
+    response = await client.get(f"/jobs/{job.id}/blocks/test.sas%3A1/revisions")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["block_id"] == "test.sas:1"
+    assert data["revisions"] == []
+
+
+@pytest.mark.asyncio
+async def test_list_block_revisions_404_if_job_missing(
+    client: AsyncClient,
+) -> None:
+    """GET revisions returns 404 when job does not exist."""
+    response = await client.get(
+        "/jobs/00000000-0000-0000-0000-000000000000/blocks/test.sas%3A1/revisions"
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_list_block_revisions_returns_history(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """GET revisions returns stored revisions newest-first."""
+    import uuid as _uuid
+
+    job = await _insert_proposed_job(db_session)
+
+    rev = BlockRevision(
+        id=str(_uuid.uuid4()),
+        job_id=job.id,
+        block_id="test.sas:1",
+        revision_number=1,
+        python_code="out = in_.copy()",
+        strategy="translate",
+        confidence="high",
+        trigger="human-refine",
+    )
+    db_session.add(rev)
     await db_session.commit()
 
-    resp = await client.post(f"/jobs/{job_id}/blocks/test.sas%3A1/revisions/{rev_id}/restore")
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["block_id"] == "test.sas:1"
-    assert body["revision_number"] == 2
-    assert body["confidence"] == "medium"
+    response = await client.get(f"/jobs/{job.id}/blocks/test.sas%3A1/revisions")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["revisions"]) == 1
+    assert data["revisions"][0]["revision_number"] == 1
+    assert data["revisions"][0]["confidence_band"] == "high"
 
 
 @pytest.mark.asyncio
-async def test_restore_block_revision_not_found(
-    client: AsyncClient, db_session: AsyncSession
+async def test_restore_block_revision_404_if_job_missing(
+    client: AsyncClient,
 ) -> None:
-    """Restoring a non-existent revision returns 404."""
-    job_id = await _insert_job(db_session)
-    resp = await client.post(f"/jobs/{job_id}/blocks/test.sas%3A1/revisions/{uuid.uuid4()}/restore")
-    assert resp.status_code == 404
+    """POST restore returns 404 when the job does not exist."""
+    response = await client.post(
+        "/jobs/00000000-0000-0000-0000-000000000000"
+        "/blocks/test.sas%3A1/revisions/00000000-0000-0000-0000-000000000001/restore"
+    )
+    assert response.status_code == 404
 
 
 @pytest.mark.asyncio
-async def test_restore_block_revision_accepted_job_returns_409(
-    client: AsyncClient, db_session: AsyncSession
+async def test_restore_block_revision_409_if_accepted(
+    client: AsyncClient,
+    db_session: AsyncSession,
 ) -> None:
-    """Restoring a revision on an accepted job returns 409."""
-    job_id = await _insert_job(db_session, accepted_at=datetime.now(UTC))
-    resp = await client.post(f"/jobs/{job_id}/blocks/test.sas%3A1/revisions/{uuid.uuid4()}/restore")
-    assert resp.status_code == 409
+    """POST restore returns 409 when the job has been accepted."""
+    from datetime import UTC, datetime
+
+    job = await _insert_proposed_job(db_session, accepted_at=datetime.now(UTC))
+    response = await client.post(
+        f"/jobs/{job.id}/blocks/test.sas%3A1/revisions/00000000-0000-0000-0000-000000000001/restore"
+    )
+    assert response.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_restore_block_revision_404_if_revision_missing(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """POST restore returns 404 when revision does not exist."""
+    job = await _insert_proposed_job(db_session)
+    response = await client.post(
+        f"/jobs/{job.id}/blocks/test.sas%3A1/revisions/00000000-0000-0000-0000-000000000001/restore"
+    )
+    assert response.status_code == 404

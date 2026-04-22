@@ -119,7 +119,9 @@ def _make_job_context() -> JobContext:
 
 def _make_doc_run_result(markdown: str) -> MagicMock:
     mock = MagicMock()
-    mock.output = DocumentationResult(markdown=markdown)
+    mock.output = DocumentationResult(
+        markdown=markdown,
+    )
     return mock
 
 
@@ -226,6 +228,81 @@ def test_build_prompt_with_empty_dependency_order() -> None:
     prompt = _build_prompt(context, "code", None)
     assert "N/A" in prompt
     assert "Reconciliation not run." in prompt
+
+
+# ── PlainEnglishAgent tests ───────────────────────────────────────────────────
+
+
+from src.worker.engine.agents.plain_english import (  # noqa: E402
+    PlainEnglishAgent,
+    PlainEnglishError,
+    PlainEnglishResult,
+)
+
+
+def _make_plain_english_run_result(text: str) -> MagicMock:
+    mock = MagicMock()
+    mock.output = PlainEnglishResult(non_technical_doc=text)
+    return mock
+
+
+@pytest.mark.asyncio
+async def test_plain_english_agent_generate_returns_string() -> None:
+    """generate() returns the plain-English string from the LLM result."""
+    agent = PlainEnglishAgent()
+    expected = "This report summarises annual sales figures for the retail division."
+    agent._agent.run = AsyncMock(  # type: ignore[method-assign]
+        return_value=_make_plain_english_run_result(expected)
+    )
+
+    result = await agent.generate(_make_job_context(), "out = inp.copy()", "3/3 checks passed.")
+
+    assert result == expected
+
+
+@pytest.mark.asyncio
+async def test_plain_english_agent_prompt_contains_metadata() -> None:
+    """The prompt must include file names, macro variables, and reconciliation summary."""
+    agent = PlainEnglishAgent()
+    run_mock = AsyncMock(return_value=_make_plain_english_run_result("Summary."))
+    agent._agent.run = run_mock  # type: ignore[method-assign]
+
+    await agent.generate(_make_job_context(), "code", "2/3 checks passed.")
+
+    prompt: str = run_mock.call_args[0][0]
+    assert "script.sas" in prompt
+    assert "DEPT" in prompt
+    assert "SALES" in prompt
+    assert "2/3 checks passed." in prompt
+
+
+@pytest.mark.asyncio
+async def test_plain_english_agent_raises_on_llm_failure() -> None:
+    """generate() must raise PlainEnglishError when the LLM call fails."""
+    agent = PlainEnglishAgent()
+    agent._agent.run = AsyncMock(  # type: ignore[method-assign]
+        side_effect=RuntimeError("timeout")
+    )
+
+    with pytest.raises(PlainEnglishError) as exc_info:
+        await agent.generate(_make_job_context(), "code", "1/3 checks passed.")
+
+    assert isinstance(exc_info.value.cause, RuntimeError)
+
+
+def test_plain_english_error_stores_cause() -> None:
+    """PlainEnglishError must expose the cause attribute."""
+    cause = RuntimeError("root")
+    err = PlainEnglishError("failed", cause=cause)
+    assert err.cause is cause
+    assert "failed" in str(err)
+
+
+def test_plain_english_system_prompt_tagged() -> None:
+    """System prompt must contain the agent tag."""
+    from src.worker.engine.agents.plain_english import _SYSTEM_PROMPT
+
+    assert "# agent: PlainEnglishAgent" in _SYSTEM_PROMPT
 
 
 def test_build_prompt_includes_all_sections() -> None:

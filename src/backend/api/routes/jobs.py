@@ -299,7 +299,8 @@ async def get_job_doc(
     job = result.scalar_one_or_none()
     if job is None:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
-    return JobDocResponse(job_id=job_id, doc=job.doc)
+    non_technical_doc: str | None = (job.report or {}).get("non_technical_doc")
+    return JobDocResponse(job_id=job_id, doc=job.doc, non_technical_doc=non_technical_doc)
 
 
 @router.get("/jobs/{job_id}/plan", response_model=None)
@@ -315,10 +316,11 @@ async def get_job_plan(
 
     Returns:
         202 with current status if the job is not yet done, or 200 with
-        JobPlanResponse once the worker has stored the migration plan.
+        JobPlanResponse once the worker has stored the migration plan. Returns
+        202 if the job is done but the plan failed to generate.
 
     Raises:
-        HTTPException: 404 if the job does not exist or plan is unavailable.
+        HTTPException: 404 if the job does not exist.
     """
     result = await session.execute(select(Job).where(Job.id == str(job_id)))
     job = result.scalar_one_or_none()
@@ -327,7 +329,14 @@ async def get_job_plan(
     if job.status not in ("proposed", "accepted", "done"):
         return JSONResponse(status_code=202, content={"status": job.status})
     if job.migration_plan is None:
-        raise HTTPException(status_code=404, detail="Migration plan not available.")
+        return JSONResponse(
+            status_code=202,
+            content={
+                "status": job.status,
+                "detail": "Migration plan is being generated or failed to generate. "
+                "Please retry in a moment.",
+            },
+        )
     return JobPlanResponse(**job.migration_plan, job_id=job.id)
 
 
@@ -1059,12 +1068,13 @@ async def refine_block(
     )
     await session.commit()
 
+    _score_map = {"high": 0.9, "medium": 0.65, "low": 0.35}
     return BlockRefineResponse(
         block_id=block_id,
         revision_number=next_revision_number,
-        confidence=gb.confidence,
+        confidence_score=_score_map.get(gb.confidence, 0.0),
+        confidence_band=gb.confidence,
         reconciliation_status=reconciliation_status,
-        python_code=new_full_code,
     )
 
 
@@ -1110,6 +1120,8 @@ async def get_block_revisions(
                 python_code=r.python_code,
                 strategy=r.strategy,
                 confidence=r.confidence,
+                confidence_score={"high": 0.9, "medium": 0.65, "low": 0.35}.get(r.confidence, 0.0),
+                confidence_band=r.confidence,
                 uncertainty_notes=r.uncertainty_notes,
                 reconciliation_status=r.reconciliation_status,
                 trigger=r.trigger,
@@ -1362,25 +1374,25 @@ def _aggregate_file_metrics(
     return result
 
 
-def _overall_confidence(total: int, auto_verified: int) -> str:
-    """Compute overall confidence label from auto-verified ratio.
+def _overall_confidence(avg_score: float) -> str:
+    """Compute overall confidence label from average block confidence score.
 
     Args:
-        total: Total number of blocks.
-        auto_verified: Number of auto-verified blocks.
+        avg_score: Average LLM confidence_score across all blocks (0.0-1.0).
 
     Returns:
-        ``"unknown"`` if no blocks; ``"high"`` />80%, ``"medium"`` />50%,
-        ``"low"`` otherwise.
+        ``"unknown"`` if no blocks; ``"high"`` >=0.85, ``"medium"`` >=0.65,
+        ``"low"`` >=0.40, ``"very_low"`` otherwise.
     """
-    if total == 0:
+    if avg_score < 0:
         return "unknown"
-    ratio = auto_verified / total
-    if ratio > 0.8:
+    if avg_score >= 0.85:
         return "high"
-    if ratio > 0.5:
+    if avg_score >= 0.65:
         return "medium"
-    return "low"
+    if avg_score >= 0.40:
+        return "low"
+    return "very_low"
 
 
 @router.get("/jobs/{job_id}/trust-report", response_model=TrustReportResponse)
@@ -1415,6 +1427,7 @@ async def get_job_trust_report(
             job_id=str(job_id),
             lineage_available=job.lineage is not None,
             overall_confidence="unknown",
+            overall_confidence_score=0.0,
             total_blocks=0,
             auto_verified=0,
             needs_review=0,
@@ -1491,10 +1504,19 @@ async def get_job_trust_report(
         1 for b in blocks if b.needs_attention and b.strategy not in _MANUAL_STRATEGIES
     )
 
+    # Average LLM confidence_score across block plans for consistent overall metric
+    scores = [
+        float(bp.get("confidence_score", 0.0))
+        for bp in block_plans
+        if bp.get("confidence_score") is not None
+    ]
+    avg_score = sum(scores) / len(scores) if scores else -1.0
+
     return TrustReportResponse(
         job_id=str(job_id),
         lineage_available=job.lineage is not None,
-        overall_confidence=_overall_confidence(total, auto_verified),
+        overall_confidence=_overall_confidence(avg_score),
+        overall_confidence_score=max(avg_score, 0.0),
         total_blocks=total,
         auto_verified=auto_verified,
         needs_review=needs_review,

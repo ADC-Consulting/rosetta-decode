@@ -217,6 +217,7 @@ class JobDocResponse(BaseModel):
 
     job_id: uuid.UUID
     doc: str | None
+    non_technical_doc: str | None = None
 
 
 class BlockPlanResponse(BaseModel):
@@ -230,6 +231,8 @@ class BlockPlanResponse(BaseModel):
     risk: str
     rationale: str
     estimated_effort: str
+    confidence_score: float = 0.0
+    confidence_band: str = "unknown"
 
 
 class JobPlanResponse(BaseModel):
@@ -241,6 +244,7 @@ class JobPlanResponse(BaseModel):
     block_plans: list[BlockPlanResponse]
     recommended_review_blocks: list[str]
     cross_file_dependencies: list[str]
+    risk_explanation: str = ""
 
 
 class AcceptJobRequest(BaseModel):
@@ -252,6 +256,7 @@ class AcceptJobRequest(BaseModel):
 StrategyLiteral = Literal[
     "translate",
     "translate_with_review",
+    "translate_best_effort",
     "manual_ingestion",
     "manual",
     "skip",
@@ -322,7 +327,9 @@ class BlockRefineResponse(BaseModel):
 
     block_id: str
     revision_number: int
-    confidence: str
+    confidence: str = "high"
+    confidence_score: float = 0.0
+    confidence_band: str = "unknown"
     reconciliation_status: str | None
     python_code: str | None = None  # full updated job python_code after the refine
 
@@ -337,6 +344,8 @@ class BlockRevisionResponse(BaseModel):
     python_code: str
     strategy: str
     confidence: str
+    confidence_score: float = 0.0
+    confidence_band: str = "unknown"
     uncertainty_notes: list[str]
     reconciliation_status: str | None
     trigger: str
@@ -414,6 +423,7 @@ class TrustReportResponse(BaseModel):
     job_id: str
     lineage_available: bool
     overall_confidence: str  # "high" / "medium" / "low" / "unknown"
+    overall_confidence_score: float  # 0.0-1.0 average of block confidence_scores
     total_blocks: int
     auto_verified: int
     needs_review: int

@@ -66,14 +66,11 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
     analyse the full SAS codebase and produce a structured migration plan that guides
     the downstream translation agents and gives the client a clear action list.
 
-    Target platform: Python 3.12 with numpy, pandas, pyarrow, scipy, scikit-learn,
-    statsmodels, sqlalchemy, duckdb, matplotlib. Code must run in Databricks or plain Python.
-
     Input:
     - One or more SAS source files with their filenames.
     - A list of pre-resolved macro variables.
-    - A list of parsed blocks: each has block_id ("source_file:start_line"), block_type,
-      input_datasets, output_datasets.
+    - A list of parsed blocks: each has block_id ("source_file:start_line"), block_type
+      (DATA_STEP | PROC_SQL | PROC_SORT | UNTRANSLATABLE), input_datasets, output_datasets.
 
     Your tasks:
     1. Write a 2-3 sentence plain-English summary of what this SAS codebase does as a
@@ -81,47 +78,27 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
     2. For each block, assign:
        - strategy: one of the values below (use exactly these strings).
 
-    ## Strategy selection policy — DEFAULT is translation; manual requires evidence
-
-    IMPORTANT: The downstream agents can translate PROC IML, PROC FCMP, PROC MEANS,
-    PROC FREQ, PROC TRANSPOSE, and most PROC types using NumPy, Pandas, SciPy, and
-    statsmodels. Do NOT assign manual to these — assign translate or translate_with_review.
-
-    Strategy values (use exactly these strings):
-    - "translate"             Fully automated. DATA steps, PROC SQL, PROC SORT, PROC MEANS,
-                              PROC FREQ, PROC TRANSPOSE, simple PROC IML — anything that maps
-                              cleanly to pandas/numpy without semantic ambiguity.
-    - "translate_with_review" Translated but flagged for human check. Use when:
-                                * Date/time semantics differ (INTNX, INTCK, SAS date literals)
-                                * Format/informat conversions (PICTURE, INFORMATs)
-                                * Ambiguous merges or complex BY-group logic
-                                * PROC IML with matrix storage-order sensitivity
-                                * PROC FCMP function definitions
-                                * CALL SYMPUT/SYMPUTX with dynamic names
-    - "manual_ingestion"      PROC IMPORT / PROC EXPORT file I/O only. Emit a pandas
+    Translation strategy values (use exactly these strings):
+    - "translate"             Fully auto-translated. DATA steps, PROC SQL, PROC SORT,
+                              PROC MEANS — anything the agents handle reliably.
+    - "translate_with_review" Translated but flagged for human check. Use when date/time
+                              semantics differ (INTNX, INTCK, SAS date literals), format
+                              conversions (PICTURE, INFORMATs), or ambiguous merges.
+    - "manual_ingestion"      PROC IMPORT / PROC EXPORT / any file I/O. Emit a pandas
                               read/write shell with TODOs only.
-    - "manual"                ONLY when detected_features is non-empty AND those features
-                              have NO reasonable Python equivalent. Example: PROC OPTMODEL
-                              with a custom LP/NLP solver structure. If detected_features
-                              is empty, you CANNOT choose manual — use translate_with_review.
+    - "manual"                PROC IML, PROC OPTMODEL, PROC FCMP, no pandas equivalent.
+                              Emit a # TODO placeholder comment only.
     - "skip"                  PROC PRINT, PROC CONTENTS, PROC DATASETS, standalone
                               comments, title/footnote statements. Emit nothing.
-
        - risk: "low", "medium", or "high" based on:
            HIGH  — CALL SYMPUT/SYMPUTX, dynamic dataset names, nested macros, %INCLUDE,
-                   PROC OPTMODEL solver calls, deeply nested DO loops with RETAIN
+                   PROC types we don't handle, deeply nested DO loops with RETAIN
            MEDIUM — BY-group processing, MERGE with complex BY, multi-output DATA steps,
-                    CASE expressions in PROC SQL, PROC IML, PROC FCMP
-           LOW   — simple SET/filter/rename DATA steps, straightforward PROC SQL SELECTs,
-                   PROC MEANS, PROC FREQ, PROC TRANSPOSE, PROC SORT
+                    CASE expressions in PROC SQL, PROC SORT with complex BY clause
+           LOW   — simple SET/filter/rename DATA steps, straightforward PROC SQL SELECTs
        - rationale: one sentence explaining the risk level and strategy.
        - estimated_effort: "low" (< 1 hour review), "medium" (1-4 hours),
          "high" (> 4 hours or requires domain knowledge).
-       - confidence_score: float 0.0-1.0 (1.0=certain, 0.0=no idea).
-       - confidence_band: "high" (>=0.85), "medium" (>=0.65), "low" (>=0.40), "very_low" (<0.40).
-       - detected_features: list of specific SAS features detected in this block.
-         REQUIRED non-empty when strategy="manual". For other strategies, list any notable
-         SAS constructs that affect translation (e.g. ["RETAIN", "CALL_SYMPUT", "IML_MATRIX"]).
     3. Set overall_risk to the highest risk level across all blocks.
     4. List recommended_review_blocks: block_ids the human should inspect first
        (all HIGH risk blocks, plus MEDIUM blocks with cross-file dependencies).
@@ -137,14 +114,11 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
           "block_id": "source_file:start_line",
           "source_file": "...",
           "start_line": <int>,
-          "block_type": "DATA_STEP|PROC_SQL|PROC_SORT|PROC_IML|PROC_FCMP|...",
+          "block_type": "DATA_STEP|PROC_SQL|PROC_SORT|UNTRANSLATABLE",
           "strategy": "translate|translate_with_review|manual_ingestion|manual|skip",
           "risk": "low|medium|high",
           "rationale": "...",
-          "estimated_effort": "low|medium|high",
-          "confidence_score": <float 0.0-1.0>,
-          "confidence_band": "high|medium|low|very_low",
-          "detected_features": ["<SAS construct or pattern>", ...]
+          "estimated_effort": "low|medium|high"
         }
       ],
       "recommended_review_blocks": ["source_file:start_line", ...],
@@ -290,25 +264,16 @@ def _build_migration_plan(result: PlannerResult) -> MigrationPlan:
     """
     block_plans: list[BlockPlan] = []
     for bp in result.block_plans:
-        raw_strategy = bp.get("strategy", "translate")
-        raw_detected = bp.get("detected_features", [])
-        # Downgrade manual → translate_with_review when detected_features is empty
-        # (validator on BlockPlan rejects the combination, so fix it here before construction)
-        if raw_strategy == "manual" and not raw_detected:
-            raw_strategy = "translate_with_review"
         block_plans.append(
             BlockPlan(
                 block_id=bp.get("block_id", ""),
                 source_file=bp.get("source_file", ""),
                 start_line=int(bp.get("start_line", 1)),
                 block_type=bp.get("block_type", ""),
-                strategy=TranslationStrategy(raw_strategy),
+                strategy=TranslationStrategy(bp.get("strategy", "translate")),
                 risk=BlockRisk(bp.get("risk", "low")),
                 rationale=bp.get("rationale", ""),
                 estimated_effort=bp.get("estimated_effort", "low"),
-                confidence_score=float(bp.get("confidence_score", 1.0)),
-                confidence_band=bp.get("confidence_band", "high"),
-                detected_features=list(raw_detected),
             )
         )
 

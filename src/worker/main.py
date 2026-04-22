@@ -17,22 +17,15 @@ from src.worker.engine.agents.analysis import AnalysisAgent
 from src.worker.engine.agents.data_step import DataStepAgent
 from src.worker.engine.agents.documentation import DocumentationAgent
 from src.worker.engine.agents.failure_interpreter import FailureInterpreterAgent
-from src.worker.engine.agents.generic_proc import GenericProcAgent
 from src.worker.engine.agents.lineage_enricher import LineageEnricherAgent
 from src.worker.engine.agents.migration_planner import MigrationPlannerAgent
+from src.worker.engine.agents.plain_english import PlainEnglishAgent
 from src.worker.engine.agents.proc import ProcAgent
 from src.worker.engine.codegen import CodeGenerator
 from src.worker.engine.doc_generator import DocGenerator
 from src.worker.engine.llm_client import LLMClient, LLMTranslationError
 from src.worker.engine.macro_expander import CannotExpandError, MacroExpander
-from src.worker.engine.models import (
-    BlockPlan,
-    GeneratedBlock,
-    JobContext,
-    ReconciliationReport,
-    SASBlock,
-    TranslationStrategy,
-)
+from src.worker.engine.models import GeneratedBlock, JobContext, ReconciliationReport, SASBlock
 from src.worker.engine.parser import SASParser, extract_lineage
 from src.worker.engine.router import TranslationRouter
 from src.worker.engine.stub_generator import StubGenerator
@@ -44,6 +37,43 @@ logging.basicConfig(
     stream=sys.stdout,
 )
 logger = logging.getLogger(__name__)
+
+
+def _make_fallback_plan(context: JobContext) -> Any:  # returns MigrationPlan, imported locally
+    """Generate a basic fallback migration plan when the planning agent fails.
+
+    Args:
+        context: The job context with parsed blocks.
+
+    Returns:
+        A MigrationPlan with one entry per block, all marked as translate/high-risk.
+    """
+    from src.worker.engine.models import BlockPlan, BlockRisk, MigrationPlan, TranslationStrategy
+
+    block_plans = [
+        BlockPlan(
+            block_id=f"{block.source_file}:{block.start_line}",
+            source_file=block.source_file,
+            start_line=block.start_line,
+            block_type=block.block_type.value,
+            strategy=TranslationStrategy.TRANSLATE,
+            risk=BlockRisk.HIGH,
+            rationale="Auto-generated fallback plan (planning agent unavailable).",
+            estimated_effort="unknown",
+            confidence_score=0.0,
+            confidence_band="very_low",
+            detected_features=[],
+        )
+        for block in context.blocks
+    ]
+    return MigrationPlan(
+        summary="Auto-generated fallback plan due to planning agent unavailability.",
+        block_plans=block_plans,
+        overall_risk=BlockRisk.HIGH,
+        recommended_review_blocks=[bp.block_id for bp in block_plans],
+        cross_file_dependencies=[],
+        risk_explanation="Planning agent failed; all blocks marked for manual review.",
+    )
 
 
 def _make_session_factory() -> async_sessionmaker[AsyncSession]:
@@ -82,12 +112,12 @@ class JobOrchestrator:
             data_step_agent=DataStepAgent(),
             proc_agent=ProcAgent(),
             stub_generator=stub,
-            generic_proc_agent=GenericProcAgent(),
         )
         self._codegen = CodeGenerator()
         self._reconciler = ReconciliationService()
         self._failure_interpreter = FailureInterpreterAgent()
         self._doc_agent = DocumentationAgent()
+        self._plain_english_agent = PlainEnglishAgent()
         self._expander = MacroExpander()
         self._migration_planner = MigrationPlannerAgent()
         self._lineage_enricher = LineageEnricherAgent()
@@ -171,12 +201,16 @@ class JobOrchestrator:
                 update={"risk_flags": context.risk_flags + expansion_warnings}
             )
 
-        # Step 3.5: Migration planning (best-effort)
+        # Step 3.5: Migration planning (best-effort with fallback)
         try:
             plan = await self._migration_planner.plan(context)
             context = context.model_copy(update={"migration_plan": plan})
         except Exception as exc:
-            logger.warning("Job %s: migration planning failed, continuing: %s", job.id, exc)
+            logger.warning(
+                "Job %s: migration planning failed, using fallback plan: %s", job.id, exc
+            )
+            fallback_plan = _make_fallback_plan(context)
+            context = context.model_copy(update={"migration_plan": fallback_plan})
 
         # Steps 4-7: Translate + two-phase refinement
         prior_python_code: str | None = None
@@ -212,10 +246,6 @@ class JobOrchestrator:
             ref_sas7bdat_path,
         )
 
-        # Step 6.5: Apply verified_confidence based on reconciliation outcome
-        generated = _apply_verified_confidence(generated, report, context)
-        context = context.model_copy(update={"generated": generated})
-
         # Step 7.5: Lineage enrichment (best-effort)
         try:
             enriched = await self._lineage_enricher.enrich(context)
@@ -226,10 +256,24 @@ class JobOrchestrator:
         # Step 8: Documentation
         recon_summary = _recon_summary(report)
         doc: str | None = None
-        try:
-            doc = await self._doc_agent.generate(context, python_code, recon_summary)
-        except Exception as exc:
-            logger.warning("Job %s: doc generation failed: %s", job.id, exc)
+        doc_result, plain_english = await asyncio.gather(
+            self._doc_agent.generate(context, python_code, recon_summary or ""),
+            self._plain_english_agent.generate(context, python_code, recon_summary or ""),
+            return_exceptions=True,
+        )
+        if isinstance(doc_result, str):
+            doc = doc_result
+        else:
+            logger.warning("Job %s: doc generation failed: %s", job.id, doc_result)
+        plain_english_text: str | None = (
+            plain_english
+            if isinstance(plain_english, str)
+            else (context.migration_plan.summary if context.migration_plan else None)
+        )
+        if not isinstance(plain_english, str):
+            logger.warning("Job %s: plain-English generation failed: %s", job.id, plain_english)
+        if plain_english_text:
+            report = {**(report or {}), "non_technical_doc": plain_english_text}
 
         # Step 9: Lineage extraction + merge enriched fields (best-effort)
         lineage_data = None
@@ -243,17 +287,6 @@ class JobOrchestrator:
             lineage_data = {**lineage_data, **context.enriched_lineage.model_dump()}
         elif context.enriched_lineage is not None:
             lineage_data = context.enriched_lineage.model_dump()
-
-        # Build block_confidence_map and merge into lineage_data for API access
-        block_confidence_map: dict[str, dict[str, object]] = {
-            f"{gb.source_block.source_file}:{gb.source_block.start_line}": {
-                "confidence": gb.confidence,
-                "verified_confidence": gb.verified_confidence,
-                "uncertainty_notes": gb.uncertainty_notes,
-            }
-            for gb in generated
-        }
-        lineage_data = {**(lineage_data or {}), "block_confidence": block_confidence_map}
 
         # Step 10: Persist
         await session.execute(
@@ -390,40 +423,10 @@ class JobOrchestrator:
                 update={"risk_flags": context.risk_flags + extra_flags}
             )
 
-        plan_by_id: dict[str, BlockPlan] = {}
-        if context.migration_plan:
-            plan_by_id = {bp.block_id: bp for bp in context.migration_plan.block_plans}
-
         generated: list[GeneratedBlock] = []
         for block in blocks:
-            block_id = f"{block.source_file}:{block.start_line}"
-            block_plan = plan_by_id.get(block_id)
-            translator = self._router.route(block, block_plan=block_plan)
+            translator = self._router.route(block)
             gb = await translator.translate(block, effective_context)
-
-            if block_plan is not None:
-                if block_plan.strategy == TranslationStrategy.TRANSLATE_WITH_REVIEW:
-                    if gb.confidence == "high":
-                        gb = gb.model_copy(
-                            update={
-                                "confidence": "medium",
-                                "uncertainty_notes": [
-                                    *gb.uncertainty_notes,
-                                    "strategy=translate_with_review: requires human review",
-                                ],
-                            }
-                        )
-                elif block_plan.strategy == TranslationStrategy.TRANSLATE_BEST_EFFORT:
-                    gb = gb.model_copy(
-                        update={
-                            "confidence": "low",
-                            "uncertainty_notes": [
-                                *gb.uncertainty_notes,
-                                "strategy=translate_best_effort: verify output carefully",
-                            ],
-                        }
-                    )
-
             generated.append(gb)
         return generated
 
@@ -505,89 +508,6 @@ class JobOrchestrator:
             )
             await session.commit()
             raise
-
-
-def _apply_verified_confidence(
-    generated: list[GeneratedBlock],
-    report: ReconciliationReport | dict[str, Any],
-    context: JobContext,
-) -> list[GeneratedBlock]:
-    """Override confidence with reconciliation outcome and propagate risk downstream.
-
-    Args:
-        generated: List of translated blocks from the pipeline.
-        report: Final reconciliation report (model or raw dict).
-        context: Current job context (used for enriched_lineage cross-file edges).
-
-    Returns:
-        Updated list of GeneratedBlock with verified_confidence set on every block.
-    """
-    recon = _dict_to_recon_report(report) if isinstance(report, dict) else report
-
-    failed_block_ids: set[str] = set(recon.affected_block_ids)
-
-    # Build downstream map from enriched lineage (best-effort — may be None)
-    downstream: dict[str, list[str]] = {}  # block_id → list of downstream block_ids
-    if context.enriched_lineage is not None:
-        for edge in context.enriched_lineage.cross_file_edges:
-            src = edge.get("source_file", "")
-            tgt = edge.get("target_file", "")
-            if src and tgt:
-                downstream.setdefault(src, []).append(tgt)
-
-    # First pass: assign verified_confidence based on reconciliation
-    updated: list[GeneratedBlock] = []
-    for gb in generated:
-        block_id = f"{gb.source_block.source_file}:{gb.source_block.start_line}"
-        if gb.is_untranslatable:
-            new_gb = gb.model_copy(update={"verified_confidence": "unverified_untranslatable"})
-        elif not recon.passed and block_id in failed_block_ids:
-            new_gb = gb.model_copy(
-                update={
-                    "verified_confidence": "verified_low",
-                    "confidence": "low",
-                    "uncertainty_notes": [
-                        *gb.uncertainty_notes,
-                        f"reconciliation failed for block {block_id}",
-                    ],
-                }
-            )
-        elif recon.passed:
-            level = "verified_high" if gb.confidence == "high" else "verified_medium"
-            new_gb = gb.model_copy(update={"verified_confidence": level})
-        else:
-            # Reconciliation failed but this block is not in affected_block_ids
-            new_gb = gb.model_copy(update={"verified_confidence": "unverified"})
-        updated.append(new_gb)
-
-    # Second pass: propagate low confidence to downstream dependents
-    failed_files = {
-        gb.source_block.source_file for gb in updated if gb.verified_confidence in ("verified_low",)
-    }
-    result: list[GeneratedBlock] = []
-    for gb in updated:
-        src_file = gb.source_block.source_file
-        # Check if this block's file is downstream of a failed file
-        is_downstream = any(src_file in downstream.get(ff, []) for ff in failed_files)
-        if is_downstream and gb.verified_confidence not in (
-            "verified_low",
-            "unverified_untranslatable",
-        ):
-            note = next(
-                f"downstream of failed block in {ff}"
-                for ff in failed_files
-                if src_file in downstream.get(ff, [])
-            )
-            gb = gb.model_copy(
-                update={
-                    "confidence": "low",
-                    "verified_confidence": "verified_low",
-                    "uncertainty_notes": [*gb.uncertainty_notes, note],
-                }
-            )
-        result.append(gb)
-
-    return result
 
 
 def _dict_to_recon_report(report: dict[str, Any]) -> ReconciliationReport:

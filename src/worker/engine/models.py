@@ -197,6 +197,7 @@ class MigrationPlan(BaseModel):
     overall_risk: BlockRisk
     recommended_review_blocks: list[str]
     cross_file_dependencies: list[str]
+    risk_explanation: str = ""
 
 
 class ColumnFlow(BaseModel):

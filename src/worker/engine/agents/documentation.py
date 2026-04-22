@@ -83,11 +83,15 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
     ## Reconciliation Summary
     One sentence stating pass/fail. If failed, list specific failed checks and implications.
 
-    Return: { "markdown": "..." }
-    - The value of "markdown" must be a raw GitHub-Flavored Markdown string.
+    Return JSON with exactly one field:
+    { "markdown": "..." }
+
+    Rules for "markdown":
+    - Raw GitHub-Flavored Markdown string with all sections above.
     - Do NOT wrap the markdown in a code fence inside the JSON value.
     - Do NOT add any preamble before the first ## heading.
-    - No code fences around the JSON object itself.
+
+    No code fences around the JSON object itself.
 """)
 
 
@@ -154,7 +158,7 @@ class DocumentationAgent:
             validation_result: Human-readable reconciliation summary, or None if not run.
 
         Returns:
-            A Markdown string suitable for display or storage.
+            A GitHub-Flavored Markdown string with all documentation sections.
 
         Raises:
             DocumentationError: When the LLM call fails.
@@ -167,8 +171,7 @@ class DocumentationAgent:
                 f"DocumentationAgent LLM call failed: {exc}", cause=exc
             ) from exc
 
-        doc_result = cast(DocumentationResult, result.output)
-        return doc_result.markdown
+        return cast(DocumentationResult, result.output).markdown
 
 
 def _build_prompt(

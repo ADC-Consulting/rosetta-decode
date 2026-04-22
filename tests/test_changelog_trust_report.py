@@ -252,3 +252,50 @@ async def test_trust_report_job_not_found(client: AsyncClient) -> None:
     """Returns 404 when the job does not exist."""
     response = await client.get(f"/jobs/{uuid.uuid4()}/trust-report")
     assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# _overall_confidence unit tests
+# ---------------------------------------------------------------------------
+
+
+def test_overall_confidence_labels() -> None:
+    """_overall_confidence returns correct label for boundary and interior values."""
+    from src.backend.api.routes.jobs import _overall_confidence
+
+    assert _overall_confidence(-1.0) == "unknown"
+    assert _overall_confidence(0.9) == "high"
+    assert _overall_confidence(0.70) == "medium"
+    assert _overall_confidence(0.50) == "low"
+    assert _overall_confidence(0.30) == "very_low"
+
+
+# ---------------------------------------------------------------------------
+# PlainEnglishAgent.generate unit test
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_plain_english_agent_generate_returns_doc(monkeypatch: pytest.MonkeyPatch) -> None:
+    """PlainEnglishAgent.generate returns the non_technical_doc from the LLM result."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from src.worker.engine.agents.plain_english import PlainEnglishAgent, PlainEnglishResult
+    from src.worker.engine.models import JobContext
+
+    fake_result = MagicMock()
+    fake_result.output = PlainEnglishResult(non_technical_doc="hello")
+
+    agent = PlainEnglishAgent()
+    monkeypatch.setattr(agent._agent, "run", AsyncMock(return_value=fake_result))
+
+    ctx = JobContext(
+        source_files={"test.sas": "data out; set in; run;"},
+        resolved_macros=[],
+        dependency_order=[],
+        risk_flags=[],
+        blocks=[],
+        generated=[],
+    )
+    result = await agent.generate(ctx, python_code="pass", recon_summary="all ok")
+    assert result == "hello"
