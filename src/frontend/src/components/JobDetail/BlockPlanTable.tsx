@@ -12,12 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { AlertTriangle, Clock, Info, Wrench } from "lucide-react";
 import React, { useState } from "react";
 import BlockRefineDialog from "./BlockRefineDialog";
@@ -446,16 +441,7 @@ export default function BlockPlanTable({
 
                         {/* Rationale */}
                         <td className="px-3 py-2 text-xs text-muted-foreground max-w-xs text-left">
-                          <Tooltip>
-                            <TooltipTrigger>
-                              <span className="line-clamp-2 cursor-default text-left">
-                                {bp.rationale}
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent className="max-w-sm text-xs text-left">
-                              {bp.rationale}
-                            </TooltipContent>
-                          </Tooltip>
+                          <span className="line-clamp-2">{bp.rationale}</span>
                         </td>
 
                         {/* Recon */}

@@ -304,3 +304,24 @@ export interface TrustReportResponse {
   blocks: TrustReportBlock[];
   review_queue: TrustReportBlock[];
 }
+
+// ── F8: Explain ───────────────────────────────────────────────────────────────
+
+export interface ExplainMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface ExplainJobRequest {
+  job_id: string;
+  question: string;
+  messages: ExplainMessage[];
+  context_fields?: string[];
+}
+
+export interface ExplainResponse {
+  answer: string;
+  context_files?: string[];
+  tokens_used?: number | null;
+  job_id?: string | null;
+}
