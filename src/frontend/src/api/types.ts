@@ -100,6 +100,8 @@ export interface BlockPlan {
   risk: "low" | "medium" | "high";
   rationale: string;
   estimated_effort: "low" | "medium" | "high";
+  confidence_score: number;
+  confidence_band: string;
 }
 
 export interface JobPlanResponse {
@@ -109,6 +111,7 @@ export interface JobPlanResponse {
   block_plans: BlockPlan[];
   recommended_review_blocks: string[];
   cross_file_dependencies: string[];
+  risk_explanation: string;
 }
 
 export interface ColumnFlow {
@@ -166,6 +169,7 @@ export interface LogLink {
 export interface JobDocResponse {
   job_id: string;
   doc: string | null;
+  non_technical_doc?: string | null;
 }
 
 export interface JobHistoryEntry {
@@ -289,7 +293,8 @@ export interface TrustReportFile {
 export interface TrustReportResponse {
   job_id: string;
   lineage_available: boolean;
-  overall_confidence: "high" | "medium" | "low" | "unknown";
+  overall_confidence: "high" | "medium" | "low" | "very_low" | "unknown";
+  overall_confidence_score: number;  // 0.0-1.0 average of block confidence_scores
   total_blocks: number;
   auto_verified: number;
   needs_review: number;

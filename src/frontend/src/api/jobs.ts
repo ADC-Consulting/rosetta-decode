@@ -73,8 +73,9 @@ export async function updateJobPythonCode(jobId: string, pythonCode: string): Pr
   if (!res.ok) throw new Error(await extractApiError(res));
 }
 
-export async function getJobPlan(jobId: string): Promise<JobPlanResponse> {
+export async function getJobPlan(jobId: string): Promise<JobPlanResponse | null> {
   const res = await fetch(`${BASE}/jobs/${jobId}/plan`);
+  if (res.status === 202) return null;
   if (!res.ok) throw new Error(await extractApiError(res));
   return res.json() as Promise<JobPlanResponse>;
 }

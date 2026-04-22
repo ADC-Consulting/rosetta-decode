@@ -1,4 +1,4 @@
-import type { BlockStatus, FileNode, LogLink } from "@/api/types";
+import type { BlockPlan, BlockStatus, FileNode, LogLink } from "@/api/types";
 import { X } from "lucide-react";
 import { CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
 
@@ -7,7 +7,23 @@ interface LineageDetailPanelProps {
   blockStatuses: BlockStatus[];
   logLinks: LogLink[];
   onClose: () => void;
+  blockPlans?: BlockPlan[];
 }
+
+const STRATEGY_COLOR: Record<string, string> = {
+  translate: "text-blue-700 bg-blue-50 border border-blue-200",
+  translate_with_review: "text-amber-700 bg-amber-50 border border-amber-200",
+  translate_best_effort: "text-orange-700 bg-orange-50 border border-orange-200",
+  manual: "text-red-700 bg-red-50 border border-red-200",
+  manual_ingestion: "text-red-700 bg-red-50 border border-red-200",
+  skip: "text-muted-foreground bg-muted border border-border",
+};
+
+const RISK_COLOR: Record<string, string> = {
+  low: "text-green-700 bg-green-50 border border-green-200",
+  medium: "text-amber-700 bg-amber-50 border border-amber-200",
+  high: "text-red-700 bg-red-50 border border-red-200",
+};
 
 const FILE_TYPE_STYLE: Record<FileNode["file_type"], { bg: string; text: string }> = {
   PROGRAM: { bg: "bg-blue-100", text: "text-blue-700" },
@@ -44,7 +60,9 @@ export function LineageDetailPanel({
   blockStatuses,
   logLinks,
   onClose,
+  blockPlans = [],
 }: LineageDetailPanelProps): React.ReactElement {
+  const planByBlockId = Object.fromEntries(blockPlans.map((p) => [p.block_id, p]));
   const isOpen = file !== null;
   const filename = file ? (file.filename.split("/").pop() ?? file.filename) : "";
   const typeStyle = file ? FILE_TYPE_STYLE[file.file_type] : null;
@@ -110,13 +128,42 @@ export function LineageDetailPanel({
             {file.blocks.length === 0 ? (
               <p className="text-xs text-slate-400">No blocks</p>
             ) : (
-              <ul className="space-y-1">
+              <ul className="space-y-3">
                 {file.blocks.map((blockId) => {
                   const bs = blockStatuses.find((b) => b.block_id === blockId);
+                  const plan = planByBlockId[blockId];
                   return (
-                    <li key={blockId} className="flex items-center gap-1.5">
-                      <span className="font-mono text-xs text-slate-700 truncate">{blockId}</span>
-                      {bs && <BlockStatusIcon status={bs.status} />}
+                    <li key={blockId} className="space-y-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono text-xs text-slate-700 truncate">{blockId}</span>
+                        {bs && <BlockStatusIcon status={bs.status} />}
+                      </div>
+                      {plan && (
+                        <div className="pl-1 space-y-1">
+                          <div className="flex flex-wrap gap-1">
+                            <span
+                              className={`text-[10px] font-medium px-1 py-0.5 rounded border ${STRATEGY_COLOR[plan.strategy] ?? ""}`}
+                            >
+                              {plan.strategy}
+                            </span>
+                            <span
+                              className={`text-[10px] font-medium px-1 py-0.5 rounded border ${RISK_COLOR[plan.risk] ?? ""}`}
+                            >
+                              {plan.risk} risk
+                            </span>
+                            {plan.confidence_band && (
+                              <span className="text-[10px] font-medium px-1 py-0.5 rounded border bg-muted text-muted-foreground border-border">
+                                {(plan.confidence_score * 100).toFixed(0)}% ({plan.confidence_band})
+                              </span>
+                            )}
+                          </div>
+                          {plan.rationale && (
+                            <p className="text-[10px] text-slate-500 leading-snug">
+                              {plan.rationale}
+                            </p>
+                          )}
+                        </div>
+                      )}
                     </li>
                   );
                 })}

@@ -74,7 +74,7 @@ export default function BlockRefineDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-xl">
+      <DialogContent className="max-w-2xl">
         <div className="space-y-4">
           <div>
             <h2 className="text-base font-semibold leading-none tracking-tight">

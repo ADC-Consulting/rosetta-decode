@@ -1,4 +1,5 @@
 import type {
+  BlockPlan,
   FileEdge,
   FileNode,
   JobLineageResponse,
@@ -41,6 +42,7 @@ import "reactflow/dist/style.css";
 
 interface LineageGraphProps {
   lineage: JobLineageResponse;
+  blockPlans?: BlockPlan[];
 }
 
 type NodeData = {
@@ -309,8 +311,10 @@ function buildInitialNodes(lineageNodes: LineageNode[]): Node<NodeData>[] {
       draggable: true,
       style: {
         background: "rgba(245,245,245,0.92)",
-        border: `1.5px solid ${style.border}`,
-        borderBottom: `3px solid ${style.border}`,
+        borderWidth: "1.5px",
+        borderStyle: "solid",
+        borderColor: style.border,
+        borderBottomWidth: "3px",
         color: "#333",
         borderRadius: 8,
         padding: "8px 12px",
@@ -508,8 +512,10 @@ function Legend(): React.ReactElement {
               height: 14,
               borderRadius: 3,
               background: "#e8e8e8",
-              border: `1.5px solid ${STATUS_STYLE[s].border}`,
-              borderBottom: `3px solid ${STATUS_STYLE[s].border}`,
+              borderWidth: "1.5px",
+              borderStyle: "solid",
+              borderColor: STATUS_STYLE[s].border,
+              borderBottomWidth: "3px",
               flexShrink: 0,
             }}
           />
@@ -528,7 +534,10 @@ function Legend(): React.ReactElement {
 
 type ViewMode = "blocks" | "files" | "pipeline";
 
-function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
+function LineageGraphInner({
+  lineage,
+  blockPlans = [],
+}: LineageGraphProps): React.ReactElement {
   const { fitView } = useReactFlow();
   const [nodes, setNodes, onNodesChange] = useNodesState<NodeData>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
@@ -1068,6 +1077,7 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
         file={selectedFile}
         blockStatuses={lineage.block_status ?? []}
         logLinks={lineage.log_links ?? []}
+        blockPlans={blockPlans}
         onClose={() => {
           setSelectedFile(null);
           setNodes((prev) =>
@@ -1085,10 +1095,11 @@ function LineageGraphInner({ lineage }: LineageGraphProps): React.ReactElement {
 
 export default function LineageGraph({
   lineage,
+  blockPlans,
 }: LineageGraphProps): React.ReactElement {
   return (
     <ReactFlowProvider>
-      <LineageGraphInner lineage={lineage} />
+      <LineageGraphInner lineage={lineage} blockPlans={blockPlans} />
     </ReactFlowProvider>
   );
 }

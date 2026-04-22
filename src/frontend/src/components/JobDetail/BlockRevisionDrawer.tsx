@@ -1,9 +1,14 @@
 import { getBlockRevisions, restoreBlockRevision } from "@/api/jobs";
 import type { BlockRevision } from "@/api/types";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -14,6 +19,10 @@ interface BlockRevisionDrawerProps {
   blockId: string;
   isAccepted?: boolean;
 }
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function triggerIcon(trigger: string): string {
   if (trigger === "human-refine" || trigger === "restore") return "👤";
@@ -78,7 +87,37 @@ function formatTimestamp(iso: string): string {
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-function DiffBlock({ diff }: { diff: string }): React.ReactElement {
+// ---------------------------------------------------------------------------
+// Side-by-side diff parser
+// ---------------------------------------------------------------------------
+
+function parseDiffSideBySide(diff: string): {
+  left: string[];
+  right: string[];
+} {
+  const left: string[] = [];
+  const right: string[] = [];
+  for (const line of diff.split("\n")) {
+    if (line.startsWith("-")) {
+      left.push(line.slice(1));
+      right.push("");
+    } else if (line.startsWith("+")) {
+      left.push("");
+      right.push(line.slice(1));
+    } else {
+      const l = line.startsWith("\\") ? "" : line.replace(/^[ @]/, "");
+      left.push(l);
+      right.push(l);
+    }
+  }
+  return { left, right };
+}
+
+// ---------------------------------------------------------------------------
+// Inline diff block
+// ---------------------------------------------------------------------------
+
+function InlineDiffBlock({ diff }: { diff: string }): React.ReactElement {
   const lines = diff.split("\n");
   return (
     <pre className="mt-2 overflow-x-auto rounded-md border border-border bg-muted/40 p-2 text-[11px] leading-relaxed font-mono">
@@ -98,18 +137,24 @@ function DiffBlock({ diff }: { diff: string }): React.ReactElement {
   );
 }
 
+// ---------------------------------------------------------------------------
+// RevisionRow
+// ---------------------------------------------------------------------------
+
 function RevisionRow({
   revision,
   isLatest,
   isAccepted,
   jobId,
   blockId,
+  diffMode,
 }: {
   revision: BlockRevision;
   isLatest: boolean;
   isAccepted?: boolean;
   jobId: string;
   blockId: string;
+  diffMode: "inline" | "side-by-side";
 }): React.ReactElement {
   const queryClient = useQueryClient();
   const [showDiff, setShowDiff] = useState(false);
@@ -122,7 +167,9 @@ function RevisionRow({
       await queryClient.invalidateQueries({
         queryKey: ["block-revisions", jobId, blockId],
       });
-      await queryClient.invalidateQueries({ queryKey: ["trust-report", jobId] });
+      await queryClient.invalidateQueries({
+        queryKey: ["trust-report", jobId],
+      });
       toast.success(`Restored to revision ${revision.revision_number}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Restore failed");
@@ -177,68 +224,129 @@ function RevisionRow({
       </div>
 
       {showDiff && revision.diff_vs_previous && (
-        <DiffBlock diff={revision.diff_vs_previous} />
+        <>
+          {diffMode === "inline" ? (
+            <InlineDiffBlock diff={revision.diff_vs_previous} />
+          ) : (
+            (() => {
+              const { left, right } = parseDiffSideBySide(
+                revision.diff_vs_previous,
+              );
+              return (
+                <div className="grid grid-cols-2 gap-2 font-mono text-xs mt-2">
+                  <div>
+                    <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1 px-1">
+                      Before
+                    </div>
+                    <pre className="overflow-x-auto rounded border border-border bg-muted/20 p-1">
+                      {left.map((l, i) => (
+                        <div
+                          key={i}
+                          className={cn(
+                            "flex gap-2",
+                            l === ""
+                              ? "bg-gray-50 opacity-30"
+                              : "bg-red-50 text-red-700",
+                          )}
+                        >
+                          <span className="select-none text-muted-foreground/50 w-6 text-right shrink-0">
+                            {i + 1}
+                          </span>
+                          <span>{l || " "}</span>
+                        </div>
+                      ))}
+                    </pre>
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1 px-1">
+                      After
+                    </div>
+                    <pre className="overflow-x-auto rounded border border-border bg-muted/20 p-1">
+                      {right.map((l, i) => (
+                        <div
+                          key={i}
+                          className={cn(
+                            "flex gap-2",
+                            l === ""
+                              ? "bg-gray-50 opacity-30"
+                              : "bg-green-50 text-green-700",
+                          )}
+                        >
+                          <span className="select-none text-muted-foreground/50 w-6 text-right shrink-0">
+                            {i + 1}
+                          </span>
+                          <span>{l || " "}</span>
+                        </div>
+                      ))}
+                    </pre>
+                  </div>
+                </div>
+              );
+            })()
+          )}
+        </>
       )}
     </div>
   );
 }
 
-export default function BlockRevisionDrawer({
+// ---------------------------------------------------------------------------
+// BlockRevisionModal (exported as both names for compatibility)
+// ---------------------------------------------------------------------------
+
+export function BlockRevisionModal({
   open,
   onOpenChange,
   jobId,
   blockId,
   isAccepted,
 }: BlockRevisionDrawerProps): React.ReactElement {
+  const [diffMode, setDiffMode] = useState<"inline" | "side-by-side">("inline");
+
   const { data, isLoading, isError } = useQuery({
     queryKey: ["block-revisions", jobId, blockId],
     queryFn: () => getBlockRevisions(jobId, blockId),
     enabled: open,
   });
 
-  if (!open) return <></>;
-
   return (
-    <>
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 z-40 bg-black/40"
-        onClick={() => onOpenChange(false)}
-        aria-hidden
-      />
-
-      {/* Panel */}
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={`Revision history for ${blockId}`}
-        className={cn(
-          "fixed right-0 top-0 z-50 h-full w-full max-w-md",
-          "flex flex-col bg-background border-l border-border shadow-xl",
-          "overflow-hidden",
-        )}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-border px-4 py-3 shrink-0">
-          <div>
-            <p className="text-sm font-semibold leading-none">
-              Revision history
-            </p>
-            <p className="mt-1 font-mono text-[11px] text-muted-foreground">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-[92vw] max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>
+            Block History —{" "}
+            <code className="font-mono text-sm">
               {blockId.replace(/:\d+$/, "")}
-            </p>
+            </code>
+          </DialogTitle>
+          <div className="flex items-center gap-2 mt-2">
+            <span className="text-xs text-muted-foreground">Diff view:</span>
+            <button
+              onClick={() => setDiffMode("inline")}
+              className={
+                "px-2 py-0.5 rounded text-xs border cursor-pointer transition-colors " +
+                (diffMode === "inline"
+                  ? "bg-foreground text-background border-foreground"
+                  : "bg-background text-muted-foreground border-border hover:border-foreground")
+              }
+            >
+              Inline
+            </button>
+            <button
+              onClick={() => setDiffMode("side-by-side")}
+              className={
+                "px-2 py-0.5 rounded text-xs border cursor-pointer transition-colors " +
+                (diffMode === "side-by-side"
+                  ? "bg-foreground text-background border-foreground"
+                  : "bg-background text-muted-foreground border-border hover:border-foreground")
+              }
+            >
+              Side by side
+            </button>
           </div>
-          <button
-            onClick={() => onOpenChange(false)}
-            className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
-            aria-label="Close revision history"
-          >
-            <X className="size-4" />
-          </button>
-        </div>
+        </DialogHeader>
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        <div className="space-y-3 mt-2">
           {isLoading && (
             <p className="text-sm text-muted-foreground text-center py-8">
               Loading revisions…
@@ -268,10 +376,14 @@ export default function BlockRevisionDrawer({
                   isAccepted={isAccepted}
                   jobId={jobId}
                   blockId={blockId}
+                  diffMode={diffMode}
                 />
               ))}
         </div>
-      </div>
-    </>
+      </DialogContent>
+    </Dialog>
   );
 }
+
+// Default export kept for backward compatibility — same component
+export default BlockRevisionModal;
