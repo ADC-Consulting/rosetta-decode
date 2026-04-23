@@ -126,6 +126,9 @@
 - [x] UX: ExplainPage sidebar — job items show status subtitle; `sidebarKey="explain-sidebar-collapsed"`
 - [x] fix(backend): PlainEnglishAgent system prompt — field name corrected from `"markdown"` to `"non_technical_doc"` to match Pydantic output model; contradictory bullet/prose rule removed
 - [x] feat(backend): PlainEnglishAgent prompt restructured — 5 sections (Purpose, Source Data, How It Works, Outputs, Migration Status) with explicit bullet/numbered list formatting per section; token limit raised to 1800
+- [x] feat(frontend): Plan tab full UX overhaul — single Card summary, inline metrics ribbon, 8-col table, rationale icon+popover, Pass/Fail badges, stat pill tooltips, shadcn primitives throughout
+- [x] fix(frontend): View Code dialog alignment — unified full-width toolbar + matching panel headers; both Monaco editors start at identical vertical offset
+- [x] fix(backend): confidence 100% bug for manual/skip/untranslatable blocks — StubGenerator + migration_planner now emit confidence_score=0.0/band=very_low for non-translated blocks
 - [ ] fix(backend): PATCH /blocks/{block_id}/python returns 404 in production — Docker image predates the route; requires `make docker-build` to pick up last session's backend changes
 - [ ] UI bug (unresolved): TipTap toolbar cursor jumps to bottom after one keystroke — multiple fixes attempted, none confirmed working
 - [ ] UI bug (unresolved): version card not highlighted after saving — race condition fix attempted (await invalidateQueries), not confirmed

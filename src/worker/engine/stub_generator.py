@@ -30,6 +30,9 @@ class StubGenerator:
             source_block=block,
             python_code=python_code,
             is_untranslatable=True,
+            confidence="very_low",
+            confidence_score=0.0,
+            confidence_band="very_low",
         )
 
     async def translate(self, block: SASBlock, context: JobContext) -> GeneratedBlock:

@@ -18,6 +18,13 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-04-23 (session 23 — Plan tab UX overhaul)
+
+- **View Code dialog layout:** unified full-width toolbar row + identical-height panel header row (grid-cols-2) above the editors — eliminates SAS/Python vertical misalignment without JS measurement; `border-border` used throughout for theme-agnostic separators · revisit never
+- **Confidence default fix location:** applied at StubGenerator and migration_planner (the two write paths) rather than at the API read/serialisation layer — ensures DB values are correct for all new jobs from the point of the fix · revisit never
+
+---
+
 ## 2026-04-22 (session 21 — F4 confidence-refine-history)
 
 - **`TranslationStrategy.TRANSLATE_BEST_EFFORT` added to StrEnum:** was referenced in F4 plan but missing from the model; added alongside TRANSLATE, TRANSLATE_WITH_REVIEW, MANUAL_INGESTION, MANUAL, SKIP · revisit never

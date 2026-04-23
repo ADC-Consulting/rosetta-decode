@@ -273,6 +273,11 @@ def _build_migration_plan(result: PlannerResult) -> MigrationPlan:
         detected_features: list[str] = bp.get("detected_features") or []
         if strategy == TranslationStrategy.MANUAL and not detected_features:
             detected_features = [block_type] if block_type else ["UNSUPPORTED"]
+        no_translation = strategy in (
+            TranslationStrategy.MANUAL,
+            TranslationStrategy.MANUAL_INGESTION,
+            TranslationStrategy.SKIP,
+        )
         block_plans.append(
             BlockPlan(
                 block_id=bp.get("block_id", ""),
@@ -284,6 +289,8 @@ def _build_migration_plan(result: PlannerResult) -> MigrationPlan:
                 rationale=bp.get("rationale", ""),
                 estimated_effort=bp.get("estimated_effort", "low"),
                 detected_features=detected_features,
+                confidence_score=0.0 if no_translation else 1.0,
+                confidence_band="very_low" if no_translation else "high",
             )
         )
 

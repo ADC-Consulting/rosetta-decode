@@ -6,6 +6,53 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-04-23 — Plan tab full UX overhaul + confidence bug fix
+
+**Duration:** ~2h | **Focus:** Plan tab visual redesign, View Code dialog alignment, confidence 100% bug fix, stat pill tooltips
+
+### Done
+
+- **Plan tab redesign:** replaced three competing visual regions (summary box + twin progress bars + 4-card stat grid) with a single `<Card>` containing an inline metrics ribbon (confidence Progress bar + risk Progress bar + vertical Separator + 4 StatPill dots); installed shadcn badge/card/progress/separator/popover/skeleton
+- **Attention strip:** conditional amber banner below the card, only shown when `needs_review > 0` or `failed_reconciliation > 0`
+- **Table: 11 → 8 columns:** removed Line column (now inline `:N` suffix on Block cell), merged confidence band badge into coloured % text, collapsed Code/Refine/History into single Actions column
+- **Rationale cell:** replaced truncated text with `FileText` icon + Popover on click for full text
+- **Recon cell:** replaced ✓/✗ Unicode with "Pass"/"Fail" Badge (accessible)
+- **Group headers:** Lucide chevrons, shadcn Badge count, `aria-expanded`; Glossary trigger now has visible "Glossary" label
+- **View Code dialog alignment fix:** restructured dialog into three horizontal bands (title+toolbar / panel headers / editors) so both Monaco editors start at identical vertical positions; `border-border` separators throughout; `padding: { top: 12 }` on both editors
+- **Confidence 100% bug fix (backend):** `StubGenerator` now emits `confidence_score=0.0, confidence_band="very_low"` for untranslatable stubs; `migration_planner._build_migration_plan` sets `confidence_score=0.0` for `manual`/`manual_ingestion`/`skip` blocks at plan time
+- **Stat pill tooltips:** hovering Auto-verified / Needs review / Manual TODO / Failed recon shows a plain-English explanation of how each number is computed
+
+### Decisions
+
+- View Code dialog: unified full-width toolbar (title + theme/edit/save) above per-panel headers of identical height — eliminates SAS/Python vertical misalignment without any JS measurement
+- Confidence default: fix applied at the two sources (StubGenerator + migration_planner) rather than at the API serialisation layer — values are now correct in the DB for new jobs
+
+### Open Questions
+
+- `make docker-build` still needed to pick up `PATCH /blocks/{block_id}/python` in production (carried over from last session)
+
+### Next Session — Start Here
+
+1. Run `make docker-build` to pick up `PATCH /blocks/{block_id}/python` backend route in the Docker image
+2. Smoke-test Plan tab: new single-card layout, 8-col table, rationale popover, actions column, stat pill tooltips
+3. Smoke-test View Code dialog: both panels start at same height, separators visible in both light and dark mode
+4. Run a new job and verify manual/skip blocks show `0%` confidence instead of `100%`
+
+### Files Touched
+
+- `src/frontend/src/components/JobDetail/PlanTab.tsx`
+- `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
+- `src/frontend/src/components/ui/badge.tsx` (new)
+- `src/frontend/src/components/ui/card.tsx` (new)
+- `src/frontend/src/components/ui/progress.tsx` (new)
+- `src/frontend/src/components/ui/separator.tsx` (new)
+- `src/frontend/src/components/ui/popover.tsx` (new)
+- `src/frontend/src/components/ui/skeleton.tsx` (new)
+- `src/worker/engine/stub_generator.py`
+- `src/worker/engine/agents/migration_planner.py`
+
+---
+
 ## 2026-04-23 — Plan tab UX overhaul, BlockRevisionDrawer Monaco diff, PlainEnglishAgent restructure
 
 **Duration:** ~3h | **Focus:** Plan tab bug fixes, history revision diff, right sidebar UX, plain-English doc quality
