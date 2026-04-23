@@ -282,6 +282,7 @@ export default function JobDetailPage(): React.ReactElement {
                 setOverrides={setPlanOverrides}
                 onBlockRefineSuccess={() => setEditorCode(null)}
                 jobPythonCode={job?.python_code ?? undefined}
+                generatedFiles={job?.generated_files ?? undefined}
               />
             </TabsContent>
 

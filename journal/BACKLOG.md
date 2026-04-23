@@ -114,6 +114,19 @@
 - [X] fix(frontend): remove `asChild` from Base UI `TooltipTrigger` in EditorTab (nested button hydration error)
 - [X] fix(frontend): `NODE_TYPES`/`EDGE_TYPES` module-scope constants in LineageGraph (React Flow warning #002)
 - [X] fix(frontend): remove all `console.log` debug calls from VersionHistoryRail
+- [x] fix(frontend): block API calls (refine/revisions/restore/python) — replace `encodeURIComponent` with `blockId.replace(/:/g, '%3A')` to preserve path separators for FastAPI `block_id:path`
+- [x] fix(frontend): View Code dialog SAS panel — exact key lookup first, then fuzzy fallback; `language="sas"` + `beforeMount={registerSasLanguage}` restores syntax highlighting
+- [x] fix(frontend): View Code dialog Python panel — falls back to `generatedFiles[*.py]` then `jobPythonCode` (no longer shows full concatenated output when no revision exists); `generatedFiles` prop wired JobDetailPage → PlanTab → BlockPlanTable
+- [x] fix(frontend): save handler invalidates `["block-revisions"]` query so History popup reflects new revision immediately
+- [x] UX: View Code dialog — SAS/Python SVG logos in panel headers; button order resequenced (theme → edit/lock → save)
+- [x] UX: History button highlights with primary ring when a human edit exists for that block (`humanEditedBlocks` set updated on save)
+- [x] UX: BlockRevisionDrawer replaced with Monaco DiffEditor (`MonacoDiffViewer`) — each revision shows `previousCode` (rev n-1) vs `python_code` (rev n) side-by-side; latest revision auto-expanded; older revisions collapsed
+- [x] UX: RightSidebar — `subtitle` prop for per-item secondary text; `sidebarKey` prop for independent per-page collapse state
+- [x] UX: GlobalLineagePage sidebar — job items show `status · date` subtitle; Connect button shows selected count, disabled when empty; helper text when nothing selected; `sidebarKey="lineage-sidebar-collapsed"`
+- [x] UX: ExplainPage sidebar — job items show status subtitle; `sidebarKey="explain-sidebar-collapsed"`
+- [x] fix(backend): PlainEnglishAgent system prompt — field name corrected from `"markdown"` to `"non_technical_doc"` to match Pydantic output model; contradictory bullet/prose rule removed
+- [x] feat(backend): PlainEnglishAgent prompt restructured — 5 sections (Purpose, Source Data, How It Works, Outputs, Migration Status) with explicit bullet/numbered list formatting per section; token limit raised to 1800
+- [ ] fix(backend): PATCH /blocks/{block_id}/python returns 404 in production — Docker image predates the route; requires `make docker-build` to pick up last session's backend changes
 - [ ] UI bug (unresolved): TipTap toolbar cursor jumps to bottom after one keystroke — multiple fixes attempted, none confirmed working
 - [ ] UI bug (unresolved): version card not highlighted after saving — race condition fix attempted (await invalidateQueries), not confirmed
 - [ ] UI bug (unresolved): Editor tab version restore always shows original code — null sentinel + {} override fix attempted, not confirmed

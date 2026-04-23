@@ -121,21 +121,26 @@ export default function GlobalLineagePage(): React.ReactElement {
         {/* Right panel — same RightSidebar as Explain page */}
         <RightSidebar
           title="Migrations"
+          sidebarKey="lineage-sidebar-collapsed"
           items={filteredJobs.map((job) => ({
             id: job.job_id,
             label: job.name ?? job.job_id,
+            subtitle: `${job.status} · ${new Date(job.created_at).toLocaleDateString()}`,
             isSelected: selected.has(job.job_id),
             onClick: () => toggleJob(job.job_id),
           }))}
           footer={
             <div className="p-3">
+              {selected.size === 0 && (
+                <p className="text-xs text-muted-foreground px-3 pb-1">Select migrations above</p>
+              )}
               <Button
                 onClick={() => void handleConnect()}
                 disabled={selected.size === 0 || isConnecting}
                 className="w-full"
                 size="sm"
               >
-                {isConnecting ? "Connecting…" : "Connect"}
+                {isConnecting ? "Connecting…" : `Connect${selected.size > 0 ? ` (${selected.size})` : ""}`}
               </Button>
               {connectError && (
                 <p className="text-xs text-destructive mt-2">{connectError}</p>

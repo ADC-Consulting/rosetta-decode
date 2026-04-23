@@ -228,6 +228,15 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-04-23 (session — Plan tab UX + BlockRevisionDrawer + PlainEnglishAgent)
+
+- **block_id URL encoding uses `.replace(/:/g, '%3A')` not `encodeURIComponent`:** FastAPI `block_id:path` params decode `%2F` back to `/` before route matching, causing 404 when slash is encoded; colons must be encoded but slashes must be preserved as literal path segments · revisit never
+- **BlockRevisionDrawer diff uses MonacoDiffViewer with `previousCode` prop:** instead of parsing unified diff strings (fragile, misaligned columns), each revision receives the prior revision's `python_code` directly; Monaco handles all diffing natively · revisit never
+- **PlainEnglishAgent output field was `"markdown"` in prompt vs `"non_technical_doc"` in Pydantic model:** mismatch silently produced empty docs; corrected to match model field · revisit never
+- **PlainEnglishAgent restructured to 5 sections with explicit list formatting:** Purpose (prose) + Source Data (bullets) + How It Works (numbered) + Outputs (bold bullets) + Migration Status (one sentence); "8-12 sentences, no bullet points" rule removed as it forced unstructured output · revisit never
+
+---
+
 ## 2026-04-18 (session 6 — F1 engine implementation S00–S09)
 
 - **LocalBackend.run_sql uses stdlib sqlite3, not PostgreSQL:** three options were evaluated — pandasql (SQLite wrapper, extra dep), live PostgreSQL (requires running service), stdlib sqlite3 (zero dep, self-contained). sqlite3 chosen: no extra dep, no service required for local tests, result fidelity is what matters not the SQL engine · revisit if PROC SQL edge cases (window functions, ANSI-only syntax) hit SQLite limits

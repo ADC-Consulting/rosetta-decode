@@ -389,6 +389,7 @@ export default function ExplainPage(): React.ReactElement {
   const migrationItems = (usableJobs ?? []).map((job) => ({
     id: job.job_id,
     label: job.name ?? `Job ${job.job_id.slice(0, 8)}`,
+    subtitle: job.status,
     isSelected: job.job_id === state.selectedJobId,
     onClick: () => {
       if (state.mode !== "migration") {
@@ -450,6 +451,7 @@ export default function ExplainPage(): React.ReactElement {
       <div className="hidden md:flex h-full">
         <RightSidebar
           title="Migrations"
+          sidebarKey="explain-sidebar-collapsed"
           items={migrationItems}
           footer={sessionFooter}
         />
@@ -467,6 +469,7 @@ export default function ExplainPage(): React.ReactElement {
           >
             <RightSidebar
               title="Migrations"
+              sidebarKey="explain-sidebar-collapsed"
               items={migrationItems}
               footer={sessionFooter}
             />

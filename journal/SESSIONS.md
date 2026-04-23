@@ -6,6 +6,54 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-04-23 — Plan tab UX overhaul, BlockRevisionDrawer Monaco diff, PlainEnglishAgent restructure
+
+**Duration:** ~3h | **Focus:** Plan tab bug fixes, history revision diff, right sidebar UX, plain-English doc quality
+
+### Done
+
+- **Fix block_id encoding 404:** all four block API calls (`refine`, `revisions`, `restore`, `python`) now use `blockId.replace(/:/g, '%3A')` — preserves `/` so FastAPI `block_id:path` routes match correctly
+- **View Code dialog — SAS syntax highlighting restored:** `language="sas"` + `beforeMount={registerSasLanguage}`; was `"plaintext"` causing no colouring
+- **View Code dialog — Python panel scoped to block:** falls back to `generatedFiles[*.py]` derived from `bp.source_file`, then `jobPythonCode`; `generatedFiles` prop wired all the way from `JobDetailPage`
+- **View Code dialog — logos + button order:** SAS/Python SVG logos in panel headers; button order theme → edit/lock → save
+- **History button highlights on human edit:** `humanEditedBlocks` set updated after save; button gets primary ring
+- **BlockRevisionDrawer replaced with Monaco DiffEditor:** `MonacoDiffViewer` with `previousCode = sorted[idx+1].python_code`; latest auto-expanded, older collapsed; removed all custom diff parsing
+- **RightSidebar upgrade:** `subtitle` prop (per-item secondary text), `sidebarKey` prop (independent collapse state per page)
+- **GlobalLineagePage sidebar:** status·date subtitle, Connect(N) button, disabled+helper when empty, `sidebarKey`
+- **ExplainPage sidebar:** status subtitle, `sidebarKey`
+- **PlainEnglishAgent fix:** output field corrected from `"markdown"` to `"non_technical_doc"` (Pydantic model mismatch that silently produced empty docs)
+- **PlainEnglishAgent restructure:** 5 sections (Purpose prose, Source Data bullets, How It Works numbered, Outputs bold bullets, Migration Status); "no bullet points" rule removed; token limit 1800
+
+### Decisions
+
+- `block_id` URL encoding: `.replace(/:/g, '%3A')` not `encodeURIComponent` — FastAPI `:path` needs literal slashes
+- BlockRevisionDrawer: use `previousCode` prop + MonacoDiffViewer instead of parsing unified diff strings
+- PlainEnglishAgent: 5-section structured prompt with explicit list formatting per section
+
+### Open Questions
+
+- PATCH /blocks/python still 404s in production — Docker image predates the route; `make docker-build` needed
+
+### Next Session — Start Here
+
+1. Run `make docker-build` to pick up last session's `PATCH /blocks/{block_id}/python` backend route
+2. Smoke-test: Plan tab → Code icon → verify SAS highlighted, Python scoped to block, Save works, History shows Monaco diff
+3. Smoke-test: DocsPage Plain English tab — re-run a job and verify the new 5-section structure appears
+
+### Files Touched
+
+- `src/frontend/src/api/jobs.ts`
+- `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
+- `src/frontend/src/components/JobDetail/BlockRevisionDrawer.tsx`
+- `src/frontend/src/components/JobDetail/PlanTab.tsx`
+- `src/frontend/src/components/RightSidebar.tsx`
+- `src/frontend/src/pages/ExplainPage.tsx`
+- `src/frontend/src/pages/GlobalLineagePage.tsx`
+- `src/frontend/src/pages/JobDetailPage.tsx`
+- `src/worker/engine/agents/plain_english.py`
+
+---
+
 ## 2026-04-23 — UI polish: layout fixes, Upload dialog, Plan table improvements, View Code dialog
 
 **Duration:** ~3h | **Focus:** Frontend UX improvements across ExplainPage layout, Plan tab, and View Code dialog

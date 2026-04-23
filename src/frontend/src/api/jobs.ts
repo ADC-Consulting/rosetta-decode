@@ -152,7 +152,7 @@ export async function refineBlock(
   blockId: string,
   request: BlockRefineRequest,
 ): Promise<BlockRefineResponse> {
-  const encodedBlockId = encodeURIComponent(blockId);
+  const encodedBlockId = blockId.replace(/:/g, '%3A');
   const res = await fetch(`${BASE}/jobs/${jobId}/blocks/${encodedBlockId}/refine`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -168,7 +168,7 @@ export async function getBlockRevisions(
   jobId: string,
   blockId: string,
 ): Promise<BlockRevisionHistory> {
-  const encodedBlockId = encodeURIComponent(blockId);
+  const encodedBlockId = blockId.replace(/:/g, '%3A');
   const res = await fetch(`${BASE}/jobs/${jobId}/blocks/${encodedBlockId}/revisions`);
   if (!res.ok) throw new Error(await extractApiError(res));
   return res.json() as Promise<BlockRevisionHistory>;
@@ -181,7 +181,7 @@ export async function restoreBlockRevision(
   blockId: string,
   revisionId: string,
 ): Promise<BlockRefineResponse> {
-  const encodedBlockId = encodeURIComponent(blockId);
+  const encodedBlockId = blockId.replace(/:/g, '%3A');
   const res = await fetch(
     `${BASE}/jobs/${jobId}/blocks/${encodedBlockId}/revisions/${revisionId}/restore`,
     { method: "POST" },
@@ -198,8 +198,9 @@ export async function saveBlockPython(
   pythonCode: string,
   notes?: string,
 ): Promise<{ revision_number: number; block_id: string }> {
+  const encodedBlockId = blockId.replace(/:/g, '%3A');
   const res = await fetch(
-    `${BASE}/jobs/${jobId}/blocks/${encodeURIComponent(blockId)}/python`,
+    `${BASE}/jobs/${jobId}/blocks/${encodedBlockId}/python`,
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },

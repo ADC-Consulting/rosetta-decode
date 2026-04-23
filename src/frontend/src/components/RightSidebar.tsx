@@ -5,6 +5,7 @@ import { useState } from "react";
 interface RightSidebarItem {
   id: string;
   label: string;
+  subtitle?: string;
   isSelected: boolean;
   onClick: () => void;
 }
@@ -13,15 +14,16 @@ interface RightSidebarProps {
   title: string;
   items: RightSidebarItem[];
   footer?: React.ReactNode;
+  sidebarKey?: string;
 }
 
 const ICON_COL = 56;
 const ICON_LEFT = (ICON_COL - 18) / 2;
 const LABEL_WIDTH = 140;
 
-function readCollapsed(): boolean {
+function readCollapsed(key: string): boolean {
   try {
-    return localStorage.getItem("right-sidebar-collapsed") === "true";
+    return localStorage.getItem(key) === "true";
   } catch {
     return false;
   }
@@ -31,15 +33,16 @@ export default function RightSidebar({
   title,
   items,
   footer,
+  sidebarKey = "right-sidebar-collapsed",
 }: RightSidebarProps): React.ReactElement {
-  const [collapsed, setCollapsed] = useState<boolean>(readCollapsed);
+  const [collapsed, setCollapsed] = useState<boolean>(() => readCollapsed(sidebarKey));
   const [search, setSearch] = useState("");
 
   function toggle(): void {
     const next = !collapsed;
     setCollapsed(next);
     try {
-      localStorage.setItem("right-sidebar-collapsed", String(next));
+      localStorage.setItem(sidebarKey, String(next));
     } catch {
       // ignore
     }
@@ -115,14 +118,15 @@ export default function RightSidebar({
               onClick={item.onClick}
               aria-label={item.label}
               className={cn(
-                "flex items-center h-10 w-full text-sm text-muted-foreground overflow-hidden",
+                "flex items-center w-full text-sm text-muted-foreground overflow-hidden",
+                item.subtitle ? "min-h-10 h-auto py-1.5" : "h-10",
                 "hover:text-foreground hover:bg-muted/60 transition-colors cursor-pointer",
                 item.isSelected && "bg-muted text-foreground font-medium",
               )}
               style={{ paddingLeft: ICON_LEFT }}
             >
               <span
-                className="shrink-0 flex items-center justify-center"
+                className="shrink-0 flex items-center justify-center self-start mt-1"
                 style={{ width: 18, height: 18 }}
               >
                 <span
@@ -135,14 +139,21 @@ export default function RightSidebar({
                 />
               </span>
               <span
-                className="whitespace-nowrap overflow-hidden text-ellipsis text-left transition-[width,opacity,margin] duration-200 ease-in-out"
+                className="flex flex-col text-left transition-[width,opacity,margin] duration-200 ease-in-out overflow-hidden"
                 style={{
                   width: collapsed ? 0 : LABEL_WIDTH,
                   opacity: collapsed ? 0 : 1,
                   marginLeft: collapsed ? 0 : 12,
                 }}
               >
-                {item.label}
+                <span className="whitespace-nowrap overflow-hidden text-ellipsis">
+                  {item.label}
+                </span>
+                {item.subtitle && !collapsed && (
+                  <span className="text-xs text-muted-foreground truncate block">
+                    {item.subtitle}
+                  </span>
+                )}
               </span>
             </button>
 

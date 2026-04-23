@@ -1,4 +1,5 @@
 import { getBlockRevisions, getJobSources, saveBlockPython } from "@/api/jobs";
+import { registerSasLanguage } from "./registerSasLanguage";
 import type { BlockPlan, TrustReportBlock } from "@/api/types";
 import {
   Dialog,
@@ -44,6 +45,7 @@ interface BlockPlanTableProps {
   isAccepted?: boolean;
   onBlockRefineSuccess?: () => void;
   jobPythonCode?: string;
+  generatedFiles?: Record<string, string>;
 }
 
 type GroupBy = "none" | "file" | "folder";
@@ -271,8 +273,10 @@ export default function BlockPlanTable({
   isAccepted,
   onBlockRefineSuccess,
   jobPythonCode,
+  generatedFiles,
 }: BlockPlanTableProps): React.ReactElement {
   const queryClient = useQueryClient();
+  const [humanEditedBlocks, setHumanEditedBlocks] = useState<Set<string>>(new Set());
   const [refineBlockId, setRefineBlockId] = useState<string | null>(null);
   const [historyBlockId, setHistoryBlockId] = useState<string | null>(null);
   const [codeBlockId, setCodeBlockId] = useState<string | null>(null);
@@ -296,15 +300,31 @@ export default function BlockPlanTable({
         ]);
         const latest = history.revisions[0];
         setCodeDialogPython(
-          latest?.python_code ?? initialCodeRef.current ?? "",
+          latest?.python_code ??
+            (() => {
+              if (!generatedFiles) return jobPythonCode ?? "";
+              const pyFile = codeSasFile.replace(/\.sas$/i, ".py");
+              return (
+                generatedFiles[pyFile] ??
+                generatedFiles[
+                  Object.keys(generatedFiles).find((k) =>
+                    k.endsWith(pyFile.split("/").pop()!),
+                  ) ?? ""
+                ] ??
+                jobPythonCode ??
+                ""
+              );
+            })(),
         );
-        const entry = Object.entries(sources.sources).find(
-          ([k]) =>
-            k === codeSasFile ||
-            k.endsWith("/" + codeSasFile) ||
-            codeSasFile.endsWith(k),
-        );
-        setSasCode(entry?.[1] ?? "");
+        const entry = sources.sources[codeSasFile]
+          ? ([codeSasFile, sources.sources[codeSasFile]] as [string, string])
+          : Object.entries(sources.sources).find(
+              ([k]) =>
+                k === codeSasFile ||
+                k.endsWith("/" + codeSasFile) ||
+                codeSasFile.endsWith(k),
+            );
+        setSasCode(entry ? entry[1] : "");
       } catch {
         setCodeDialogPython(initialCodeRef.current ?? "");
         setSasCode("");
@@ -312,7 +332,7 @@ export default function BlockPlanTable({
         setCodeLoading(false);
       }
     })();
-  }, [codeBlockId, jobId, codeSasFile]);
+  }, [codeBlockId, jobId, codeSasFile, generatedFiles, jobPythonCode]);
   const [groupBy, setGroupBy] = useState<GroupBy>(() => {
     const files = new Set(blockPlans.map((b) => b.source_file));
     return files.size > 1 ? "folder" : "none";
@@ -628,7 +648,12 @@ export default function BlockPlanTable({
                           <button
                             onClick={() => setHistoryBlockId(bp.block_id)}
                             aria-label={`View history for block ${bp.block_id}`}
-                            className="inline-flex items-center justify-center rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+                            className={
+                              "inline-flex items-center justify-center rounded p-1 transition-colors cursor-pointer " +
+                              (humanEditedBlocks.has(bp.block_id)
+                                ? "text-primary ring-1 ring-primary/40 bg-primary/5 hover:bg-primary/10"
+                                : "text-muted-foreground hover:text-foreground hover:bg-muted")
+                            }
                           >
                             <History size={14} />
                           </button>
@@ -688,67 +713,11 @@ export default function BlockPlanTable({
             </DialogTitle>
           </DialogHeader>
 
-          <div className="flex items-center gap-2 mb-2">
-            <button
-              onClick={() => setCodeEditable((v) => !v)}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium border border-border bg-background hover:bg-muted transition-colors cursor-pointer"
-            >
-              {codeEditable ? (
-                <>
-                  <Lock size={12} /> Lock
-                </>
-              ) : (
-                <>
-                  <Pencil size={12} /> Edit
-                </>
-              )}
-            </button>
-            <button
-              onClick={() => setCodeEditorDark((d) => !d)}
-              aria-label={
-                codeEditorDark
-                  ? "Switch to light theme"
-                  : "Switch to dark theme"
-              }
-              className="inline-flex items-center justify-center rounded p-1.5 text-xs text-muted-foreground border border-border hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
-            >
-              {codeEditorDark ? <Sun size={12} /> : <Moon size={12} />}
-            </button>
-            {codeEditable && (
-              <button
-                onClick={async () => {
-                  if (!codeBlockId) return;
-                  setCodeSaving(true);
-                  try {
-                    await saveBlockPython(jobId, codeBlockId, codeDialogPython);
-                    setCodeEditable(false);
-                    setCodeBlockId(null);
-                    void queryClient.invalidateQueries({
-                      queryKey: ["blockRevisions", jobId, codeBlockId],
-                    });
-                  } catch (err) {
-                    toast.error(
-                      err instanceof Error
-                        ? err.message
-                        : "Could not save code.",
-                    );
-                  } finally {
-                    setCodeSaving(false);
-                  }
-                }}
-                disabled={codeSaving}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors"
-              >
-                {codeSaving ? "Saving…" : "Save"}
-              </button>
-            )}
-          </div>
-
           <div className="flex flex-1 min-h-0 gap-3">
             {/* SAS panel */}
             <div className="flex flex-col flex-1 min-w-0">
               <div className="flex items-center gap-1.5 mb-1.5 shrink-0">
-                <span className="size-2 rounded-full bg-orange-400 shrink-0" />
+                <img src="/sas.svg" className="h-4 w-4 mr-1.5" alt="SAS" />
                 <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   SAS
                 </span>
@@ -762,7 +731,8 @@ export default function BlockPlanTable({
                   <Editor
                     key={(codeBlockId ?? "none") + "-sas"}
                     height="100%"
-                    language="plaintext"
+                    language="sas"
+                    beforeMount={registerSasLanguage}
                     value={sasCode}
                     options={{
                       readOnly: true,
@@ -779,10 +749,69 @@ export default function BlockPlanTable({
             {/* Python panel */}
             <div className="flex flex-col flex-1 min-w-0">
               <div className="flex items-center gap-1.5 mb-1.5 shrink-0">
-                <span className="size-2 rounded-full bg-blue-400 shrink-0" />
+                <img src="/python.svg" className="h-4 w-4 mr-1.5" alt="Python" />
                 <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Python
                 </span>
+                <div className="ml-auto flex items-center gap-1.5">
+                  {/* Theme toggle — leftmost */}
+                  <button
+                    onClick={() => setCodeEditorDark((d) => !d)}
+                    aria-label={
+                      codeEditorDark
+                        ? "Switch to light theme"
+                        : "Switch to dark theme"
+                    }
+                    className="inline-flex items-center justify-center rounded p-1.5 text-xs text-muted-foreground border border-border hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+                  >
+                    {codeEditorDark ? <Sun size={12} /> : <Moon size={12} />}
+                  </button>
+                  {/* Edit/Lock toggle */}
+                  <button
+                    onClick={() => setCodeEditable((v) => !v)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium border border-border bg-background hover:bg-muted transition-colors cursor-pointer"
+                  >
+                    {codeEditable ? (
+                      <>
+                        <Lock size={12} /> Lock
+                      </>
+                    ) : (
+                      <>
+                        <Pencil size={12} /> Edit
+                      </>
+                    )}
+                  </button>
+                  {/* Save — only when editable, rightmost */}
+                  {codeEditable && (
+                    <button
+                      onClick={async () => {
+                        if (!codeBlockId) return;
+                        setCodeSaving(true);
+                        try {
+                          await saveBlockPython(jobId, codeBlockId, codeDialogPython);
+                          setHumanEditedBlocks((prev) => new Set([...prev, codeBlockId]));
+                          setCodeEditable(false);
+                          void queryClient.invalidateQueries({
+                            queryKey: ["block-revisions", jobId, codeBlockId],
+                          });
+                          setCodeBlockId(null);
+                        } catch (err) {
+                          toast.error(
+                            err instanceof Error
+                              ? err.message
+                              : "Could not save code.",
+                          );
+                        } finally {
+                          setCodeSaving(false);
+                        }
+                      }}
+                      disabled={codeSaving}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                    >
+                      {codeSaving ? "Saving…" : "Save"}
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="flex-1 min-h-0">
                 {codeLoading ? (
