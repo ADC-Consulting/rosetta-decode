@@ -1,5 +1,18 @@
-import { getJobDoc, getJobPlan, getJobSources, getJobTrustReport, listJobs } from "@/api/jobs";
-import type { JobPlanResponse, JobSummary, TrustReportResponse } from "@/api/types";
+import {
+  getJobDoc,
+  getJobPlan,
+  getJobSources,
+  getJobTrustReport,
+  listJobs,
+} from "@/api/jobs";
+import type {
+  JobPlanResponse,
+  JobSummary,
+  TrustReportResponse,
+} from "@/api/types";
+import { extractMarkdown } from "@/components/JobDetail/utils";
+import TiptapEditor from "@/components/TiptapEditor";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -7,28 +20,29 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Button } from "@/components/ui/button";
-import { extractMarkdown } from "@/components/JobDetail/utils";
-import TiptapEditor from "@/components/TiptapEditor";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import {
   ChevronDown,
   ChevronRight,
+  Database,
   File,
   FileCode2,
   FileSpreadsheet,
   Folder,
   FolderOpen,
   ScrollText,
-  Database,
 } from "lucide-react";
 import { marked } from "marked";
 import { useMemo, useState } from "react";
 
 // ── Skeleton ──────────────────────────────────────────────────────────────────
 
-function SkeletonBar({ className }: { className?: string }): React.ReactElement {
+function SkeletonBar({
+  className,
+}: {
+  className?: string;
+}): React.ReactElement {
   return (
     <div
       className={cn(
@@ -43,7 +57,11 @@ function SkeletonBar({ className }: { className?: string }): React.ReactElement 
 
 // ── Badges ────────────────────────────────────────────────────────────────────
 
-function ConfidenceBadge({ value }: { value: string | null }): React.ReactElement {
+function ConfidenceBadge({
+  value,
+}: {
+  value: string | null;
+}): React.ReactElement {
   if (!value) return <span className="text-muted-foreground">—</span>;
   const classes: Record<string, string> = {
     high: "text-green-700 bg-green-50 border border-green-200",
@@ -51,9 +69,12 @@ function ConfidenceBadge({ value }: { value: string | null }): React.ReactElemen
     low: "text-red-700 bg-red-50 border border-red-200",
     very_low: "text-red-700 bg-red-50 border border-red-200",
   };
-  const cls = classes[value] ?? "text-muted-foreground bg-muted border border-border";
+  const cls =
+    classes[value] ?? "text-muted-foreground bg-muted border border-border";
   return (
-    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium uppercase ${cls}`}>
+    <span
+      className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium uppercase ${cls}`}
+    >
       {value.replace("_", " ")}
     </span>
   );
@@ -66,17 +87,26 @@ function RiskBadge({ value }: { value: string | null }): React.ReactElement {
     medium: "text-amber-700 bg-amber-50 border border-amber-200",
     high: "text-red-700 bg-red-50 border border-red-200",
   };
-  const cls = classes[value] ?? "text-muted-foreground bg-muted border border-border";
+  const cls =
+    classes[value] ?? "text-muted-foreground bg-muted border border-border";
   return (
-    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium uppercase ${cls}`}>
+    <span
+      className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium uppercase ${cls}`}
+    >
       {value} risk
     </span>
   );
 }
 
-function StatusChip({ status }: { status: "proposed" | "accepted" }): React.ReactElement {
+function StatusChip({
+  status,
+}: {
+  status: "proposed" | "accepted";
+}): React.ReactElement {
   if (status === "accepted") {
-    return <span className="text-xs font-medium text-emerald-500">Accepted</span>;
+    return (
+      <span className="text-xs font-medium text-emerald-500">Accepted</span>
+    );
   }
   return (
     <>
@@ -85,7 +115,8 @@ function StatusChip({ status }: { status: "proposed" | "accepted" }): React.Reac
         className="text-xs font-medium"
         style={{
           display: "inline-block",
-          backgroundImage: "linear-gradient(90deg,#f59e0b 20%,#fef3c7 50%,#f59e0b 80%)",
+          backgroundImage:
+            "linear-gradient(90deg,#f59e0b 20%,#fef3c7 50%,#f59e0b 80%)",
           backgroundSize: "200% 100%",
           WebkitBackgroundClip: "text",
           WebkitTextFillColor: "transparent",
@@ -106,7 +137,11 @@ function fileIcon(name: string): React.ReactElement {
   const cls = "h-3.5 w-3.5 shrink-0 text-muted-foreground";
   if (lower.endsWith(".sas")) return <FileCode2 className={cls} />;
   if (lower.endsWith(".sas7bdat")) return <Database className={cls} />;
-  if (lower.endsWith(".xls") || lower.endsWith(".xlsx") || lower.endsWith(".csv"))
+  if (
+    lower.endsWith(".xls") ||
+    lower.endsWith(".xlsx") ||
+    lower.endsWith(".csv")
+  )
     return <FileSpreadsheet className={cls} />;
   if (lower.endsWith(".log")) return <ScrollText className={cls} />;
   return <File className={cls} />;
@@ -132,20 +167,25 @@ function FileTreeNode({
           style={indent}
           onClick={() => setOpen((o) => !o)}
         >
-          {open
-            ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground mr-1" />
-            : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground mr-1" />}
-          {open
-            ? <FolderOpen className="h-4 w-4 shrink-0 text-muted-foreground mr-1.5" />
-            : <Folder className="h-4 w-4 shrink-0 text-muted-foreground mr-1.5" />}
+          {open ? (
+            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground mr-1" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground mr-1" />
+          )}
+          {open ? (
+            <FolderOpen className="h-4 w-4 shrink-0 text-muted-foreground mr-1.5" />
+          ) : (
+            <Folder className="h-4 w-4 shrink-0 text-muted-foreground mr-1.5" />
+          )}
           <span className="truncate text-foreground text-xs">{name}</span>
           <span className="ml-1.5 text-[10px] text-muted-foreground">
             {children.length} {children.length === 1 ? "file" : "files"}
           </span>
         </li>
-        {open && children.map((f) => (
-          <FileTreeNode key={f} name={f} depth={depth + 1} />
-        ))}
+        {open &&
+          children.map((f) => (
+            <FileTreeNode key={f} name={f} depth={depth + 1} />
+          ))}
       </>
     );
   }
@@ -197,23 +237,29 @@ function ReadOnlyFileTree({ jobId }: { jobId: string }): React.ReactElement {
         className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors rounded-md"
         aria-expanded={open}
       >
-        {open
-          ? <ChevronDown className="h-3.5 w-3.5 shrink-0" />
-          : <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
+        {open ? (
+          <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+        ) : (
+          <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+        )}
         <FolderOpen className="h-3.5 w-3.5 shrink-0" />
         Source files
       </button>
       {open && (
         <ul className="border-t border-border" aria-label="Source files">
           {!grouped && (
-            <li className="px-3 py-2 text-xs text-muted-foreground animate-pulse">Loading…</li>
+            <li className="px-3 py-2 text-xs text-muted-foreground animate-pulse">
+              Loading…
+            </li>
           )}
-          {grouped && grouped.loose.map((f) => (
-            <FileTreeNode key={f} name={f} depth={0} />
-          ))}
-          {grouped && Object.entries(grouped.folders).map(([dir, files]) => (
-            <FileTreeNode key={dir} name={dir} children={files} depth={0} />
-          ))}
+          {grouped &&
+            grouped.loose.map((f) => (
+              <FileTreeNode key={f} name={f} depth={0} />
+            ))}
+          {grouped &&
+            Object.entries(grouped.folders).map(([dir, files]) => (
+              <FileTreeNode key={dir} name={dir} children={files} depth={0} />
+            ))}
         </ul>
       )}
     </div>
@@ -240,7 +286,9 @@ function DocCard({
 
   const jobName = job.name ?? job.job_id.slice(0, 8) + "…";
   const formattedDate = new Date(job.created_at).toLocaleDateString("en-US", {
-    month: "short", day: "numeric", year: "numeric",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
   });
 
   return (
@@ -252,7 +300,9 @@ function DocCard({
         </div>
 
         <div>
-          <p className="text-base font-semibold text-foreground leading-snug">{jobName}</p>
+          <p className="text-base font-semibold text-foreground leading-snug">
+            {jobName}
+          </p>
           {planData?.summary ? (
             <p className="mt-1 text-sm text-muted-foreground line-clamp-2 leading-relaxed">
               {planData.summary}
@@ -273,7 +323,8 @@ function DocCard({
             </span>
             {trustReport ? (
               <span className="flex items-center gap-1.5">
-                Confidence: <ConfidenceBadge value={trustReport.overall_confidence} />
+                Confidence:{" "}
+                <ConfidenceBadge value={trustReport.overall_confidence} />
               </span>
             ) : (
               <SkeletonBar className="h-3 w-24" />
@@ -282,7 +333,8 @@ function DocCard({
           {trustReport ? (
             <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
               <span className="text-green-700">
-                ✓ {trustReport.auto_verified}/{trustReport.total_blocks} auto-verified
+                ✓ {trustReport.auto_verified}/{trustReport.total_blocks}{" "}
+                auto-verified
               </span>
               <span className="text-amber-700">
                 ⚠ {trustReport.needs_review} needs review
@@ -302,10 +354,18 @@ function DocCard({
       <div className="px-4 pb-4 flex items-center justify-between gap-2">
         <span className="text-xs text-muted-foreground">{formattedDate}</span>
         <div className="flex items-center gap-1.5">
-          <Button size="sm" variant="outline" onClick={() => onOpen(job.job_id, "plain")}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => onOpen(job.job_id, "plain")}
+          >
             Plain English
           </Button>
-          <Button size="sm" variant="outline" onClick={() => onOpen(job.job_id, "tech")}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => onOpen(job.job_id, "tech")}
+          >
             Technical
           </Button>
         </div>
@@ -351,26 +411,45 @@ function DocPopup({
     [doc],
   );
 
-  const jobName = selectedJob?.name ?? (selectedJob ? selectedJob.job_id.slice(0, 8) + "…" : "");
+  const jobName =
+    selectedJob?.name ??
+    (selectedJob ? selectedJob.job_id.slice(0, 8) + "…" : "");
   const totalBlocks = trustReport?.total_blocks ?? 0;
   const autoVerified = trustReport?.auto_verified ?? 0;
   const needsReview = trustReport?.needs_review ?? 0;
 
   return (
-    <Dialog open={!!jobId} onOpenChange={(open) => { if (!open) onClose(); }}>
+    <Dialog
+      open={!!jobId}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
       {/* Override the base DialogContent `grid gap-4` so flex layout works correctly */}
       <DialogContent className="flex! flex-col! gap-0! p-0! max-w-5xl w-[90vw] h-[85vh]! overflow-hidden">
         {/* Header */}
         <div className="px-6 pt-5 pb-4 flex items-start justify-between gap-4 shrink-0 border-b border-border">
           <div className="flex flex-col gap-2 min-w-0">
-            <DialogTitle className="text-base font-semibold">{jobName}</DialogTitle>
+            <DialogTitle className="text-base font-semibold">
+              {jobName}
+            </DialogTitle>
             <div className="flex items-center flex-wrap gap-2">
-              {selectedJob && <StatusChip status={selectedJob.status as "proposed" | "accepted"} />}
+              {selectedJob && (
+                <StatusChip
+                  status={selectedJob.status as "proposed" | "accepted"}
+                />
+              )}
               {planData && <RiskBadge value={planData.overall_risk} />}
-              {trustReport && <ConfidenceBadge value={trustReport.overall_confidence} />}
+              {trustReport && (
+                <ConfidenceBadge value={trustReport.overall_confidence} />
+              )}
             </div>
           </div>
-          <Tabs value={tab} onValueChange={(v) => onTabChange(v as "tech" | "plain")} className="shrink-0">
+          <Tabs
+            value={tab}
+            onValueChange={(v) => onTabChange(v as "tech" | "plain")}
+            className="shrink-0"
+          >
             <TabsList>
               <TabsTrigger value="plain">Plain English</TabsTrigger>
               <TabsTrigger value="tech">Technical</TabsTrigger>
@@ -393,13 +472,19 @@ function DocPopup({
               />
             </div>
           ) : tab === "tech" ? (
-            techHtml
-              ? <TiptapEditor content={techHtml} readOnly />
-              : <p className="text-sm text-muted-foreground">Technical documentation not yet generated.</p>
+            techHtml ? (
+              <TiptapEditor content={techHtml} readOnly />
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Technical documentation not yet generated.
+              </p>
+            )
+          ) : plainHtml ? (
+            <TiptapEditor content={plainHtml} readOnly />
           ) : (
-            plainHtml
-              ? <TiptapEditor content={plainHtml} readOnly />
-              : <p className="text-sm text-muted-foreground">Plain English summary not yet generated.</p>
+            <p className="text-sm text-muted-foreground">
+              Plain English summary not yet generated.
+            </p>
           )}
         </div>
 
@@ -407,7 +492,8 @@ function DocPopup({
         <DialogFooter showCloseButton className="mx-0 mb-0 rounded-b-xl">
           {trustReport && (
             <span className="text-xs text-muted-foreground self-center mr-auto">
-              {totalBlocks} total blocks · {autoVerified} auto-verified · {needsReview} needs review
+              {totalBlocks} total blocks · {autoVerified} auto-verified ·{" "}
+              {needsReview} needs review
             </span>
           )}
         </DialogFooter>
@@ -428,7 +514,10 @@ export default function DocsPage(): React.ReactElement {
   });
 
   const jobs = useMemo(
-    () => allJobs?.filter((j) => j.status === "proposed" || j.status === "accepted") ?? [],
+    () =>
+      allJobs?.filter(
+        (j) => j.status === "proposed" || j.status === "accepted",
+      ) ?? [],
     [allJobs],
   );
 
@@ -449,66 +538,84 @@ export default function DocsPage(): React.ReactElement {
   });
 
   return (
-    <div className="space-y-6">
-      <style>{`@keyframes shimmer{from{background-position:200% center}to{background-position:-200% center}}`}</style>
+    <div className="px-6 py-8 overflow-y-auto flex-1 h-full">
+      <div className="space-y-6">
+        <style>{`@keyframes shimmer{from{background-position:200% center}to{background-position:-200% center}}`}</style>
 
-      <div>
-        <h1 className="text-xl font-semibold text-foreground">Documentation</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          LLM-generated migration summaries for reviewed and accepted migrations.
-        </p>
-      </div>
+        <div>
+          <h1 className="text-xl font-semibold text-foreground">
+            Documentation
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            LLM-generated migration summaries for reviewed and accepted
+            migrations.
+          </p>
+        </div>
 
-      {isLoading && (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {([0, 1, 2] as const).map((i) => (
-            <div key={i} className="rounded-md border border-border bg-card p-4 space-y-3" aria-hidden="true">
-              <div className="flex items-center justify-between">
-                <SkeletonBar className="h-3 w-20" />
-                <SkeletonBar className="h-3 w-16" />
-              </div>
-              <SkeletonBar className="h-4 w-2/3" />
-              <SkeletonBar className="h-3 w-full" />
-              <SkeletonBar className="h-3 w-4/5" />
-              <div className="border-t border-border pt-3 space-y-1.5">
-                <SkeletonBar className="h-3 w-1/2" />
-                <SkeletonBar className="h-3 w-3/4" />
-              </div>
-              <div className="flex items-center justify-between pt-1">
-                <SkeletonBar className="h-3 w-24" />
-                <div className="flex gap-1.5">
-                  <SkeletonBar className="h-7 w-24 rounded-md" />
-                  <SkeletonBar className="h-7 w-24 rounded-md" />
+        {isLoading && (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {([0, 1, 2] as const).map((i) => (
+              <div
+                key={i}
+                className="rounded-md border border-border bg-card p-4 space-y-3"
+                aria-hidden="true"
+              >
+                <div className="flex items-center justify-between">
+                  <SkeletonBar className="h-3 w-20" />
+                  <SkeletonBar className="h-3 w-16" />
+                </div>
+                <SkeletonBar className="h-4 w-2/3" />
+                <SkeletonBar className="h-3 w-full" />
+                <SkeletonBar className="h-3 w-4/5" />
+                <div className="border-t border-border pt-3 space-y-1.5">
+                  <SkeletonBar className="h-3 w-1/2" />
+                  <SkeletonBar className="h-3 w-3/4" />
+                </div>
+                <div className="flex items-center justify-between pt-1">
+                  <SkeletonBar className="h-3 w-24" />
+                  <div className="flex gap-1.5">
+                    <SkeletonBar className="h-7 w-24 rounded-md" />
+                    <SkeletonBar className="h-7 w-24 rounded-md" />
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
 
-      {!isLoading && jobs.length === 0 && (
-        <div className="flex items-center justify-center py-16">
-          <p className="text-sm text-muted-foreground">No completed migrations yet.</p>
-        </div>
-      )}
+        {!isLoading && jobs.length === 0 && (
+          <div className="flex items-center justify-center py-16">
+            <p className="text-sm text-muted-foreground">
+              No completed migrations yet.
+            </p>
+          </div>
+        )}
 
-      {!isLoading && jobs.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {jobs.map((job) => (
-            <DocCard key={job.job_id} job={job} onOpen={(id, t) => { setPopupTab(t); setSelectedJobId(id); }} />
-          ))}
-        </div>
-      )}
+        {!isLoading && jobs.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {jobs.map((job) => (
+              <DocCard
+                key={job.job_id}
+                job={job}
+                onOpen={(id, t) => {
+                  setPopupTab(t);
+                  setSelectedJobId(id);
+                }}
+              />
+            ))}
+          </div>
+        )}
 
-      <DocPopup
-        jobId={selectedJobId}
-        tab={popupTab}
-        onTabChange={setPopupTab}
-        selectedJob={selectedJob}
-        trustReport={popupTrustReport ?? null}
-        planData={popupPlanData ?? null}
-        onClose={() => setSelectedJobId(null)}
-      />
+        <DocPopup
+          jobId={selectedJobId}
+          tab={popupTab}
+          onTabChange={setPopupTab}
+          selectedJob={selectedJob}
+          trustReport={popupTrustReport ?? null}
+          planData={popupPlanData ?? null}
+          onClose={() => setSelectedJobId(null)}
+        />
+      </div>
     </div>
   );
 }

@@ -508,185 +508,187 @@ export default function UploadPage() {
   // ---------------------------------------------------------------------------
 
   return (
-    <div className="max-w-lg mx-auto space-y-6">
-      <h1 className="text-xl font-semibold text-foreground">New Migration</h1>
+    <div className="max-w-[800px] mx-auto w-full px-6 py-8 overflow-y-auto flex-1 h-full">
+      <div className="max-w-lg mx-auto space-y-6">
+        <h1 className="text-xl font-semibold text-foreground">New Migration</h1>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Phase 2 — Job result card                                           */}
-      {/* ------------------------------------------------------------------ */}
-      {manifest !== null && (
-        <div className="rounded-lg border border-border bg-background shadow-sm space-y-4 p-5">
-          {(isAccepted || isProposed) && (
-            <Button
-              type="button"
-              onClick={() => navigate(`/jobs/${manifest.job_id}`)}
-              className="w-full cursor-pointer"
-              aria-label="Open full job details"
-            >
-              Open full details
-              <ExternalLink className="ml-2 h-4 w-4" aria-hidden="true" />
-            </Button>
-          )}
+        {/* ------------------------------------------------------------------ */}
+        {/* Phase 2 — Job result card                                           */}
+        {/* ------------------------------------------------------------------ */}
+        {manifest !== null && (
+          <div className="rounded-lg border border-border bg-background shadow-sm space-y-4 p-5">
+            {(isAccepted || isProposed) && (
+              <Button
+                type="button"
+                onClick={() => navigate(`/jobs/${manifest.job_id}`)}
+                className="w-full cursor-pointer"
+                aria-label="Open full job details"
+              >
+                Open full details
+                <ExternalLink className="ml-2 h-4 w-4" aria-hidden="true" />
+              </Button>
+            )}
 
-          <div className="flex items-start justify-between gap-4">
-            <div className="space-y-1">
-              {/* <p className="text-sm font-semibold text-foreground">
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-1">
+                {/* <p className="text-sm font-semibold text-foreground">
                 Migration submitted
               </p> */}
-              {(manifest.name ?? migrationName) ? (
-                <p className="text-base font-semibold text-foreground">
-                  {manifest.name ?? migrationName}
-                </p>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <code className="font-mono text-xs text-muted-foreground truncate max-w-65">
-                    {manifest.job_id}
-                  </code>
-                  <button
-                    type="button"
-                    onClick={() => copyText(manifest.job_id)}
-                    aria-label="Copy job ID"
-                    className="shrink-0 cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    <ClipboardCopy className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              )}
+                {(manifest.name ?? migrationName) ? (
+                  <p className="text-base font-semibold text-foreground">
+                    {manifest.name ?? migrationName}
+                  </p>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <code className="font-mono text-xs text-muted-foreground truncate max-w-65">
+                      {manifest.job_id}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => copyText(manifest.job_id)}
+                      aria-label="Copy job ID"
+                      className="shrink-0 cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <ClipboardCopy className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+              <StatusBadge status={jobStatus?.status ?? "queued"} />
             </div>
-            <StatusBadge status={jobStatus?.status ?? "queued"} />
+
+            <div className="flex items-center gap-3 pt-1 border-t border-border">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={newMigration}
+                className="cursor-pointer"
+                aria-label="Start another migration without clearing this result"
+              >
+                Start another
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={reset}
+                aria-label="Accept result and clear this session"
+                className="cursor-pointer text-muted-foreground hover:text-foreground"
+              >
+                Accept & clear
+              </Button>
+            </div>
           </div>
+        )}
 
-          <div className="flex items-center gap-3 pt-1 border-t border-border">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={newMigration}
-              className="cursor-pointer"
-              aria-label="Start another migration without clearing this result"
-            >
-              Start another
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={reset}
-              aria-label="Accept result and clear this session"
-              className="cursor-pointer text-muted-foreground hover:text-foreground"
-            >
-              Accept & clear
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* ------------------------------------------------------------------ */}
-      {/* Phase 1 — Staging form                                              */}
-      {/* ------------------------------------------------------------------ */}
-      {phase === "staging" && (
-        <form onSubmit={handleSubmit} noValidate className="space-y-6">
-          <input
-            ref={inputRef}
-            id="file-input"
-            type="file"
-            accept=".sas,.sas7bdat,.zip,.log,.csv,.xls,.xlsx"
-            multiple
-            className="sr-only"
-            aria-hidden="true"
-            tabIndex={-1}
-            onChange={handleInputChange}
-          />
-
-          <div className="space-y-1.5">
-            <label
-              htmlFor="migration-name"
-              className="text-sm font-medium text-foreground"
-            >
-              Migration name
-            </label>
+        {/* ------------------------------------------------------------------ */}
+        {/* Phase 1 — Staging form                                              */}
+        {/* ------------------------------------------------------------------ */}
+        {phase === "staging" && (
+          <form onSubmit={handleSubmit} noValidate className="space-y-6">
             <input
-              id="migration-name"
-              type="text"
-              required
-              value={migrationName}
-              onChange={(e) => setMigrationName(e.target.value)}
-              placeholder="e.g. Q4 claims pipeline"
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            />
-          </div>
-
-          <div
-            role="button"
-            tabIndex={0}
-            aria-label="Select files — .sas, .sas7bdat, or .zip"
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                inputRef.current?.click();
-              }
-            }}
-            onClick={() => inputRef.current?.click()}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragOver(true);
-            }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={handleDrop}
-            className={cn(
-              "flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-6 py-10",
-              "cursor-pointer select-none transition-colors",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              dragOver
-                ? "border-primary bg-primary/5"
-                : "border-border bg-muted/30 hover:border-primary/50 hover:bg-muted/50",
-            )}
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-8 w-8 text-muted-foreground"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={1.5}
+              ref={inputRef}
+              id="file-input"
+              type="file"
+              accept=".sas,.sas7bdat,.zip,.log,.csv,.xls,.xlsx"
+              multiple
+              className="sr-only"
               aria-hidden="true"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
+              tabIndex={-1}
+              onChange={handleInputChange}
+            />
+
+            <div className="space-y-1.5">
+              <label
+                htmlFor="migration-name"
+                className="text-sm font-medium text-foreground"
+              >
+                Migration name
+              </label>
+              <input
+                id="migration-name"
+                type="text"
+                required
+                value={migrationName}
+                onChange={(e) => setMigrationName(e.target.value)}
+                placeholder="e.g. Q4 claims pipeline"
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               />
-            </svg>
-            <p className="text-sm font-medium text-foreground">
-              Drop files here or{" "}
-              <span className="text-primary underline underline-offset-2">
-                browse
-              </span>
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Accepted formats: .csv, .log, .sas, .sas7bdat, .xls, .xlsx, .zip
-            </p>
-          </div>
+            </div>
 
-          <Button
-            type="submit"
-            disabled={submitDisabled}
-            aria-busy={isPending}
-            className="cursor-pointer"
-          >
-            {isPending ? "Submitting…" : "Migrate"}
-          </Button>
+            <div
+              role="button"
+              tabIndex={0}
+              aria-label="Select files — .sas, .sas7bdat, or .zip"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  inputRef.current?.click();
+                }
+              }}
+              onClick={() => inputRef.current?.click()}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOver(true);
+              }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleDrop}
+              className={cn(
+                "flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-6 py-10",
+                "cursor-pointer select-none transition-colors",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                dragOver
+                  ? "border-primary bg-primary/5"
+                  : "border-border bg-muted/30 hover:border-primary/50 hover:bg-muted/50",
+              )}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-8 w-8 text-muted-foreground"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={1.5}
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
+                />
+              </svg>
+              <p className="text-sm font-medium text-foreground">
+                Drop files here or{" "}
+                <span className="text-primary underline underline-offset-2">
+                  browse
+                </span>
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Accepted formats: .csv, .log, .sas, .sas7bdat, .xls, .xlsx, .zip
+              </p>
+            </div>
 
-          {renderFileList()}
+            <Button
+              type="submit"
+              disabled={submitDisabled}
+              aria-busy={isPending}
+              className="cursor-pointer"
+            >
+              {isPending ? "Submitting…" : "Migrate"}
+            </Button>
 
-          {validationError && (
-            <p role="alert" className="text-sm text-destructive">
-              {validationError}. Accepted: .csv, .log, .sas, .sas7bdat, .xls,
-              .xlsx, .zip
-            </p>
-          )}
-        </form>
-      )}
+            {renderFileList()}
+
+            {validationError && (
+              <p role="alert" className="text-sm text-destructive">
+                {validationError}. Accepted: .csv, .log, .sas, .sas7bdat, .xls,
+                .xlsx, .zip
+              </p>
+            )}
+          </form>
+        )}
+      </div>
     </div>
   );
 }

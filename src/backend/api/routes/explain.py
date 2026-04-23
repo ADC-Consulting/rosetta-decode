@@ -1,260 +1,363 @@
 """Explain endpoints — interactive Q&A over uploaded files or a job context.
 
-Provides two POST routes:
-- POST /explain  — file-based Q&A (multipart)
-- POST /explain/job — job-context Q&A (JSON body)
+Provides SSE-streaming routes:
+- POST /explain         — file-based Q&A (multipart, SSE)
+- POST /explain/job     — job-context Q&A (JSON body, SSE)
+
+And session persistence CRUD:
+- POST   /explain/sessions
+- GET    /explain/sessions
+- GET    /explain/sessions/{session_id}
 """
 
+import asyncio
 import json
 import logging
-import textwrap
-from collections.abc import Sequence
+from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from pydantic_ai import Agent
-from pydantic_ai.models import KnownModelName
-from pydantic_ai.models.openai import OpenAIChatModel
-from pydantic_ai.providers.azure import AzureProvider
-from pydantic_ai.providers.openai import OpenAIProvider
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.backend.api.schemas import ExplainJobRequest, ExplainResponse
-from src.backend.db.models import Job
+from src.backend.api.schemas import (
+    CreateExplainSessionRequest,
+    ExplainJobRequest,
+    ExplainMessage,
+    ExplainResponse,
+    ExplainSessionResponse,
+)
+from src.backend.db.models import ExplainSession, Job
 from src.backend.db.session import get_async_session
-from src.worker.core.config import worker_settings
+from src.worker.engine.chatbot import ExplainAgent
 
 logger = logging.getLogger(__name__)
-
 router = APIRouter()
 
-# ── Agent factory ─────────────────────────────────────────────────────────────
+_explain_agent = ExplainAgent()
+_background_tasks: set[asyncio.Task[Any]] = set()  # prevent GC of fire-and-forget tasks
 
-_SYSTEM_PROMPT = textwrap.dedent("""\
-    # agent: ExplainAgent
-
-    You are an expert assistant helping users understand a SAS-to-Python migration.
-    You will be given context extracted from the migration (plan, documentation,
-    generated Python code, or raw source files) and must answer the user's question
-    clearly and concisely.
-
-    Rules:
-    - Answer only what is asked; do not repeat the full context back.
-    - If the context does not contain enough information to answer, say so honestly.
-    - Use plain language unless the user asks for technical detail.
-    - If code is relevant, include short, focused snippets.
-""")
-
-_AGENT: "Agent[str] | None" = None
+# ── Session helpers ────────────────────────────────────────────────────────────
 
 
-def _make_explain_agent() -> "Agent[str]":
-    """Instantiate the pydantic-ai explain agent.
+def _session_to_response(s: ExplainSession) -> ExplainSessionResponse:
+    """Convert an ORM ExplainSession to its response schema.
+
+    Args:
+        s: The ORM model instance.
 
     Returns:
-        A pydantic-ai Agent configured for free-form string output.
+        ExplainSessionResponse populated from the model.
     """
-    model_obj: OpenAIChatModel | KnownModelName
-
-    if worker_settings.tensorzero_gateway_url:
-        raw = worker_settings.llm_model
-        base_name = raw.split(":", 1)[-1] if ":" in raw else raw
-        tz_model_name = f"tensorzero::model_name::{base_name}"
-        tz_provider = OpenAIProvider(
-            base_url=worker_settings.tensorzero_gateway_url,
-            api_key="tensorzero",
-        )
-        model_obj = OpenAIChatModel(model_name=tz_model_name, provider=tz_provider)
-    elif worker_settings.azure_openai_endpoint:
-        az_provider = AzureProvider(
-            azure_endpoint=worker_settings.azure_openai_endpoint,
-            api_key=worker_settings.azure_openai_api_key,
-            api_version=worker_settings.openai_api_version,
-        )
-        raw = worker_settings.llm_model
-        deployment = raw.split(":", 1)[-1] if ":" in raw else raw
-        model_obj = OpenAIChatModel(model_name=deployment, provider=az_provider)
-    else:
-        model_obj = worker_settings.llm_model  # type: ignore[assignment]
-
-    return Agent(
-        model=model_obj,
-        output_type=str,
-        system_prompt=_SYSTEM_PROMPT,
+    return ExplainSessionResponse(
+        session_id=s.id,
+        messages=[ExplainMessage(**m) for m in (s.messages or [])],
+        mode=s.mode,
+        audience=s.audience,
+        created_at=s.created_at,
     )
 
 
-def _get_explain_agent() -> "Agent[str]":
-    """Return the singleton ExplainAgent, creating it on first call.
-
-    Returns:
-        The shared Agent[str] instance.
-    """
-    global _AGENT
-    if _AGENT is None:
-        _AGENT = _make_explain_agent()
-    return _AGENT
+# ── Session CRUD ───────────────────────────────────────────────────────────────
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-
-def _build_file_prompt(
-    question: str,
-    file_contents: list[tuple[str, str]],
-    prior_messages: list[dict[str, Any]],
-) -> str:
-    """Build a prompt string that includes uploaded file contents and conversation history.
+@router.post("/explain/sessions", response_model=ExplainSessionResponse)
+async def create_explain_session(
+    req: CreateExplainSessionRequest,
+    db: AsyncSession = Depends(get_async_session),
+) -> ExplainSessionResponse:
+    """Create a new explain session.
 
     Args:
-        question: The user's current question.
-        file_contents: List of (filename, content) tuples.
-        prior_messages: Prior conversation turns as list of {role, content} dicts.
+        req: Session creation parameters.
+        db: Injected async database session.
 
     Returns:
-        Formatted prompt string.
+        The newly created ExplainSessionResponse.
     """
-    parts: list[str] = []
-
-    if file_contents:
-        parts.append("## Uploaded files\n")
-        for filename, content in file_contents:
-            parts.append(f"### {filename}\n```\n{content[:4000]}\n```\n")
-
-    if prior_messages:
-        parts.append("## Conversation history\n")
-        for msg in prior_messages:
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-            parts.append(f"**{role}**: {content}\n")
-
-    parts.append(f"## Question\n{question}")
-    return "\n".join(parts)
+    session = ExplainSession(
+        mode=req.mode,
+        job_id=req.job_id,
+        audience=req.audience,
+        messages=[],
+        context_files=[],
+    )
+    db.add(session)
+    await db.commit()
+    await db.refresh(session)
+    return _session_to_response(session)
 
 
-def _build_job_prompt(
-    question: str,
-    job: Job,
-    context_fields: "Sequence[str]",
-    prior_messages: list[dict[str, Any]],
-) -> str:
-    """Build a prompt string from job context fields and conversation history.
+@router.get("/explain/sessions", response_model=list[ExplainSessionResponse])
+async def list_explain_sessions(
+    db: AsyncSession = Depends(get_async_session),
+) -> list[ExplainSessionResponse]:
+    """List the 20 most-recent explain sessions.
 
     Args:
-        question: The user's current question.
-        job: The Job ORM object.
-        context_fields: Which context sections to include.
-        prior_messages: Prior conversation turns as list of {role, content} dicts.
+        db: Injected async database session.
 
     Returns:
-        Formatted prompt string.
+        List of ExplainSessionResponse ordered by created_at descending.
     """
-    parts: list[str] = []
-
-    if job.migration_plan:
-        summary = json.dumps(job.migration_plan, indent=2)
-        parts.append(f"## Migration plan\n```json\n{summary[:4000]}\n```\n")
-
-    if "doc" in context_fields and job.doc:
-        parts.append(f"## Technical documentation\n{job.doc[:4000]}\n")
-
-    if "doc" in context_fields and job.report and job.report.get("non_technical_doc"):
-        parts.append(f"## Business summary\n{job.report['non_technical_doc'][:2000]}\n")
-
-    if "python_code" in context_fields and job.python_code:
-        parts.append(f"## Generated Python code\n```python\n{job.python_code[:6000]}\n```\n")
-
-    if prior_messages:
-        parts.append("## Conversation history\n")
-        for msg in prior_messages:
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-            parts.append(f"**{role}**: {content}\n")
-
-    parts.append(f"## Question\n{question}")
-    return "\n".join(parts)
+    result = await db.execute(
+        select(ExplainSession).order_by(ExplainSession.created_at.desc()).limit(20)
+    )
+    sessions = result.scalars().all()
+    return [_session_to_response(s) for s in sessions]
 
 
-# ── Routes ────────────────────────────────────────────────────────────────────
+@router.get("/explain/sessions/{session_id}", response_model=ExplainSessionResponse)
+async def get_explain_session(
+    session_id: str,
+    db: AsyncSession = Depends(get_async_session),
+) -> ExplainSessionResponse:
+    """Retrieve a single explain session by ID.
+
+    Args:
+        session_id: The session UUID.
+        db: Injected async database session.
+
+    Returns:
+        ExplainSessionResponse for the requested session.
+
+    Raises:
+        HTTPException: 404 if the session does not exist.
+    """
+    result = await db.execute(select(ExplainSession).where(ExplainSession.id == session_id))
+    session = result.scalar_one_or_none()
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return _session_to_response(session)
 
 
-@router.post("/explain", response_model=ExplainResponse)
+# ── SSE helper ─────────────────────────────────────────────────────────────────
+
+
+async def _sse_stream(
+    prompt: str,
+    audience: str,
+    session_id: str | None,
+    user_message: str,
+    db: AsyncSession,
+) -> AsyncGenerator[str, None]:
+    """Generate SSE events from the ExplainAgent and optionally persist messages.
+
+    Args:
+        prompt: Full prompt to send to the LLM.
+        audience: "tech" or "non_tech".
+        session_id: Optional session to persist messages into.
+        user_message: Raw user question text (stored in history).
+        db: Async database session for persistence.
+
+    Yields:
+        SSE-formatted data strings.
+    """
+    full_response = ""
+    try:
+        async for chunk in _explain_agent.answer_stream(prompt, audience=audience):
+            full_response += chunk
+            yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+        yield f"data: {json.dumps({'tokens_used': None})}\n\n"
+        yield "data: [DONE]\n\n"
+    finally:
+        if session_id:
+            task = asyncio.create_task(
+                _persist_messages(session_id, user_message, full_response, db)
+            )
+            _background_tasks.add(task)
+            task.add_done_callback(_background_tasks.discard)
+
+
+async def _persist_messages(
+    session_id: str,
+    user_content: str,
+    assistant_content: str,
+    db: AsyncSession,
+) -> None:
+    """Append user+assistant messages to an explain session.
+
+    Args:
+        session_id: Target session UUID.
+        user_content: The user's question.
+        assistant_content: The assistant's full response.
+        db: Async database session.
+    """
+    try:
+        result = await db.execute(select(ExplainSession).where(ExplainSession.id == session_id))
+        session = result.scalar_one_or_none()
+        if session is None:
+            return
+        msgs: list[dict[str, str]] = list(session.messages or [])
+        msgs.append({"role": "user", "content": user_content})
+        msgs.append({"role": "assistant", "content": assistant_content})
+        session.messages = msgs
+        session.updated_at = datetime.now(UTC)
+        await db.commit()
+    except Exception:
+        logger.exception("Failed to persist explain messages for session %s", session_id)
+
+
+# ── File-based Q&A (SSE) ───────────────────────────────────────────────────────
+
+
+@router.post("/explain")
 async def explain_files(
     question: str = Form(...),
-    messages: str = Form(default="[]"),
+    messages: str = Form("[]"),
+    audience: str = Form("tech"),
+    session_id: str | None = Form(None),
     files: list[UploadFile] = File(default=[]),
-) -> ExplainResponse:
-    """Answer a question about uploaded files using the LLM.
+    db: AsyncSession = Depends(get_async_session),
+) -> StreamingResponse:
+    """Answer a question about uploaded files using SSE streaming.
 
     Args:
         question: The user's question (form field).
         messages: JSON-encoded list of prior conversation turns (form field).
+        audience: "tech" or "non_tech" (form field).
+        session_id: Optional session UUID for persistence (form field).
+        files: Uploaded files to use as context.
+        db: Injected async database session.
+
+    Returns:
+        StreamingResponse with SSE events.
+
+    Raises:
+        HTTPException: 400 if messages JSON is malformed.
+    """
+    try:
+        history: list[dict[str, Any]] = json.loads(messages)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid messages JSON: {exc}") from exc
+
+    context_parts: list[str] = []
+    for upload in files:
+        raw = await upload.read()
+        text = raw.decode("utf-8", errors="replace")
+        context_parts.append(f"=== File: {upload.filename} ===\n{text}")
+
+    context = "\n\n".join(context_parts)
+    history_text = "\n".join(f"{m['role'].upper()}: {m['content']}" for m in history[-10:])
+    prompt_parts: list[str] = []
+    if context:
+        prompt_parts.append(f"Context:\n{context}")
+    if history_text:
+        prompt_parts.append(f"Conversation history:\n{history_text}")
+    prompt_parts.append(f"USER: {question}")
+    prompt = "\n\n".join(prompt_parts)
+
+    return StreamingResponse(
+        _sse_stream(prompt, audience, session_id, question, db),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# ── Job-based Q&A (SSE) ────────────────────────────────────────────────────────
+
+
+class _ExplainJobSSERequest(ExplainJobRequest):
+    """Extended ExplainJobRequest with SSE session fields."""
+
+    session_id: str | None = None
+    audience: str = "tech"
+
+
+@router.post("/explain/job")
+async def explain_job(
+    req: _ExplainJobSSERequest,
+    db: AsyncSession = Depends(get_async_session),
+) -> StreamingResponse:
+    """Answer a question about a migration job using SSE streaming.
+
+    Args:
+        req: JSON body with job_id, question, optional messages, session_id, audience.
+        db: Injected async database session.
+
+    Returns:
+        StreamingResponse with SSE events.
+
+    Raises:
+        HTTPException: 404 if the job does not exist.
+    """
+    result = await db.execute(select(Job).where(Job.id == str(req.job_id)))
+    job: Job | None = result.scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job {req.job_id} not found")
+
+    parts: list[str] = []
+    if job.migration_plan:
+        parts.append(f"Migration plan:\n{json.dumps(job.migration_plan, indent=2)}")
+    if job.python_code:
+        parts.append(f"Generated Python:\n```python\n{job.python_code}\n```")
+    if job.doc:
+        parts.append(f"Documentation:\n{job.doc}")
+    if job.lineage:
+        parts.append(f"Lineage:\n{json.dumps(job.lineage, indent=2)}")
+
+    context = "\n\n".join(parts)
+    prior = [{"role": m.role, "content": m.content} for m in req.messages]
+    history_text = "\n".join(f"{m['role'].upper()}: {m['content']}" for m in prior[-10:])
+    prompt_parts: list[str] = []
+    if context:
+        prompt_parts.append(f"Context:\n{context}")
+    if history_text:
+        prompt_parts.append(f"Conversation history:\n{history_text}")
+    prompt_parts.append(f"USER: {req.question}")
+    prompt = "\n\n".join(prompt_parts)
+
+    return StreamingResponse(
+        _sse_stream(prompt, req.audience, req.session_id, req.question, db),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# ── Legacy non-streaming compat ────────────────────────────────────────────────
+
+
+@router.post("/explain/legacy", response_model=ExplainResponse)
+async def explain_files_legacy(
+    question: str = Form(...),
+    messages: str = Form(default="[]"),
+    files: list[UploadFile] = File(default=[]),
+) -> ExplainResponse:
+    """Non-streaming file-based Q&A kept for backward compatibility.
+
+    Args:
+        question: The user's question (form field).
+        messages: JSON-encoded prior conversation turns (form field).
         files: Uploaded files to use as context.
 
     Returns:
-        ExplainResponse with the LLM answer and list of context filenames.
+        ExplainResponse with the full LLM answer.
 
     Raises:
-        HTTPException: 400 if messages JSON is malformed; 500 on LLM failure.
+        HTTPException: 400 if messages JSON is malformed.
     """
     try:
         prior: list[dict[str, Any]] = json.loads(messages)
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=400, detail=f"Invalid messages JSON: {exc}") from exc
 
-    file_contents: list[tuple[str, str]] = []
+    context_parts: list[str] = []
     for f in files:
         raw = await f.read()
-        file_contents.append((f.filename or "unknown", raw.decode("utf-8", errors="replace")))
+        context_parts.append(f"=== File: {f.filename} ===\n{raw.decode('utf-8', errors='replace')}")
+    context = "\n\n".join(context_parts)
+    history_text = "\n".join(f"{m['role'].upper()}: {m['content']}" for m in prior[-10:])
+    prompt_parts: list[str] = []
+    if context:
+        prompt_parts.append(f"Context:\n{context}")
+    if history_text:
+        prompt_parts.append(f"Conversation history:\n{history_text}")
+    prompt_parts.append(f"USER: {question}")
+    prompt = "\n\n".join(prompt_parts)
 
-    prompt = _build_file_prompt(question, file_contents, prior)
-
-    agent = _get_explain_agent()
-    try:
-        result = await agent.run(prompt)
-    except Exception as exc:
-        logger.exception("ExplainAgent LLM call failed")
-        raise HTTPException(status_code=500, detail=f"LLM call failed: {exc}") from exc
-
-    answer: str = str(result.output)
-    return ExplainResponse(
-        answer=answer,
-        context_files=[f.filename or "" for f in files],
-    )
-
-
-@router.post("/explain/job", response_model=ExplainResponse)
-async def explain_job(
-    req: ExplainJobRequest,
-    session: AsyncSession = Depends(get_async_session),
-) -> ExplainResponse:
-    """Answer a question about a specific migration job using its stored context.
-
-    Args:
-        req: JSON body with job_id, question, optional messages, and context_fields.
-        session: Injected async database session.
-
-    Returns:
-        ExplainResponse with the LLM answer and the resolved job_id.
-
-    Raises:
-        HTTPException: 404 if job not found; 500 on LLM failure.
-    """
-    result = await session.execute(select(Job).where(Job.id == str(req.job_id)))
-    job: Job | None = result.scalar_one_or_none()
-    if job is None:
-        raise HTTPException(status_code=404, detail=f"Job {req.job_id} not found")
-
-    prior: list[dict[str, Any]] = [{"role": m.role, "content": m.content} for m in req.messages]
-
-    prompt = _build_job_prompt(req.question, job, req.context_fields, prior)
-
-    agent = _get_explain_agent()
-    try:
-        result_llm = await agent.run(prompt)
-    except Exception as exc:
-        logger.exception("ExplainAgent LLM call failed for job %s", req.job_id)
-        raise HTTPException(status_code=500, detail=f"LLM call failed: {exc}") from exc
-
-    answer: str = str(result_llm.output)
-    return ExplainResponse(answer=answer, job_id=req.job_id)
+    chunks: list[str] = []
+    async for chunk in _explain_agent.answer_stream(prompt, audience="tech"):
+        chunks.append(chunk)
+    answer = "".join(chunks)
+    return ExplainResponse(answer=answer, context_files=[f.filename or "" for f in files])

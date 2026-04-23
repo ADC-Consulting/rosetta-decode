@@ -1,8 +1,13 @@
-import { explainFiles, explainJob } from "@/api/explain";
+import {
+  createExplainSession,
+  explainFilesStream,
+  explainJobStream,
+  getExplainSession,
+  listExplainSessions,
+} from "@/api/explain";
 import { listJobs } from "@/api/jobs";
-import type { ExplainResponse, JobSummary } from "@/api/types";
+import type { ExplainSessionResponse, JobSummary } from "@/api/types";
 import ChatInput from "@/components/Explain/ChatInput";
-import ContextBanner from "@/components/Explain/ContextBanner";
 import type { ChatMessage } from "@/components/Explain/MessageList";
 import MessageList from "@/components/Explain/MessageList";
 import RightSidebar from "@/components/RightSidebar";
@@ -14,8 +19,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect, useReducer, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useEffect, useReducer, useRef, useState } from "react";
 import { toast } from "sonner";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -34,6 +39,9 @@ interface ExplainState {
   inputValue: string;
   confirmSwitch: boolean;
   pendingSwitchMode: ExplainMode | null;
+  sessionId: string | null;
+  audience: "tech" | "non_tech";
+  isLoading: boolean;
 }
 
 type ExplainAction =
@@ -50,7 +58,10 @@ type ExplainAction =
   | { type: "SET_INPUT"; value: string }
   | { type: "CONFIRM_SWITCH" }
   | { type: "CANCEL_SWITCH" }
-  | { type: "REQUEST_SWITCH"; mode: ExplainMode };
+  | { type: "REQUEST_SWITCH"; mode: ExplainMode }
+  | { type: "SET_SESSION"; sessionId: string }
+  | { type: "SET_AUDIENCE"; audience: "tech" | "non_tech" }
+  | { type: "SET_LOADING"; value: boolean };
 
 function reducer(state: ExplainState, action: ExplainAction): ExplainState {
   switch (action.type) {
@@ -64,6 +75,7 @@ function reducer(state: ExplainState, action: ExplainAction): ExplainState {
         selectedJobName: null,
         confirmSwitch: false,
         pendingSwitchMode: null,
+        sessionId: null,
       };
     case "ADD_MESSAGE":
       return { ...state, messages: [...state.messages, action.message] };
@@ -71,7 +83,11 @@ function reducer(state: ExplainState, action: ExplainAction): ExplainState {
       const msgs = [...state.messages];
       const lastIdx = msgs.map((m) => m.role).lastIndexOf("assistant");
       if (lastIdx !== -1) {
-        msgs[lastIdx] = { ...msgs[lastIdx], content: action.content, isLoading: false };
+        msgs[lastIdx] = {
+          ...msgs[lastIdx],
+          content: action.content,
+          isLoading: false,
+        };
       }
       return { ...state, messages: msgs };
     }
@@ -88,13 +104,16 @@ function reducer(state: ExplainState, action: ExplainAction): ExplainState {
     case "REMOVE_FILE":
       return {
         ...state,
-        attachedFiles: state.attachedFiles.filter((f) => f.name !== action.name),
+        attachedFiles: state.attachedFiles.filter(
+          (f) => f.name !== action.name,
+        ),
       };
     case "SELECT_JOB":
       return {
         ...state,
         selectedJobId: action.job.job_id,
-        selectedJobName: action.job.name ?? `Job ${action.job.job_id.slice(0, 8)}`,
+        selectedJobName:
+          action.job.name ?? `Job ${action.job.job_id.slice(0, 8)}`,
         drawerOpen: false,
       };
     case "CLEAR_CONTEXT":
@@ -104,6 +123,7 @@ function reducer(state: ExplainState, action: ExplainAction): ExplainState {
         selectedJobName: null,
         attachedFiles: [],
         messages: [],
+        sessionId: null,
       };
     case "SET_JOB_SEARCH":
       return { ...state, jobSearchQuery: action.query };
@@ -115,7 +135,11 @@ function reducer(state: ExplainState, action: ExplainAction): ExplainState {
       return { ...state, inputValue: action.value };
     case "REQUEST_SWITCH":
       if (state.messages.length > 0) {
-        return { ...state, confirmSwitch: true, pendingSwitchMode: action.mode };
+        return {
+          ...state,
+          confirmSwitch: true,
+          pendingSwitchMode: action.mode,
+        };
       }
       return {
         ...state,
@@ -124,6 +148,7 @@ function reducer(state: ExplainState, action: ExplainAction): ExplainState {
         attachedFiles: [],
         selectedJobId: null,
         selectedJobName: null,
+        sessionId: null,
       };
     case "CONFIRM_SWITCH":
       return {
@@ -135,9 +160,16 @@ function reducer(state: ExplainState, action: ExplainAction): ExplainState {
         selectedJobName: null,
         confirmSwitch: false,
         pendingSwitchMode: null,
+        sessionId: null,
       };
     case "CANCEL_SWITCH":
       return { ...state, confirmSwitch: false, pendingSwitchMode: null };
+    case "SET_SESSION":
+      return { ...state, sessionId: action.sessionId };
+    case "SET_AUDIENCE":
+      return { ...state, audience: action.audience };
+    case "SET_LOADING":
+      return { ...state, isLoading: action.value };
     default:
       return state;
   }
@@ -156,6 +188,9 @@ function initialState(): ExplainState {
     inputValue: "",
     confirmSwitch: false,
     pendingSwitchMode: null,
+    sessionId: null,
+    audience: "tech",
+    isLoading: false,
   };
 }
 
@@ -164,6 +199,9 @@ function initialState(): ExplainState {
 export default function ExplainPage(): React.ReactElement {
   const [state, dispatch] = useReducer(reducer, undefined, initialState);
   const messageListRef = useRef<HTMLDivElement>(null);
+  const [recentSessions, setRecentSessions] = useState<
+    ExplainSessionResponse[]
+  >([]);
 
   const { data: allJobs } = useQuery({
     queryKey: ["jobs"],
@@ -175,32 +213,14 @@ export default function ExplainPage(): React.ReactElement {
     ["proposed", "accepted", "done"].includes(j.status),
   );
 
-  const explainMutation = useMutation<
-    ExplainResponse,
-    Error,
-    {
-      question: string;
-      jobId: string | null;
-      files: File[];
-      priorMessages: ChatMessage[];
-    }
-  >({
-    mutationFn: async ({ question, jobId, files, priorMessages }) => {
-      const msgs = priorMessages.map((m) => ({ role: m.role, content: m.content }));
-      if (jobId) return explainJob({ job_id: jobId, question, messages: msgs });
-      return explainFiles(question, files, msgs);
-    },
-    onSuccess: (data) => {
-      dispatch({ type: "UPDATE_LAST_ASSISTANT", content: data.answer });
-    },
-    onError: (err) => {
-      dispatch({
-        type: "UPDATE_LAST_ASSISTANT",
-        content: "Sorry, something went wrong. Please try again.",
+  // Load recent sessions on mount
+  useEffect(() => {
+    listExplainSessions()
+      .then((sessions) => setRecentSessions(sessions.slice(0, 5)))
+      .catch(() => {
+        // non-critical — ignore
       });
-      toast.error(err instanceof Error ? err.message : "Could not get an answer.");
-    },
-  });
+  }, []);
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -210,8 +230,8 @@ export default function ExplainPage(): React.ReactElement {
     }
   }, [state.messages.length]);
 
-  function handleSend() {
-    if (explainMutation.isPending) return;
+  async function handleSend() {
+    if (state.isLoading) return;
     if (state.inputValue.trim() === "") return;
 
     const hasContext =
@@ -221,30 +241,108 @@ export default function ExplainPage(): React.ReactElement {
 
     if (!hasContext) return;
 
+    const question = state.inputValue.trim();
+    dispatch({ type: "SET_INPUT", value: "" });
+
+    // Create session on first message
+    let currentSessionId = state.sessionId;
+    if (!currentSessionId) {
+      try {
+        const session = await createExplainSession({
+          mode: state.mode,
+          job_id: state.selectedJobId ?? undefined,
+          audience: state.audience,
+        });
+        currentSessionId = session.session_id;
+        dispatch({ type: "SET_SESSION", sessionId: session.session_id });
+      } catch {
+        // non-critical — proceed without session
+      }
+    }
+
+    // Optimistic user bubble
     const userMsg: ChatMessage = {
       id: crypto.randomUUID(),
       role: "user",
-      content: state.inputValue.trim(),
+      content: question,
+      timestamp: new Date().toISOString(),
     };
     const loadingMsg: ChatMessage = {
       id: crypto.randomUUID(),
       role: "assistant",
       content: "",
       isLoading: true,
+      timestamp: new Date().toISOString(),
     };
-
     dispatch({ type: "ADD_MESSAGE", message: userMsg });
     dispatch({ type: "ADD_MESSAGE", message: loadingMsg });
-    dispatch({ type: "SET_INPUT", value: "" });
+    dispatch({ type: "SET_LOADING", value: true });
 
-    const priorMessages = state.messages.filter((m) => !m.isLoading);
+    const priorMessages = state.messages
+      .filter((m) => !m.isLoading)
+      .map((m) => ({ role: m.role, content: m.content }));
 
-    explainMutation.mutate({
-      question: userMsg.content,
-      jobId: state.selectedJobId,
-      files: state.attachedFiles,
-      priorMessages,
-    });
+    try {
+      let full = "";
+      const gen =
+        state.mode === "migration" && state.selectedJobId
+          ? explainJobStream(
+              state.selectedJobId,
+              question,
+              priorMessages,
+              state.audience,
+              currentSessionId,
+            )
+          : explainFilesStream(
+              question,
+              state.attachedFiles,
+              priorMessages,
+              state.audience,
+              currentSessionId,
+            );
+
+      for await (const chunk of gen) {
+        full += chunk;
+        dispatch({ type: "UPDATE_LAST_ASSISTANT", content: full });
+      }
+      if (!full) {
+        dispatch({ type: "UPDATE_LAST_ASSISTANT", content: "_(no response)_" });
+      }
+    } catch (err) {
+      dispatch({
+        type: "UPDATE_LAST_ASSISTANT",
+        content: "Sorry, something went wrong. Please try again.",
+      });
+      toast.error(
+        err instanceof Error ? err.message : "Could not get an answer.",
+      );
+    } finally {
+      dispatch({ type: "SET_LOADING", value: false });
+    }
+  }
+
+  async function handleRestoreSession(session: ExplainSessionResponse) {
+    try {
+      const full = await getExplainSession(session.session_id);
+      dispatch({ type: "CONFIRM_SWITCH" }); // clear current state
+      dispatch({ type: "SET_SESSION", sessionId: full.session_id });
+      dispatch({
+        type: "SET_AUDIENCE",
+        audience: full.audience as "tech" | "non_tech",
+      });
+      for (const msg of full.messages) {
+        dispatch({
+          type: "ADD_MESSAGE",
+          message: {
+            id: crypto.randomUUID(),
+            role: msg.role,
+            content: msg.content,
+          },
+        });
+      }
+    } catch {
+      toast.error("Could not restore session.");
+    }
   }
 
   function handleSuggest(prompt: string) {
@@ -258,12 +356,54 @@ export default function ExplainPage(): React.ReactElement {
 
   const inputDisabled = !hasContext;
 
+  const contextLabel =
+    state.mode === "migration" && state.selectedJobName
+      ? `Asking about: ${state.selectedJobName}`
+      : state.mode === "upload" && state.attachedFiles.length > 0
+        ? `Asking about ${state.attachedFiles.length} file${state.attachedFiles.length !== 1 ? "s" : ""}`
+        : null;
+
+  const sessionFooter =
+    recentSessions.length > 0 ? (
+      <div className="px-3 py-2 space-y-1">
+        <p className="text-xs font-medium text-muted-foreground mb-1">
+          Recent sessions
+        </p>
+        {recentSessions.map((s) => {
+          const firstMsg = s.messages[0]?.content ?? "Empty session";
+          return (
+            <button
+              key={s.session_id}
+              type="button"
+              onClick={() => void handleRestoreSession(s)}
+              className="w-full text-left text-xs text-muted-foreground hover:text-foreground truncate block py-0.5"
+            >
+              {firstMsg.slice(0, 48)}
+              {firstMsg.length > 48 ? "\u2026" : ""}
+            </button>
+          );
+        })}
+      </div>
+    ) : undefined;
+
+  const migrationItems = (usableJobs ?? []).map((job) => ({
+    id: job.job_id,
+    label: job.name ?? `Job ${job.job_id.slice(0, 8)}`,
+    isSelected: job.job_id === state.selectedJobId,
+    onClick: () => {
+      if (state.mode !== "migration") {
+        dispatch({ type: "REQUEST_SWITCH", mode: "migration" });
+      }
+      dispatch({ type: "SELECT_JOB", job });
+    },
+  }));
+
   return (
-    <div className="flex -mx-4 -mb-8" style={{ height: "calc(100vh - 64px)" }}>
-      {/* Main chat area */}
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+    <div className="flex flex-1 min-h-0">
+      {/* Main chat area — centered column */}
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden items-center px-4">
         {/* Mobile header */}
-        <div className="flex items-center justify-between px-4 h-10 border-b border-border shrink-0 md:hidden">
+        <div className="flex items-center justify-between w-full h-10 border-b border-border shrink-0 md:hidden">
           <span className="text-sm font-semibold text-foreground">Explain</span>
           <Button
             variant="ghost"
@@ -274,51 +414,44 @@ export default function ExplainPage(): React.ReactElement {
           </Button>
         </div>
 
-        <ContextBanner
-          mode={state.mode}
-          jobName={state.selectedJobName}
-          fileCount={state.attachedFiles.length}
-          onClear={() => dispatch({ type: "CLEAR_CONTEXT" })}
-        />
-        <MessageList
-          messages={state.messages}
-          listRef={messageListRef}
-          mode={state.mode}
-          hasContext={hasContext}
-          onSuggest={handleSuggest}
-        />
-        <ChatInput
-          value={state.inputValue}
-          onChange={(v) => dispatch({ type: "SET_INPUT", value: v })}
-          onSend={handleSend}
-          onFilesAttached={(files) => {
-            if (state.mode !== "upload") {
-              dispatch({ type: "REQUEST_SWITCH", mode: "upload" });
+        <div className="flex flex-col w-full max-w-190 h-full">
+          <MessageList
+            messages={state.messages}
+            listRef={messageListRef}
+            mode={state.mode}
+            hasContext={hasContext}
+            onSuggest={handleSuggest}
+          />
+          <ChatInput
+            value={state.inputValue}
+            onChange={(v) => dispatch({ type: "SET_INPUT", value: v })}
+            onSend={() => void handleSend()}
+            onFilesAttached={(files) => {
+              if (state.mode !== "upload") {
+                dispatch({ type: "REQUEST_SWITCH", mode: "upload" });
+              }
+              dispatch({ type: "ATTACH_FILES", files });
+            }}
+            isLoading={state.isLoading}
+            disabled={inputDisabled}
+            attachedFiles={state.attachedFiles}
+            onRemoveFile={(name) => dispatch({ type: "REMOVE_FILE", name })}
+            audience={state.audience}
+            onAudienceChange={(a) =>
+              dispatch({ type: "SET_AUDIENCE", audience: a })
             }
-            dispatch({ type: "ATTACH_FILES", files });
-          }}
-          isLoading={explainMutation.isPending}
-          disabled={inputDisabled}
-          attachedFiles={state.attachedFiles}
-          onRemoveFile={(name) => dispatch({ type: "REMOVE_FILE", name })}
-        />
+            contextLabel={contextLabel}
+            onClearContext={() => dispatch({ type: "CLEAR_CONTEXT" })}
+          />
+        </div>
       </div>
 
       {/* Right panel — desktop */}
       <div className="hidden md:flex h-full">
         <RightSidebar
           title="Migrations"
-          items={(usableJobs ?? []).map((job) => ({
-            id: job.job_id,
-            label: job.name ?? `Job ${job.job_id.slice(0, 8)}`,
-            isSelected: job.job_id === state.selectedJobId,
-            onClick: () => {
-              if (state.mode !== "migration") {
-                dispatch({ type: "REQUEST_SWITCH", mode: "migration" });
-              }
-              dispatch({ type: "SELECT_JOB", job });
-            },
-          }))}
+          items={migrationItems}
+          footer={sessionFooter}
         />
       </div>
 
@@ -334,17 +467,8 @@ export default function ExplainPage(): React.ReactElement {
           >
             <RightSidebar
               title="Migrations"
-              items={(usableJobs ?? []).map((job) => ({
-                id: job.job_id,
-                label: job.name ?? `Job ${job.job_id.slice(0, 8)}`,
-                isSelected: job.job_id === state.selectedJobId,
-                onClick: () => {
-                  if (state.mode !== "migration") {
-                    dispatch({ type: "REQUEST_SWITCH", mode: "migration" });
-                  }
-                  dispatch({ type: "SELECT_JOB", job });
-                },
-              }))}
+              items={migrationItems}
+              footer={sessionFooter}
             />
           </div>
         </div>
@@ -365,10 +489,15 @@ export default function ExplainPage(): React.ReactElement {
             Switching will clear the current conversation.
           </p>
           <DialogFooter>
-            <Button variant="outline" onClick={() => dispatch({ type: "CANCEL_SWITCH" })}>
+            <Button
+              variant="outline"
+              onClick={() => dispatch({ type: "CANCEL_SWITCH" })}
+            >
               Cancel
             </Button>
-            <Button onClick={() => dispatch({ type: "CONFIRM_SWITCH" })}>Switch</Button>
+            <Button onClick={() => dispatch({ type: "CONFIRM_SWITCH" })}>
+              Switch
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

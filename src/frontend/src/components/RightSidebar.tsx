@@ -15,21 +15,34 @@ interface RightSidebarProps {
   footer?: React.ReactNode;
 }
 
-// Mirror of AppSidebar constants
 const ICON_COL = 56;
-const ICON_RIGHT = (ICON_COL - 18) / 2; // right padding so 18px icon is centred
+const ICON_LEFT = (ICON_COL - 18) / 2;
 const LABEL_WIDTH = 140;
+
+function readCollapsed(): boolean {
+  try {
+    return localStorage.getItem("right-sidebar-collapsed") === "true";
+  } catch {
+    return false;
+  }
+}
 
 export default function RightSidebar({
   title,
   items,
   footer,
 }: RightSidebarProps): React.ReactElement {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState<boolean>(readCollapsed);
   const [search, setSearch] = useState("");
 
   function toggle(): void {
-    setCollapsed((c) => !c);
+    const next = !collapsed;
+    setCollapsed(next);
+    try {
+      localStorage.setItem("right-sidebar-collapsed", String(next));
+    } catch {
+      // ignore
+    }
   }
 
   const filtered = search
@@ -37,57 +50,49 @@ export default function RightSidebar({
     : items;
 
   return (
-    // Mirror of AppSidebar <aside> — border-l instead of border-r, no overflow-hidden so tooltips escape
     <aside
       aria-label={title}
       style={{ width: collapsed ? ICON_COL : 220 }}
       className="relative flex flex-col h-full shrink-0 bg-background border-l border-border transition-[width] duration-200 ease-in-out"
     >
-      {/* Title row — mirrors Logo row */}
+      {/* Title row */}
       <div
         className="flex items-center h-14 border-b border-border shrink-0 overflow-hidden"
-        style={{ paddingRight: (ICON_COL - 20) / 2 }}
+        style={{ paddingLeft: (ICON_COL - 20) / 2 }}
       >
         <span
-          className="text-sm font-semibold text-foreground whitespace-nowrap overflow-hidden transition-[width,opacity,margin] duration-200 ease-in-out"
+          className="text-sm font-semibold text-foreground whitespace-nowrap overflow-hidden transition-[width,opacity] duration-200 ease-in-out"
           style={{
             width: collapsed ? 0 : LABEL_WIDTH,
             opacity: collapsed ? 0 : 1,
-            marginLeft: collapsed ? 0 : (ICON_COL - 20) / 2,
-            marginRight: collapsed ? 0 : 8,
           }}
         >
           {title}
         </span>
       </div>
 
-      {/* Search row — mirrors a nav item row */}
+      {/* Search row */}
       <div className="group/search relative">
         <div
           className="flex items-center h-10 text-sm text-muted-foreground overflow-hidden border-b border-border"
-          style={{ paddingRight: ICON_RIGHT }}
+          style={{ paddingLeft: ICON_LEFT }}
         >
-          {/* Search icon — always visible like nav icons */}
-          <Search
-            size={18}
-            className="shrink-0"
-            style={{ marginLeft: ICON_RIGHT }}
-          />
+          <Search size={18} className="shrink-0" />
           <input
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search…"
-            aria-label="Search migrations"
+            aria-label={`Search ${title}`}
             className="bg-transparent outline-none text-sm text-foreground placeholder:text-muted-foreground whitespace-nowrap overflow-hidden transition-[width,opacity,margin] duration-200 ease-in-out"
             style={{
               width: collapsed ? 0 : LABEL_WIDTH,
               opacity: collapsed ? 0 : 1,
               marginLeft: collapsed ? 0 : 12,
             }}
+            tabIndex={collapsed ? -1 : 0}
           />
         </div>
-        {/* Tooltip when collapsed */}
         <div
           aria-hidden="true"
           className={cn(
@@ -101,7 +106,7 @@ export default function RightSidebar({
         </div>
       </div>
 
-      {/* Items — mirrors NAV_ITEMS nav rows exactly */}
+      {/* Items */}
       <nav className="flex-1 py-2 overflow-y-auto">
         {filtered.map((item) => (
           <div key={item.id} className="group/item relative">
@@ -114,26 +119,23 @@ export default function RightSidebar({
                 "hover:text-foreground hover:bg-muted/60 transition-colors cursor-pointer",
                 item.isSelected && "bg-muted text-foreground font-medium",
               )}
-              style={{ paddingRight: ICON_RIGHT }}
+              style={{ paddingLeft: ICON_LEFT }}
             >
-              {/* Dot — mirrors the Icon in AppSidebar nav rows */}
               <span
                 className="shrink-0 flex items-center justify-center"
-                style={{
-                  width: 18,
-                  height: 18,
-                  marginLeft: ICON_RIGHT,
-                }}
+                style={{ width: 18, height: 18 }}
               >
                 <span
                   className={cn(
                     "size-1.5 rounded-full transition-colors",
-                    item.isSelected ? "bg-foreground" : "bg-muted-foreground/50",
+                    item.isSelected
+                      ? "bg-foreground"
+                      : "bg-muted-foreground/50",
                   )}
                 />
               </span>
               <span
-                className="whitespace-nowrap overflow-hidden text-ellipsis transition-[width,opacity,margin] duration-200 ease-in-out text-left"
+                className="whitespace-nowrap overflow-hidden text-ellipsis text-left transition-[width,opacity,margin] duration-200 ease-in-out"
                 style={{
                   width: collapsed ? 0 : LABEL_WIDTH,
                   opacity: collapsed ? 0 : 1,
@@ -144,7 +146,6 @@ export default function RightSidebar({
               </span>
             </button>
 
-            {/* Tooltip on the left when collapsed — mirrors AppSidebar tooltip on right */}
             <div
               aria-hidden="true"
               className={cn(
@@ -160,7 +161,7 @@ export default function RightSidebar({
         ))}
       </nav>
 
-      {/* Footer slot — rendered above collapse toggle */}
+      {/* Footer slot */}
       {footer && (
         <div
           className="shrink-0 border-t border-border overflow-hidden transition-opacity duration-200"
@@ -173,7 +174,7 @@ export default function RightSidebar({
         </div>
       )}
 
-      {/* Collapse toggle — mirrors AppSidebar bottom toggle */}
+      {/* Collapse toggle */}
       <div className="shrink-0 border-t border-border">
         <div className="group/toggle relative">
           <button
@@ -181,29 +182,25 @@ export default function RightSidebar({
             onClick={toggle}
             aria-label={collapsed ? "Expand panel" : "Collapse panel"}
             className="flex items-center h-10 w-full overflow-hidden text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors cursor-pointer"
-            style={{ paddingRight: ICON_RIGHT }}
+            style={{ paddingLeft: ICON_LEFT }}
           >
-            {/* Chevron: when collapsed show ChevronLeft (open leftward); expanded show ChevronRight (close rightward) */}
             {collapsed ? (
-              <ChevronLeft size={18} className="shrink-0 mx-auto" />
+              <ChevronLeft size={18} className="shrink-0" />
             ) : (
-              <>
-                <span
-                  className="text-sm whitespace-nowrap overflow-hidden transition-[width,opacity,margin] duration-200 ease-in-out"
-                  style={{
-                    width: LABEL_WIDTH,
-                    opacity: 1,
-                    marginLeft: ICON_RIGHT,
-                  }}
-                >
-                  Collapse
-                </span>
-                <ChevronRight size={18} className="shrink-0" />
-              </>
+              <ChevronRight size={18} className="shrink-0" />
             )}
+            <span
+              className="text-sm whitespace-nowrap overflow-hidden transition-[width,opacity,margin] duration-200 ease-in-out"
+              style={{
+                width: 0,
+                opacity: 0,
+                marginLeft: 0,
+              }}
+            >
+              Collapse
+            </span>
           </button>
 
-          {/* Tooltip when collapsed */}
           <div
             aria-hidden="true"
             className={cn(

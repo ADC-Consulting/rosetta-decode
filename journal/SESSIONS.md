@@ -6,6 +6,57 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-04-23 — UI polish: layout fixes, Upload dialog, Plan table improvements, View Code dialog
+
+**Duration:** ~3h | **Focus:** Frontend UX improvements across ExplainPage layout, Plan tab, and View Code dialog
+
+### Done
+
+- **Layout fix (ExplainPage full-height):** removed `max-w-500 mx-auto px-4 py-8` wrapper from App.tsx; moved it into individual pages; ExplainPage gets `flex flex-1 min-h-0`; other pages get `overflow-y-auto flex-1 h-full`; `<main>` is now `overflow-hidden flex flex-col`; `max-w-500` was an invalid Tailwind class (no effect) — replaced with `max-w-[800px]` then removed entirely for full-width pages
+- **Upload page → Dialog:** removed "Upload" from AppSidebar nav and `/upload` route; "New Migration" button on JobsPage now opens a `Dialog` (`max-w-3xl, 90vw × 85vh`) containing the full upload form; on success invalidates `["jobs"]` query
+- **BlockPlanTable UI improvements:** default groupBy changed to `"folder"`; chevron moved to leftmost position in group header rows; `Clock` icon replaced with `History` (counter-clockwise clock); "Filter by" label added before strategy chips with `ml-3` spacing; file basenames stripped in body rows (`.split("/").pop()`)
+- **View Code column added to Plan table:** `Code2` icon button per row opens a wide `Dialog` (`max-w-6xl, 95vw × 80vh`) with SAS source (left, read-only, orange dot header) + Python code (right, editable with Edit/Lock toggle, blue dot header, Sun/Moon theme toggle)
+- **View Code dialog data loading:** fetches `getBlockRevisions` + `getJobSources` in parallel; falls back to `job.python_code` when no revisions exist; `revisions[0]` fix (backend returns newest-first); `codeLoading` spinner while fetching
+- **Backend: `PATCH /jobs/{job_id}/blocks/{block_id:path}/python`:** new endpoint creates a `BlockRevision` with `trigger="human"`, unified diff vs previous; when no prior revision exists, creates revision 1 with defaults instead of 404
+- **LLM guardrails improved:** both `_TECH_SYSTEM_PROMPT` and `_NON_TECH_SYSTEM_PROMPT` in `explain_agent.py` expanded with scope boundary, accuracy guardrails (no hallucination), citation rules, structured fallback
+- **VersionHistoryRail hidden on Plan tab:** only shown for `editor` and `report` tabs
+
+### Decisions
+
+- **Upload page promoted to Dialog on JobsPage:** fewer nav items, inline workflow — upload no longer deserves top-level navigation once migrations become the default landing page · revisit never
+- **`PATCH /python` creates revision 1 on first human edit (no prior revision):** instead of 404, uses sensible defaults (`strategy="translate"`, `confidence="medium"`) so any block can be edited from the View Code dialog regardless of prior agent activity · revisit never
+- **SAS source shown in View Code dialog via `getJobSources`:** reuses existing endpoint, no new DB columns; matches by `source_file` field on `BlockPlan` · revisit never
+
+### Open Questions
+
+- none
+
+### Next Session — Start Here
+
+1. Smoke-test View Code dialog: click Code2 on a block, confirm SAS (left) and Python (right) load, toggle Edit, modify code, Save — verify new `BlockRevision` created with `trigger="human"`
+2. Smoke-test Upload dialog: click "New Migration" on Jobs page, confirm upload form opens in dialog, submit, confirm dialog closes and job appears in list
+3. Unresolved UI bugs from previous sessions still pending: TipTap cursor jump, version card highlight race condition, Editor tab restore shows original code
+
+### Files Touched
+
+- `src/frontend/src/App.tsx`
+- `src/frontend/src/components/AppSidebar.tsx`
+- `src/frontend/src/pages/JobsPage.tsx`
+- `src/frontend/src/pages/JobDetailPage.tsx`
+- `src/frontend/src/pages/JobDetailPage.tsx`
+- `src/frontend/src/pages/DocsPage.tsx`
+- `src/frontend/src/pages/GlobalLineagePage.tsx`
+- `src/frontend/src/pages/UploadPage.tsx`
+- `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
+- `src/frontend/src/components/JobDetail/PlanTab.tsx`
+- `src/frontend/src/components/RightSidebar.tsx`
+- `src/backend/api/routes/jobs.py`
+- `src/backend/api/schemas.py`
+- `src/frontend/src/api/jobs.ts`
+- `src/worker/engine/chatbot/explain_agent.py`
+
+---
+
 ## 2026-04-22 — GlobalLineagePage Pipeline tab
 
 **Duration:** ~1h | **Focus:** FE7 Global Lineage — migration selector + merged ReactFlow pipeline graph

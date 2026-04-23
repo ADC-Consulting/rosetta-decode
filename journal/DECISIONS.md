@@ -31,6 +31,15 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-04-23 (session 22 — UI polish, View Code dialog, Upload→Dialog, PATCH /python)
+
+- **Upload page promoted to Dialog on JobsPage:** reduces nav clutter; upload is a sub-action of "Migrations", not a top-level destination · revisit never
+- **`PATCH /jobs/{id}/blocks/{block_id:path}/python` creates revision 1 when no prior revision exists:** uses defaults (`strategy="translate"`, `confidence="medium"`) rather than 404; any block is editable regardless of agent history · revisit never
+- **SAS source in View Code dialog via `getJobSources`:** reuses existing endpoint mapping `source_file` → full SAS content; no new DB columns · revisit never
+- **`revisions[0]` is the latest revision (backend returns `revision_number DESC`):** fixed bug where code was reading `revisions[length-1]` (oldest) instead of `revisions[0]` (newest) · revisit never
+
+---
+
 ## 2026-04-22 (session 22 — FE9 ExplainPage)
 
 - **ExplainPage backend is stateless:** frontend owns the accumulated `messages` array and sends it on each request; avoids session storage for an ephemeral chat feature · revisit if multi-turn context management becomes complex

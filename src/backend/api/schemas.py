@@ -362,6 +362,20 @@ class BlockRevisionListResponse(BaseModel):
     revisions: list[BlockRevisionResponse]
 
 
+class BlockPythonEditRequest(BaseModel):
+    """Request body for PATCH /jobs/{id}/blocks/{block_id}/python."""
+
+    python_code: str
+    notes: str | None = None
+
+
+class BlockPythonEditResponse(BaseModel):
+    """Response body for PATCH /jobs/{id}/blocks/{block_id}/python."""
+
+    revision_number: int
+    block_id: str
+
+
 # S6 — Job-level changelog schemas
 
 
@@ -460,3 +474,21 @@ class ExplainResponse(BaseModel):
     context_files: list[str] = []
     tokens_used: int | None = None
     job_id: uuid.UUID | None = None
+
+
+class CreateExplainSessionRequest(BaseModel):
+    """Request body for POST /explain/sessions."""
+
+    mode: Literal["migration", "upload"]
+    job_id: str | None = None
+    audience: Literal["tech", "non_tech"] = "tech"
+
+
+class ExplainSessionResponse(BaseModel):
+    """Response for explain session endpoints."""
+
+    session_id: str
+    messages: list[ExplainMessage]
+    mode: str
+    audience: str
+    created_at: datetime

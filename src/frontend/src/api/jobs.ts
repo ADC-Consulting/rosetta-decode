@@ -190,6 +190,26 @@ export async function restoreBlockRevision(
   return res.json() as Promise<BlockRefineResponse>;
 }
 
+// ── Human python edit ────────────────────────────────────────────────────────
+
+export async function saveBlockPython(
+  jobId: string,
+  blockId: string,
+  pythonCode: string,
+  notes?: string,
+): Promise<{ revision_number: number; block_id: string }> {
+  const res = await fetch(
+    `${BASE}/jobs/${jobId}/blocks/${encodeURIComponent(blockId)}/python`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ python_code: pythonCode, notes }),
+    },
+  );
+  if (!res.ok) throw new Error(await res.text());
+  return res.json() as Promise<{ revision_number: number; block_id: string }>;
+}
+
 // ── F4: Job changelog ─────────────────────────────────────────────────────────
 
 export async function getJobChangelog(jobId: string): Promise<JobChangelogResponse> {

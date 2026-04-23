@@ -17,6 +17,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.backend.api.schemas import (
     AcceptJobRequest,
     AuditResponse,
+    BlockPythonEditRequest,
+    BlockPythonEditResponse,
     BlockRefineRequest,
     BlockRefineResponse,
     BlockRevisionListResponse,
@@ -1255,6 +1257,100 @@ async def restore_block_revision(
         confidence=target_revision.confidence,
         reconciliation_status=target_revision.reconciliation_status,
         python_code=new_full_code,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Human python edit — save a human-authored edit to a block's python code
+# ---------------------------------------------------------------------------
+
+
+@router.patch(
+    "/jobs/{job_id}/blocks/{block_id:path}/python",
+    response_model=BlockPythonEditResponse,
+)
+async def save_block_python(
+    job_id: uuid.UUID,
+    block_id: str,
+    request: BlockPythonEditRequest,
+    session: AsyncSession = Depends(get_async_session),
+) -> BlockPythonEditResponse:
+    """Save a human-authored edit to a block's Python code as a new BlockRevision.
+
+    Fetches the latest revision for the block, computes a unified diff, and
+    inserts a new revision row with ``trigger="human"``.
+
+    Args:
+        job_id: UUID of the migration job.
+        block_id: Block identifier in ``basename.sas:start_line`` form (URL-encoded).
+        request: New python_code and optional notes.
+        session: Injected async database session.
+
+    Returns:
+        BlockPythonEditResponse with the new revision_number and block_id.
+
+    Raises:
+        HTTPException: 404 if no existing revision found for this block.
+    """
+    # Fetch the latest revision for this block
+    rev_result = await session.execute(
+        select(BlockRevision)
+        .where(BlockRevision.job_id == str(job_id), BlockRevision.block_id == block_id)
+        .order_by(BlockRevision.revision_number.desc())
+    )
+    previous = rev_result.scalars().first()
+    if previous is None:
+        new_revision = BlockRevision(
+            id=str(uuid.uuid4()),
+            job_id=str(job_id),
+            block_id=block_id,
+            revision_number=1,
+            python_code=request.python_code,
+            strategy="translate",
+            confidence="medium",
+            uncertainty_notes=[],
+            reconciliation_status=None,
+            trigger="human",
+            notes=request.notes,
+            hint=None,
+            diff_vs_previous=None,
+        )
+        session.add(new_revision)
+        await session.commit()
+        return BlockPythonEditResponse(revision_number=1, block_id=block_id)
+
+    # Compute unified diff
+    diff_lines = list(
+        difflib.unified_diff(
+            previous.python_code.splitlines(keepends=True),
+            request.python_code.splitlines(keepends=True),
+            fromfile=f"{block_id}@rev{previous.revision_number}",
+            tofile=f"{block_id}@rev{previous.revision_number + 1}",
+        )
+    )
+    diff_vs_previous = "".join(diff_lines) if diff_lines else ""
+
+    new_revision = BlockRevision(
+        id=str(uuid.uuid4()),
+        job_id=str(job_id),
+        block_id=block_id,
+        revision_number=previous.revision_number + 1,
+        python_code=request.python_code,
+        strategy=previous.strategy,
+        confidence=previous.confidence,
+        uncertainty_notes=previous.uncertainty_notes,
+        reconciliation_status=previous.reconciliation_status,
+        trigger="human",
+        notes=request.notes,
+        hint=None,
+        diff_vs_previous=diff_vs_previous,
+    )
+    session.add(new_revision)
+    await session.commit()
+
+    return BlockPythonEditResponse(
+        revision_number=new_revision.revision_number,
+        block_id=block_id,
     )
 
 

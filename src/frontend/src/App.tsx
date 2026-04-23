@@ -5,7 +5,6 @@ import AppSidebar from "./components/AppSidebar";
 import { Toaster } from "./components/ui/sonner";
 import { UploadStateProvider } from "./context/UploadStateContext";
 import JobsPage from "./pages/JobsPage";
-import UploadPage from "./pages/UploadPage";
 
 const JobDetailPage = lazy(() => import("./pages/JobDetailPage"));
 const GlobalLineagePage = lazy(() => import("./pages/GlobalLineagePage"));
@@ -18,24 +17,23 @@ function App(): React.ReactElement {
       <UploadStateProvider>
         <div className="flex h-screen overflow-hidden bg-background text-foreground">
           <AppSidebar />
-          <main className="flex-1 overflow-y-auto">
-            <div className="max-w-500 mx-auto px-4 py-8">
-              <Suspense
-                fallback={
-                  <div className="text-sm text-muted-foreground">Loading…</div>
-                }
-              >
-                <Routes>
-                  <Route path="/" element={<Navigate to="/jobs" replace />} />
-                  <Route path="/upload" element={<UploadPage />} />
-                  <Route path="/jobs" element={<JobsPage />} />
-                  <Route path="/jobs/:id" element={<JobDetailPage />} />
-                  <Route path="/lineage" element={<GlobalLineagePage />} />
-                  <Route path="/docs" element={<DocsPage />} />
-                  <Route path="/explain" element={<ExplainPage />} />
-                </Routes>
-              </Suspense>
-            </div>
+          <main className="flex-1 overflow-hidden flex flex-col">
+            <Suspense
+              fallback={
+                <div className="text-sm text-muted-foreground p-8">
+                  Loading…
+                </div>
+              }
+            >
+              <Routes>
+                <Route path="/" element={<Navigate to="/jobs" replace />} />
+                <Route path="/jobs" element={<JobsPage />} />
+                <Route path="/jobs/:id" element={<JobDetailPage />} />
+                <Route path="/lineage" element={<GlobalLineagePage />} />
+                <Route path="/docs" element={<DocsPage />} />
+                <Route path="/explain" element={<ExplainPage />} />
+              </Routes>
+            </Suspense>
           </main>
         </div>
         <Toaster position="top-right" richColors closeButton />

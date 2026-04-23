@@ -1,3 +1,4 @@
+import { getBlockRevisions, getJobSources, saveBlockPython } from "@/api/jobs";
 import type { BlockPlan, TrustReportBlock } from "@/api/types";
 import {
   Dialog,
@@ -13,8 +14,21 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AlertTriangle, Clock, Info, Wrench } from "lucide-react";
-import React, { useState } from "react";
+import { Editor } from "@monaco-editor/react";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  AlertTriangle,
+  Code2,
+  History,
+  Info,
+  Lock,
+  Moon,
+  Pencil,
+  Sun,
+  Wrench,
+} from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import BlockRefineDialog from "./BlockRefineDialog";
 import { BlockRevisionModal } from "./BlockRevisionDrawer";
 
@@ -29,6 +43,7 @@ interface BlockPlanTableProps {
   jobId: string;
   isAccepted?: boolean;
   onBlockRefineSuccess?: () => void;
+  jobPythonCode?: string;
 }
 
 type GroupBy = "none" | "file" | "folder";
@@ -119,39 +134,60 @@ function GlossaryDialog({
           <div>
             <p className="font-semibold mb-1">Risk levels</p>
             <p className="text-xs text-muted-foreground mb-1.5">
-              Assigned by the migration planner before translation, based on static analysis of each
-              block's SAS constructs. Reflects how likely the block is to need human intervention —
-              not whether translation succeeded.
+              Assigned by the migration planner before translation, based on
+              static analysis of each block's SAS constructs. Reflects how
+              likely the block is to need human intervention — not whether
+              translation succeeded.
             </p>
             <ul className="space-y-1 text-muted-foreground text-xs">
               <li>
-                <span className="font-medium text-green-700">Low</span> —
-                Simple SET/filter/rename or straightforward PROC SQL SELECT.
+                <span className="font-medium text-green-700">Low</span> — Simple
+                SET/filter/rename or straightforward PROC SQL SELECT.
               </li>
               <li>
                 <span className="font-medium text-amber-700">Medium</span> —
-                BY-group processing, MERGE with complex BY, multi-output DATA steps, CASE expressions.
+                BY-group processing, MERGE with complex BY, multi-output DATA
+                steps, CASE expressions.
               </li>
               <li>
-                <span className="font-medium text-red-700">High</span> —
-                CALL SYMPUT, dynamic dataset names, nested macros, %INCLUDE, deeply nested RETAIN loops, or unsupported PROC types.
+                <span className="font-medium text-red-700">High</span> — CALL
+                SYMPUT, dynamic dataset names, nested macros, %INCLUDE, deeply
+                nested RETAIN loops, or unsupported PROC types.
               </li>
             </ul>
           </div>
           <div>
             <p className="font-semibold mb-1">Confidence score</p>
             <p className="text-xs text-muted-foreground mb-1.5">
-              After translating each block, the LLM self-reports a score (0–1) reflecting how certain
-              it is that the generated Python is semantically equivalent to the SAS source. Factors that
-              lower confidence: complex RETAIN logic, ambiguous date arithmetic, macro-dependent variable
-              names, or SAS idioms that required approximation. The overall confidence is the average
-              across all translated blocks.
+              After translating each block, the LLM self-reports a score (0–1)
+              reflecting how certain it is that the generated Python is
+              semantically equivalent to the SAS source. Factors that lower
+              confidence: complex RETAIN logic, ambiguous date arithmetic,
+              macro-dependent variable names, or SAS idioms that required
+              approximation. The overall confidence is the average across all
+              translated blocks.
             </p>
             <ul className="space-y-1 text-muted-foreground text-xs">
-              <li><span className="font-medium">0.85–1.0</span> — <span className="text-green-700 font-medium">High</span>: LLM is certain, minimal review needed.</li>
-              <li><span className="font-medium">0.65–0.84</span> — <span className="text-amber-700 font-medium">Medium</span>: review recommended, especially edge cases.</li>
-              <li><span className="font-medium">0.40–0.64</span> — <span className="text-red-600 font-medium">Low</span>: manual inspection required before accepting.</li>
-              <li><span className="font-medium">&lt;0.40</span> — <span className="text-red-700 font-medium">Very Low</span>: high risk of incorrect output.</li>
+              <li>
+                <span className="font-medium">0.85–1.0</span> —{" "}
+                <span className="text-green-700 font-medium">High</span>: LLM is
+                certain, minimal review needed.
+              </li>
+              <li>
+                <span className="font-medium">0.65–0.84</span> —{" "}
+                <span className="text-amber-700 font-medium">Medium</span>:
+                review recommended, especially edge cases.
+              </li>
+              <li>
+                <span className="font-medium">0.40–0.64</span> —{" "}
+                <span className="text-red-600 font-medium">Low</span>: manual
+                inspection required before accepting.
+              </li>
+              <li>
+                <span className="font-medium">&lt;0.40</span> —{" "}
+                <span className="text-red-700 font-medium">Very Low</span>: high
+                risk of incorrect output.
+              </li>
             </ul>
           </div>
           <div>
@@ -162,34 +198,60 @@ function GlossaryDialog({
                 Fully auto-converted to Python/PySpark.
               </li>
               <li>
-                <span className="font-medium text-amber-700">translate_with_review</span> —
-                Converted but flagged for human check (date semantics, format conversions, ambiguous merges).
+                <span className="font-medium text-amber-700">
+                  translate_with_review
+                </span>{" "}
+                — Converted but flagged for human check (date semantics, format
+                conversions, ambiguous merges).
               </li>
               <li>
-                <span className="font-medium text-orange-700">translate_best_effort</span> —
-                Partial translation; complex constructs approximated, may be incomplete.
+                <span className="font-medium text-orange-700">
+                  translate_best_effort
+                </span>{" "}
+                — Partial translation; complex constructs approximated, may be
+                incomplete.
               </li>
               <li>
-                <span className="font-medium text-red-700">manual</span> —
-                No Python equivalent exists; placeholder comment only. Requires human rewrite.
+                <span className="font-medium text-red-700">manual</span> — No
+                Python equivalent exists; placeholder comment only. Requires
+                human rewrite.
               </li>
               <li>
-                <span className="font-medium text-muted-foreground">skip</span> —
-                PROC PRINT / housekeeping; nothing emitted to the output pipeline.
+                <span className="font-medium text-muted-foreground">skip</span>{" "}
+                — PROC PRINT / housekeeping; nothing emitted to the output
+                pipeline.
               </li>
             </ul>
           </div>
           <div>
             <p className="font-semibold mb-1">Reconciliation status</p>
             <p className="text-xs text-muted-foreground mb-1.5">
-              After translation, the generated Python is executed against the same input data as the
-              original SAS. The output is compared on schema, row count, and aggregate values.
+              After translation, the generated Python is executed against the
+              same input data as the original SAS. The output is compared on
+              schema, row count, and aggregate values.
             </p>
             <ul className="space-y-1 text-muted-foreground text-xs">
-              <li><span className="font-medium text-green-700">Auto-verified</span> — schema, row count, and aggregates all match. Safe to accept.</li>
-              <li><span className="font-medium text-amber-700">Needs review</span> — translation ran but reconciliation flagged differences. Human check recommended.</li>
-              <li><span className="font-medium text-foreground">Manual TODO</span> — block has strategy manual or manual_ingestion; Python output requires human authoring.</li>
-              <li><span className="font-medium text-red-700">Failed recon</span> — Python code executed but output did not match the SAS reference data.</li>
+              <li>
+                <span className="font-medium text-green-700">
+                  Auto-verified
+                </span>{" "}
+                — schema, row count, and aggregates all match. Safe to accept.
+              </li>
+              <li>
+                <span className="font-medium text-amber-700">Needs review</span>{" "}
+                — translation ran but reconciliation flagged differences. Human
+                check recommended.
+              </li>
+              <li>
+                <span className="font-medium text-foreground">Manual TODO</span>{" "}
+                — block has strategy manual or manual_ingestion; Python output
+                requires human authoring.
+              </li>
+              <li>
+                <span className="font-medium text-red-700">Failed recon</span> —
+                Python code executed but output did not match the SAS reference
+                data.
+              </li>
             </ul>
           </div>
         </div>
@@ -208,12 +270,52 @@ export default function BlockPlanTable({
   jobId,
   isAccepted,
   onBlockRefineSuccess,
+  jobPythonCode,
 }: BlockPlanTableProps): React.ReactElement {
+  const queryClient = useQueryClient();
   const [refineBlockId, setRefineBlockId] = useState<string | null>(null);
   const [historyBlockId, setHistoryBlockId] = useState<string | null>(null);
+  const [codeBlockId, setCodeBlockId] = useState<string | null>(null);
+  const [codeSasFile, setCodeSasFile] = useState<string>("");
+  const [sasCode, setSasCode] = useState<string>("");
+  const [codeDialogPython, setCodeDialogPython] = useState<string>("");
+  const [codeEditable, setCodeEditable] = useState(false);
+  const [codeSaving, setCodeSaving] = useState(false);
+  const [codeLoading, setCodeLoading] = useState(false);
+  const [codeEditorDark, setCodeEditorDark] = useState(false);
+  const initialCodeRef = useRef<string>("");
+
+  useEffect(() => {
+    if (!codeBlockId) return;
+    void (async () => {
+      setCodeLoading(true);
+      try {
+        const [history, sources] = await Promise.all([
+          getBlockRevisions(jobId, codeBlockId),
+          getJobSources(jobId),
+        ]);
+        const latest = history.revisions[0];
+        setCodeDialogPython(
+          latest?.python_code ?? initialCodeRef.current ?? "",
+        );
+        const entry = Object.entries(sources.sources).find(
+          ([k]) =>
+            k === codeSasFile ||
+            k.endsWith("/" + codeSasFile) ||
+            codeSasFile.endsWith(k),
+        );
+        setSasCode(entry?.[1] ?? "");
+      } catch {
+        setCodeDialogPython(initialCodeRef.current ?? "");
+        setSasCode("");
+      } finally {
+        setCodeLoading(false);
+      }
+    })();
+  }, [codeBlockId, jobId, codeSasFile]);
   const [groupBy, setGroupBy] = useState<GroupBy>(() => {
     const files = new Set(blockPlans.map((b) => b.source_file));
-    return files.size > 1 ? "file" : "none";
+    return files.size > 1 ? "folder" : "none";
   });
   const [activeStrategies, setActiveStrategies] = useState<Set<string>>(
     new Set(),
@@ -264,7 +366,7 @@ export default function BlockPlanTable({
           >
             <SelectTrigger
               size="sm"
-              className="h-7 text-xs w-36 cursor-pointer"
+              className="h-7 text-xs w-20 cursor-pointer"
             >
               <SelectValue />
             </SelectTrigger>
@@ -283,6 +385,9 @@ export default function BlockPlanTable({
         </div>
 
         {/* Strategy filter chips */}
+        <span className="ml-3 text-xs text-muted-foreground font-medium shrink-0">
+          Filter by
+        </span>
         <div className="flex items-center gap-1.5 flex-wrap">
           {uniqueStrategies.map((s) => (
             <button
@@ -342,6 +447,9 @@ export default function BlockPlanTable({
                 Recon
               </th>
               <th className="px-3 py-2 font-medium text-muted-foreground w-14 text-center">
+                Code
+              </th>
+              <th className="px-3 py-2 font-medium text-muted-foreground w-14 text-center">
                 Refine
               </th>
               <th className="px-3 py-2 font-medium text-muted-foreground w-14 text-center">
@@ -359,16 +467,16 @@ export default function BlockPlanTable({
                     className="bg-muted/30 cursor-pointer hover:bg-muted/50"
                     onClick={() => toggleGroup(key)}
                   >
-                    <td colSpan={10} className="px-3 py-1.5">
+                    <td colSpan={11} className="px-3 py-1.5">
                       <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground text-xs">
+                          {collapsedGroups.has(key) ? "▸" : "▾"}
+                        </span>
                         <span className="text-xs font-semibold text-foreground font-mono">
                           {key}
                         </span>
                         <span className="text-xs text-muted-foreground bg-muted border border-border rounded-full px-1.5 py-0.5">
                           {items.length}
-                        </span>
-                        <span className="ml-auto text-muted-foreground text-xs">
-                          {collapsedGroups.has(key) ? "▸" : "▾"}
                         </span>
                       </div>
                     </td>
@@ -405,7 +513,11 @@ export default function BlockPlanTable({
                                 aria-label="Needs attention"
                               />
                             )}
-                            {bp.block_id.replace(/:\d+$/, "")}
+                            {(() => {
+                              const raw = bp.block_id.replace(/:\d+$/, "");
+                              const slash = raw.lastIndexOf("/");
+                              return slash >= 0 ? raw.slice(slash + 1) : raw;
+                            })()}
                           </span>
                         </td>
 
@@ -477,6 +589,23 @@ export default function BlockPlanTable({
                           )}
                         </td>
 
+                        {/* Code */}
+                        <td className="px-3 py-2 text-center w-14">
+                          <button
+                            onClick={() => {
+                              initialCodeRef.current = jobPythonCode ?? "";
+                              setCodeEditable(false);
+                              setCodeDialogPython("");
+                              setCodeSasFile(bp.source_file);
+                              setCodeBlockId(bp.block_id);
+                            }}
+                            aria-label="View code"
+                            className="inline-flex items-center justify-center rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+                          >
+                            <Code2 size={14} />
+                          </button>
+                        </td>
+
                         {/* Refine */}
                         <td className="px-3 py-2 text-center w-14">
                           <button
@@ -501,7 +630,7 @@ export default function BlockPlanTable({
                             aria-label={`View history for block ${bp.block_id}`}
                             className="inline-flex items-center justify-center rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
                           >
-                            <Clock size={14} />
+                            <History size={14} />
                           </button>
                         </td>
                       </tr>
@@ -539,6 +668,148 @@ export default function BlockPlanTable({
           isAccepted={isAccepted}
         />
       )}
+
+      <Dialog
+        open={codeBlockId !== null}
+        onOpenChange={(o) => {
+          if (!o) setCodeBlockId(null);
+        }}
+      >
+        <DialogContent className="max-w-6xl w-[95vw] h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>
+              {codeBlockId
+                ? (() => {
+                    const raw = codeBlockId.replace(/:\d+$/, "");
+                    const slash = raw.lastIndexOf("/");
+                    return slash >= 0 ? raw.slice(slash + 1) : raw;
+                  })()
+                : "Block Code"}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="flex items-center gap-2 mb-2">
+            <button
+              onClick={() => setCodeEditable((v) => !v)}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium border border-border bg-background hover:bg-muted transition-colors cursor-pointer"
+            >
+              {codeEditable ? (
+                <>
+                  <Lock size={12} /> Lock
+                </>
+              ) : (
+                <>
+                  <Pencil size={12} /> Edit
+                </>
+              )}
+            </button>
+            <button
+              onClick={() => setCodeEditorDark((d) => !d)}
+              aria-label={
+                codeEditorDark
+                  ? "Switch to light theme"
+                  : "Switch to dark theme"
+              }
+              className="inline-flex items-center justify-center rounded p-1.5 text-xs text-muted-foreground border border-border hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+            >
+              {codeEditorDark ? <Sun size={12} /> : <Moon size={12} />}
+            </button>
+            {codeEditable && (
+              <button
+                onClick={async () => {
+                  if (!codeBlockId) return;
+                  setCodeSaving(true);
+                  try {
+                    await saveBlockPython(jobId, codeBlockId, codeDialogPython);
+                    setCodeEditable(false);
+                    setCodeBlockId(null);
+                    void queryClient.invalidateQueries({
+                      queryKey: ["blockRevisions", jobId, codeBlockId],
+                    });
+                  } catch (err) {
+                    toast.error(
+                      err instanceof Error
+                        ? err.message
+                        : "Could not save code.",
+                    );
+                  } finally {
+                    setCodeSaving(false);
+                  }
+                }}
+                disabled={codeSaving}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors"
+              >
+                {codeSaving ? "Saving…" : "Save"}
+              </button>
+            )}
+          </div>
+
+          <div className="flex flex-1 min-h-0 gap-3">
+            {/* SAS panel */}
+            <div className="flex flex-col flex-1 min-w-0">
+              <div className="flex items-center gap-1.5 mb-1.5 shrink-0">
+                <span className="size-2 rounded-full bg-orange-400 shrink-0" />
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  SAS
+                </span>
+              </div>
+              <div className="flex-1 min-h-0">
+                {codeLoading ? (
+                  <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+                    Loading…
+                  </div>
+                ) : (
+                  <Editor
+                    key={(codeBlockId ?? "none") + "-sas"}
+                    height="100%"
+                    language="plaintext"
+                    value={sasCode}
+                    options={{
+                      readOnly: true,
+                      minimap: { enabled: false },
+                      fontSize: 13,
+                      scrollBeyondLastLine: false,
+                    }}
+                    theme={codeEditorDark ? "vs-dark" : "vs"}
+                  />
+                )}
+              </div>
+            </div>
+
+            {/* Python panel */}
+            <div className="flex flex-col flex-1 min-w-0">
+              <div className="flex items-center gap-1.5 mb-1.5 shrink-0">
+                <span className="size-2 rounded-full bg-blue-400 shrink-0" />
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Python
+                </span>
+              </div>
+              <div className="flex-1 min-h-0">
+                {codeLoading ? (
+                  <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+                    Loading…
+                  </div>
+                ) : (
+                  <Editor
+                    key={codeBlockId ?? "none"}
+                    height="100%"
+                    language="python"
+                    theme={codeEditorDark ? "vs-dark" : "vs"}
+                    value={codeDialogPython}
+                    onChange={(v) => setCodeDialogPython(v ?? "")}
+                    options={{
+                      readOnly: !codeEditable,
+                      minimap: { enabled: false },
+                      fontSize: 13,
+                      scrollBeyondLastLine: false,
+                    }}
+                  />
+                )}
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </TooltipProvider>
   );
 }

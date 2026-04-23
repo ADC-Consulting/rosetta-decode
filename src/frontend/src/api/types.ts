@@ -325,3 +325,17 @@ export interface ExplainResponse {
   tokens_used?: number | null;
   job_id?: string | null;
 }
+
+export interface CreateExplainSessionRequest {
+  mode: "migration" | "upload";
+  job_id?: string | null;
+  audience: "tech" | "non_tech";
+}
+
+export interface ExplainSessionResponse {
+  session_id: string;
+  messages: ExplainMessage[];
+  mode: string;
+  audience: string;
+  created_at: string;
+}

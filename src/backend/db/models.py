@@ -112,3 +112,22 @@ class BlockRevision(Base):
     )
 
     job: Mapped["Job"] = relationship("Job", back_populates="block_revisions")
+
+
+class ExplainSession(Base):
+    """A persisted chat session on the Explain page."""
+
+    __tablename__ = "explain_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    mode: Mapped[str] = mapped_column(Text, nullable=False)
+    job_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    audience: Mapped[str] = mapped_column(Text, nullable=False, default="tech")
+    messages: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
+    context_files: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )

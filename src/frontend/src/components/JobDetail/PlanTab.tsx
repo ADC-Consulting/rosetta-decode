@@ -30,6 +30,7 @@ export default function PlanTab({
   isReviewable,
   jobStatus,
   onBlockRefineSuccess,
+  jobPythonCode,
 }: {
   jobId: string;
   isReviewable: boolean;
@@ -40,6 +41,7 @@ export default function PlanTab({
     React.SetStateAction<Record<string, BlockOverride>>
   >;
   onBlockRefineSuccess?: () => void;
+  jobPythonCode?: string;
 }): React.ReactElement {
   const trustReportEnabled =
     !!jobId &&
@@ -253,6 +255,7 @@ export default function PlanTab({
             jobId={jobId}
             isAccepted={jobStatus === "accepted"}
             onBlockRefineSuccess={onBlockRefineSuccess}
+            jobPythonCode={jobPythonCode}
           />
         </div>
       )}
