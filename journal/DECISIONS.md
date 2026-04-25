@@ -6,6 +6,35 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-04-25 (session — Agentic pipeline context + Editor UX polish)
+
+- **`manual_ingestion` is not untranslatable:** PROC IMPORT and similar I/O blocks have clear Python equivalents (`pd.read_csv`); they get `is_untranslatable=False`, `confidence_score=0.7`, and a `# TODO: verify delimiter and encoding` comment · revisit never
+- **Absolute disk path in `manual_ingestion` stub:** the uploaded file's absolute path (sentinel `disk_path`) is used so the generated code is immediately runnable locally; relative project path is a post-migration concern · revisit when executor sandbox path mapping is clarified
+- **`build_context_section()` shared utility:** a single function in `shared_context.py` renders the project context prompt section from `JobContext.data_files` and `libname_map`; all agents call it identically; adding a new context field requires changing only this one function · revisit never
+- **DATA_FILE lineage nodes use `inferred: True` edges:** consistent with existing cross-file inferred-edge convention; frontend uses the `inferred` flag to style edges differently · revisit never
+- **`_translate_blocks()` must pass `block_plan` per block:** migration planner strategy was being computed but discarded — root cause of PROC IMPORT staying UNTRANSLATABLE despite correct plan; fixed via `block_plan_map` dict keyed on `"{source_file}:{start_line}"` · revisit never
+
+---
+
+## 2026-04-24 (session — SAS EG editor UX + executor microservice)
+
+- **`executor` microservice (new Docker service, port 8001):** generated Python runs in a subprocess sandbox inside a separate container rather than `exec()` in-process; isolates execution, enables cloud scaling, and exposes a `POST /execute` HTTP endpoint reusable by worker and backend · revisit when adding SAS execution support
+- **Shared `uploads` volume between `backend` and `executor`:** reference files (.csv, .sas7bdat) uploaded by the user must be readable by the executor at the same absolute path; named Docker volume `uploads` mounted at `/uploads` in both services · revisit never
+- **`RemoteReconciliationService` with graceful fallback:** worker delegates recon to executor over HTTP; `ConnectError`/`TimeoutException` return `{"checks": []}` and log a warning rather than failing the job — executor unavailability is non-fatal · revisit never
+- **Bottom panel always-visible split (SAS Studio layout):** execution output, log, output data, and history are shown in a persistent resizable bottom panel (vertical `ResizablePanelGroup`) instead of a slide-in overlay; matches SAS Studio UX familiar to SAS users · revisit never
+- **`translate_best_effort` strategy is dead:** defined in the enum but absent from the migration planner prompt — LLM never assigns it; needs to be either added to the prompt with a definition or removed · revisit next session
+- **`manual_ingestion` stub is identical to `manual`:** `StubGenerator` ignores strategy — both produce `# SAS-UNTRANSLATABLE`; `manual_ingestion` was supposed to emit a `pd.read_csv()` scaffold · fix next session
+- **`auto_verified` counter always 0:** `verified_confidence` field is never written by any agent; `auto_verified` should derive from `reconciliation_status == "pass" AND confidence in (high, medium)` · fix next session
+
+## 2026-04-24 (session — Explain overhaul)
+
+- **ExplainAgent 3-layer prompt composition:** base + mode-specific + audience-specific sections composed at construction time into a 4-agent cache; adding a new mode or audience requires only a new dict entry — revisit never
+- **`_persist_messages` must own its own DB session:** FastAPI SSE request-scoped sessions are closed before `asyncio.create_task` fire-and-forget tasks complete; all future background persistence tasks must open their own `AsyncSessionLocal()` — revisit never
+- **Worktree agents must not be used for implementation on branches with uncommitted work:** worktree agents clone a clean HEAD, losing all uncommitted changes in the working tree; always commit staged work before delegating to a worktree agent, or use the main tree agent with explicit file paths — revisit never (process change)
+- **`mode='sas_general'` replaces `'upload'`:** "upload" described the mechanism, not the intent; migration 013 backfills all existing rows; frontend and backend literals updated atomically — revisit never
+
+---
+
 ## 2026-04-19 (session 18 — F3 proposed/accepted, S-BE5/BE6, UI fixes)
 
 - **`jobs_status_check` constraint expanded to include `proposed`/`accepted`:** migration 008 drops and recreates the constraint to allow new statuses before running the UPDATE · revisit never

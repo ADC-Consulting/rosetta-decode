@@ -919,7 +919,12 @@ export default function JobsPage(): React.ReactElement {
 
               {/* Phase 1 — Staging form */}
               {phase === "staging" && (
-                <form onSubmit={handleSubmit} noValidate className="space-y-6">
+                <form
+                  id="migration-form"
+                  onSubmit={handleSubmit}
+                  noValidate
+                  className="space-y-6"
+                >
                   <input
                     ref={inputRef}
                     id="file-input-dialog"
@@ -1003,15 +1008,6 @@ export default function JobsPage(): React.ReactElement {
                     </p>
                   </div>
 
-                  <Button
-                    type="submit"
-                    disabled={submitDisabled}
-                    aria-busy={isPending}
-                    className="cursor-pointer"
-                  >
-                    {isPending ? "Submitting…" : "Migrate"}
-                  </Button>
-
                   {renderFileList()}
 
                   {validationError && (
@@ -1032,6 +1028,16 @@ export default function JobsPage(): React.ReactElement {
             >
               {manifest !== null ? "Done" : "Cancel"}
             </Button>
+            <Button
+              type="submit"
+              form="migration-form"
+              disabled={submitDisabled}
+              aria-busy={isPending}
+              className="cursor-pointer"
+            >
+              {isPending ? "Submitting…" : "Migrate"}
+            </Button>
+
             {manifest !== null && (
               <Button
                 onClick={() => {

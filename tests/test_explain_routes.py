@@ -190,7 +190,9 @@ async def test_explain_job_with_messages(client: AsyncClient, db_session: AsyncS
 
     captured: list[str] = []
 
-    async def _capture_stream(prompt: str, audience: str = "tech") -> AsyncGenerator[str, None]:
+    async def _capture_stream(
+        prompt: str, audience: str = "tech", mode: str = "migration"
+    ) -> AsyncGenerator[str, None]:
         captured.append(prompt)
         yield "Answer."
 
@@ -257,7 +259,7 @@ async def test_create_explain_session_non_tech(client: AsyncClient) -> None:
     """POST /explain/sessions with non_tech audience stores the audience value."""
     resp = await client.post(
         "/explain/sessions",
-        json={"mode": "upload", "audience": "non_tech"},
+        json={"mode": "sas_general", "audience": "non_tech"},
     )
     assert resp.status_code == 200
     assert resp.json()["audience"] == "non_tech"
@@ -278,7 +280,7 @@ async def test_list_explain_sessions_empty(client: AsyncClient) -> None:
 async def test_list_explain_sessions_returns_created(client: AsyncClient) -> None:
     """GET /explain/sessions returns previously created sessions."""
     await client.post("/explain/sessions", json={"mode": "migration", "audience": "tech"})
-    await client.post("/explain/sessions", json={"mode": "upload", "audience": "non_tech"})
+    await client.post("/explain/sessions", json={"mode": "sas_general", "audience": "non_tech"})
 
     resp = await client.get("/explain/sessions")
     assert resp.status_code == 200
@@ -353,3 +355,92 @@ async def test_list_jobs_no_filter(client: AsyncClient, db_session: AsyncSession
     assert resp.status_code == 200
     body = resp.json()
     assert len(body["jobs"]) == 2
+
+
+# ── _persist_messages coverage ────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_persist_messages_direct() -> None:
+    """_persist_messages appends user+assistant turns to the session's messages field."""
+    import src.backend.api.routes.explain as explain_module
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+    from src.backend.db.models import Base, ExplainSession
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with factory() as db:
+        session = ExplainSession(mode="migration", audience="tech", messages=[], context_files=[])
+        db.add(session)
+        await db.commit()
+        session_id = session.id
+
+    original = explain_module.AsyncSessionLocal  # type: ignore[attr-defined]
+    explain_module.AsyncSessionLocal = factory  # type: ignore[attr-defined]
+    try:
+        await explain_module._persist_messages(session_id, "user q", "assistant a")
+    finally:
+        explain_module.AsyncSessionLocal = original  # type: ignore[attr-defined]
+
+    async with factory() as db:
+        result = await db.execute(
+            __import__("sqlalchemy", fromlist=["select"])
+            .select(ExplainSession)
+            .where(ExplainSession.id == session_id)
+        )
+        refreshed = result.scalar_one()
+    assert len(refreshed.messages) == 2
+    assert refreshed.messages[0] == {"role": "user", "content": "user q"}
+    assert refreshed.messages[1] == {"role": "assistant", "content": "assistant a"}
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_persist_messages_unknown_session_noop() -> None:
+    """_persist_messages silently does nothing for a non-existent session_id."""
+    import src.backend.api.routes.explain as explain_module
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from src.backend.db.models import Base
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(bind=engine, expire_on_commit=False)
+
+    original = explain_module.AsyncSessionLocal  # type: ignore[attr-defined]
+    explain_module.AsyncSessionLocal = factory  # type: ignore[attr-defined]
+    try:
+        # Should not raise
+        await explain_module._persist_messages("nonexistent-id", "q", "a")
+    finally:
+        explain_module.AsyncSessionLocal = original  # type: ignore[attr-defined]
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_explain_job_with_session_id_triggers_persist(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """POST /explain/job with session_id schedules message persistence."""
+    import src.backend.api.routes.explain as explain_module
+
+    job_id = str(uuid.uuid4())
+    db_session.add(Job(id=job_id, status="done", input_hash="h", files={}))
+    await db_session.commit()
+
+    session_resp = await client.post(
+        "/explain/sessions", json={"mode": "migration", "audience": "tech"}
+    )
+    session_id = session_resp.json()["session_id"]
+
+    with patch.object(explain_module._explain_agent, "answer_stream", _fake_stream):
+        resp = await client.post(
+            "/explain/job",
+            json={"job_id": job_id, "question": "Q?", "session_id": session_id},
+        )
+
+    assert resp.status_code == 200
+    assert _sse_ends_with_done(resp.text)

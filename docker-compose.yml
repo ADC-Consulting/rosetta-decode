@@ -37,6 +37,8 @@ services:
         condition: service_healthy
     networks:
       - rosetta-net
+    volumes:
+      - uploads:/uploads
 
   tensorzero:
     image: tensorzero/gateway:latest
@@ -79,6 +81,19 @@ services:
     networks:
       - rosetta-net
 
+  executor:
+    build:
+      context: .
+      dockerfile: src/executor/Dockerfile
+    ports:
+      - "8001:8001"
+    networks:
+      - rosetta-net
+    volumes:
+      - uploads:/uploads
+    environment:
+      - PYTHONUNBUFFERED=1
+
   frontend:
     build:
       context: ./src/frontend
@@ -96,6 +111,7 @@ services:
 volumes:
   postgres_data:
   frontend_node_modules:
+  uploads:
 
 networks:
   rosetta-net:

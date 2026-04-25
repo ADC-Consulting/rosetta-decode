@@ -1,5 +1,21 @@
 export type JobStatusValue = "queued" | "running" | "proposed" | "accepted" | "failed" | "done";
 
+export interface ExecuteCheckResult {
+  name: string;
+  status: "pass" | "fail";
+  detail: string;
+}
+
+export interface ExecuteResponse {
+  stdout: string;
+  stderr: string;
+  result_json: Record<string, unknown>[] | null;
+  result_columns: string[] | null;
+  checks: ExecuteCheckResult[] | null;
+  error: string | null;
+  elapsed_ms: number;
+}
+
 export interface JobStatus {
   job_id: string;
   status: JobStatusValue;
@@ -56,9 +72,15 @@ export interface JobSourcesResponse {
 export interface LineageNode {
   id: string;
   label: string;
-  source_file: string;
-  block_type: string;
+  source_file?: string;
+  block_type?: string;
   status: "migrated" | "manual_review" | "untranslatable";
+  node_type?: "DATA_FILE";
+  path?: string;
+  disk_path?: string;
+  extension?: string;
+  columns?: string[];
+  row_count?: number | null;
 }
 
 export interface LineageEdge {
@@ -305,6 +327,21 @@ export interface TrustReportResponse {
   review_queue: TrustReportBlock[];
 }
 
+// ── Attachments ───────────────────────────────────────────────────────────────
+
+export interface AttachmentInfo {
+  filename: string;
+  path_key: string;
+  category: "log" | "output" | "other";
+  size_bytes: number;
+  extension: string;
+}
+
+export interface JobAttachmentsResponse {
+  job_id: string;
+  attachments: AttachmentInfo[];
+}
+
 // ── F8: Explain ───────────────────────────────────────────────────────────────
 
 export interface ExplainMessage {
@@ -327,15 +364,20 @@ export interface ExplainResponse {
 }
 
 export interface CreateExplainSessionRequest {
-  mode: "migration" | "upload";
+  mode: "migration" | "sas_general";
   job_id?: string | null;
   audience: "tech" | "non_tech";
+  title?: string;
+  file_name?: string | null;
 }
 
 export interface ExplainSessionResponse {
   session_id: string;
   messages: ExplainMessage[];
-  mode: string;
-  audience: string;
+  mode: "migration" | "sas_general";
+  audience: "tech" | "non_tech";
   created_at: string;
+  title: string | null;
+  file_name: string | null;
+  job_id: string | null;
 }

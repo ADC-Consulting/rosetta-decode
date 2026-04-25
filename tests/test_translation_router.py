@@ -11,7 +11,7 @@ from src.worker.engine.models import (
     SASBlock,
     TranslationStrategy,
 )
-from src.worker.engine.router import TranslationRouter, _ProcSortHelper
+from src.worker.engine.router import TranslationRouter, _ProcSortHelper, _StrategyStubAdapter
 from src.worker.engine.stub_generator import StubGenerator
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -174,10 +174,14 @@ def test_routes_manual_strategy_to_stub() -> None:
 
 
 def test_routes_manual_ingestion_strategy_to_stub() -> None:
+    from src.worker.engine.router import _StrategyStubAdapter
+
     router, _, _, stub_generator = _make_router()
     block = _make_block(BlockType.DATA_STEP, raw_sas="DATA out; SET in; IF flag = 1; RUN;")
     block_plan = _make_block_plan(TranslationStrategy.MANUAL_INGESTION)
-    assert router.route(block, block_plan=block_plan) is stub_generator
+    result = router.route(block, block_plan=block_plan)
+    assert isinstance(result, _StrategyStubAdapter)
+    assert result._stub is stub_generator
 
 
 def test_routes_skip_strategy_to_stub() -> None:
@@ -202,3 +206,60 @@ async def test_proc_sort_provenance() -> None:
     helper = _ProcSortHelper()
     result = await helper.translate(block, ctx)
     assert "# SAS: test.sas:1" in result.python_code
+
+
+def test_stub_generator_manual_ingestion_with_output_dataset() -> None:
+    """manual_ingestion strategy emits a pd.read_csv() scaffold with dataset name."""
+    block = SASBlock(
+        block_type=BlockType.PROC_IMPORT,
+        source_file="ingest.sas",
+        start_line=10,
+        end_line=15,
+        raw_sas="PROC IMPORT DATAFILE='x.csv' OUT=work.mydata; RUN;",
+        output_datasets=["work.mydata"],
+    )
+    result = StubGenerator().generate(block, strategy="manual_ingestion")
+    assert "pd.read_csv" in result.python_code
+    assert "work_mydata" in result.python_code
+    assert result.is_untranslatable is True
+
+
+def test_stub_generator_manual_ingestion_no_output_dataset() -> None:
+    """manual_ingestion strategy falls back to 'df' when no output datasets."""
+    block = SASBlock(
+        block_type=BlockType.PROC_IMPORT,
+        source_file="ingest.sas",
+        start_line=10,
+        end_line=15,
+        raw_sas="PROC IMPORT DATAFILE='x.csv'; RUN;",
+        output_datasets=[],
+    )
+    result = StubGenerator().generate(block, strategy="manual_ingestion")
+    assert "pd.read_csv" in result.python_code
+    assert "df = pd.read_csv" in result.python_code
+
+
+@pytest.mark.asyncio
+async def test_strategy_stub_adapter_translate() -> None:
+    """_StrategyStubAdapter.translate delegates to StubGenerator.generate with strategy."""
+    stub = StubGenerator()
+    adapter = _StrategyStubAdapter(stub, "manual_ingestion")
+    block = SASBlock(
+        block_type=BlockType.PROC_IMPORT,
+        source_file="test.sas",
+        start_line=1,
+        end_line=5,
+        raw_sas="PROC IMPORT DATAFILE='x.csv'; RUN;",
+        output_datasets=["myds"],
+    )
+    ctx = JobContext(
+        source_files={},
+        resolved_macros=[],
+        dependency_order=[],
+        risk_flags=[],
+        blocks=[],
+        generated=[],
+    )
+    result = await adapter.translate(block, ctx)
+    assert "pd.read_csv" in result.python_code
+    assert result.is_untranslatable is True

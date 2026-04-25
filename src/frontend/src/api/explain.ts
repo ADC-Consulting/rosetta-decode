@@ -42,11 +42,13 @@ export async function* explainFilesStream(
   messages: ExplainMessage[],
   audience: "tech" | "non_tech",
   sessionId: string | null,
+  mode: "migration" | "sas_general" = "sas_general",
 ): AsyncGenerator<string> {
   const form = new FormData();
   form.append("question", question);
   form.append("messages", JSON.stringify(messages));
   form.append("audience", audience);
+  form.append("mode", mode);
   if (sessionId) form.append("session_id", sessionId);
   for (const file of files) form.append("files", file);
 

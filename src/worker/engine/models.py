@@ -128,7 +128,6 @@ class TranslationStrategy(StrEnum):
 
     TRANSLATE = "translate"
     TRANSLATE_WITH_REVIEW = "translate_with_review"
-    TRANSLATE_BEST_EFFORT = "translate_best_effort"
     MANUAL_INGESTION = "manual_ingestion"
     MANUAL = "manual"
     SKIP = "skip"
@@ -294,6 +293,24 @@ class EnrichedLineage(BaseModel):
     log_links: list[LogLink] = Field(default_factory=list)
 
 
+class DataFileInfo(BaseModel):
+    """Metadata for a single data file discovered in the uploaded job.
+
+    Attributes:
+        path: Relative path within the project (e.g. ``data/raw/customers.csv``).
+        disk_path: Absolute path on disk (from the job sentinel value).
+        extension: File extension including the dot (e.g. ``".csv"``).
+        columns: Column headers sniffed from the file; empty list if unreadable.
+        row_count: Number of data rows, or ``None`` if not sniffable.
+    """
+
+    path: str
+    disk_path: str
+    extension: str
+    columns: list[str] = Field(default_factory=list)
+    row_count: int | None = None
+
+
 class JobContext(BaseModel):
     """Shared context object passed between all agentic pipeline stages."""
 
@@ -308,22 +325,30 @@ class JobContext(BaseModel):
     llm_call_count: int = 0
     migration_plan: MigrationPlan | None = None
     enriched_lineage: EnrichedLineage | None = None
+    data_files: dict[str, "DataFileInfo"] = Field(default_factory=dict)
+    libname_map: dict[str, str] = Field(default_factory=dict)
 
     def windowed_context(self, block: SASBlock) -> "JobContext":
         """Return a windowed view of this context scoped to a single block.
 
         Translation agents receive only:
-        - source_files: empty (full source only for AnalysisAgent/DocumentationAgent)
+        - source_files: macro and autoexec files (so agents understand macro definitions)
         - resolved_macros: full list (needed for macro substitution in any block)
         - dependency_order: only entries relevant to block's input/output datasets
         - risk_flags: full list
         - blocks: only this block
         - generated: empty (not needed during per-block translation)
         - reconciliation, retry_count, llm_call_count: preserved as-is
+        - data_files, libname_map: passed through so agents see folder structure
         """
         relevant_datasets = set(block.input_datasets) | set(block.output_datasets)
+        macro_source_files = {
+            k: v
+            for k, v in self.source_files.items()
+            if k.startswith("macros/") or k.endswith("autoexec.sas")
+        }
         return JobContext(
-            source_files={},
+            source_files=macro_source_files,
             resolved_macros=self.resolved_macros,
             dependency_order=[d for d in self.dependency_order if d in relevant_datasets],
             risk_flags=self.risk_flags,
@@ -333,4 +358,6 @@ class JobContext(BaseModel):
             retry_count=self.retry_count,
             llm_call_count=self.llm_call_count,
             migration_plan=self.migration_plan,
+            data_files=self.data_files,
+            libname_map=self.libname_map,
         )

@@ -5,17 +5,21 @@ import difflib
 import io
 import json
 import logging
+import mimetypes
+import os
 import uuid
 import zipfile
 from datetime import UTC, datetime
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.backend.api.schemas import (
     AcceptJobRequest,
+    AttachmentInfo,
     AuditResponse,
     BlockPythonEditRequest,
     BlockPythonEditResponse,
@@ -24,6 +28,9 @@ from src.backend.api.schemas import (
     BlockRevisionListResponse,
     BlockRevisionResponse,
     ChangelogEntry,
+    ExecuteRequest,
+    ExecuteResponse,
+    JobAttachmentsResponse,
     JobChangelogResponse,
     JobDocResponse,
     JobHistoryEntry,
@@ -46,6 +53,7 @@ from src.backend.api.schemas import (
     TrustReportResponse,
     UpdatePythonCodeRequest,
 )
+from src.backend.core.config import settings
 from src.backend.db.models import BlockRevision, Job, JobVersion
 from src.backend.db.session import get_async_session
 from src.worker.compute.local import LocalBackend
@@ -163,6 +171,127 @@ async def get_job_sources(
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
     sources = {k: v for k, v in (job.files or {}).items() if not k.startswith("__")}
     return JobSourcesResponse(job_id=job_id, sources=sources)
+
+
+_LOG_EXTENSIONS = frozenset({".log", ".lst"})
+_OUTPUT_EXTENSIONS = frozenset({".csv", ".xlsx", ".xls", ".sas7bdat"})
+
+
+def _classify_attachment(extension: str) -> str:
+    """Classify a file extension into an attachment category.
+
+    Args:
+        extension: Lowercase file extension including the leading dot (e.g. ``".log"``).
+
+    Returns:
+        ``"log"`` for SAS log/listing files, ``"output"`` for data files,
+        ``"other"`` for anything else.
+    """
+    if extension in _LOG_EXTENSIONS:
+        return "log"
+    if extension in _OUTPUT_EXTENSIONS:
+        return "output"
+    return "other"
+
+
+@router.get("/jobs/{job_id}/attachments", response_model=JobAttachmentsResponse)
+async def get_job_attachments(
+    job_id: uuid.UUID,
+    session: AsyncSession = Depends(get_async_session),
+) -> JobAttachmentsResponse:
+    """Return metadata for all non-SAS attachments stored with a job.
+
+    Iterates sentinel keys (``__ref_{ext}_{path}__``) in ``job.files``, resolves
+    each to its disk path, checks it exists, and returns a categorised list.
+
+    Args:
+        job_id: UUID of the migration job.
+        session: Injected async database session.
+
+    Returns:
+        JobAttachmentsResponse listing every resolvable attachment.
+
+    Raises:
+        HTTPException: 404 if the job does not exist.
+    """
+    result = await session.execute(select(Job).where(Job.id == str(job_id)))
+    job = result.scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+
+    attachments: list[AttachmentInfo] = []
+    for key, disk_path in (job.files or {}).items():
+        if not key.startswith("__ref_"):
+            continue
+        # Sentinel format: __ref_{ext}_{norm_path}__
+        # Strip leading "__ref_" and trailing "__", then split on first "_" to get ext.
+        inner = key[len("__ref_") :]  # e.g. "log_myfile.log__"
+        if inner.endswith("__"):
+            inner = inner[:-2]  # e.g. "log_myfile.log"
+        sep_idx = inner.find("_")
+        if sep_idx == -1:
+            continue
+        norm_path = inner[sep_idx + 1 :]  # everything after first "_"
+
+        if not os.path.isfile(disk_path):
+            continue
+
+        ext = os.path.splitext(norm_path)[1].lower()
+        attachments.append(
+            AttachmentInfo(
+                filename=os.path.basename(norm_path),
+                path_key=key,
+                category=_classify_attachment(ext),
+                size_bytes=os.path.getsize(disk_path),
+                extension=ext,
+            )
+        )
+
+    return JobAttachmentsResponse(job_id=str(job_id), attachments=attachments)
+
+
+@router.get("/jobs/{job_id}/attachments/{path_key:path}")
+async def download_attachment(
+    job_id: uuid.UUID,
+    path_key: str,
+    session: AsyncSession = Depends(get_async_session),
+) -> FileResponse:
+    """Stream a single attachment file from disk.
+
+    Looks up ``path_key`` (a sentinel key) in ``job.files`` to resolve the disk
+    path, then streams the file with an appropriate Content-Type header.
+
+    Args:
+        job_id: UUID of the migration job.
+        path_key: Sentinel key identifying the attachment (URL-decoded by FastAPI).
+        session: Injected async database session.
+
+    Returns:
+        FileResponse streaming the attachment bytes.
+
+    Raises:
+        HTTPException: 404 if the job does not exist, the key is not present, or
+            the file is missing from disk.
+    """
+    result = await session.execute(select(Job).where(Job.id == str(job_id)))
+    job = result.scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+
+    disk_path: str | None = (job.files or {}).get(path_key)
+    if disk_path is None:
+        raise HTTPException(status_code=404, detail=f"Attachment '{path_key}' not found.")
+    if not os.path.isfile(disk_path):
+        raise HTTPException(
+            status_code=404, detail=f"Attachment file for '{path_key}' is missing from disk."
+        )
+
+    media_type, _ = mimetypes.guess_type(disk_path)
+    return FileResponse(
+        path=disk_path,
+        media_type=media_type or "application/octet-stream",
+        filename=os.path.basename(disk_path),
+    )
 
 
 @router.get("/jobs/{job_id}/audit", response_model=AuditResponse)
@@ -1407,11 +1536,95 @@ async def get_job_changelog(
 
 
 # ---------------------------------------------------------------------------
+# Executor proxy — POST /jobs/{job_id}/execute
+# ---------------------------------------------------------------------------
+
+
+@router.post("/jobs/{job_id}/execute", response_model=ExecuteResponse)
+async def execute_job(
+    job_id: uuid.UUID,
+    request: ExecuteRequest,
+    session: AsyncSession = Depends(get_async_session),
+) -> ExecuteResponse:
+    """Proxy a code-execution request to the executor microservice.
+
+    Resolves which Python code to run: if *request.block_id* is supplied, the
+    latest :class:`BlockRevision` for that block is used; otherwise the job's
+    top-level ``python_code`` field is used.  The resolved code is POSTed to
+    ``{executor_url}/execute`` and the response is returned verbatim.
+
+    Args:
+        job_id: UUID of the migration job.
+        request: Optional block_id to scope execution to a single block.
+        session: Injected async database session.
+
+    Returns:
+        ExecuteResponse proxied from the executor service.
+
+    Raises:
+        HTTPException: 404 if the job (or block) is not found.
+        HTTPException: 503 if the executor service is unreachable.
+    """
+    result = await session.execute(select(Job).where(Job.id == str(job_id)))
+    job = result.scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+
+    python_code: str | None = None
+
+    if request.block_id is not None:
+        rev_result = await session.execute(
+            select(BlockRevision)
+            .where(
+                BlockRevision.job_id == str(job_id),
+                BlockRevision.block_id == request.block_id,
+            )
+            .order_by(BlockRevision.revision_number.desc())
+        )
+        latest_rev = rev_result.scalars().first()
+        if latest_rev is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Block '{request.block_id}' not found for job '{job_id}'.",
+            )
+        python_code = latest_rev.python_code
+    else:
+        python_code = job.python_code
+
+    if not python_code:
+        raise HTTPException(status_code=409, detail="No Python code available for this job.")
+
+    ref_csv_path: str = str((job.files or {}).get("__ref_csv__", ""))
+    ref_sas7bdat_path: str = str((job.files or {}).get("__ref_sas7bdat__", ""))
+
+    payload: dict[str, Any] = {
+        "code": python_code,
+        "ref_csv_path": ref_csv_path,
+        "ref_sas7bdat_path": ref_sas7bdat_path,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=120) as client:
+            resp = await client.post(f"{settings.executor_url}/execute", json=payload)
+            resp.raise_for_status()
+            return ExecuteResponse(**resp.json())
+    except (httpx.ConnectError, httpx.TimeoutException) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Executor service is unreachable: {exc}",
+        ) from exc
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Executor returned an error: {exc.response.status_code}",
+        ) from exc
+
+
+# ---------------------------------------------------------------------------
 # S7 — Tiered trust report
 # ---------------------------------------------------------------------------
 
 _MANUAL_STRATEGIES = frozenset({"manual", "manual_ingestion", "skip"})
-_AUTO_VERIFIED_CONFIDENCES = frozenset({"verified_high", "verified_medium"})
 _CONFIDENCE_ORDER = {"low": 0, "medium": 1, "high": 2, "unknown": -1}
 
 
@@ -1462,7 +1675,11 @@ def _aggregate_file_metrics(
                 source_file=source_file,
                 total_blocks=len(file_blocks),
                 auto_verified=sum(
-                    1 for b in file_blocks if b.verified_confidence in _AUTO_VERIFIED_CONFIDENCES
+                    1
+                    for b in file_blocks
+                    if b.strategy not in _MANUAL_STRATEGIES
+                    and b.reconciliation_status == "pass"
+                    and (b.confidence_band or "unknown") in ("high", "medium")
                 ),
                 needs_review=sum(
                     1
@@ -1573,13 +1790,16 @@ async def get_job_trust_report(
         conf_entry: dict[str, Any] = block_confidence.get(block_id, {})
         self_confidence: str = conf_entry.get("confidence", "unknown")
         verified_confidence: str | None = conf_entry.get("verified_confidence")
+        confidence_band: str = bp.get("confidence_band", "unknown")
 
         latest_rev: BlockRevision | None = latest_revision.get(block_id)
         reconciliation_status: str | None = latest_rev.reconciliation_status if latest_rev else None
 
         needs_attention: bool = (
-            verified_confidence in ("verified_low", None) and reconciliation_status == "fail"
-        ) or strategy in _MANUAL_STRATEGIES
+            strategy in _MANUAL_STRATEGIES
+            or reconciliation_status == "fail"
+            or (confidence_band or "unknown") in ("low", "very_low", "unknown")
+        )
 
         radius: int | None = blast_map.get(source_file) if lineage else None
 
@@ -1592,6 +1812,7 @@ async def get_job_trust_report(
                 strategy=strategy,
                 self_confidence=self_confidence,
                 verified_confidence=verified_confidence,
+                confidence_band=confidence_band,
                 reconciliation_status=reconciliation_status,
                 needs_attention=needs_attention,
                 blast_radius=radius,
@@ -1601,7 +1822,13 @@ async def get_job_trust_report(
     blocks.sort(key=_block_sort_key)
 
     total = len(blocks)
-    auto_verified = sum(1 for b in blocks if b.verified_confidence in _AUTO_VERIFIED_CONFIDENCES)
+    auto_verified = sum(
+        1
+        for b in blocks
+        if b.strategy not in _MANUAL_STRATEGIES
+        and b.reconciliation_status == "pass"
+        and (b.confidence_band or "unknown") in ("high", "medium")
+    )
     manual_todo = sum(1 for b in blocks if b.strategy in _MANUAL_STRATEGIES)
     failed_reconciliation = sum(1 for b in blocks if b.reconciliation_status == "fail")
     needs_review = sum(

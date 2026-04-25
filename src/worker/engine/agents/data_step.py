@@ -13,6 +13,7 @@ from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.azure import AzureProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 from src.worker.core.config import worker_settings
+from src.worker.engine.agents.shared_context import build_context_section
 from src.worker.engine.models import GeneratedBlock, JobContext, SASBlock
 
 logger = logging.getLogger("src.worker.engine.agents.data_step")
@@ -56,6 +57,14 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
 
     You are a SAS-to-Python migration engineer. Translate the SAS DATA step below into
     idiomatic Python targeting a modern Python 3.12 data platform.
+
+    **DEFAULT: always attempt a translation.** A best-effort translation with real code
+    is always preferred over an empty placeholder. Set ``confidence_score`` to your honest
+    estimate — low confidence is fine, but the code field must never be empty for
+    ``translate`` or ``translate_with_review`` strategies. Use ``uncertainty_notes`` to
+    explain what may differ. Only assign ``strategy="manual"`` when the SAS construct has
+    absolutely no Python equivalent (e.g., PROC OPTMODEL LP/NLP with complex solver
+    structure that cannot be approximated).
 
     Target environment: PySpark, pandas, numpy, pyarrow, scipy, statsmodels are all available.
     PREFER PySpark idioms for all data transformations
@@ -137,6 +146,10 @@ def _build_prompt(block: SASBlock, windowed: JobContext) -> str:
         A formatted prompt string for the LLM.
     """
     lines: list[str] = []
+
+    ctx_section = build_context_section(windowed)
+    if ctx_section:
+        lines.append(ctx_section)
 
     lines.append("## Macro variable context")
     for macro in windowed.resolved_macros:

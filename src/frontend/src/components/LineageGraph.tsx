@@ -245,8 +245,66 @@ function applyDagreLayout<T extends object>(
 // Builders — blocks view
 // ---------------------------------------------------------------------------
 
+function buildDataFileNode(n: LineageNode): Node<NodeData> {
+  const ext = (n.extension ?? "").replace(".", "").toUpperCase() || "FILE";
+  return {
+    id: n.id,
+    type: "default",
+    data: {
+      rawLabel: n.label,
+      block_type: "DATA_FILE",
+      status: "migrated",
+      label: (
+        <div style={{ lineHeight: 1.35 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#0369a1", fontFamily: "monospace" }}>
+            {ext}
+          </div>
+          <div
+            style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: "#111",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {n.label}
+          </div>
+          {n.columns && n.columns.length > 0 && (
+            <div style={{ fontSize: 9, color: "#9ca3af", marginTop: 2, fontFamily: "monospace" }}>
+              {n.columns.slice(0, 4).join(", ")}
+              {n.columns.length > 4 ? ` +${n.columns.length - 4}` : ""}
+            </div>
+          )}
+        </div>
+      ),
+    },
+    position: { x: 0, y: 0 },
+    sourcePosition: Position.Right,
+    targetPosition: Position.Left,
+    draggable: true,
+    style: {
+      background: "rgba(240,249,255,0.95)",
+      borderWidth: "1.5px",
+      borderStyle: "dashed",
+      borderColor: "#0ea5e9",
+      borderBottomWidth: "3px",
+      color: "#333",
+      borderRadius: 8,
+      padding: "8px 12px",
+      boxShadow: "0 1px 4px rgba(0,0,0,0.1)",
+      width: NODE_W,
+      minHeight: NODE_H,
+      transition: "opacity 0.18s ease",
+    },
+  };
+}
+
 function buildInitialNodes(lineageNodes: LineageNode[]): Node<NodeData>[] {
   return lineageNodes.map((n) => {
+    if (n.node_type === "DATA_FILE") return buildDataFileNode(n);
+
     const style = STATUS_STYLE[n.status];
     const sym = STATUS_SYMBOL[n.status];
     return {
@@ -254,7 +312,7 @@ function buildInitialNodes(lineageNodes: LineageNode[]): Node<NodeData>[] {
       type: "default",
       data: {
         rawLabel: n.label,
-        block_type: n.block_type,
+        block_type: n.block_type ?? "",
         status: n.status,
         label: (
           <div
@@ -296,11 +354,11 @@ function buildInitialNodes(lineageNodes: LineageNode[]): Node<NodeData>[] {
                 marginTop: 3,
               }}
             >
-              {abbrevBlockType(n.block_type)}
+              {abbrevBlockType(n.block_type ?? "")}
             </div>
             {/* source_file — filename only */}
             <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 1 }}>
-              {n.source_file.split("/").pop() ?? n.source_file}
+              {(n.source_file ?? "").split("/").pop() ?? n.source_file}
             </div>
           </div>
         ),

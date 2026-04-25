@@ -20,6 +20,7 @@ from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.azure import AzureProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 from src.worker.core.config import worker_settings
+from src.worker.engine.agents.shared_context import build_context_section
 from src.worker.engine.models import GeneratedBlock, JobContext, SASBlock
 
 logger = logging.getLogger("src.worker.engine.agents.generic_proc")
@@ -70,10 +71,14 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
     The code must run in a Databricks notebook (PySpark native) or plain Python 3.12 environment
     without SAS.
 
-    Your job is to translate ANY SAS PROC block into idiomatic Python.
-    DEFAULT ASSUMPTION: translation is POSSIBLE. Only choose strategy="manual" when the
-    block relies on features with NO reasonable Python equivalent — and you MUST list those
-    features in detected_features. If detected_features would be empty, you CANNOT choose manual.
+    **DEFAULT: always attempt a translation.** A best-effort translation with real code is always
+    preferred over an empty placeholder. Set ``confidence_score`` to your honest estimate — low
+    confidence is fine, but the code field must never be empty for ``translate`` or
+    ``translate_with_review`` strategies. Use ``uncertainty_notes`` to explain what may differ.
+    Only assign ``strategy="manual"`` when the SAS construct has absolutely no Python equivalent
+    (e.g., PROC OPTMODEL LP/NLP with complex solver structure that cannot be approximated) —
+    and you MUST list those features in detected_features. If detected_features would be empty,
+    you CANNOT choose manual.
 
     ## Strategy selection (in priority order)
 
@@ -237,6 +242,10 @@ def _build_prompt(block: SASBlock, windowed: JobContext) -> str:
         A formatted prompt string for the LLM.
     """
     lines: list[str] = []
+
+    ctx_section = build_context_section(windowed)
+    if ctx_section:
+        lines.append(ctx_section)
 
     lines.append(f"## PROC type: {block.block_type}")
     lines.append("")

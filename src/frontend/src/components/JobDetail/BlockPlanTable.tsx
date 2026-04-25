@@ -1,5 +1,4 @@
 import { getBlockRevisions, getJobSources, saveBlockPython } from "@/api/jobs";
-import { registerSasLanguage } from "./registerSasLanguage";
 import type { BlockPlan, TrustReportBlock } from "@/api/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,7 +8,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -25,7 +28,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { Editor } from "@monaco-editor/react";
+import { Editor, type OnMount } from "@monaco-editor/react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -45,6 +48,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import BlockRefineDialog from "./BlockRefineDialog";
 import { BlockRevisionModal } from "./BlockRevisionDrawer";
+import { registerSasLanguage } from "./registerSasLanguage";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -92,7 +96,8 @@ function groupBlocks(
 const STRATEGY_COLOR: Record<string, string> = {
   translate: "text-blue-700 bg-blue-50 border border-blue-200",
   translate_with_review: "text-amber-700 bg-amber-50 border border-amber-200",
-  translate_best_effort: "text-orange-700 bg-orange-50 border border-orange-200",
+  translate_best_effort:
+    "text-orange-700 bg-orange-50 border border-orange-200",
   manual: "text-red-700 bg-red-50 border border-red-200",
   manual_ingestion: "text-red-700 bg-red-50 border border-red-200",
   skip: "text-muted-foreground bg-muted border border-border",
@@ -148,55 +153,59 @@ function GlossaryDialog({
           <div>
             <p className="font-semibold mb-1">Risk levels</p>
             <p className="text-xs text-muted-foreground mb-1.5">
-              Assigned by the migration planner before translation, based on static analysis of
-              each block's SAS constructs. Reflects how likely the block is to need human
-              intervention — not whether translation succeeded.
+              Assigned by the migration planner before translation, based on
+              static analysis of each block's SAS constructs. Reflects how
+              likely the block is to need human intervention — not whether
+              translation succeeded.
             </p>
             <ul className="space-y-1 text-muted-foreground text-xs">
               <li>
-                <span className="font-medium text-green-700">Low</span> — Simple SET/filter/rename
-                or straightforward PROC SQL SELECT.
+                <span className="font-medium text-green-700">Low</span> — Simple
+                SET/filter/rename or straightforward PROC SQL SELECT.
               </li>
               <li>
-                <span className="font-medium text-amber-700">Medium</span> — BY-group processing,
-                MERGE with complex BY, multi-output DATA steps, CASE expressions.
+                <span className="font-medium text-amber-700">Medium</span> —
+                BY-group processing, MERGE with complex BY, multi-output DATA
+                steps, CASE expressions.
               </li>
               <li>
-                <span className="font-medium text-red-700">High</span> — CALL SYMPUT, dynamic
-                dataset names, nested macros, %INCLUDE, deeply nested RETAIN loops, or unsupported
-                PROC types.
+                <span className="font-medium text-red-700">High</span> — CALL
+                SYMPUT, dynamic dataset names, nested macros, %INCLUDE, deeply
+                nested RETAIN loops, or unsupported PROC types.
               </li>
             </ul>
           </div>
           <div>
             <p className="font-semibold mb-1">Confidence score</p>
             <p className="text-xs text-muted-foreground mb-1.5">
-              After translating each block, the LLM self-reports a score (0–1) reflecting how
-              certain it is that the generated Python is semantically equivalent to the SAS source.
-              Factors that lower confidence: complex RETAIN logic, ambiguous date arithmetic,
-              macro-dependent variable names, or SAS idioms that required approximation. The
-              overall confidence is the average across all translated blocks.
+              After translating each block, the LLM self-reports a score (0–1)
+              reflecting how certain it is that the generated Python is
+              semantically equivalent to the SAS source. Factors that lower
+              confidence: complex RETAIN logic, ambiguous date arithmetic,
+              macro-dependent variable names, or SAS idioms that required
+              approximation. The overall confidence is the average across all
+              translated blocks.
             </p>
             <ul className="space-y-1 text-muted-foreground text-xs">
               <li>
                 <span className="font-medium">0.85–1.0</span> —{" "}
-                <span className="text-green-700 font-medium">High</span>: LLM is certain, minimal
-                review needed.
+                <span className="text-green-700 font-medium">High</span>: LLM is
+                certain, minimal review needed.
               </li>
               <li>
                 <span className="font-medium">0.65–0.84</span> —{" "}
-                <span className="text-amber-700 font-medium">Medium</span>: review recommended,
-                especially edge cases.
+                <span className="text-amber-700 font-medium">Medium</span>:
+                review recommended, especially edge cases.
               </li>
               <li>
                 <span className="font-medium">0.40–0.64</span> —{" "}
-                <span className="text-red-600 font-medium">Low</span>: manual inspection required
-                before accepting.
+                <span className="text-red-600 font-medium">Low</span>: manual
+                inspection required before accepting.
               </li>
               <li>
                 <span className="font-medium">&lt;0.40</span> —{" "}
-                <span className="text-red-700 font-medium">Very Low</span>: high risk of incorrect
-                output.
+                <span className="text-red-700 font-medium">Very Low</span>: high
+                risk of incorrect output.
               </li>
             </ul>
           </div>
@@ -204,50 +213,63 @@ function GlossaryDialog({
             <p className="font-semibold mb-1">Strategies</p>
             <ul className="space-y-1 text-muted-foreground text-xs">
               <li>
-                <span className="font-medium text-blue-700">translate</span> — Fully auto-converted
-                to Python/PySpark.
+                <span className="font-medium text-blue-700">translate</span> —
+                Fully auto-converted to Python/PySpark.
               </li>
               <li>
-                <span className="font-medium text-amber-700">translate_with_review</span> —
-                Converted but flagged for human check (date semantics, format conversions, ambiguous
-                merges).
+                <span className="font-medium text-amber-700">
+                  translate_with_review
+                </span>{" "}
+                — Converted but flagged for human check (date semantics, format
+                conversions, ambiguous merges).
               </li>
               <li>
-                <span className="font-medium text-orange-700">translate_best_effort</span> —
-                Partial translation; complex constructs approximated, may be incomplete.
+                <span className="font-medium text-orange-700">
+                  translate_best_effort
+                </span>{" "}
+                — Partial translation; complex constructs approximated, may be
+                incomplete.
               </li>
               <li>
-                <span className="font-medium text-red-700">manual</span> — No Python equivalent
-                exists; placeholder comment only. Requires human rewrite.
+                <span className="font-medium text-red-700">manual</span> — No
+                Python equivalent exists; placeholder comment only. Requires
+                human rewrite.
               </li>
               <li>
-                <span className="font-medium text-muted-foreground">skip</span> — PROC PRINT /
-                housekeeping; nothing emitted to the output pipeline.
+                <span className="font-medium text-muted-foreground">skip</span>{" "}
+                — PROC PRINT / housekeeping; nothing emitted to the output
+                pipeline.
               </li>
             </ul>
           </div>
           <div>
             <p className="font-semibold mb-1">Reconciliation status</p>
             <p className="text-xs text-muted-foreground mb-1.5">
-              After translation, the generated Python is executed against the same input data as
-              the original SAS. The output is compared on schema, row count, and aggregate values.
+              After translation, the generated Python is executed against the
+              same input data as the original SAS. The output is compared on
+              schema, row count, and aggregate values.
             </p>
             <ul className="space-y-1 text-muted-foreground text-xs">
               <li>
-                <span className="font-medium text-green-700">Auto-verified</span> — schema, row
-                count, and aggregates all match. Safe to accept.
+                <span className="font-medium text-green-700">
+                  Auto-verified
+                </span>{" "}
+                — schema, row count, and aggregates all match. Safe to accept.
               </li>
               <li>
-                <span className="font-medium text-amber-700">Needs review</span> — translation ran
-                but reconciliation flagged differences. Human check recommended.
+                <span className="font-medium text-amber-700">Needs review</span>{" "}
+                — translation ran but reconciliation flagged differences. Human
+                check recommended.
               </li>
               <li>
-                <span className="font-medium text-foreground">Manual TODO</span> — block has
-                strategy manual or manual_ingestion; Python output requires human authoring.
+                <span className="font-medium text-foreground">Manual TODO</span>{" "}
+                — block has strategy manual or manual_ingestion; Python output
+                requires human authoring.
               </li>
               <li>
-                <span className="font-medium text-red-700">Failed recon</span> — Python code
-                executed but output did not match the SAS reference data.
+                <span className="font-medium text-red-700">Failed recon</span> —
+                Python code executed but output did not match the SAS reference
+                data.
               </li>
             </ul>
           </div>
@@ -271,7 +293,9 @@ export default function BlockPlanTable({
   generatedFiles,
 }: BlockPlanTableProps): React.ReactElement {
   const queryClient = useQueryClient();
-  const [humanEditedBlocks, setHumanEditedBlocks] = useState<Set<string>>(new Set());
+  const [humanEditedBlocks, setHumanEditedBlocks] = useState<Set<string>>(
+    new Set(),
+  );
   const [refineBlockId, setRefineBlockId] = useState<string | null>(null);
   const [historyBlockId, setHistoryBlockId] = useState<string | null>(null);
   const [codeBlockId, setCodeBlockId] = useState<string | null>(null);
@@ -333,9 +357,13 @@ export default function BlockPlanTable({
     const files = new Set(blockPlans.map((b) => b.source_file));
     return files.size > 1 ? "folder" : "none";
   });
-  const [activeStrategies, setActiveStrategies] = useState<Set<string>>(new Set());
+  const [activeStrategies, setActiveStrategies] = useState<Set<string>>(
+    new Set(),
+  );
   const [glossaryOpen, setGlossaryOpen] = useState(false);
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
+    new Set(),
+  );
 
   const uniqueStrategies = [...new Set(blockPlans.map((b) => b.strategy))];
 
@@ -371,14 +399,26 @@ export default function BlockPlanTable({
         {/* Group by */}
         <div className="flex items-center gap-1.5">
           <span className="text-xs text-muted-foreground">Group by</span>
-          <Select value={groupBy} onValueChange={(v) => setGroupBy(v as GroupBy)}>
-            <SelectTrigger size="sm" className="h-7 text-xs w-[100px] cursor-pointer">
+          <Select
+            value={groupBy}
+            onValueChange={(v) => setGroupBy(v as GroupBy)}
+          >
+            <SelectTrigger
+              size="sm"
+              className="h-7 text-xs w-[100px] cursor-pointer"
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="none" className="text-xs">None</SelectItem>
-              <SelectItem value="file" className="text-xs">File</SelectItem>
-              <SelectItem value="folder" className="text-xs">Folder</SelectItem>
+              <SelectItem value="none" className="text-xs">
+                None
+              </SelectItem>
+              <SelectItem value="file" className="text-xs">
+                File
+              </SelectItem>
+              <SelectItem value="folder" className="text-xs">
+                Folder
+              </SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -387,7 +427,9 @@ export default function BlockPlanTable({
 
         {/* Strategy filter chips */}
         <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-xs text-muted-foreground shrink-0">Strategy</span>
+          <span className="text-xs text-muted-foreground shrink-0">
+            Filter by Strategy
+          </span>
           {uniqueStrategies.map((s) => (
             <button
               key={s}
@@ -432,14 +474,24 @@ export default function BlockPlanTable({
         <table className="w-full text-sm">
           <thead className="sticky top-0 z-10">
             <tr className="bg-muted/80 backdrop-blur-sm text-left border-b border-border">
-              <th className="px-3 py-2 font-medium text-muted-foreground text-xs">Block</th>
-              <th className="px-3 py-2 font-medium text-muted-foreground text-xs w-20">Type</th>
+              <th className="px-3 py-2 font-medium text-muted-foreground text-xs">
+                Block
+              </th>
+              <th className="px-3 py-2 font-medium text-muted-foreground text-xs w-20">
+                Type
+              </th>
               <th className="px-3 py-2 font-medium text-muted-foreground text-xs w-36">
                 Strategy
               </th>
-              <th className="px-3 py-2 font-medium text-muted-foreground text-xs w-14">Risk</th>
-              <th className="px-3 py-2 font-medium text-muted-foreground text-xs w-20">Confidence</th>
-              <th className="px-3 py-2 font-medium text-muted-foreground text-xs w-12 text-center">Why</th>
+              <th className="px-3 py-2 font-medium text-muted-foreground text-xs w-14">
+                Risk
+              </th>
+              <th className="px-3 py-2 font-medium text-muted-foreground text-xs w-20">
+                Confidence
+              </th>
+              <th className="px-3 py-2 font-medium text-muted-foreground text-xs w-12 text-center">
+                Why
+              </th>
               <th className="px-3 py-2 font-medium text-muted-foreground text-xs w-14 text-center">
                 Recon
               </th>
@@ -461,14 +513,23 @@ export default function BlockPlanTable({
                     <td colSpan={8} className="px-3 py-1.5">
                       <div className="flex items-center gap-2">
                         {collapsedGroups.has(key) ? (
-                          <ChevronRight size={12} className="text-muted-foreground shrink-0" />
+                          <ChevronRight
+                            size={12}
+                            className="text-muted-foreground shrink-0"
+                          />
                         ) : (
-                          <ChevronDown size={12} className="text-muted-foreground shrink-0" />
+                          <ChevronDown
+                            size={12}
+                            className="text-muted-foreground shrink-0"
+                          />
                         )}
                         <span className="text-xs font-semibold text-foreground font-mono">
                           {key}
                         </span>
-                        <Badge variant="secondary" className="text-[10px] font-mono px-1.5">
+                        <Badge
+                          variant="secondary"
+                          className="text-[10px] font-mono px-1.5"
+                        >
                           {items.length}
                         </Badge>
                       </div>
@@ -485,9 +546,11 @@ export default function BlockPlanTable({
                       typeof bp.confidence_score === "number"
                         ? `${(bp.confidence_score * 100).toFixed(0)}%`
                         : "—";
-                    const bandKey = bp.confidence_band?.toLowerCase() ?? "unknown";
+                    const bandKey =
+                      bp.confidence_band?.toLowerCase() ?? "unknown";
                     const bandTextCls =
-                      CONFIDENCE_BAND_TEXT_COLOR[bandKey] ?? CONFIDENCE_BAND_TEXT_COLOR["unknown"];
+                      CONFIDENCE_BAND_TEXT_COLOR[bandKey] ??
+                      CONFIDENCE_BAND_TEXT_COLOR["unknown"];
 
                     const shortBlockId = (() => {
                       const raw = bp.block_id.replace(/:\d+$/, "");
@@ -500,7 +563,9 @@ export default function BlockPlanTable({
                         key={bp.block_id}
                         className={cn(
                           "hover:bg-muted/30 border-l-2 transition-colors",
-                          needsAttention ? "border-l-amber-400" : "border-l-transparent",
+                          needsAttention
+                            ? "border-l-amber-400"
+                            : "border-l-transparent",
                         )}
                       >
                         {/* Block */}
@@ -523,7 +588,9 @@ export default function BlockPlanTable({
                         </td>
 
                         {/* Type */}
-                        <td className="px-3 py-2 font-mono text-xs">{bp.block_type}</td>
+                        <td className="px-3 py-2 font-mono text-xs">
+                          {bp.block_type}
+                        </td>
 
                         {/* Strategy */}
                         <td className="px-3 py-2 text-xs">
@@ -536,14 +603,21 @@ export default function BlockPlanTable({
 
                         {/* Risk */}
                         <td className="px-3 py-2 text-xs">
-                          <span className={`font-semibold ${RISK_COLOR[bp.risk] ?? ""}`}>
+                          <span
+                            className={`font-semibold ${RISK_COLOR[bp.risk] ?? ""}`}
+                          >
                             {RISK_LABELS[bp.risk] ?? bp.risk}
                           </span>
                         </td>
 
                         {/* Confidence */}
                         <td className="px-3 py-2 text-xs w-16">
-                          <span className={cn("tabular-nums font-medium", bandTextCls)}>
+                          <span
+                            className={cn(
+                              "tabular-nums font-medium",
+                              bandTextCls,
+                            )}
+                          >
                             {confPct}
                           </span>
                         </td>
@@ -581,7 +655,9 @@ export default function BlockPlanTable({
                               Fail
                             </Badge>
                           ) : (
-                            <span className="text-muted-foreground text-xs">—</span>
+                            <span className="text-muted-foreground text-xs">
+                              —
+                            </span>
                           )}
                         </td>
 
@@ -691,7 +767,11 @@ export default function BlockPlanTable({
               {/* Theme toggle */}
               <button
                 onClick={() => setCodeEditorDark((d) => !d)}
-                aria-label={codeEditorDark ? "Switch to light theme" : "Switch to dark theme"}
+                aria-label={
+                  codeEditorDark
+                    ? "Switch to light theme"
+                    : "Switch to dark theme"
+                }
                 className="inline-flex items-center justify-center rounded p-1.5 text-muted-foreground border border-border hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
               >
                 {codeEditorDark ? <Sun size={13} /> : <Moon size={13} />}
@@ -702,7 +782,15 @@ export default function BlockPlanTable({
                 onClick={() => setCodeEditable((v) => !v)}
                 className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium border border-border bg-background hover:bg-muted transition-colors cursor-pointer"
               >
-                {codeEditable ? <><Lock size={12} /> Lock</> : <><Pencil size={12} /> Edit</>}
+                {codeEditable ? (
+                  <>
+                    <Lock size={12} /> Lock
+                  </>
+                ) : (
+                  <>
+                    <Pencil size={12} /> Edit
+                  </>
+                )}
               </button>
 
               {/* Save */}
@@ -712,15 +800,25 @@ export default function BlockPlanTable({
                     if (!codeBlockId) return;
                     setCodeSaving(true);
                     try {
-                      await saveBlockPython(jobId, codeBlockId, codeDialogPython);
-                      setHumanEditedBlocks((prev) => new Set([...prev, codeBlockId]));
+                      await saveBlockPython(
+                        jobId,
+                        codeBlockId,
+                        codeDialogPython,
+                      );
+                      setHumanEditedBlocks(
+                        (prev) => new Set([...prev, codeBlockId]),
+                      );
                       setCodeEditable(false);
                       void queryClient.invalidateQueries({
                         queryKey: ["block-revisions", jobId, codeBlockId],
                       });
                       setCodeBlockId(null);
                     } catch (err) {
-                      toast.error(err instanceof Error ? err.message : "Could not save code.");
+                      toast.error(
+                        err instanceof Error
+                          ? err.message
+                          : "Could not save code.",
+                      );
                     } finally {
                       setCodeSaving(false);
                     }
@@ -738,14 +836,24 @@ export default function BlockPlanTable({
           <div className="grid grid-cols-2 border-b border-border shrink-0">
             {/* SAS header */}
             <div className="flex items-center gap-2 px-4 py-2 border-r border-border">
-              <img src="/sas.svg" className="h-3.5 w-3.5 shrink-0" alt="" aria-hidden />
+              <img
+                src="/sas.svg"
+                className="h-3.5 w-3.5 shrink-0"
+                alt=""
+                aria-hidden
+              />
               <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                 SAS — source
               </span>
             </div>
             {/* Python header */}
             <div className="flex items-center gap-2 px-4 py-2">
-              <img src="/python.svg" className="h-3.5 w-3.5 shrink-0" alt="" aria-hidden />
+              <img
+                src="/python.svg"
+                className="h-3.5 w-3.5 shrink-0"
+                alt=""
+                aria-hidden
+              />
               <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Python — generated
               </span>
@@ -772,6 +880,13 @@ export default function BlockPlanTable({
                   language="sas"
                   beforeMount={registerSasLanguage}
                   value={sasCode}
+                  onMount={((editor) => {
+                    const line = codeBlockId ? parseInt(codeBlockId.split(":").pop() ?? "1", 10) : 1;
+                    if (line > 1) {
+                      editor.revealLineInCenter(line);
+                      editor.setPosition({ lineNumber: line, column: 1 });
+                    }
+                  }) satisfies OnMount}
                   options={{
                     readOnly: true,
                     minimap: { enabled: false },

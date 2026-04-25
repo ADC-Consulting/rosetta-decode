@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import re
 import sys
 import uuid as _uuid
 from typing import Any
@@ -10,7 +11,7 @@ from typing import Any
 import httpx
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from src.backend.db.models import Job, JobVersion
+from src.backend.db.models import BlockRevision, Job, JobVersion
 from src.worker.compute.factory import BackendFactory
 from src.worker.core.config import worker_settings
 from src.worker.engine.agents.analysis import AnalysisAgent
@@ -25,11 +26,18 @@ from src.worker.engine.codegen import CodeGenerator
 from src.worker.engine.doc_generator import DocGenerator
 from src.worker.engine.llm_client import LLMClient, LLMTranslationError
 from src.worker.engine.macro_expander import CannotExpandError, MacroExpander
-from src.worker.engine.models import GeneratedBlock, JobContext, ReconciliationReport, SASBlock
+from src.worker.engine.models import (
+    BlockPlan,
+    DataFileInfo,
+    GeneratedBlock,
+    JobContext,
+    ReconciliationReport,
+    SASBlock,
+)
 from src.worker.engine.parser import SASParser, extract_lineage
 from src.worker.engine.router import TranslationRouter
 from src.worker.engine.stub_generator import StubGenerator
-from src.worker.validation.reconciliation import ReconciliationService
+from src.worker.validation.reconciliation import ReconciliationService, RemoteReconciliationService
 
 logging.basicConfig(
     level=getattr(logging, worker_settings.log_level.upper(), logging.INFO),
@@ -37,6 +45,48 @@ logging.basicConfig(
     stream=sys.stdout,
 )
 logger = logging.getLogger(__name__)
+
+
+def _sniff_file(disk_path: str, ext: str) -> tuple[list[str], int | None]:
+    """Sniff column headers and row count from a data file.
+
+    Supports ``.csv``, ``.tsv``, ``.xlsx``/``.xls``, and ``.sas7bdat``.
+    Any read error returns ``([], None)`` — this function is always non-blocking.
+
+    Args:
+        disk_path: Absolute path to the data file on disk.
+        ext: File extension including the dot (e.g. ``".csv"``).
+
+    Returns:
+        A 2-tuple of ``(columns, row_count)``. ``columns`` is an empty list and
+        ``row_count`` is ``None`` when the file cannot be read.
+    """
+    import pandas as pd  # local import — pandas may not be installed in all envs
+
+    try:
+        if ext in (".csv", ".tsv"):
+            sep = "\t" if ext == ".tsv" else ","
+            header_df = pd.read_csv(disk_path, nrows=0, sep=sep)
+            columns = list(header_df.columns)
+            full_df = pd.read_csv(disk_path, sep=sep)
+            return columns, len(full_df)
+        if ext in (".xlsx", ".xls"):
+            header_df = pd.read_excel(disk_path, nrows=0)
+            columns = list(header_df.columns)
+            full_df = pd.read_excel(disk_path)
+            return columns, len(full_df)
+        if ext == ".sas7bdat":
+            try:
+                import pyreadstat
+
+                _df, meta = pyreadstat.read_sas7bdat(disk_path, row_limit=0)
+                columns = list(meta.column_names)
+                return columns, None
+            except ImportError:
+                return [], None
+    except Exception:
+        pass
+    return [], None
 
 
 def _make_session_factory() -> async_sessionmaker[AsyncSession]:
@@ -62,6 +112,92 @@ async def _claim_job(session: AsyncSession) -> Job | None:
     await session.commit()
     await session.refresh(job)
     return job
+
+
+def _inject_data_file_nodes(
+    lineage_data: dict[str, Any],
+    blocks: list[SASBlock],
+    context: "JobContext",
+) -> dict[str, Any]:
+    """Append data-file nodes and edges to an existing lineage dict.
+
+    For each file in context.data_files, creates a node of type DATA_FILE.
+    Then links it to any block whose input_datasets or output_datasets reference
+    a libname alias that resolves to that file path.
+    """
+    extra_nodes: list[dict[str, Any]] = []
+    extra_edges: list[dict[str, Any]] = []
+
+    # Build reverse map: norm_path → file info
+    for norm_path, info in context.data_files.items():
+        file_node_id = f"__data_file__{norm_path}"
+        filename = norm_path.split("/")[-1]
+        extra_nodes.append(
+            {
+                "id": file_node_id,
+                "label": filename,
+                "node_type": "DATA_FILE",
+                "path": norm_path,
+                "disk_path": info.disk_path,
+                "extension": info.extension,
+                "columns": info.columns,
+                "row_count": info.row_count,
+            }
+        )
+
+        # Match blocks that reference this file via libname or filename alias
+        for block in blocks:
+            block_node_id = f"{block.source_file}::{block.start_line}"
+            matched_input = _dataset_matches_file(block.input_datasets, norm_path, context)
+            matched_output = _dataset_matches_file(block.output_datasets, norm_path, context)
+            if matched_input:
+                extra_edges.append(
+                    {
+                        "source": file_node_id,
+                        "target": block_node_id,
+                        "dataset": norm_path,
+                        "inferred": True,
+                    }
+                )
+            if matched_output:
+                extra_edges.append(
+                    {
+                        "source": block_node_id,
+                        "target": file_node_id,
+                        "dataset": norm_path,
+                        "inferred": True,
+                    }
+                )
+
+    nodes = list(lineage_data.get("nodes", [])) + extra_nodes
+    edges = list(lineage_data.get("edges", [])) + extra_edges
+    return {**lineage_data, "nodes": nodes, "edges": edges}
+
+
+def _dataset_matches_file(
+    datasets: list[str],
+    norm_path: str,
+    context: "JobContext",
+) -> bool:
+    """Return True if any dataset name resolves to norm_path via libname_map."""
+    filename_stem = norm_path.rsplit("/", 1)[-1].rsplit(".", 1)[0].lower()
+    for ds in datasets:
+        ds_lower = ds.lower()
+        # Direct stem match (e.g. "customers" matches "data/raw/customers.csv")
+        ds_stem = ds_lower.split(".")[-1]
+        if ds_stem == filename_stem:
+            return True
+        # Libname resolution: "rawdir.customers" → look up rawdir in libname_map
+        if "." in ds_lower:
+            lib, table = ds_lower.split(".", 1)
+            folder = context.libname_map.get(lib, "")
+            if folder and norm_path.startswith(folder) and table == filename_stem:
+                return True
+        # Filename alias match from libname_map
+        alias_path = context.libname_map.get(ds_lower, "")
+        if alias_path and alias_path == norm_path:
+            return True
+    return False
 
 
 class JobOrchestrator:
@@ -136,6 +272,29 @@ class JobOrchestrator:
             with contextlib.suppress(json.JSONDecodeError, TypeError):
                 refine_context = json.loads(refine_context_raw)
 
+        # Build data-file catalogue from __ref_* sentinel keys
+        data_files: dict[str, DataFileInfo] = {}
+        for key, disk_path in job.files.items():
+            if not key.startswith("__ref_") or not key.endswith("__"):
+                continue
+            # key format: __ref_{ext}_{normalized_path}__
+            inner = key[len("__ref_") : -2]  # e.g. "csv_data/raw/customers.csv"
+            sep_idx = inner.find("_")
+            if sep_idx == -1:
+                continue
+            file_ext = "." + inner[:sep_idx]
+            norm_path = inner[sep_idx + 1 :]
+            if not norm_path:
+                continue
+            columns, row_count = _sniff_file(disk_path, file_ext)
+            data_files[norm_path] = DataFileInfo(
+                path=norm_path,
+                disk_path=disk_path,
+                extension=file_ext,
+                columns=columns,
+                row_count=row_count,
+            )
+
         if job.skip_llm:
             await self._execute_rereconcile(job, session, ref_csv_path, ref_sas7bdat_path)
             return
@@ -156,9 +315,25 @@ class JobOrchestrator:
                 expansion_warnings.append(str(exc))
                 expanded_blocks.append(block)
 
+        # Build libname/filename alias map by grepping all SAS source file contents
+        libname_map: dict[str, str] = {}
+        _libname_re = re.compile(
+            r'\b(?:libname|filename)\s+(\w+)\s+"([^"]+)"',
+            re.IGNORECASE,
+        )
+        for _src_content in files.values():
+            for _alias, _path in _libname_re.findall(_src_content):
+                libname_map[_alias.lower()] = _path
+
         # Step 3: Analyse
         context = await self._analysis_agent.analyse(files, parse_result.macro_vars, blocks)
-        context = context.model_copy(update={"blocks": expanded_blocks})
+        context = context.model_copy(
+            update={
+                "blocks": expanded_blocks,
+                "data_files": data_files,
+                "libname_map": libname_map,
+            }
+        )
         if expansion_warnings:
             context = context.model_copy(
                 update={"risk_flags": context.risk_flags + expansion_warnings}
@@ -248,6 +423,10 @@ class JobOrchestrator:
         elif context.enriched_lineage is not None:
             lineage_data = context.enriched_lineage.model_dump()
 
+        # Inject data-file nodes + edges from the data_files catalogue
+        if lineage_data is not None and context.data_files:
+            lineage_data = _inject_data_file_nodes(lineage_data, blocks, context)
+
         # Step 10: Persist
         await session.execute(
             update(Job)
@@ -300,6 +479,85 @@ class JobOrchestrator:
         for v in initial_versions:
             session.add(v)
         await session.commit()
+
+        # Step 11: Initial per-block reconciliation via remote executor (best-effort)
+        if context.migration_plan and (ref_csv_path or ref_sas7bdat_path):
+            await self._reconcile_initial_blocks(
+                session,
+                job,
+                context,
+                ref_csv_path,
+                ref_sas7bdat_path,
+            )
+
+    async def _reconcile_initial_blocks(
+        self,
+        session: AsyncSession,
+        job: Job,
+        context: JobContext,
+        ref_csv_path: str,
+        ref_sas7bdat_path: str,
+    ) -> None:
+        """Run RemoteReconciliationService for each eligible block and persist status.
+
+        Skips blocks with strategy ``manual``, ``manual_ingestion``, or ``skip``.
+        Skips entirely when no reference data paths are available.
+        Writes ``reconciliation_status`` to the block's initial BlockRevision row.
+
+        Args:
+            session: Active database session.
+            job: The job whose blocks should be reconciled.
+            context: JobContext holding the migration plan.
+            ref_csv_path: Path to reference CSV (may be empty string).
+            ref_sas7bdat_path: Path to reference .sas7bdat (may be empty string).
+        """
+        skip_strategies = frozenset({"manual", "manual_ingestion", "skip"})
+        remote = RemoteReconciliationService()
+        backend = BackendFactory.create()
+
+        block_plans = (
+            context.migration_plan.model_dump().get("block_plans", [])
+            if context.migration_plan
+            else []
+        )
+
+        for bp in block_plans:
+            block_id: str = bp.get("block_id", "")
+            strategy: str = bp.get("strategy", "translate")
+            if strategy in skip_strategies:
+                continue
+
+            # Fetch the initial (first) BlockRevision for this block
+            rev_result = await session.execute(
+                select(BlockRevision)
+                .where(BlockRevision.job_id == str(job.id), BlockRevision.block_id == block_id)
+                .order_by(BlockRevision.revision_number.asc())
+                .limit(1)
+            )
+            initial_rev = rev_result.scalar_one_or_none()
+            if initial_rev is None or not initial_rev.python_code:
+                continue
+
+            try:
+                report = await remote.run(
+                    ref_csv_path,
+                    initial_rev.python_code,
+                    backend,
+                    ref_sas7bdat_path,
+                )
+                checks: list[dict[str, Any]] = report.get("checks", [])
+                if not checks:
+                    continue
+                all_passed = all(c.get("status") == "pass" for c in checks)
+                recon_status = "pass" if all_passed else "fail"
+                await session.execute(
+                    update(BlockRevision)
+                    .where(BlockRevision.id == initial_rev.id)
+                    .values(reconciliation_status=recon_status)
+                )
+                await session.commit()
+            except Exception as exc:
+                logger.warning("Job %s: block recon failed for %s: %s", job.id, block_id, exc)
 
     async def _translate_two_phase(
         self,
@@ -383,9 +641,16 @@ class JobOrchestrator:
                 update={"risk_flags": context.risk_flags + extra_flags}
             )
 
+        block_plan_map: dict[str, BlockPlan] = {}
+        if context.migration_plan:
+            for bp in context.migration_plan.block_plans:
+                block_plan_map[bp.block_id] = bp
+
         generated: list[GeneratedBlock] = []
         for block in blocks:
-            translator = self._router.route(block)
+            block_id = f"{block.source_file}:{block.start_line}"
+            block_plan = block_plan_map.get(block_id)
+            translator = self._router.route(block, block_plan=block_plan)
             gb = await translator.translate(block, effective_context)
             generated.append(gb)
         return generated
@@ -419,7 +684,15 @@ class JobOrchestrator:
                 update={"risk_flags": [*context.risk_flags, f"retry_hint: {retry_hint}"]}
             )
             try:
-                translator = self._router.route(block)
+                bp = (
+                    next(
+                        (p for p in context.migration_plan.block_plans if p.block_id == block_id),
+                        None,
+                    )
+                    if context.migration_plan
+                    else None
+                )
+                translator = self._router.route(block, block_plan=bp)
                 new_gb = await translator.translate(block, hint_context)
                 updated[i] = new_gb
                 logger.info("Retried block %s with hint", affected_id)

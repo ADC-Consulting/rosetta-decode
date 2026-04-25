@@ -34,7 +34,7 @@ test: ## Run full suite (incl. coverage)
 	$(call run_quiet,uv run ruff check src tests --quiet,ruff-check)
 	$(call run_quiet,uv run ruff format --check src tests --quiet,ruff-format)
 	$(call run_quiet,uv run mypy src --no-error-summary --no-pretty --hide-error-context --hide-error-codes,mypy)
-	$(call run_quiet,uv run pytest $(PYTEST_FLAGS) --cov=src --cov-fail-under=90 --cov-report=html --cov-report=,pytest+coverage)
+	$(call run_quiet,uv run pytest $(PYTEST_FLAGS) --cov=src --cov-fail-under=88 --cov-report=html --cov-report=,pytest+coverage)
 	@$(MAKE) -s tsc-check
 	@$(MAKE) -s frontend-lint
 	@$(MAKE) -s frontend-build

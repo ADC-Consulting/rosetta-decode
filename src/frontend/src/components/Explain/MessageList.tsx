@@ -13,7 +13,8 @@ export interface ChatMessage {
 interface MessageListProps {
   messages: ChatMessage[];
   listRef: React.RefObject<HTMLDivElement | null>;
-  mode: "migration" | "upload";
+  mode: "migration" | "sas_general";
+  audience: "tech" | "non_tech";
   hasContext: boolean;
   onSuggest: (prompt: string) => void;
 }
@@ -22,6 +23,7 @@ export default function MessageList({
   messages,
   listRef,
   mode,
+  audience,
   hasContext,
   onSuggest,
 }: MessageListProps): React.ReactElement {
@@ -33,7 +35,7 @@ export default function MessageList({
       aria-label="Conversation messages"
     >
       {messages.length === 0 ? (
-        <EmptyState mode={mode} hasContext={hasContext} onSuggest={onSuggest} />
+        <EmptyState mode={mode} audience={audience} hasContext={hasContext} onSuggest={onSuggest} />
       ) : (
         messages.map((msg) =>
           msg.role === "user" ? (

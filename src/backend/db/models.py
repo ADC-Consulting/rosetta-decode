@@ -125,6 +125,8 @@ class ExplainSession(Base):
     audience: Mapped[str] = mapped_column(Text, nullable=False, default="tech")
     messages: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
     context_files: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    file_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

@@ -16,6 +16,7 @@ from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.azure import AzureProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 from src.worker.core.config import worker_settings
+from src.worker.engine.agents.shared_context import build_context_section
 from src.worker.engine.models import (
     BlockPlan,
     BlockRisk,
@@ -65,6 +66,14 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
     You are a senior SAS-to-Python migration architect. Before any code is translated,
     analyse the full SAS codebase and produce a structured migration plan that guides
     the downstream translation agents and gives the client a clear action list.
+
+    **DEFAULT: always attempt a translation.** A best-effort translation with real code
+    is always preferred over an empty placeholder. Set ``confidence_score`` to your honest
+    estimate — low confidence is fine, but the code field must never be empty for
+    ``translate`` or ``translate_with_review`` strategies. Use ``uncertainty_notes`` to
+    explain what may differ. Only assign ``strategy="manual"`` when the SAS construct has
+    absolutely no Python equivalent (e.g., PROC OPTMODEL LP/NLP with complex solver
+    structure that cannot be approximated).
 
     Input:
     - One or more SAS source files with their filenames.
@@ -225,6 +234,10 @@ def _build_prompt(context: JobContext) -> str:
         A formatted prompt string for the LLM.
     """
     parts: list[str] = []
+
+    ctx_section = build_context_section(context)
+    if ctx_section:
+        parts.append(ctx_section)
 
     parts.append("## Pre-resolved macro variables")
     if context.resolved_macros:

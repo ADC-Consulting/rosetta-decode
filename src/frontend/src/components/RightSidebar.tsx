@@ -13,6 +13,7 @@ interface RightSidebarItem {
 interface RightSidebarProps {
   title: string;
   items: RightSidebarItem[];
+  header?: React.ReactNode;
   footer?: React.ReactNode;
   sidebarKey?: string;
 }
@@ -32,6 +33,7 @@ function readCollapsed(key: string): boolean {
 export default function RightSidebar({
   title,
   items,
+  header,
   footer,
   sidebarKey = "right-sidebar-collapsed",
 }: RightSidebarProps): React.ReactElement {
@@ -108,6 +110,19 @@ export default function RightSidebar({
           Search
         </div>
       </div>
+
+      {/* Header slot — renders above items list */}
+      {header && (
+        <div
+          className="shrink-0 border-b border-border overflow-hidden transition-opacity duration-200"
+          style={{
+            opacity: collapsed ? 0 : 1,
+            pointerEvents: collapsed ? "none" : "auto",
+          }}
+        >
+          {header}
+        </div>
+      )}
 
       {/* Items */}
       <nav className="flex-1 py-2 overflow-y-auto">

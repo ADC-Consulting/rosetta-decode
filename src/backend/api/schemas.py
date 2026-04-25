@@ -80,9 +80,9 @@ class LineageNode(BaseModel):
 
     id: str
     label: str
-    source_file: str
-    block_type: str
-    status: Literal["migrated", "manual_review", "untranslatable"]
+    source_file: str = ""
+    block_type: str = ""
+    status: Literal["migrated", "manual_review", "untranslatable"] = "migrated"
 
 
 class LineageEdge(BaseModel):
@@ -91,7 +91,7 @@ class LineageEdge(BaseModel):
     source: str
     target: str
     dataset: str
-    inferred: bool
+    inferred: bool = False
 
 
 class ColumnFlowResponse(BaseModel):
@@ -256,7 +256,6 @@ class AcceptJobRequest(BaseModel):
 StrategyLiteral = Literal[
     "translate",
     "translate_with_review",
-    "translate_best_effort",
     "manual_ingestion",
     "manual",
     "skip",
@@ -415,6 +414,7 @@ class TrustReportBlock(BaseModel):
     strategy: str
     self_confidence: str
     verified_confidence: str | None
+    confidence_band: str | None = None
     reconciliation_status: str | None
     needs_attention: bool
     blast_radius: int | None  # null if lineage unavailable
@@ -448,6 +448,26 @@ class TrustReportResponse(BaseModel):
     review_queue: list[TrustReportBlock]  # only needs_attention=True blocks
 
 
+# Attachment schemas
+
+
+class AttachmentInfo(BaseModel):
+    """Metadata for a single non-SAS attachment stored with a job."""
+
+    filename: str
+    path_key: str
+    category: str  # "log" | "output" | "other"
+    size_bytes: int
+    extension: str
+
+
+class JobAttachmentsResponse(BaseModel):
+    """Response body for GET /jobs/{id}/attachments."""
+
+    job_id: str
+    attachments: list[AttachmentInfo]
+
+
 # FE8 — ExplainPage schemas
 
 
@@ -479,9 +499,11 @@ class ExplainResponse(BaseModel):
 class CreateExplainSessionRequest(BaseModel):
     """Request body for POST /explain/sessions."""
 
-    mode: Literal["migration", "upload"]
+    mode: Literal["migration", "sas_general"]
     job_id: str | None = None
     audience: Literal["tech", "non_tech"] = "tech"
+    title: str | None = None
+    file_name: str | None = None
 
 
 class ExplainSessionResponse(BaseModel):
@@ -492,3 +514,24 @@ class ExplainSessionResponse(BaseModel):
     mode: str
     audience: str
     created_at: datetime
+    title: str | None = None
+    file_name: str | None = None
+    job_id: str | None = None
+
+
+class ExecuteRequest(BaseModel):
+    """Request body for POST /jobs/{job_id}/execute."""
+
+    block_id: str | None = None
+
+
+class ExecuteResponse(BaseModel):
+    """Response body for POST /jobs/{job_id}/execute — proxied from executor service."""
+
+    stdout: str
+    stderr: str
+    result_json: list[dict[str, Any]] | None = None
+    result_columns: list[str] | None = None
+    checks: list[dict[str, Any]] | None = None
+    error: str | None = None
+    elapsed_ms: int

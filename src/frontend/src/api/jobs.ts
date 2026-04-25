@@ -3,6 +3,8 @@ import type {
     BlockRefineRequest,
     BlockRefineResponse,
     BlockRevisionHistory,
+    ExecuteResponse,
+    JobAttachmentsResponse,
     JobChangelogResponse,
     JobDocResponse,
     JobHistoryResponse,
@@ -225,4 +227,31 @@ export async function getJobTrustReport(jobId: string): Promise<TrustReportRespo
   const res = await fetch(`${BASE}/jobs/${jobId}/trust-report`);
   if (!res.ok) throw new Error(await extractApiError(res));
   return res.json() as Promise<TrustReportResponse>;
+}
+
+// ── Attachments ───────────────────────────────────────────────────────────────
+
+export async function getJobAttachments(jobId: string): Promise<JobAttachmentsResponse> {
+  const res = await fetch(`${BASE}/jobs/${jobId}/attachments`);
+  if (!res.ok) throw new Error(await extractApiError(res));
+  return res.json() as Promise<JobAttachmentsResponse>;
+}
+
+export function getAttachmentUrl(jobId: string, pathKey: string): string {
+  return `${BASE}/jobs/${jobId}/attachments/${encodeURIComponent(pathKey)}`;
+}
+
+// ── Execute ───────────────────────────────────────────────────────────────────
+
+export async function executeJob(
+  jobId: string,
+  blockId?: string,
+): Promise<ExecuteResponse> {
+  const res = await fetch(`${BASE}/jobs/${jobId}/execute`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ block_id: blockId ?? null }),
+  });
+  if (!res.ok) throw new Error(await extractApiError(res));
+  return res.json() as Promise<ExecuteResponse>;
 }

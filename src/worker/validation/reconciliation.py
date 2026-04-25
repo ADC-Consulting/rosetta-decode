@@ -12,13 +12,16 @@ field on the ``jobs`` table:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import textwrap
 import traceback
 from typing import Any, cast
 
+import httpx
 import pandas as pd
 from src.worker.compute.base import ComputeBackend
+from src.worker.core.config import worker_settings
 
 logger = logging.getLogger(__name__)
 
@@ -185,3 +188,80 @@ class ReconciliationService:
                 "Ensure the final output is assigned to a variable named 'result'."
             )
         return dataframes[-1]
+
+
+class RemoteReconciliationService:
+    """Delegate reconciliation to the executor microservice over HTTP.
+
+    Sends the generated Python code to the executor's ``POST /execute`` endpoint
+    and returns a ``{"checks": [...]}`` dict in the same format as
+    :class:`ReconciliationService`.  Falls back to an empty checks list when the
+    executor is unreachable.
+    """
+
+    def _post_execute(
+        self,
+        python_code: str,
+        ref_csv_path: str,
+        ref_sas7bdat_path: str,
+    ) -> dict[str, Any]:
+        """Call the executor synchronously (intended for asyncio.to_thread use).
+
+        Args:
+            python_code: Python source to execute remotely.
+            ref_csv_path: Path to reference CSV (may be empty string).
+            ref_sas7bdat_path: Path to reference .sas7bdat (may be empty string).
+
+        Returns:
+            Parsed JSON response body from the executor.
+        """
+        url = f"{worker_settings.executor_url}/execute"
+        payload = {
+            "code": python_code,
+            "ref_csv_path": ref_csv_path,
+            "ref_sas7bdat_path": ref_sas7bdat_path,
+        }
+        with httpx.Client(timeout=120) as client:
+            response = client.post(url, json=payload)
+            response.raise_for_status()
+            return dict(response.json())
+
+    async def run(
+        self,
+        ref_csv_path: str,
+        python_code: str,
+        backend: ComputeBackend,
+        ref_sas7bdat_path: str = "",
+    ) -> dict[str, Any]:
+        """Post the generated code to the executor and return reconciliation results.
+
+        Signature matches :meth:`ReconciliationService.run` so callers can swap
+        implementations without changing call sites.
+
+        Args:
+            ref_csv_path: Path to reference CSV (may be empty string).
+            python_code: Generated Python pipeline source.
+            backend: Unused — kept for interface parity with ReconciliationService.
+            ref_sas7bdat_path: Optional path to reference .sas7bdat.
+
+        Returns:
+            ``{"checks": [...]}`` dict, or ``{"checks": []}`` on executor failure.
+        """
+        if not ref_csv_path and not ref_sas7bdat_path:
+            return {"checks": []}
+
+        try:
+            raw = await asyncio.to_thread(
+                self._post_execute,
+                python_code,
+                ref_csv_path,
+                ref_sas7bdat_path,
+            )
+            checks = raw.get("checks") or []
+            return {"checks": checks}
+        except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError) as exc:
+            logger.warning("RemoteReconciliationService: executor unreachable: %s", exc)
+            return {"checks": []}
+        except Exception as exc:
+            logger.warning("RemoteReconciliationService: unexpected error: %s", exc)
+            return {"checks": []}

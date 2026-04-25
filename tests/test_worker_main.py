@@ -213,6 +213,7 @@ def _make_orchestrator_with_mocks() -> tuple[JobOrchestrator, dict[str, MagicMoc
         patch("src.worker.main.FailureInterpreterAgent"),
         patch("src.worker.main.DocumentationAgent"),
         patch("src.worker.main.MacroExpander"),
+        patch("src.worker.main.MigrationPlannerAgent"),
     ):
         orch = JobOrchestrator()
 
@@ -227,6 +228,8 @@ def _make_orchestrator_with_mocks() -> tuple[JobOrchestrator, dict[str, MagicMoc
     mocks["doc_agent"] = MagicMock()
     mocks["doc_agent"].generate = AsyncMock()
     mocks["expander"] = MagicMock()
+    mocks["migration_planner"] = MagicMock()
+    mocks["migration_planner"].plan = AsyncMock(return_value=MagicMock(block_plans=[]))
 
     orch._analysis_agent = mocks["analysis"]
     orch._router = mocks["router"]
@@ -235,6 +238,7 @@ def _make_orchestrator_with_mocks() -> tuple[JobOrchestrator, dict[str, MagicMoc
     orch._failure_interpreter = mocks["failure_interpreter"]
     orch._doc_agent = mocks["doc_agent"]
     orch._expander = mocks["expander"]
+    orch._migration_planner = mocks["migration_planner"]
 
     return orch, mocks
 

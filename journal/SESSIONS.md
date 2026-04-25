@@ -6,6 +6,225 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-04-25 — Agentic pipeline context + Editor UX polish
+
+**Duration:** ~4h | **Focus:** Folder-aware agent context, PROC IMPORT untranslatable root-cause fix, manual_ingestion stub rework, Lineage data-file nodes, Report tab version rail + header, TipTap table fix, EditorTab history UX
+
+### Done
+
+- **Critical bug fixed:** `_translate_blocks()` was never passing `block_plan` to `router.route()` — migration planner strategy was completely ignored; all blocks defaulted to `translate`; PROC IMPORT blocks stayed UNTRANSLATABLE. Fixed by building `block_plan_map` and passing the matching `BlockPlan` per block.
+- **`manual_ingestion` stub reworked:** `StubGenerator` now emits `pd.read_csv(disk_path)` scaffold with `is_untranslatable=False`, `confidence_score=0.7`, `confidence_band="medium"`, and a `# TODO: verify delimiter and encoding` comment instead of `# SAS-UNTRANSLATABLE`.
+- **Data-file context injected into agents:** `DataFileInfo` model + `data_files` dict + `libname_map` added to `JobContext`; populated in `main.py` from sentinel keys + SAS source grep; shared `build_context_section()` utility in `src/worker/engine/agents/shared_context.py`; prepended to all agent prompts.
+- **Macro file context in windowed prompts:** `windowed_context()` now includes `macros/` and `autoexec.sas` source files so translation agents see macro definitions.
+- **Always-attempt instruction:** Added to all four agents — agents must emit best-effort code; never return empty for `translate`/`translate_with_review` strategies.
+- **Lineage data-file nodes:** `_inject_data_file_nodes()` appends DATA_FILE nodes + edges (inferred) to the lineage graph connecting blocks to real CSV/XLSX/log files.
+- **`LineageNode`/`LineageEdge` schema loosened:** `source_file`, `block_type`, `status` now have defaults; `inferred` has default `False`; accommodates new DATA_FILE node shape.
+- **Frontend `LineageGraph`:** renders DATA_FILE nodes with blue dashed border, extension badge, filename, column preview.
+- **Report tab:** restored `VersionHistoryRail`; always-visible header with Technical/Plain English toggle; Edit/Save buttons inline in header (Edit button only in readonly, Save + Read-only in edit mode); "Save Changes" button hidden in top bar when `activeTab === "report"`.
+- **TipTap:** named imports for `{ Table }`, `{ TableCell }`, `{ TableHeader }`, `{ TableRow }` (fixed SyntaxError); Toolbar always rendered with disabled/dimmed state in readonly; table CSS styles added.
+- **EditorTab explorer panel:** max resizable width raised from 30% to 50%.
+- **EditorTab history tab:** Latest badge on newest entry; "User modified" badge removed; filename-only label; clicking an entry calls `onSelectBlock` → navigates Monaco SAS editor to the block's start line via `revealLineInCenter`.
+- **View Code dialog scroll-to-line:** SAS editor `onMount` uses `revealLineInCenter` + `setPosition` for the block's `start_line`.
+
+### Decisions
+
+- `manual_ingestion` blocks are NOT untranslatable — they have translatable I/O patterns but require real file paths; medium confidence (0.7) is appropriate.
+- DATA_FILE lineage nodes use `inferred: True` edges (same convention as cross-file inferred edges).
+- `build_context_section()` is a shared utility; all agents call it uniformly so the project context section is consistent across prompts.
+- Absolute disk path used in `manual_ingestion` stub for local runability; relative path can be substituted post-migration.
+
+### Open Questions
+
+- Log/Output tabs in bottom panel: were not loading after lineage 500 fix — likely transient; user should verify after Docker rebuild.
+- `make docker-build` still needed to pick up all backend + worker changes.
+- Coverage 87% < 88% threshold — `make test` still fails on coverage gate; needs a small test addition.
+
+### Next Session — Start Here
+
+1. Run `make docker-build` to pick up all changes (migration 013, executor, new worker context code, frontend).
+2. Verify Log/Output tabs load in EditorTab bottom panel after rebuild.
+3. Fix coverage gap: add tests covering new `_sniff_file`, `_inject_data_file_nodes`, or `build_context_section` to restore ≥88%.
+4. Fix `auto_verified` counter: derive from `reconciliation_status == "pass" AND confidence in (high, medium)` in trust report.
+5. Fix `needs_attention`: widen condition to include low confidence, not just recon failure.
+6. Decide: add `translate_best_effort` to planner prompt or remove enum.
+
+### Files Touched
+
+- `src/worker/engine/models.py`
+- `src/worker/main.py`
+- `src/worker/engine/agents/shared_context.py` (new)
+- `src/worker/engine/agents/analysis.py`
+- `src/worker/engine/agents/migration_planner.py`
+- `src/worker/engine/agents/data_step.py`
+- `src/worker/engine/agents/generic_proc.py`
+- `src/worker/engine/stub_generator.py`
+- `src/worker/engine/router.py`
+- `src/backend/api/schemas.py`
+- `src/frontend/src/api/types.ts`
+- `src/frontend/src/components/TiptapEditor.tsx`
+- `src/frontend/src/components/LineageGraph.tsx`
+- `src/frontend/src/components/JobDetail/EditorTab.tsx`
+- `src/frontend/src/components/JobDetail/ReportTab.tsx`
+- `src/frontend/src/pages/JobDetailPage.tsx`
+
+---
+
+## 2026-04-24 — SAS EG editor UX + Python executor microservice
+
+**Duration:** ~4h | **Focus:** SAS Enterprise Guide–style editor layout, Python execution sandbox, trust report bugs analysis
+
+### Done
+
+- **SAS EG–style editor:** Code|Log|Output sub-tab bar (top), LogView (NOTE/WARNING/ERROR line coloring), OutputView (CSV data grid, 500-row cap), block tree sidebar (expandable DATA/PROC nodes under each .sas file, click-to-scroll Monaco)
+- **Attachment endpoints:** `GET /jobs/{id}/attachments` + `GET /jobs/{id}/attachments/{path_key}` — lists/streams non-SAS uploaded files categorised as log/output/other
+- **Python executor microservice:** `src/executor/` (FastAPI, port 8001) — subprocess sandbox with unique temp file per run, result DataFrame capture via env var, self-contained 3-check reconciliation (schema/row/aggregate)
+- **`POST /jobs/{id}/execute`:** backend proxy to executor; supports optional `block_id`; 404/503/502 error handling
+- **`RemoteReconciliationService`:** worker delegates recon to executor over HTTP; graceful fallback on unreachable; `_reconcile_initial_blocks()` sets per-block `reconciliation_status` after initial migration run
+- **Run ▶ button in editor:** in Code sub-tab toolbar; populates bottom panel with stdout/result/recon after run
+- **SAS Studio layout refactor:** persistent vertical split — editors top, always-visible bottom panel (Code|Log|Output|History tabs with resize handle); Run ▶ moved to first/left in toolbar
+- **Bug fixes:** stdout now shown even on error; result JSON temp file collision fixed (unique path per run)
+- **Trust report analysis:** `auto_verified` always 0 (verified_confidence never written); `needs_attention` too strict; `translate_best_effort` dead; `manual_ingestion` stub identical to `manual`
+
+### Decisions
+
+- `executor` microservice: subprocess sandbox in separate Docker container, shared `uploads` volume, HTTP API
+- Bottom panel always-visible split matches SAS Studio — not slide-in
+- `translate_best_effort`, `manual_ingestion` stub, `auto_verified`, `needs_attention` bugs logged for next session
+
+### Open Questions
+
+- None blocking
+
+### Next Session — Start Here
+
+1. Fix `auto_verified` counter: derive from `reconciliation_status == "pass" AND confidence in (high, medium)` in `jobs.py` trust report
+2. Fix `needs_attention`: widen condition to include low confidence, not just recon failure
+3. Fix `manual_ingestion` stub: `StubGenerator` should emit `pd.read_csv()` scaffold when strategy is `manual_ingestion`
+4. Decide: add `translate_best_effort` to planner prompt or remove enum
+5. Run `make docker-build` to pick up migration 013, executor service, and frontend changes
+
+### Files Touched
+
+- `src/executor/main.py`, `src/executor/runner.py`, `src/executor/recon.py`, `src/executor/Dockerfile`, `src/executor/pyproject.toml`
+- `docker-compose.yml`
+- `src/backend/api/routes/jobs.py`
+- `src/backend/api/schemas.py`
+- `src/backend/core/config.py`
+- `src/worker/core/config.py`
+- `src/worker/validation/reconciliation.py`
+- `src/worker/main.py`
+- `src/frontend/src/components/JobDetail/EditorTab.tsx`
+- `src/frontend/src/components/JobDetail/LogView.tsx` (new)
+- `src/frontend/src/components/JobDetail/OutputView.tsx` (new)
+- `src/frontend/src/api/jobs.ts`
+- `src/frontend/src/api/types.ts`
+- `src/frontend/src/pages/JobDetailPage.tsx`
+- `tests/test_job_attachments.py` (new)
+- `tests/test_execute_route.py` (new)
+- `tests/test_executor_runner.py` (new)
+- `tests/test_executor_recon.py` (new)
+- `tests/test_remote_reconciliation.py` (new)
+- `pyproject.toml`
+
+---
+
+## 2026-04-24 — Explain page polish: suggestion chips, sidebar, send fix, syntax highlighting
+
+**Duration:** ~1h | **Focus:** Explain UX polish — mode+audience chip sets, SAS General sidebar, send button bug, Monaco syntax highlighting
+
+### Done
+
+- **Suggestion chips per mode × audience (4 sets):** `EmptyState` now takes both `mode` and `audience` props; chips differ across migration/tech, migration/non-tech, sas_general/tech, sas_general/non-tech; heading and subtitle also update per mode
+- **SAS General sidebar:** migration list hidden in `sas_general` mode; sidebar title changes to "Chats"; `RightSidebar` gains a `header` slot (renders above items) so session list always appears at top in both modes
+- **Chat input lifted from bottom:** wrapped in `pb-6 pt-2 px-4` so input floats with breathing room above page edge
+- **SAS General always open:** `inputDisabled` and `hasContext` updated — SAS General chat is always enabled regardless of file attachment; file is optional context not a prerequisite
+- **Send button bug fixed:** `handleSend` had a stale local `hasContext` re-declaration that still required files in `sas_general` mode, causing early return; replaced with a single `mode === "migration" && !selectedJobId` guard
+- **Session title bug fixed:** `state.inputValue` was read after being cleared to `""`; now uses the captured `question` variable
+- **Monaco syntax highlighting:** switched from `defaultLanguage` to `language` (reactive); added `LANG_MAP` for `python/py/pyspark`, `sas`, `sql`, `bash/sh/shell`, `ts`, `js`, `json`, `yaml`, `r`; auto-sized height (lines × 19px, 60–400px); `onMount` layout fix; parse error fix (`??` + `||` mixed operators wrapped in parens)
+
+### Decisions
+
+- none
+
+### Open Questions
+
+- `make docker-build` still needed for migration 013 + react-markdown in Docker volume
+
+### Next Session — Start Here
+
+1. Run `make docker-build` — installs react-markdown in Docker frontend volume, picks up migration 013
+2. Smoke-test Explain page end-to-end: both modes, both audience toggles, send message, session restore
+3. Verify Monaco code blocks show colours for python/sas/sql responses
+
+### Files Touched
+
+- `src/frontend/src/components/Explain/EmptyState.tsx`
+- `src/frontend/src/components/Explain/MessageList.tsx`
+- `src/frontend/src/components/Explain/MarkdownRenderer.tsx`
+- `src/frontend/src/components/RightSidebar.tsx`
+- `src/frontend/src/pages/ExplainPage.tsx`
+
+---
+
+## 2026-04-24 — Explain page overhaul: two chat modes, react-markdown, session persistence fix
+
+**Duration:** ~3h | **Focus:** Explain feature — SAS General + Migration Chat modes, 3-layer LLM prompts, react-markdown renderer with Monaco copy button, reliable session restore
+
+### Done
+
+- **Backend schema (migration 013):** added `title` + `file_name` columns to `explain_sessions`; backfill `mode='upload'` → `'sas_general'`
+- **ExplainAgent 3-layer prompt composition:** replaced two hard-coded system prompts with `_BASE_SYSTEM_PROMPT` + `_MODE_PROMPTS[mode]` + `_AUDIENCE_PROMPTS[audience]`; 4-agent cache keyed on `(mode, audience)` — migration/sas_general × tech/non_tech
+- **`_persist_messages` session bug fixed:** background task previously reused the request-scoped `AsyncSession` (closed before task ran); now opens its own `AsyncSessionLocal()` — eliminates silent message-loss on persistence
+- **`/explain` form handler:** new `mode` field (default `"sas_general"`) passed through to `answer_stream`
+- **API schemas:** `CreateExplainSessionRequest` → `"sas_general"` mode + `title`/`file_name`; `ExplainSessionResponse` exposes `title`, `file_name`, `job_id`
+- **Frontend types + API client:** `types.ts` and `explain.ts` updated; `explainFilesStream` passes `mode` in FormData
+- **MarkdownRenderer rewrite:** `react-markdown` + `remark-gfm` replaces hand-rolled parser; full GFM support (headers, lists, tables, links); Monaco code blocks preserved with copy button overlay (Copy/Copied toggle)
+- **ExplainPage mode tabs:** "Migration Chat" / "SAS General" tabs above message list; existing confirm-switch dialog reused
+- **Session restore fix:** `handleRestoreSession` now dispatches `SET_MODE`, `SET_AUDIENCE`, `SELECT_JOB`, `SET_ATTACHED_FILE_NAME` — full context restored on resume
+- **Session sidebar:** shows M/S mode badge + `session.title` (auto-set from first question) + relative date; "+ New Chat" button clears context
+- **ChatInput:** `sas_general` mode enforces single `.sas`-only file attachment
+- **EmptyState:** mode-aware suggestion chips (migration vs SAS general sets)
+- **Tests:** `tests/test_explain_agent.py` (9 tests, 100% pass); `test_explain_routes.py` updated + 3 new persistence/session tests; all 29 explain tests green
+
+### Decisions
+
+- **3-layer prompt composition over per-audience singleton agents:** base + mode + audience layers let us add new modes/audiences without combinatorial duplication; 4-agent cache built at construction time to avoid per-request init cost — revisit never
+- **`_persist_messages` owns its own DB session:** request-scoped sessions are not safe for fire-and-forget background tasks in FastAPI SSE routes; the fix is authoritative and should be applied to any future background persistence task — revisit never
+- **Mode stored as `"sas_general"` (not `"upload"`):** "upload" was an implementation detail that leaked into the DB; "sas_general" names the intent — migration 013 backfills all existing rows — revisit never
+
+### Open Questions
+
+- `make docker-build` still needed to pick up all backend changes (migration 013 + new explain routes) and to install `react-markdown` in the Docker frontend volume
+- Coverage sits at 87% (below 90% threshold) — the 3% gap is entirely in pre-existing uncovered code (`worker/main.py`, `llm_client.py`, `router.py`), not new code from this session
+
+### Next Session — Start Here
+
+1. Run `make docker-build` — picks up migration 013, new backend routes, and installs `react-markdown` in the Docker `frontend_node_modules` volume
+2. Smoke-test Explain page: both tabs visible, SAS General enforces single `.sas` file, session sidebar shows M/S badge + title + date
+3. Send a message in each mode, reload the page, restore the session — verify mode/audience/job are all restored correctly
+4. Verify Markdown responses render properly (headers, lists, tables, code blocks with copy button)
+5. Address pre-existing coverage gap (87% → 90%) as a separate chore if CI is blocking
+
+### Files Touched
+
+- `alembic/versions/013_explain_session_metadata.py` (new)
+- `src/backend/db/models.py`
+- `src/backend/api/schemas.py`
+- `src/backend/api/routes/explain.py`
+- `src/worker/engine/chatbot/explain_agent.py`
+- `src/frontend/src/api/types.ts`
+- `src/frontend/src/api/explain.ts`
+- `src/frontend/src/components/Explain/MarkdownRenderer.tsx`
+- `src/frontend/src/components/Explain/EmptyState.tsx`
+- `src/frontend/src/components/Explain/ChatInput.tsx`
+- `src/frontend/src/components/Explain/MessageList.tsx`
+- `src/frontend/src/pages/ExplainPage.tsx`
+- `src/frontend/package.json` (react-markdown, remark-gfm added)
+- `tests/test_explain_agent.py` (new)
+- `tests/test_explain_routes.py`
+
+---
+
 ## 2026-04-23 — Plan tab full UX overhaul + confidence bug fix
 
 **Duration:** ~2h | **Focus:** Plan tab visual redesign, View Code dialog alignment, confidence 100% bug fix, stat pill tooltips

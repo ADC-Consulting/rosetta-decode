@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from src.worker.engine.models import (
     BlockPlan,
@@ -14,6 +14,7 @@ from src.worker.engine.models import (
     SASBlock,
     TranslationStrategy,
 )
+from src.worker.engine.stub_generator import StubGenerator
 
 # Block types that the GenericProcAgent handles (everything that isn't DATA/SQL/SORT)
 _GENERIC_PROC_TYPES: frozenset[BlockType] = frozenset(
@@ -32,9 +33,6 @@ _GENERIC_PROC_TYPES: frozenset[BlockType] = frozenset(
         BlockType.PROC_UNKNOWN,
     }
 )
-
-if TYPE_CHECKING:
-    from src.worker.engine.stub_generator import StubGenerator
 
 logger = logging.getLogger("src.worker.engine.router")
 
@@ -202,6 +200,34 @@ class _SimpleCopyHelper:
 # ── Router ────────────────────────────────────────────────────────────────────
 
 
+class _StrategyStubAdapter:
+    """Wraps StubGenerator to forward a fixed strategy string into generate().
+
+    Args:
+        stub_generator: The shared StubGenerator instance.
+        strategy: The strategy string to pass when generating the stub.
+    """
+
+    def __init__(self, stub_generator: StubGenerator, strategy: str) -> None:
+        """Initialise with a StubGenerator and a fixed strategy."""
+        self._stub = stub_generator
+        self._strategy = strategy
+
+    async def translate(self, block: SASBlock, context: JobContext) -> GeneratedBlock:
+        """Delegate to StubGenerator.generate() with the bound strategy.
+
+        Args:
+            block: The SAS block to translate.
+            context: The current job context; ``data_files`` is forwarded to the stub.
+
+        Returns:
+            A GeneratedBlock produced by the StubGenerator.
+        """
+        return self._stub.generate(
+            block, strategy=self._strategy, data_files=context.data_files or None
+        )
+
+
 class TranslationRouter:
     """Routes a SASBlock to the appropriate translator.
 
@@ -253,12 +279,14 @@ class TranslationRouter:
         """
         if block_plan is not None:
             match block_plan.strategy:
-                case TranslationStrategy.MANUAL | TranslationStrategy.MANUAL_INGESTION:
+                case TranslationStrategy.MANUAL_INGESTION:
+                    return _StrategyStubAdapter(self._stub_generator, "manual_ingestion")
+                case TranslationStrategy.MANUAL:
                     return self._stub_generator
                 case TranslationStrategy.SKIP:
                     return self._stub_generator
                 case _:
-                    pass  # translate / translate_with_review / translate_best_effort fall through
+                    pass  # translate / translate_with_review fall through
 
         match block.block_type:
             case BlockType.DATA_STEP:

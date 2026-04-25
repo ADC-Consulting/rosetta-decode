@@ -18,6 +18,7 @@ interface ChatInputProps {
   onAudienceChange: (a: "tech" | "non_tech") => void;
   contextLabel: string | null;
   onClearContext: () => void;
+  mode: "migration" | "sas_general";
 }
 
 export default function ChatInput({
@@ -33,6 +34,7 @@ export default function ChatInput({
   onAudienceChange,
   contextLabel,
   onClearContext,
+  mode,
 }: ChatInputProps): React.ReactElement {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -150,8 +152,8 @@ export default function ChatInput({
         <input
           ref={fileInputRef}
           type="file"
-          multiple
-          accept=".sas,.sas7bdat,.csv,.log,.xls,.xlsx,.zip"
+          multiple={mode !== "sas_general"}
+          accept={mode === "sas_general" ? ".sas" : ".sas,.sas7bdat,.csv,.log,.xls,.xlsx,.zip"}
           className="sr-only"
           onChange={(e) => {
             if (e.target.files) onFilesAttached(Array.from(e.target.files));

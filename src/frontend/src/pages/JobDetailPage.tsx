@@ -13,12 +13,12 @@ import LineageTab from "@/components/JobDetail/LineageTab";
 import PlanTab from "@/components/JobDetail/PlanTab";
 import ReportTab from "@/components/JobDetail/ReportTab";
 import { StatusBadge } from "@/components/JobDetail/StatusBadge";
+import VersionHistoryRail from "@/components/VersionHistoryRail";
 // import TrustReportTab from "@/components/JobDetail/TrustReportTab";
 import {
   POLLING_STATUSES,
   TAB_CONTENT_HEIGHT,
 } from "@/components/JobDetail/constants";
-import VersionHistoryRail from "@/components/VersionHistoryRail";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -27,22 +27,20 @@ import { ArrowLeft } from "lucide-react";
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
-export { StatusBadge } from "@/components/JobDetail/StatusBadge";
 export { STATUS_LABEL } from "@/components/JobDetail/constants";
+export { StatusBadge } from "@/components/JobDetail/StatusBadge";
 
 export default function JobDetailPage(): React.ReactElement {
   const { id = "" } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("plan");
   const [editorCode, setEditorCode] = useState<string | null>(null);
-  const [editorRestoreKey, setEditorRestoreKey] = useState(0);
-  const [reportRestoreKey, setReportRestoreKey] = useState(0);
-  const [savedVersionId, setSavedVersionId] = useState<string | null>(null);
   const [overrideGeneratedFiles, setOverrideGeneratedFiles] = useState<Record<
     string,
     string
   > | null>(null);
   const [overrideDoc, setOverrideDoc] = useState<string | null>(null);
+  const [reportRestoreKey, setReportRestoreKey] = useState(0);
   const [planOverrides, setPlanOverrides] = useState<
     Record<string, BlockOverride>
   >({});
@@ -95,11 +93,10 @@ export default function JobDetailPage(): React.ReactElement {
         });
       }
     },
-    onSuccess: async (result) => {
+    onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: ["job", id, "versions", activeTab],
       });
-      if (result?.id) setSavedVersionId(result.id);
       toast.success("Version saved.");
     },
     onError: (err) => {
@@ -135,29 +132,6 @@ export default function JobDetailPage(): React.ReactElement {
     onError: () => toast.error("Could not accept migration. Please try again."),
   });
 
-  function handleRestore(content: Record<string, unknown>): void {
-    setSavedVersionId(null);
-    if (activeTab === "plan" && Array.isArray(content.block_overrides)) {
-      const arr = content.block_overrides as BlockOverride[];
-      setPlanOverrides(Object.fromEntries(arr.map((o) => [o.block_id, o])));
-    } else if (
-      activeTab === "editor" &&
-      typeof content.python_code === "string"
-    ) {
-      setEditorCode(content.python_code);
-      const gf = content.generated_files;
-      setOverrideGeneratedFiles(
-        gf && typeof gf === "object" && !Array.isArray(gf)
-          ? (gf as Record<string, string>)
-          : {},
-      );
-      setEditorRestoreKey((k) => k + 1);
-    } else if (activeTab === "report" && typeof content.doc === "string") {
-      setOverrideDoc(content.doc);
-      setReportRestoreKey((k) => k + 1);
-    }
-  }
-
   const shortId = id.length >= 8 ? `${id.slice(0, 8)}…` : id;
 
   const isReviewable = job?.status === "proposed" || job?.status === "accepted";
@@ -174,7 +148,6 @@ export default function JobDetailPage(): React.ReactElement {
         value={activeTab}
         onValueChange={(v) => {
           setActiveTab(v);
-          setSavedVersionId(null);
         }}
       >
         <div className="sticky top-0 z-20 bg-background border-border border-b pb-2">
@@ -222,7 +195,8 @@ export default function JobDetailPage(): React.ReactElement {
             <div className="ml-auto flex items-center gap-2">
               {activeTab !== "lineage" &&
                 activeTab !== "trust" &&
-                activeTab !== "history" && (
+                activeTab !== "history" &&
+                activeTab !== "report" && (
                   <Button
                     size="sm"
                     variant="secondary"
@@ -288,7 +262,6 @@ export default function JobDetailPage(): React.ReactElement {
 
             <TabsContent value="editor" className="mt-0 flex-1 min-h-0">
               <EditorTab
-                key={editorRestoreKey}
                 jobId={id}
                 generatedFiles={
                   overrideGeneratedFiles ?? job?.generated_files ?? null
@@ -296,17 +269,38 @@ export default function JobDetailPage(): React.ReactElement {
                 onGeneratedFilesChange={setOverrideGeneratedFiles}
                 code={displayedEditorCode}
                 setCode={(v) => setEditorCode(v)}
+                blockPlans={planData?.block_plans}
               />
             </TabsContent>
 
             <TabsContent value="report" className="mt-0 flex-1 min-h-0">
-              <ReportTab
-                isDone={isReviewable}
-                doc={currentDoc}
-                onDocChange={setOverrideDoc}
-                restoreKey={reportRestoreKey}
-                nonTechnicalDoc={docData?.non_technical_doc ?? null}
-              />
+              <div className="flex gap-3 h-full min-h-0">
+                <div className="flex-1 min-w-0 min-h-0">
+                  <ReportTab
+                    isDone={isReviewable}
+                    doc={currentDoc}
+                    onDocChange={setOverrideDoc}
+                    restoreKey={reportRestoreKey}
+                    nonTechnicalDoc={docData?.non_technical_doc ?? null}
+                    onSave={() => saveVersionMutation.mutate()}
+                    isSaving={saveVersionMutation.isPending}
+                  />
+                </div>
+                {isReviewable && (
+                  <VersionHistoryRail
+                    jobId={id}
+                    tab="report"
+                    className="shrink-0"
+                    onRestore={(content) => {
+                      const restored = content as Record<string, unknown>;
+                      if (typeof restored.doc === "string") {
+                        setOverrideDoc(restored.doc);
+                        setReportRestoreKey((k) => k + 1);
+                      }
+                    }}
+                  />
+                )}
+              </div>
             </TabsContent>
 
             <TabsContent value="lineage" className="mt-0 flex-1 min-h-0">
@@ -324,16 +318,6 @@ export default function JobDetailPage(): React.ReactElement {
             </div>
           </TabsContent> */}
           </div>
-
-          {(activeTab === "editor" || activeTab === "report") && (
-            <VersionHistoryRail
-              jobId={id}
-              tab={activeTab as "editor" | "report"}
-              className="shrink-0 overflow-y-auto"
-              selectedVersionId={savedVersionId}
-              onRestore={handleRestore}
-            />
-          )}
         </div>
 
         {/* Accept-migration confirmation */}

@@ -29,7 +29,7 @@ from src.backend.api.schemas import (
     ExplainSessionResponse,
 )
 from src.backend.db.models import ExplainSession, Job
-from src.backend.db.session import get_async_session
+from src.backend.db.session import AsyncSessionLocal, get_async_session
 from src.worker.engine.chatbot import ExplainAgent
 
 logger = logging.getLogger(__name__)
@@ -56,6 +56,9 @@ def _session_to_response(s: ExplainSession) -> ExplainSessionResponse:
         mode=s.mode,
         audience=s.audience,
         created_at=s.created_at,
+        title=s.title,
+        file_name=s.file_name,
+        job_id=s.job_id,
     )
 
 
@@ -82,6 +85,8 @@ async def create_explain_session(
         audience=req.audience,
         messages=[],
         context_files=[],
+        title=req.title,
+        file_name=req.file_name,
     )
     db.add(session)
     await db.commit()
@@ -138,34 +143,32 @@ async def get_explain_session(
 async def _sse_stream(
     prompt: str,
     audience: str,
+    mode: str,
     session_id: str | None,
     user_message: str,
-    db: AsyncSession,
 ) -> AsyncGenerator[str, None]:
     """Generate SSE events from the ExplainAgent and optionally persist messages.
 
     Args:
         prompt: Full prompt to send to the LLM.
         audience: "tech" or "non_tech".
+        mode: "migration" or "sas_general" — selects agent prompt variant.
         session_id: Optional session to persist messages into.
         user_message: Raw user question text (stored in history).
-        db: Async database session for persistence.
 
     Yields:
         SSE-formatted data strings.
     """
     full_response = ""
     try:
-        async for chunk in _explain_agent.answer_stream(prompt, audience=audience):
+        async for chunk in _explain_agent.answer_stream(prompt, audience=audience, mode=mode):
             full_response += chunk
             yield f"data: {json.dumps({'chunk': chunk})}\n\n"
         yield f"data: {json.dumps({'tokens_used': None})}\n\n"
         yield "data: [DONE]\n\n"
     finally:
         if session_id:
-            task = asyncio.create_task(
-                _persist_messages(session_id, user_message, full_response, db)
-            )
+            task = asyncio.create_task(_persist_messages(session_id, user_message, full_response))
             _background_tasks.add(task)
             task.add_done_callback(_background_tasks.discard)
 
@@ -174,27 +177,29 @@ async def _persist_messages(
     session_id: str,
     user_content: str,
     assistant_content: str,
-    db: AsyncSession,
 ) -> None:
     """Append user+assistant messages to an explain session.
+
+    Opens its own DB session so it is safe to run as a background task after
+    the request-scoped session has been closed.
 
     Args:
         session_id: Target session UUID.
         user_content: The user's question.
         assistant_content: The assistant's full response.
-        db: Async database session.
     """
     try:
-        result = await db.execute(select(ExplainSession).where(ExplainSession.id == session_id))
-        session = result.scalar_one_or_none()
-        if session is None:
-            return
-        msgs: list[dict[str, str]] = list(session.messages or [])
-        msgs.append({"role": "user", "content": user_content})
-        msgs.append({"role": "assistant", "content": assistant_content})
-        session.messages = msgs
-        session.updated_at = datetime.now(UTC)
-        await db.commit()
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(select(ExplainSession).where(ExplainSession.id == session_id))
+            session = result.scalar_one_or_none()
+            if session is None:
+                return
+            msgs: list[dict[str, str]] = list(session.messages or [])
+            msgs.append({"role": "user", "content": user_content})
+            msgs.append({"role": "assistant", "content": assistant_content})
+            session.messages = msgs
+            session.updated_at = datetime.now(UTC)
+            await db.commit()
     except Exception:
         logger.exception("Failed to persist explain messages for session %s", session_id)
 
@@ -207,9 +212,9 @@ async def explain_files(
     question: str = Form(...),
     messages: str = Form("[]"),
     audience: str = Form("tech"),
+    mode: str = Form("sas_general"),
     session_id: str | None = Form(None),
     files: list[UploadFile] = File(default=[]),
-    db: AsyncSession = Depends(get_async_session),
 ) -> StreamingResponse:
     """Answer a question about uploaded files using SSE streaming.
 
@@ -217,9 +222,9 @@ async def explain_files(
         question: The user's question (form field).
         messages: JSON-encoded list of prior conversation turns (form field).
         audience: "tech" or "non_tech" (form field).
+        mode: "sas_general" or "migration" — selects agent prompt variant.
         session_id: Optional session UUID for persistence (form field).
         files: Uploaded files to use as context.
-        db: Injected async database session.
 
     Returns:
         StreamingResponse with SSE events.
@@ -249,7 +254,7 @@ async def explain_files(
     prompt = "\n\n".join(prompt_parts)
 
     return StreamingResponse(
-        _sse_stream(prompt, audience, session_id, question, db),
+        _sse_stream(prompt, audience, mode, session_id, question),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
@@ -309,7 +314,7 @@ async def explain_job(
     prompt = "\n\n".join(prompt_parts)
 
     return StreamingResponse(
-        _sse_stream(prompt, req.audience, req.session_id, req.question, db),
+        _sse_stream(prompt, req.audience, "migration", req.session_id, req.question),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

@@ -19,13 +19,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useReducer, useRef, useState } from "react";
 import { toast } from "sonner";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type ExplainMode = "migration" | "upload";
+type ExplainMode = "migration" | "sas_general";
 
 interface ExplainState {
   mode: ExplainMode;
@@ -42,6 +43,7 @@ interface ExplainState {
   sessionId: string | null;
   audience: "tech" | "non_tech";
   isLoading: boolean;
+  attachedFileName: string | null;
 }
 
 type ExplainAction =
@@ -61,7 +63,9 @@ type ExplainAction =
   | { type: "REQUEST_SWITCH"; mode: ExplainMode }
   | { type: "SET_SESSION"; sessionId: string }
   | { type: "SET_AUDIENCE"; audience: "tech" | "non_tech" }
-  | { type: "SET_LOADING"; value: boolean };
+  | { type: "SET_LOADING"; value: boolean }
+  | { type: "SET_ATTACHED_FILE_NAME"; payload: string | null }
+  | { type: "SET_RECENT_SESSIONS"; payload: ExplainSessionResponse[] };
 
 function reducer(state: ExplainState, action: ExplainAction): ExplainState {
   switch (action.type) {
@@ -170,6 +174,8 @@ function reducer(state: ExplainState, action: ExplainAction): ExplainState {
       return { ...state, audience: action.audience };
     case "SET_LOADING":
       return { ...state, isLoading: action.value };
+    case "SET_ATTACHED_FILE_NAME":
+      return { ...state, attachedFileName: action.payload };
     default:
       return state;
   }
@@ -191,6 +197,7 @@ function initialState(): ExplainState {
     sessionId: null,
     audience: "tech",
     isLoading: false,
+    attachedFileName: null,
   };
 }
 
@@ -234,12 +241,7 @@ export default function ExplainPage(): React.ReactElement {
     if (state.isLoading) return;
     if (state.inputValue.trim() === "") return;
 
-    const hasContext =
-      state.mode === "migration"
-        ? state.selectedJobId !== null
-        : state.attachedFiles.length > 0;
-
-    if (!hasContext) return;
+    if (state.mode === "migration" && !state.selectedJobId) return;
 
     const question = state.inputValue.trim();
     dispatch({ type: "SET_INPUT", value: "" });
@@ -252,9 +254,18 @@ export default function ExplainPage(): React.ReactElement {
           mode: state.mode,
           job_id: state.selectedJobId ?? undefined,
           audience: state.audience,
+          title: question.slice(0, 60),
+          file_name:
+            state.mode === "sas_general"
+              ? (state.attachedFiles[0]?.name ?? null)
+              : null,
         });
         currentSessionId = session.session_id;
         dispatch({ type: "SET_SESSION", sessionId: session.session_id });
+        // Refetch sessions after creation
+        listExplainSessions()
+          .then((sessions) => setRecentSessions(sessions.slice(0, 5)))
+          .catch(() => {});
       } catch {
         // non-critical — proceed without session
       }
@@ -299,6 +310,7 @@ export default function ExplainPage(): React.ReactElement {
               priorMessages,
               state.audience,
               currentSessionId,
+              state.mode,
             );
 
       for await (const chunk of gen) {
@@ -326,10 +338,25 @@ export default function ExplainPage(): React.ReactElement {
       const full = await getExplainSession(session.session_id);
       dispatch({ type: "CONFIRM_SWITCH" }); // clear current state
       dispatch({ type: "SET_SESSION", sessionId: full.session_id });
-      dispatch({
-        type: "SET_AUDIENCE",
-        audience: full.audience as "tech" | "non_tech",
-      });
+      dispatch({ type: "SET_AUDIENCE", audience: full.audience as "tech" | "non_tech" });
+      dispatch({ type: "SET_MODE", mode: full.mode });
+      if (full.job_id) {
+        dispatch({
+          type: "SELECT_JOB",
+          job: {
+            job_id: full.job_id,
+            name: full.title ?? full.job_id,
+            status: "done",
+            created_at: "",
+            updated_at: "",
+            error: null,
+            file_count: 0,
+          },
+        });
+      }
+      if (full.file_name) {
+        dispatch({ type: "SET_ATTACHED_FILE_NAME", payload: full.file_name });
+      }
       for (const msg of full.messages) {
         dispatch({
           type: "ADD_MESSAGE",
@@ -352,39 +379,50 @@ export default function ExplainPage(): React.ReactElement {
   const hasContext =
     state.mode === "migration"
       ? state.selectedJobId !== null
-      : state.attachedFiles.length > 0;
+      : true; // sas_general: file is optional, chat is always open
 
-  const inputDisabled = !hasContext;
+  const inputDisabled = state.mode === "migration" && !state.selectedJobId;
 
   const contextLabel =
     state.mode === "migration" && state.selectedJobName
       ? `Asking about: ${state.selectedJobName}`
-      : state.mode === "upload" && state.attachedFiles.length > 0
+      : state.mode === "sas_general" && state.attachedFiles.length > 0
         ? `Asking about ${state.attachedFiles.length} file${state.attachedFiles.length !== 1 ? "s" : ""}`
         : null;
 
-  const sessionFooter =
-    recentSessions.length > 0 ? (
-      <div className="px-3 py-2 space-y-1">
-        <p className="text-xs font-medium text-muted-foreground mb-1">
-          Recent sessions
-        </p>
-        {recentSessions.map((s) => {
-          const firstMsg = s.messages[0]?.content ?? "Empty session";
-          return (
-            <button
-              key={s.session_id}
-              type="button"
-              onClick={() => void handleRestoreSession(s)}
-              className="w-full text-left text-xs text-muted-foreground hover:text-foreground truncate block py-0.5"
-            >
-              {firstMsg.slice(0, 48)}
-              {firstMsg.length > 48 ? "\u2026" : ""}
-            </button>
-          );
-        })}
-      </div>
-    ) : undefined;
+  const sessionFooter = (
+    <div className="px-3 py-2 space-y-1">
+      <button
+        type="button"
+        onClick={() => dispatch({ type: "CLEAR_CONTEXT" })}
+        className="w-full text-left text-xs font-medium text-primary hover:opacity-80 py-0.5 mb-1"
+      >
+        + New Chat
+      </button>
+      {recentSessions.length > 0 && (
+        <>
+          <p className="text-xs font-medium text-muted-foreground mb-1">Recent sessions</p>
+          {recentSessions.map((s) => {
+            const modeBadge = s.mode === "migration" ? "M" : "S";
+            const title = s.title ?? "Untitled";
+            return (
+              <button
+                key={s.session_id}
+                type="button"
+                onClick={() => void handleRestoreSession(s)}
+                className="w-full text-left text-xs text-muted-foreground hover:text-foreground truncate flex items-center gap-1 py-0.5"
+              >
+                <span className="shrink-0 inline-flex items-center justify-center size-4 rounded-sm bg-muted text-[10px] font-semibold text-muted-foreground">
+                  {modeBadge}
+                </span>
+                <span className="truncate">{title}</span>
+              </button>
+            );
+          })}
+        </>
+      )}
+    </div>
+  );
 
   const migrationItems = (usableJobs ?? []).map((job) => ({
     id: job.job_id,
@@ -416,44 +454,73 @@ export default function ExplainPage(): React.ReactElement {
         </div>
 
         <div className="flex flex-col w-full max-w-190 h-full">
+          {/* Mode tabs */}
+          <div className="flex border-b border-border shrink-0">
+            <button
+              className={cn(
+                "px-4 py-2 text-sm font-medium transition-colors",
+                state.mode === "migration"
+                  ? "border-b-2 border-primary text-primary"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+              onClick={() => dispatch({ type: "REQUEST_SWITCH", mode: "migration" })}
+            >
+              Migration Chat
+            </button>
+            <button
+              className={cn(
+                "px-4 py-2 text-sm font-medium transition-colors",
+                state.mode === "sas_general"
+                  ? "border-b-2 border-primary text-primary"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+              onClick={() => dispatch({ type: "REQUEST_SWITCH", mode: "sas_general" })}
+            >
+              SAS General
+            </button>
+          </div>
           <MessageList
             messages={state.messages}
             listRef={messageListRef}
             mode={state.mode}
+            audience={state.audience}
             hasContext={hasContext}
             onSuggest={handleSuggest}
           />
-          <ChatInput
-            value={state.inputValue}
-            onChange={(v) => dispatch({ type: "SET_INPUT", value: v })}
-            onSend={() => void handleSend()}
-            onFilesAttached={(files) => {
-              if (state.mode !== "upload") {
-                dispatch({ type: "REQUEST_SWITCH", mode: "upload" });
+          <div className="px-4 pb-6 pt-2 shrink-0">
+            <ChatInput
+              value={state.inputValue}
+              onChange={(v) => dispatch({ type: "SET_INPUT", value: v })}
+              onSend={() => void handleSend()}
+              onFilesAttached={(files) => {
+                if (state.mode !== "sas_general") {
+                  dispatch({ type: "REQUEST_SWITCH", mode: "sas_general" });
+                }
+                dispatch({ type: "ATTACH_FILES", files });
+              }}
+              isLoading={state.isLoading}
+              disabled={inputDisabled}
+              attachedFiles={state.attachedFiles}
+              onRemoveFile={(name) => dispatch({ type: "REMOVE_FILE", name })}
+              audience={state.audience}
+              onAudienceChange={(a) =>
+                dispatch({ type: "SET_AUDIENCE", audience: a })
               }
-              dispatch({ type: "ATTACH_FILES", files });
-            }}
-            isLoading={state.isLoading}
-            disabled={inputDisabled}
-            attachedFiles={state.attachedFiles}
-            onRemoveFile={(name) => dispatch({ type: "REMOVE_FILE", name })}
-            audience={state.audience}
-            onAudienceChange={(a) =>
-              dispatch({ type: "SET_AUDIENCE", audience: a })
-            }
-            contextLabel={contextLabel}
-            onClearContext={() => dispatch({ type: "CLEAR_CONTEXT" })}
-          />
+              contextLabel={contextLabel}
+              onClearContext={() => dispatch({ type: "CLEAR_CONTEXT" })}
+              mode={state.mode}
+            />
+          </div>
         </div>
       </div>
 
       {/* Right panel — desktop */}
       <div className="hidden md:flex h-full">
         <RightSidebar
-          title="Migrations"
+          title={state.mode === "migration" ? "Migrations" : "Chats"}
           sidebarKey="explain-sidebar-collapsed"
-          items={migrationItems}
-          footer={sessionFooter}
+          items={state.mode === "migration" ? migrationItems : []}
+          header={sessionFooter}
         />
       </div>
 
@@ -468,10 +535,10 @@ export default function ExplainPage(): React.ReactElement {
             onClick={(e) => e.stopPropagation()}
           >
             <RightSidebar
-              title="Migrations"
+              title={state.mode === "migration" ? "Migrations" : "Chats"}
               sidebarKey="explain-sidebar-collapsed"
-              items={migrationItems}
-              footer={sessionFooter}
+              items={state.mode === "migration" ? migrationItems : []}
+              header={sessionFooter}
             />
           </div>
         </div>
