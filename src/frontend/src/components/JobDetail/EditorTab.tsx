@@ -1,5 +1,6 @@
 import {
   executeJob,
+  getBlockRevisions,
   getJobAttachments,
   getJobChangelog,
   getJobSources,
@@ -38,17 +39,22 @@ import {
   BracesIcon,
   ChevronDown,
   ChevronRight,
+  Copy,
   DatabaseIcon,
   FunctionSquareIcon,
   Loader2,
   Lock,
+  Maximize2,
+  Minimize2,
   Moon,
   Pencil,
   Play,
+  Save,
   Sun,
 } from "lucide-react";
 import type { editor } from "monaco-editor";
-import { Suspense, useCallback, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import LogView from "./LogView";
 import OutputView from "./OutputView";
 import { registerSasLanguage } from "./registerSasLanguage";
@@ -548,15 +554,42 @@ function ExecutionOutputPanel({
         {activeTab === "output" && (
           <div className="p-3">
             {fetchError && (
-              <div className="rounded border border-red-300 bg-red-50 dark:bg-red-950/30 dark:border-red-800 px-3 py-2 text-xs text-red-700 dark:text-red-400 font-mono mb-2">
-                {fetchError}
+              <div className="relative rounded border border-red-300 bg-red-50 dark:bg-red-950/30 dark:border-red-800 px-3 py-2 text-xs text-red-700 dark:text-red-400 font-mono mb-2">
+                <button
+                  type="button"
+                  className="absolute top-2 right-2 p-1 rounded hover:bg-muted/50 text-muted-foreground hover:text-foreground"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(fetchError);
+                    toast.success("Copied to clipboard");
+                  }}
+                  aria-label="Copy error"
+                >
+                  <Copy size={12} />
+                </button>
+                <pre className="select-all whitespace-pre-wrap break-all">
+                  {fetchError}
+                </pre>
               </div>
             )}
             {result?.error && (
-              <div className="rounded border border-red-300 bg-red-50 dark:bg-red-950/30 dark:border-red-800 px-3 py-2 text-xs text-red-700 dark:text-red-400 font-mono mb-2">
+              <div className="relative rounded border border-red-300 bg-red-50 dark:bg-red-950/30 dark:border-red-800 px-3 py-2 text-xs text-red-700 dark:text-red-400 font-mono mb-2">
+                <button
+                  type="button"
+                  className="absolute top-2 right-2 p-1 rounded hover:bg-muted/50 text-muted-foreground hover:text-foreground"
+                  onClick={() => {
+                    const errorText =
+                      result.error +
+                      (result.stderr ? "\n" + result.stderr : "");
+                    void navigator.clipboard.writeText(errorText);
+                    toast.success("Copied to clipboard");
+                  }}
+                  aria-label="Copy error"
+                >
+                  <Copy size={12} />
+                </button>
                 {result.error}
                 {result.stderr && (
-                  <pre className="mt-2 whitespace-pre-wrap break-all opacity-80">
+                  <pre className="select-all mt-2 whitespace-pre-wrap break-all opacity-80">
                     {result.stderr}
                   </pre>
                 )}
@@ -661,7 +694,7 @@ interface BottomPanelProps {
   outputAttachments: AttachmentInfo[];
   jobId: string;
   changelog: { entries: ChangelogEntry[] } | undefined;
-  onSelectBlock?: (blockId: string) => void;
+  onLoadRevisionCode?: (code: string) => void;
   theme?: "dark" | "light";
 }
 
@@ -676,9 +709,12 @@ function BottomPanel({
   outputAttachments,
   jobId,
   changelog,
-  onSelectBlock,
+  onLoadRevisionCode,
   theme = "light",
 }: BottomPanelProps): React.ReactElement {
+  const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(
+    null,
+  );
   const tabs: { key: BottomTab; label: string; count?: number }[] = [
     { key: "code", label: "Code" },
     { key: "log", label: "Log", count: logAttachments.length },
@@ -704,8 +740,12 @@ function BottomPanel({
             className={cn(
               "flex items-center gap-1 px-3 py-1.5 text-[11px] font-medium border-b-2 transition-colors cursor-pointer",
               bottomTab === key
-                ? "border-primary text-foreground bg-background"
-                : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50",
+                ? theme === "dark"
+                  ? "border-blue-400 text-white"
+                  : "border-primary text-foreground bg-background"
+                : theme === "dark"
+                  ? "border-transparent text-[#858585] hover:text-[#cccccc] hover:bg-white/5"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50",
             )}
             style={
               bottomTab === key && theme === "dark"
@@ -760,22 +800,27 @@ function BottomPanel({
         {bottomTab === "history" && (
           <div className="h-full overflow-y-auto divide-y divide-border">
             {!changelog && (
-              <p className="px-3 py-3 text-xs text-muted-foreground">Loading…</p>
+              <p className="px-3 py-3 text-xs text-muted-foreground">
+                Loading…
+              </p>
             )}
             {changelog && changelog.entries.length === 0 && (
-              <p className="px-3 py-3 text-xs text-muted-foreground">No history yet.</p>
+              <p className="px-3 py-3 text-xs text-muted-foreground">
+                No history yet.
+              </p>
             )}
             {changelog &&
               [...changelog.entries]
                 .sort(
                   (a: ChangelogEntry, b: ChangelogEntry) =>
-                    new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+                    new Date(a.created_at).getTime() -
+                    new Date(b.created_at).getTime(),
                 )
-                .map((entry: ChangelogEntry, idx: number) => {
+                .map((entry: ChangelogEntry, idx: number, arr) => {
                   const isHuman =
-                    entry.trigger === "human-refine" || entry.trigger === "restore";
-                  const shortBlock = entry.block_id.replace(/:\d+$/, "").split("/").pop() ?? entry.block_id;
-                  const diffMs = new Date().getTime() - new Date(entry.created_at).getTime();
+                    entry.trigger === "human" || entry.trigger === "restore";
+                  const diffMs =
+                    new Date().getTime() - new Date(entry.created_at).getTime();
                   const diffMin = Math.floor(diffMs / 60_000);
                   const relTime =
                     diffMin < 1
@@ -785,20 +830,51 @@ function BottomPanel({
                         : diffMin < 1440
                           ? `${Math.floor(diffMin / 60)}h ago`
                           : `${Math.floor(diffMin / 1440)}d ago`;
+                  const handleClick = () => {
+                    setSelectedHistoryId(entry.id);
+                    void getBlockRevisions(jobId, entry.block_id).then(
+                      (history) => {
+                        const rev =
+                          history.revisions.find(
+                            (r) => r.revision_number === entry.revision_number,
+                          ) ?? history.revisions[0];
+                        if (rev?.python_code)
+                          onLoadRevisionCode?.(rev.python_code);
+                      },
+                    );
+                  };
                   return (
                     <div
                       key={entry.id}
-                      className="flex items-center gap-2 px-3 py-2 text-xs hover:bg-muted/30 cursor-pointer"
-                      onClick={() => onSelectBlock?.(entry.block_id)}
+                      className={cn(
+                        "flex items-center gap-2 px-3 py-2 text-xs cursor-pointer border-l-2 transition-colors",
+                        entry.id === selectedHistoryId
+                          ? theme === "dark"
+                            ? "border-blue-400 bg-blue-400/10 text-white"
+                            : "border-primary bg-primary/10 text-foreground"
+                          : theme === "dark"
+                            ? "border-transparent text-[#cccccc] hover:bg-white/5"
+                            : "border-transparent hover:bg-muted/30",
+                      )}
+                      onClick={handleClick}
                       role="button"
                       tabIndex={0}
-                      onKeyDown={(e) => { if (e.key === "Enter") onSelectBlock?.(entry.block_id); }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleClick();
+                      }}
                     >
                       <span aria-hidden>{isHuman ? "👤" : "🤖"}</span>
-                      <span className="font-mono text-muted-foreground truncate max-w-40">
-                        {shortBlock}
+                      <span
+                        className={cn(
+                          "font-mono font-semibold text-[11px] tabular-nums shrink-0",
+                          theme === "dark"
+                            ? "text-[#cccccc]"
+                            : "text-foreground",
+                        )}
+                      >
+                        v{entry.revision_number}
                       </span>
-                      {idx === 0 && (
+                      {idx === arr.length - 1 && (
                         <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold bg-emerald-100 text-emerald-800">
                           Latest
                         </span>
@@ -827,6 +903,10 @@ export default function EditorTab({
   code,
   setCode,
   blockPlans = [],
+  onSave,
+  isSaving,
+  onExpand,
+  isFullPage = false,
 }: {
   jobId: string;
   generatedFiles: Record<string, string> | null;
@@ -834,6 +914,10 @@ export default function EditorTab({
   code: string;
   setCode: (code: string) => void;
   blockPlans?: BlockPlan[];
+  onSave?: () => void;
+  isSaving?: boolean;
+  onExpand?: () => void;
+  isFullPage?: boolean;
 }): React.ReactElement {
   const [bottomTab, setBottomTab] = useState<BottomTab>("code");
   const [editorDark, setEditorDark] = useState(false);
@@ -851,6 +935,9 @@ export default function EditorTab({
     ? { sas: "sas-dark", python: "vs-dark" }
     : { sas: "sas-light", python: "vs" };
   const [selectedSasKey, setSelectedSasKey] = useState<string>("");
+  const [overrideRevisionCode, setOverrideRevisionCode] = useState<
+    string | null
+  >(null);
 
   const { data: sources, isLoading } = useQuery({
     queryKey: ["job", jobId, "sources"],
@@ -891,8 +978,16 @@ export default function EditorTab({
     generatedFiles && pyKeyForSelected
       ? (generatedFiles[pyKeyForSelected] ?? null)
       : null;
-  const rightCode = perFileCode ?? code;
+  const rightCode = overrideRevisionCode ?? perFileCode ?? code;
   const rightReadOnly = !pythonEditable;
+
+  useEffect(() => {
+    if (overrideRevisionCode !== null && pythonEditorRef.current) {
+      const model = pythonEditorRef.current.getModel();
+      if (model) model.setValue(overrideRevisionCode);
+    }
+  }, [overrideRevisionCode]);
+
 
   const hasPythonCode = !!(rightCode && rightCode.trim().length > 0);
 
@@ -921,13 +1016,11 @@ export default function EditorTab({
     );
   }
 
-  const breadcrumbParts = effectiveSasKey ? effectiveSasKey.split("/") : [];
-
   return (
     <div className="h-full min-h-0 flex flex-col">
       {/* Toolbar — Run first/left, then separator, then edit/theme controls */}
       <div className="flex items-center gap-2 shrink-0 px-1 py-1.5 border-b border-border">
-        <TooltipProvider delayDuration={200}>
+        <TooltipProvider>
           <Tooltip>
             <TooltipTrigger
               aria-label="Run Python code"
@@ -961,44 +1054,55 @@ export default function EditorTab({
           {/* Separator */}
           <span className="h-4 w-px bg-border shrink-0" aria-hidden />
 
-          <Tooltip>
-            <TooltipTrigger
-              aria-label={
-                pythonEditable
-                  ? "Lock Python editor (read-only)"
-                  : "Unlock Python editor (editable)"
-              }
-              onClick={() => setPythonEditable((v) => !v)}
-              className={cn(
-                "flex items-center text-xs transition-colors cursor-pointer border rounded p-1.5",
-                pythonEditable
-                  ? "border-primary text-primary hover:bg-primary/10"
-                  : "border-border text-muted-foreground hover:text-foreground",
-              )}
+          {pythonEditable && (
+            <button
+              onClick={() => onSave?.()}
+              disabled={isSaving}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium border border-border bg-background hover:bg-muted transition-colors cursor-pointer disabled:opacity-50"
             >
-              {pythonEditable ? <Pencil size={14} /> : <Lock size={14} />}
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {pythonEditable ? "Lock Python editor" : "Edit Python"}
-            </TooltipContent>
-          </Tooltip>
+              <Save size={12} />
+              {isSaving ? "Saving…" : "Save"}
+            </button>
+          )}
+          <button
+            onClick={() => setPythonEditable((v) => !v)}
+            aria-label={pythonEditable ? "Lock Python editor" : "Edit Python"}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium border border-border bg-background hover:bg-muted transition-colors cursor-pointer"
+          >
+            {pythonEditable ? (
+              <>
+                <Lock size={12} /> Read-only
+              </>
+            ) : (
+              <>
+                <Pencil size={12} /> Edit
+              </>
+            )}
+          </button>
 
-          <Tooltip>
-            <TooltipTrigger
-              aria-label={
-                editorDark
-                  ? "Switch editor to light theme"
-                  : "Switch editor to dark theme"
-              }
-              onClick={() => setEditorDark((d) => !d)}
-              className="flex items-center text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer border border-border rounded p-1.5"
-            >
-              {editorDark ? <Sun size={14} /> : <Moon size={14} />}
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {editorDark ? "Light theme" : "Dark theme"}
-            </TooltipContent>
-          </Tooltip>
+          <span className="flex-1" />
+
+          <button
+            type="button"
+            aria-label={
+              editorDark
+                ? "Switch editor to light theme"
+                : "Switch editor to dark theme"
+            }
+            onClick={() => setEditorDark((d) => !d)}
+            className="inline-flex items-center text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer border border-border rounded p-1.5"
+          >
+            {editorDark ? <Sun size={14} /> : <Moon size={14} />}
+          </button>
+
+          <button
+            type="button"
+            aria-label={isFullPage ? "Minimize editor" : "Open in full page"}
+            onClick={() => onExpand?.()}
+            className="inline-flex items-center text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer border border-border rounded p-1.5"
+          >
+            {isFullPage ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+          </button>
         </TooltipProvider>
       </div>
 
@@ -1029,7 +1133,7 @@ export default function EditorTab({
                   className="h-8 flex items-center px-3 text-[10px] font-semibold tracking-widest uppercase shrink-0"
                   style={{
                     background: editorDark ? "#1e1e1e" : "#fafafa",
-                    color: editorDark ? "#858585" : undefined,
+                    color: editorDark ? "#858585" : "#374151",
                     borderBottom: editorDark
                       ? "1px solid #3e3e3e"
                       : "1px solid var(--border)",
@@ -1099,21 +1203,18 @@ export default function EditorTab({
                       className="h-8 px-3 text-xs font-medium shrink-0 flex items-center"
                       style={{
                         background: editorDark ? "#1e1e1e" : "#fafafa",
-                        color: editorDark ? "#858585" : undefined,
+                        color: editorDark ? "#858585" : "#374151",
                         borderBottom: editorDark
                           ? "1px solid #3e3e3e"
                           : "1px solid var(--border)",
                       }}
                     >
+                      <img
+                        src="/sas.svg"
+                        className="h-4 w-4 shrink-0 mr-1.5"
+                        alt="SAS"
+                      />
                       SAS Source
-                      {effectiveSasKey && (
-                        <span
-                          className="ml-2 text-[11px]"
-                          style={{ opacity: 0.5 }}
-                        >
-                          {effectiveSasKey}
-                        </span>
-                      )}
                     </div>
                     {effectiveSasKey ? (
                       <Suspense
@@ -1161,18 +1262,18 @@ export default function EditorTab({
                       className="h-8 px-3 text-xs font-medium shrink-0 flex items-center gap-2"
                       style={{
                         background: editorDark ? "#1e1e1e" : "#fafafa",
-                        color: editorDark ? "#858585" : undefined,
+                        color: editorDark ? "#858585" : "#374151",
                         borderBottom: editorDark
                           ? "1px solid #3e3e3e"
                           : "1px solid var(--border)",
                       }}
                     >
+                      <img
+                        src="/python.svg"
+                        className="h-4 w-4 shrink-0"
+                        alt="Python"
+                      />
                       <span>Generated Python</span>
-                      {breadcrumbParts.length > 0 && (
-                        <span className="text-[11px]" style={{ opacity: 0.5 }}>
-                          {breadcrumbParts.join(" / ")}
-                        </span>
-                      )}
                     </div>
                     <Suspense
                       fallback={
@@ -1197,6 +1298,7 @@ export default function EditorTab({
                         }}
                         onChange={(value) => {
                           if (rightReadOnly) return;
+                          setOverrideRevisionCode(null);
                           const next = value ?? "";
                           if (perFileCode !== null && pyKeyForSelected) {
                             onGeneratedFilesChange?.({
@@ -1248,22 +1350,7 @@ export default function EditorTab({
               jobId={jobId}
               changelog={changelog}
               theme={editorDark ? "dark" : "light"}
-              onSelectBlock={(blockId) => {
-                const bp = blockPlans.find((b) => b.block_id === blockId);
-                if (!bp) return;
-                const filePath = allPaths.find(
-                  (p) =>
-                    p === bp.source_file ||
-                    p.endsWith(`/${bp.source_file}`) ||
-                    (p.split("/").pop() ?? p) === bp.source_file,
-                );
-                if (filePath) setSelectedSasKey(filePath);
-                setSelectedBlock(bp);
-                if (bp.start_line > 0 && sasEditorRef.current) {
-                  sasEditorRef.current.revealLineInCenter(bp.start_line);
-                  sasEditorRef.current.setPosition({ lineNumber: bp.start_line, column: 1 });
-                }
-              }}
+              onLoadRevisionCode={(code) => setOverrideRevisionCode(code)}
             />
           </div>
         </ResizablePanel>

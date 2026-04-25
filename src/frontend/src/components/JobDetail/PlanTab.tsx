@@ -18,7 +18,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
+import { useState } from "react";
 import BlockPlanTable from "./BlockPlanTable";
 
 // ---------------------------------------------------------------------------
@@ -128,6 +129,7 @@ export default function PlanTab({
     : {};
 
   const isProposed = jobStatus === "proposed";
+  const [blocksCollapsed, setBlocksCollapsed] = useState(true);
 
   if (!isReviewable) {
     return (
@@ -177,50 +179,56 @@ export default function PlanTab({
     <div className="h-full min-h-0 overflow-y-auto space-y-4 pb-6">
       {/* Single summary card */}
       <Card className="border-border bg-muted/30">
-        <CardContent className="p-4 space-y-3">
-          <p className="text-sm text-foreground leading-relaxed">
-            {planData.summary ?? (
-              <span className="italic text-muted-foreground">No summary available.</span>
-            )}
-          </p>
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-3 pt-1 border-t border-border">
+        <CardContent className="p-0 flex flex-col divide-y divide-border">
+          {/* Top — summary text, full width */}
+          <div className="flex items-center px-5 py-2">
+            <p className="text-sm text-foreground leading-relaxed w-full">
+              {planData.summary ?? (
+                <span className="italic text-muted-foreground">No summary available.</span>
+              )}
+            </p>
+          </div>
+
+          {/* Bottom — stats centered */}
+          <div className="flex items-center justify-center gap-4 px-5 py-2 flex-wrap">
             {/* Confidence bar */}
-            <div className="flex items-center gap-2 min-w-[180px]">
-              <span className="text-xs text-muted-foreground shrink-0 w-20">Confidence</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground shrink-0">Confidence</span>
               <Progress
                 value={confidencePct}
-                className="h-1.5 flex-1 [&_[data-slot=progress-indicator]]:bg-[var(--bar-fill)]"
+                className="h-1.5 w-20 **:data-[slot=progress-indicator]:bg-(--bar-fill)"
                 style={{ "--bar-fill": confidenceColor } as React.CSSProperties}
               />
               <span
-                className="text-xs font-semibold tabular-nums w-8 text-right"
+                className="text-xs font-semibold tabular-nums"
                 style={{ color: confidenceColor }}
               >
                 {confidencePct}%
               </span>
             </div>
+
+            <Separator orientation="vertical" className="h-4 hidden sm:block" />
+
             {/* Risk bar */}
-            <div className="flex items-center gap-2 min-w-[160px]">
-              <span className="text-xs text-muted-foreground shrink-0 w-8">Risk</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground shrink-0">Risk</span>
               <Progress
                 value={riskPctMap[planData.overall_risk] ?? 0}
-                className="h-1.5 flex-1 [&_[data-slot=progress-indicator]]:bg-[var(--bar-fill)]"
+                className="h-1.5 w-20 **:data-[slot=progress-indicator]:bg-(--bar-fill)"
                 style={{ "--bar-fill": riskBar.color } as React.CSSProperties}
               />
               <span
-                className="text-xs font-semibold capitalize w-12 text-right"
+                className="text-xs font-semibold capitalize"
                 style={{ color: riskBar.color }}
               >
                 {riskBar.label}
               </span>
             </div>
 
-            {/* Vertical divider */}
-            {trustReport && <Separator orientation="vertical" className="h-4 hidden sm:block" />}
-
             {/* Stat pills */}
             {trustReport && (
               <>
+                <Separator orientation="vertical" className="h-4 hidden sm:block" />
                 <StatPill
                   count={trustReport.auto_verified}
                   label="Auto-verified"
@@ -252,11 +260,6 @@ export default function PlanTab({
               </>
             )}
           </div>
-          {planData.risk_explanation && (
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              {planData.risk_explanation}
-            </p>
-          )}
         </CardContent>
       </Card>
 
@@ -287,22 +290,33 @@ export default function PlanTab({
       {/* Block plan section */}
       {planData?.block_plans && planData.block_plans.length > 0 && (
         <div className="space-y-2">
-          <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setBlocksCollapsed((v) => !v)}
+            className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+          >
+            {blocksCollapsed ? (
+              <ChevronRight size={14} className="text-muted-foreground shrink-0" />
+            ) : (
+              <ChevronDown size={14} className="text-muted-foreground shrink-0" />
+            )}
             <h2 className="text-sm font-semibold text-foreground">Blocks</h2>
             <Badge variant="secondary" className="text-xs font-mono">
               {planData.block_plans.length}
             </Badge>
-          </div>
-          <BlockPlanTable
-            blockPlans={planData.block_plans}
-            isProposed={isProposed}
-            trustBlocks={trustBlocks}
-            jobId={jobId}
-            isAccepted={jobStatus === "accepted"}
-            onBlockRefineSuccess={onBlockRefineSuccess}
-            jobPythonCode={jobPythonCode}
-            generatedFiles={generatedFiles}
-          />
+          </button>
+          {!blocksCollapsed && (
+            <BlockPlanTable
+              blockPlans={planData.block_plans}
+              isProposed={isProposed}
+              trustBlocks={trustBlocks}
+              jobId={jobId}
+              isAccepted={jobStatus === "accepted"}
+              onBlockRefineSuccess={onBlockRefineSuccess}
+              jobPythonCode={jobPythonCode}
+              generatedFiles={generatedFiles}
+            />
+          )}
         </div>
       )}
     </div>

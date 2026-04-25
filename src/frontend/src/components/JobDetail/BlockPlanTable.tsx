@@ -35,7 +35,6 @@ import {
   ChevronDown,
   ChevronRight,
   Code2,
-  FileText,
   History,
   Info,
   Lock,
@@ -307,6 +306,7 @@ export default function BlockPlanTable({
   const [codeLoading, setCodeLoading] = useState(false);
   const [codeEditorDark, setCodeEditorDark] = useState(false);
   const initialCodeRef = useRef<string>("");
+  const decorationsRef = useRef<string[]>([]);
 
   useEffect(() => {
     if (!codeBlockId) return;
@@ -353,10 +353,7 @@ export default function BlockPlanTable({
     })();
   }, [codeBlockId, jobId, codeSasFile, generatedFiles, jobPythonCode]);
 
-  const [groupBy, setGroupBy] = useState<GroupBy>(() => {
-    const files = new Set(blockPlans.map((b) => b.source_file));
-    return files.size > 1 ? "folder" : "none";
-  });
+  const [groupBy, setGroupBy] = useState<GroupBy>("file");
   const [activeStrategies, setActiveStrategies] = useState<Set<string>>(
     new Set(),
   );
@@ -489,14 +486,11 @@ export default function BlockPlanTable({
               <th className="px-3 py-2 font-medium text-muted-foreground text-xs w-20">
                 Confidence
               </th>
-              <th className="px-3 py-2 font-medium text-muted-foreground text-xs w-12 text-center">
-                Why
-              </th>
-              <th className="px-3 py-2 font-medium text-muted-foreground text-xs w-14 text-center">
-                Recon
+              <th className="px-3 py-2 font-medium text-muted-foreground text-xs w-[120px] text-center">
+                Actions
               </th>
               <th className="px-3 py-2 font-medium text-muted-foreground text-xs w-[88px] text-right pr-3">
-                Actions
+                Reconciliation
               </th>
             </tr>
           </thead>
@@ -510,7 +504,7 @@ export default function BlockPlanTable({
                     className="bg-muted/20 cursor-pointer hover:bg-muted/40 select-none"
                     onClick={() => toggleGroup(key)}
                   >
-                    <td colSpan={8} className="px-3 py-1.5">
+                    <td colSpan={7} className="px-3 py-1.5">
                       <div className="flex items-center gap-2">
                         {collapsedGroups.has(key) ? (
                           <ChevronRight
@@ -622,48 +616,34 @@ export default function BlockPlanTable({
                           </span>
                         </td>
 
-                        {/* Rationale */}
-                        <td className="px-3 py-2 text-center w-12">
-                          {bp.rationale ? (
-                            <Popover>
-                              <PopoverTrigger
-                                className="inline-flex items-center justify-center h-6 w-6 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-                                aria-label="View rationale"
-                              >
-                                <FileText size={13} />
-                              </PopoverTrigger>
-                              <PopoverContent
-                                side="top"
-                                className="max-w-sm text-xs leading-relaxed"
-                              >
-                                {bp.rationale}
-                              </PopoverContent>
-                            </Popover>
-                          ) : (
-                            <span className="text-muted-foreground/50">—</span>
-                          )}
-                        </td>
-
-                        {/* Recon */}
-                        <td className="px-3 py-2 text-center w-14">
-                          {trust?.reconciliation_status === "pass" ? (
-                            <Badge className="bg-green-100 text-green-700 border-green-200 text-[10px] px-1.5 py-0">
-                              Pass
-                            </Badge>
-                          ) : trust?.reconciliation_status === "fail" ? (
-                            <Badge className="bg-red-100 text-red-700 border-red-200 text-[10px] px-1.5 py-0">
-                              Fail
-                            </Badge>
-                          ) : (
-                            <span className="text-muted-foreground text-xs">
-                              —
-                            </span>
-                          )}
-                        </td>
-
-                        {/* Actions */}
-                        <td className="px-2 py-2 w-22">
-                          <div className="flex items-center justify-end gap-0.5">
+                        {/* Actions (includes rationale) */}
+                        <td className="px-2 py-2 w-[120px]">
+                          <div className="flex items-center justify-center gap-0.5">
+                            {bp.rationale ? (
+                              <Popover>
+                                <Tooltip>
+                                  <TooltipTrigger
+                                    render={
+                                      <PopoverTrigger
+                                        className="inline-flex items-center justify-center h-6 w-6 rounded-lg hover:bg-muted hover:text-foreground text-muted-foreground transition-colors cursor-pointer"
+                                        aria-label="View rationale"
+                                      />
+                                    }
+                                  >
+                                    <Info size={13} />
+                                  </TooltipTrigger>
+                                  <TooltipContent>View rationale</TooltipContent>
+                                </Tooltip>
+                                <PopoverContent
+                                  side="top"
+                                  className="max-w-sm text-xs leading-relaxed"
+                                >
+                                  {bp.rationale}
+                                </PopoverContent>
+                              </Popover>
+                            ) : (
+                              <span className="inline-flex items-center justify-center h-6 w-6 text-muted-foreground/30 text-xs">—</span>
+                            )}
                             <Tooltip>
                               <TooltipTrigger
                                 className="inline-flex items-center justify-center h-6 w-6 rounded-lg hover:bg-muted hover:text-foreground text-muted-foreground transition-colors cursor-pointer"
@@ -706,6 +686,23 @@ export default function BlockPlanTable({
                               <TooltipContent>Revision history</TooltipContent>
                             </Tooltip>
                           </div>
+                        </td>
+
+                        {/* Recon */}
+                        <td className="px-3 py-2 text-center w-14">
+                          {trust?.reconciliation_status === "pass" ? (
+                            <Badge className="bg-green-100 text-green-700 border-green-200 text-[10px] px-1.5 py-0">
+                              Pass
+                            </Badge>
+                          ) : trust?.reconciliation_status === "fail" ? (
+                            <Badge className="bg-red-100 text-red-700 border-red-200 text-[10px] px-1.5 py-0">
+                              Fail
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground text-xs">
+                              —
+                            </span>
+                          )}
                         </td>
                       </tr>
                     );
@@ -812,6 +809,12 @@ export default function BlockPlanTable({
                       void queryClient.invalidateQueries({
                         queryKey: ["block-revisions", jobId, codeBlockId],
                       });
+                      void queryClient.invalidateQueries({
+                        queryKey: ["job", jobId],
+                      });
+                      void queryClient.invalidateQueries({
+                        queryKey: ["job", jobId, "versions"],
+                      });
                       setCodeBlockId(null);
                     } catch (err) {
                       toast.error(
@@ -880,13 +883,35 @@ export default function BlockPlanTable({
                   language="sas"
                   beforeMount={registerSasLanguage}
                   value={sasCode}
-                  onMount={((editor) => {
-                    const line = codeBlockId ? parseInt(codeBlockId.split(":").pop() ?? "1", 10) : 1;
-                    if (line > 1) {
-                      editor.revealLineInCenter(line);
-                      editor.setPosition({ lineNumber: line, column: 1 });
-                    }
-                  }) satisfies OnMount}
+                  onMount={
+                    ((editor, monaco) => {
+                      const line = codeBlockId
+                        ? parseInt(codeBlockId.split(":").pop() ?? "1", 10)
+                        : 1;
+                      if (line > 1) {
+                        editor.revealLineInCenter(line);
+                        editor.setPosition({ lineNumber: line, column: 1 });
+                      }
+                      const startLine = line > 0 ? line : 1;
+                      const endLine = startLine + 20;
+                      decorationsRef.current = editor.deltaDecorations(
+                        decorationsRef.current,
+                        [
+                          {
+                            range: new monaco.Range(startLine, 1, endLine, 1),
+                            options: {
+                              isWholeLine: true,
+                              className: "monaco-block-highlight",
+                              overviewRuler: {
+                                color: "rgba(99, 102, 241, 0.3)",
+                                position: 1,
+                              },
+                            },
+                          },
+                        ],
+                      );
+                    }) satisfies OnMount
+                  }
                   options={{
                     readOnly: true,
                     minimap: { enabled: false },
