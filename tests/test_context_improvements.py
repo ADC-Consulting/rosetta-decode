@@ -1,10 +1,9 @@
-"""Tests for agentic pipeline context improvements (DataFileInfo, shared_context, stub).
+"""Tests for agentic pipeline context improvements (DataFileInfo, stub, sniff).
 
 Covers:
 - DataFileInfo model construction
 - JobContext new fields have default_factory (no breakage)
 - windowed_context() includes macro/autoexec source files and passes data_files/libname_map
-- build_context_section() rendering logic
 - StubGenerator.generate() with data_files catalogue
 - _StrategyStubAdapter passes data_files to generate()
 - _sniff_file() CSV/TSV/XLSX/sas7bdat branches and error handling
@@ -13,7 +12,6 @@ Covers:
 from unittest.mock import MagicMock, patch
 
 import pytest
-from src.worker.engine.agents.shared_context import build_context_section
 from src.worker.engine.models import BlockType, DataFileInfo, JobContext, SASBlock
 from src.worker.engine.router import _StrategyStubAdapter
 from src.worker.engine.stub_generator import StubGenerator
@@ -133,68 +131,6 @@ def test_windowed_context_no_macro_files() -> None:
     assert windowed.source_files == {}
 
 
-# ── build_context_section ─────────────────────────────────────────────────────
-
-
-def test_build_context_section_empty() -> None:
-    ctx = _make_context()
-    assert build_context_section(ctx) == ""
-
-
-def test_build_context_section_libname_only() -> None:
-    ctx = _make_context(libname_map={"rawdir": "data/raw/", "outdir": "data/output/"})
-    section = build_context_section(ctx)
-    assert "## Project context" in section
-    assert "### SAS libname / filename mappings" in section
-    assert "rawdir → data/raw/" in section
-    assert "outdir → data/output/" in section
-    assert "For any file I/O block" in section
-
-
-def test_build_context_section_data_files_only() -> None:
-    ctx = _make_context(
-        data_files={
-            "data/raw/customers.csv": DataFileInfo(
-                path="data/raw/customers.csv",
-                disk_path="/tmp/customers.csv",
-                extension=".csv",
-                columns=["id", "name"],
-                row_count=42,
-            )
-        }
-    )
-    section = build_context_section(ctx)
-    assert "### Data files in this project" in section
-    assert "data/raw/customers.csv" in section
-    assert "[columns: id, name]" in section
-    assert "(42 rows)" in section
-
-
-def test_build_context_section_no_libnames_subsection_when_empty() -> None:
-    ctx = _make_context(
-        data_files={
-            "data/raw/x.csv": DataFileInfo(
-                path="data/raw/x.csv", disk_path="/tmp/x.csv", extension=".csv"
-            )
-        }
-    )
-    section = build_context_section(ctx)
-    assert "### SAS libname" not in section
-
-
-def test_build_context_section_columns_omitted_when_empty() -> None:
-    ctx = _make_context(
-        data_files={
-            "data/raw/x.csv": DataFileInfo(
-                path="data/raw/x.csv", disk_path="/tmp/x.csv", extension=".csv"
-            )
-        }
-    )
-    section = build_context_section(ctx)
-    assert "[columns:" not in section
-    assert "(None rows)" not in section
-
-
 # ── StubGenerator ─────────────────────────────────────────────────────────────
 
 
@@ -202,8 +138,8 @@ def test_stub_generator_manual_ingestion_no_data_files() -> None:
     stub = StubGenerator()
     block = _make_block()
     gb = stub.generate(block, strategy="manual_ingestion")
-    assert 'pd.read_csv("path/to/input.csv")' in gb.python_code
-    assert gb.is_untranslatable is True
+    assert 'pd.read_csv("/workspace/data/' in gb.python_code
+    assert gb.is_untranslatable is False
 
 
 def test_stub_generator_manual_ingestion_with_real_path() -> None:
@@ -263,7 +199,7 @@ async def test_strategy_stub_adapter_empty_data_files() -> None:
     ctx = _make_context()
     block = _make_block()
     gb = await adapter.translate(block, ctx)
-    assert 'pd.read_csv("path/to/input.csv")' in gb.python_code
+    assert 'pd.read_csv("/workspace/data/' in gb.python_code
 
 
 # ── _sniff_file ───────────────────────────────────────────────────────────────

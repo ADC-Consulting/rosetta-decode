@@ -67,7 +67,7 @@ _PLANNER_RESULT = PlannerResult(
             "source_file": "etl.sas",
             "start_line": 2,
             "block_type": "DATA_STEP",
-            "strategy": "translate",
+            "strategy": "translated",
             "risk": "low",
             "rationale": "Simple SET/filter step with no complex constructs.",
             "estimated_effort": "low",
@@ -77,7 +77,7 @@ _PLANNER_RESULT = PlannerResult(
             "source_file": "etl.sas",
             "start_line": 7,
             "block_type": "PROC_SQL",
-            "strategy": "translate",
+            "strategy": "translated",
             "risk": "medium",
             "rationale": "Straightforward SELECT but references cross-file dataset.",
             "estimated_effort": "medium",
@@ -137,7 +137,7 @@ async def test_plan_block_strategy_and_risk(
     plan = await agent.plan(_CONTEXT)
     first = plan.block_plans[0]
     assert first.block_id == "etl.sas:2"
-    assert first.strategy == TranslationStrategy.TRANSLATE
+    assert first.strategy == TranslationStrategy.TRANSLATED
     assert first.risk == BlockRisk.LOW
 
 

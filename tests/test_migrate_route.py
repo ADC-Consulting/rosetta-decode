@@ -77,3 +77,45 @@ async def test_upload_invalid_ref_dataset_rejected(client: AsyncClient) -> None:
         ],
     )
     assert response.status_code == 400
+
+
+# ── ref_csv upload ────────────────────────────────────────────────────────────
+
+_FAKE_CSV = b"col_a,col_b\n1,2\n3,4\n"
+
+
+@pytest.mark.asyncio
+async def test_upload_ref_csv_stores_path_in_files(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    response = await client.post(
+        "/migrate",
+        files=[
+            ("sas_files", ("script.sas", _MINIMAL_SAS, "text/plain")),
+            ("ref_csv", ("reference.csv", _FAKE_CSV, "text/csv")),
+        ],
+    )
+    assert response.status_code == 200
+    job_id = response.json()["job_id"]
+
+    from sqlalchemy import select
+    from src.backend.db.models import Job
+
+    result = await db_session.execute(select(Job).where(Job.id == job_id))
+    job = result.scalar_one()
+
+    assert "__ref_csv__" in job.files
+    assert job.files["__ref_csv__"].endswith(".csv")
+
+
+@pytest.mark.asyncio
+async def test_upload_invalid_ref_csv_rejected(client: AsyncClient) -> None:
+    response = await client.post(
+        "/migrate",
+        files=[
+            ("sas_files", ("script.sas", _MINIMAL_SAS, "text/plain")),
+            ("ref_csv", ("data.xlsx", b"not a csv", "application/octet-stream")),
+        ],
+    )
+    assert response.status_code == 400
+    assert "ref_csv must be a .csv file" in response.json()["detail"]

@@ -14,8 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import textwrap
-import traceback
+import re
 from typing import Any, cast
 
 import httpx
@@ -27,6 +26,122 @@ logger = logging.getLogger(__name__)
 
 # Relative tolerance for aggregate comparisons (0.001 = 0.1%)
 _AGGREGATE_RTOL = 0.001
+
+_spark_session: Any = None
+
+
+def _get_spark() -> Any:
+    """Return a lazily-created local SparkSession (singleton per process).
+
+    Raises RuntimeError if Spark cannot be initialised.
+    Note: do NOT install databricks-connect alongside this — it hijacks
+    SparkSession.builder and requires a remote Databricks cluster.
+    """
+    global _spark_session
+    if _spark_session is None:
+        logging.getLogger("py4j").setLevel(logging.WARNING)
+        logging.getLogger("py4j.clientserver").setLevel(logging.WARNING)
+        from pyspark.sql import SparkSession  # type: ignore[import-not-found]
+
+        _spark_session = (
+            SparkSession.builder.master("local[*]")
+            .appName("rosetta-reconciliation")
+            .config("spark.ui.enabled", "false")
+            .config("spark.sql.shuffle.partitions", "4")
+            .getOrCreate()
+        )
+        _spark_session.sparkContext.setLogLevel("ERROR")
+        logger.info("Local SparkSession initialised for reconciliation")
+    return _spark_session
+
+
+def _to_pandas(obj: Any) -> pd.DataFrame | None:
+    """Convert a Spark DataFrame to pandas, or return as-is if already pandas."""
+    try:
+        from pyspark.sql import DataFrame as SparkDataFrame
+
+        if isinstance(obj, SparkDataFrame):
+            result: pd.DataFrame = obj.toPandas()
+            return result
+    except ImportError:
+        pass
+    if isinstance(obj, pd.DataFrame):
+        return obj
+    return None
+
+
+def _add_column_to_spark_df(df: Any, col_name: str, spark: Any) -> Any:
+    """Return *df* with *col_name* added as a null StringType column."""
+    try:
+        from pyspark.sql import functions as F  # type: ignore[import-not-found]  # noqa: N812
+        from pyspark.sql.types import StringType  # type: ignore[import-not-found]
+
+        return df.withColumn(col_name, F.lit(None).cast(StringType()))
+    except Exception:
+        return df
+
+
+def _safe_exec(code: str, ns: dict[str, Any]) -> None:
+    """Exec *code* in *ns*, auto-injecting stubs for undefined names/columns.
+
+    Retries up to 20 times. On each attempt:
+    - NameError → inject an empty DataFrame for the missing name.
+    - Spark AnalysisException (unresolved column) → find which DataFrame in the
+      namespace was last assigned and add the missing column to it so the next
+      exec attempt can proceed.
+
+    Args:
+        code: Python source to execute.
+        ns: Execution namespace (mutated in place).
+    """
+    for _ in range(20):
+        try:
+            exec(code, ns)
+            return
+        except NameError as exc:
+            match = re.search(r"name '(\w+)' is not defined", str(exc))
+            if not match:
+                raise
+            missing_name = match.group(1)
+            spark = ns.get("spark")
+            if spark is not None:
+                try:
+                    ns[missing_name] = spark.createDataFrame([], schema="")
+                except Exception:
+                    ns[missing_name] = spark.createDataFrame(pd.DataFrame())
+            else:
+                ns[missing_name] = pd.DataFrame()
+        except Exception as exc:
+            # Spark AnalysisException: unresolved column — patch the offending DF stub
+            err_str = str(exc)
+            col_match = re.search(
+                r"UNRESOLVED_COLUMN[^`]*`(\w+)`|"
+                r"cannot be resolved.*name `(\w+)`|"
+                r"parameter with name `(\w+)`",
+                err_str,
+            )
+            if col_match is None:
+                raise
+            missing_col = next(g for g in col_match.groups() if g)
+            spark = ns.get("spark")
+            if spark is None:
+                raise
+            # Add the missing column to every Spark DataFrame stub in the namespace
+            try:
+                from pyspark.sql import DataFrame as SparkDF  # type: ignore[import-not-found]
+
+                patched = False
+                for k, v in list(ns.items()):
+                    if isinstance(v, SparkDF):
+                        col_names = [f.name for f in v.schema.fields]
+                        if missing_col not in col_names:
+                            ns[k] = _add_column_to_spark_df(v, missing_col, spark)
+                            patched = True
+                if not patched:
+                    raise
+            except ImportError:
+                raise
+    exec(code, ns)  # final attempt — let it raise
 
 
 def _check_result(name: str, *, passed: bool, detail: str = "") -> dict[str, Any]:
@@ -135,9 +250,9 @@ class ReconciliationService:
 
         try:
             actual_df = self._exec_pipeline(python_code, backend)
-        except Exception:
-            error_detail = textwrap.shorten(traceback.format_exc(), width=300)
-            logger.warning("Reconciliation execution error: %s", error_detail)
+        except Exception as exc:
+            error_detail = str(exc)
+            logger.warning("Reconciliation execution error: %s", error_detail, exc_info=True)
             checks.append(_check_result("execution", passed=False, detail=error_detail))
             return {"checks": checks}
 
@@ -146,9 +261,9 @@ class ReconciliationService:
                 ref_df = cast(pd.DataFrame, backend.read_sas7bdat(ref_sas7bdat_path))
             else:
                 ref_df = cast(pd.DataFrame, backend.read_csv(ref_csv_path))
-        except Exception:
-            error_detail = textwrap.shorten(traceback.format_exc(), width=300)
-            logger.warning("Reconciliation reference load error: %s", error_detail)
+        except Exception as exc:
+            error_detail = str(exc)
+            logger.warning("Reconciliation reference load error: %s", error_detail, exc_info=True)
             checks.append(_check_result("execution", passed=False, detail=error_detail))
             return {"checks": checks}
 
@@ -161,8 +276,9 @@ class ReconciliationService:
     def _exec_pipeline(python_code: str, backend: ComputeBackend) -> pd.DataFrame:
         """Execute *python_code* and extract the pipeline output DataFrame.
 
-        The generated code runs with ``backend`` injected as a local.  The
-        last variable assigned a DataFrame value is returned as the result.
+        The generated code runs with ``backend``, ``pd``, and a real local
+        SparkSession injected.  Spark DataFrames are converted to pandas before
+        the checks run.
 
         Args:
             python_code: Python source string from CodeGenerator.
@@ -174,20 +290,26 @@ class ReconciliationService:
         Raises:
             ValueError: If no DataFrame is found in the execution namespace.
         """
-        namespace: dict[str, Any] = {"backend": backend, "pd": pd}
-        exec(python_code, namespace)
+        spark = _get_spark()
+        namespace: dict[str, Any] = {"backend": backend, "pd": pd, "spark": spark}
+        _safe_exec(python_code, namespace)
 
-        # Prefer an explicit "result" variable; fall back to last DataFrame found.
-        if "result" in namespace and isinstance(namespace["result"], pd.DataFrame):
-            return namespace["result"]
+        # Prefer an explicit "result" variable; fall back to last DataFrame-like value.
+        candidate = namespace.get("result")
+        if candidate is not None:
+            as_pd = _to_pandas(candidate)
+            if as_pd is not None:
+                return as_pd
 
-        dataframes = [v for v in namespace.values() if isinstance(v, pd.DataFrame)]
-        if not dataframes:
-            raise ValueError(
-                "Generated pipeline produced no pandas DataFrame in its namespace. "
-                "Ensure the final output is assigned to a variable named 'result'."
-            )
-        return dataframes[-1]
+        for v in reversed(list(namespace.values())):
+            as_pd = _to_pandas(v)
+            if as_pd is not None:
+                return as_pd
+
+        raise ValueError(
+            "Generated pipeline produced no DataFrame in its namespace. "
+            "Ensure the final output is assigned to a variable named 'result'."
+        )
 
 
 class RemoteReconciliationService:

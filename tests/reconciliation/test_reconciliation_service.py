@@ -45,7 +45,7 @@ def test_exec_error_returns_execution_fail() -> None:
     assert len(checks) == 1
     assert checks[0]["name"] == "execution"
     assert checks[0]["status"] == "fail"
-    assert "Traceback" in checks[0]["detail"]
+    assert "boom" in checks[0]["detail"]
 
 
 @pytest.mark.reconciliation

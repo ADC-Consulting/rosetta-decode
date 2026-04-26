@@ -53,8 +53,9 @@ class StubGenerator:
                             break
                     if real_path:
                         break
-            # Use disk_path (absolute) so the script can run locally as-is
-            ingestion_path = disk_path or real_path or "path/to/input.csv"
+            # Prefer the normalised relative path key so the generated script is portable;
+            # fall back to disk_path if no catalogue match, then a workspace-relative default.
+            ingestion_path = real_path or disk_path or f"/workspace/data/{dataset_name}.csv"
             python_code = (
                 "import pandas as pd\n\n"
                 f"# SAS: {block.source_file}:{block.start_line}\n"

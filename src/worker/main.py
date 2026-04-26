@@ -18,6 +18,7 @@ from src.worker.engine.agents.analysis import AnalysisAgent
 from src.worker.engine.agents.data_step import DataStepAgent
 from src.worker.engine.agents.documentation import DocumentationAgent
 from src.worker.engine.agents.failure_interpreter import FailureInterpreterAgent
+from src.worker.engine.agents.generic_proc import GenericProcAgent
 from src.worker.engine.agents.lineage_enricher import LineageEnricherAgent
 from src.worker.engine.agents.migration_planner import MigrationPlannerAgent
 from src.worker.engine.agents.plain_english import PlainEnglishAgent
@@ -44,6 +45,12 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
     stream=sys.stdout,
 )
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("pydantic_ai").setLevel(logging.WARNING)
+logging.getLogger("anthropic").setLevel(logging.WARNING)
+logging.getLogger("openai").setLevel(logging.WARNING)
+logging.getLogger("openai._base_client").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 
@@ -200,6 +207,88 @@ def _dataset_matches_file(
     return False
 
 
+def _build_recon_groups(
+    blocks: list["SASBlock"],
+    context: "JobContext",
+    job_ref_csv: str,
+    job_ref_sas: str,
+) -> dict[int, tuple[str, str]]:
+    """Return mapping of block_index → (ref_csv_path, ref_sas_path) for reconciliation.
+
+    A block belongs to a reconciliation group defined by the reference file that
+    its outputs, directly or transitively, feed into. The group's reference file
+    is the uploaded data file matching that terminal output dataset.
+
+    Blocks with no output_datasets (macro utilities, assertions, print blocks) are
+    excluded from reconciliation — they cannot produce a comparable dataset.
+
+    When context.data_files is empty, all blocks with outputs fall back to the
+    job-level ref CSV/SAS7BDAT.
+
+    Algorithm:
+    1. Build dataset→[block_indices] map from direct output_datasets.
+    2. For each reference file, BFS backwards through input_datasets to find all
+       blocks that transitively contribute to that file's dataset.
+    3. Assign each block the most specific reference file found; fall back to
+       job-level ref for blocks with outputs that don't trace to any uploaded file.
+    """
+    # Map: dataset name (lowercased) → list of block indices that output it
+    dataset_to_blocks: dict[str, list[int]] = {}
+    for idx, block in enumerate(blocks):
+        for ds in block.output_datasets:
+            dataset_to_blocks.setdefault(ds.lower(), []).append(idx)
+
+    # Map: block index → (ref_csv, ref_sas) — start with no assignment
+    assignment: dict[int, tuple[str, str]] = {}
+
+    for norm_path, info in context.data_files.items():
+        ext = info.extension
+        if ext in (".csv", ".tsv"):
+            ref_pair = (info.disk_path, "")
+        elif ext == ".sas7bdat":
+            ref_pair = ("", info.disk_path)
+        else:
+            continue
+
+        # Seed: datasets whose name matches this reference file stem
+        file_stem = norm_path.rsplit("/", 1)[-1].rsplit(".", 1)[0].lower()
+        frontier: set[str] = {file_stem}
+
+        # Also resolve via libname_map
+        for alias, path in context.libname_map.items():
+            if path == norm_path or path.startswith(norm_path.rsplit("/", 1)[0]):
+                frontier.add(alias)
+
+        visited_datasets: set[str] = set()
+        group_indices: set[int] = set()
+
+        while frontier:
+            ds = frontier.pop()
+            if ds in visited_datasets:
+                continue
+            visited_datasets.add(ds)
+            for idx in dataset_to_blocks.get(ds, []):
+                if idx not in group_indices:
+                    group_indices.add(idx)
+                    # Walk backwards through this block's inputs
+                    for inp in blocks[idx].input_datasets:
+                        frontier.add(inp.lower())
+
+        for idx in group_indices:
+            # Most specific wins — don't overwrite with a less specific assignment
+            if idx not in assignment:
+                assignment[idx] = ref_pair
+
+    # Blocks with outputs but no group assignment → job-level fallback
+    fallback = (job_ref_csv, job_ref_sas)
+    for idx, block in enumerate(blocks):
+        if block.output_datasets and idx not in assignment:
+            assignment[idx] = fallback
+
+    # Blocks with no outputs → not assigned (no reconciliation)
+    return assignment
+
+
 class JobOrchestrator:
     """Runs the full agentic migration pipeline for a single job."""
 
@@ -211,6 +300,7 @@ class JobOrchestrator:
             data_step_agent=DataStepAgent(),
             proc_agent=ProcAgent(),
             stub_generator=stub,
+            generic_proc_agent=GenericProcAgent(),
         )
         self._codegen = CodeGenerator()
         self._reconciler = ReconciliationService()
@@ -248,8 +338,9 @@ class JobOrchestrator:
                 raise
         except Exception as exc:
             logger.warning("Job %s failed: %s", job.id, exc)
+            await session.rollback()
             await session.execute(
-                update(Job).where(Job.id == job.id).values(status="failed", error=str(exc))
+                update(Job).where(Job.id == job.id).values(status="failed", error=str(exc)[:500])
             )
             await session.commit()
 
@@ -274,8 +365,19 @@ class JobOrchestrator:
 
         # Build data-file catalogue from __ref_* sentinel keys
         data_files: dict[str, DataFileInfo] = {}
+        log_contents: dict[str, str] = {}
         for key, disk_path in job.files.items():
             if not key.startswith("__ref_") or not key.endswith("__"):
+                continue
+            # Handle log sentinels: __ref_log_<norm_path>__
+            if key.startswith("__ref_log_"):
+                norm_path = key[len("__ref_log_") : -2]
+                if norm_path:
+                    try:
+                        with open(disk_path) as _fh:
+                            log_contents[norm_path] = _fh.read()
+                    except OSError as _exc:
+                        logger.warning("Could not read log file %s: %s", disk_path, _exc)
                 continue
             # key format: __ref_{ext}_{normalized_path}__
             inner = key[len("__ref_") : -2]  # e.g. "csv_data/raw/customers.csv"
@@ -332,6 +434,7 @@ class JobOrchestrator:
                 "blocks": expanded_blocks,
                 "data_files": data_files,
                 "libname_map": libname_map,
+                "log_contents": log_contents,
             }
         )
         if expansion_warnings:
@@ -354,7 +457,7 @@ class JobOrchestrator:
             prior_python_code = refine_context.get("prior_python_code") or None
             hint = refine_context.get("hint") or None
 
-        generated = await self._translate_two_phase(
+        generated, recon_failed = await self._translate_two_phase(
             expanded_blocks,
             context,
             ref_csv_path,
@@ -371,10 +474,9 @@ class JobOrchestrator:
             generated, macro_vars=parse_result.macro_vars
         )
 
-        # Step 6: Final reconciliation
+        # Step 6: Final reconciliation — runs in executor container (isolates Spark from worker)
         backend = BackendFactory.create()
-        report = await asyncio.to_thread(
-            self._reconciler.run,
+        report = await RemoteReconciliationService().run(
             ref_csv_path,
             python_code,
             backend,
@@ -427,12 +529,17 @@ class JobOrchestrator:
         if lineage_data is not None and context.data_files:
             lineage_data = _inject_data_file_nodes(lineage_data, blocks, context)
 
-        # Step 10: Persist
+        # Step 10: Persist — use under_review if recon failed, proposed if all passed
+        final_status = "under_review" if recon_failed else "proposed"
+        if recon_failed:
+            logger.warning(
+                "Job %s completed with reconciliation failures — status=under_review", job.id
+            )
         await session.execute(
             update(Job)
             .where(Job.id == job.id)
             .values(
-                status="proposed",
+                status=final_status,
                 python_code=python_code,
                 generated_files=generated_files,
                 migration_plan=(
@@ -568,7 +675,7 @@ class JobOrchestrator:
         *,
         prior_python_code: str | None = None,
         hint: str | None = None,
-    ) -> list[GeneratedBlock]:
+    ) -> tuple[list[GeneratedBlock], bool]:
         """Translate blocks using an explicit two-phase sequence.
 
         Phase 1: translate all blocks, reconcile. Return immediately if passed.
@@ -584,16 +691,22 @@ class JobOrchestrator:
             hint: Reviewer hint to prepend to the LLM prompt (from refine context).
 
         Returns:
-            Final list of GeneratedBlock instances.
+            (generated_blocks, recon_failed) tuple.
         """
-        # Phase 1 — translate all blocks then reconcile
-        generated_v1 = await self._translate_blocks(blocks, context, prior_python_code, hint)
+        # Phase 1 — translate all blocks with group-aware per-block reconciliation
+        generated_v1, recon_failed = await self._translate_blocks(
+            blocks, context, ref_csv_path, ref_sas7bdat_path, prior_python_code, hint
+        )
+
+        # If per-block recon already flagged failure, skip phase 2 — return what we have
+        if recon_failed:
+            return generated_v1, True
+
         python_code_v1 = self._codegen.assemble_flat(
             generated_v1, macro_vars=context.resolved_macros
         )
         backend = BackendFactory.create()
-        raw_report_v1 = await asyncio.to_thread(
-            self._reconciler.run,
+        raw_report_v1 = await RemoteReconciliationService().run(
             ref_csv_path,
             python_code_v1,
             backend,
@@ -605,7 +718,7 @@ class JobOrchestrator:
             else raw_report_v1
         )
         if report_v1.passed or not report_v1.diff_summary:
-            return generated_v1
+            return generated_v1, False
 
         # Phase 2 — interpret failure and re-translate the affected block only
         try:
@@ -614,22 +727,31 @@ class JobOrchestrator:
             )
         except Exception as exc:
             logger.warning("FailureInterpreterAgent failed, skipping phase 2: %s", exc)
-            return generated_v1
+            return generated_v1, False
 
         generated_v2 = await self._retry_affected_block(
             blocks, generated_v1, context, affected_id, retry_hint
         )
         context = context.model_copy(update={"retry_count": context.retry_count + 1})
-        return generated_v2
+        return generated_v2, False
 
     async def _translate_blocks(
         self,
         blocks: list[SASBlock],
         context: JobContext,
+        ref_csv_path: str = "",
+        ref_sas7bdat_path: str = "",
         prior_python_code: str | None = None,
         hint: str | None = None,
-    ) -> list[GeneratedBlock]:
-        """Translate every block via the TranslationRouter."""
+    ) -> tuple[list[GeneratedBlock], bool]:
+        """Translate every block via the TranslationRouter. No per-block reconciliation.
+
+        Reconciliation runs once after all blocks are translated (in _translate_two_phase).
+        Always returns recon_failed=False; the caller determines pass/fail from the full recon.
+
+        Returns:
+            (generated_blocks, False)
+        """
         effective_context = context
         extra_flags: list[str] = []
         if prior_python_code:
@@ -647,13 +769,27 @@ class JobOrchestrator:
                 block_plan_map[bp.block_id] = bp
 
         generated: list[GeneratedBlock] = []
+
         for block in blocks:
             block_id = f"{block.source_file}:{block.start_line}"
             block_plan = block_plan_map.get(block_id)
             translator = self._router.route(block, block_plan=block_plan)
-            gb = await translator.translate(block, effective_context)
+            agent_name = type(translator).__name__
+            logger.info("[F19] %s block %s --> translating", agent_name, block_id)
+            try:
+                gb = await translator.translate(block, effective_context)
+            except Exception as exc:
+                logger.warning(
+                    "[F19] %s block %s --> translation error: %s",
+                    agent_name,
+                    block_id,
+                    type(exc).__name__,
+                )
+                continue
             generated.append(gb)
-        return generated
+
+        # Reconciliation runs once after all blocks are translated (see _translate_two_phase).
+        return generated, False
 
     async def _retry_affected_block(
         self,
@@ -795,11 +931,28 @@ def _recon_summary(report: object) -> str | None:
     return f"Reconciliation {status}. {getattr(report, 'diff_summary', '')}"
 
 
+async def _recover_stale_jobs(session: AsyncSession) -> None:
+    """Reset any jobs stuck in 'running' back to 'queued' at startup.
+
+    Jobs left in 'running' after a worker crash would never be retried otherwise.
+    """
+    result = await session.execute(
+        update(Job).where(Job.status == "running").values(status="queued").returning(Job.id)
+    )
+    recovered = [row[0] for row in result.fetchall()]
+    if recovered:
+        await session.commit()
+        logger.warning("Recovered %d stale running job(s) → queued: %s", len(recovered), recovered)
+
+
 async def poll_loop() -> None:
     """Continuously poll for queued jobs and process them."""
     session_factory = _make_session_factory()
     orchestrator = JobOrchestrator()
     logger.info("Worker started — polling every %ds", worker_settings.poll_interval_seconds)
+
+    async with session_factory() as session:
+        await _recover_stale_jobs(session)
 
     while True:
         async with session_factory() as session:

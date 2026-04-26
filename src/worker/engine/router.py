@@ -262,8 +262,7 @@ class TranslationRouter:
 
         When a *block_plan* is provided, strategy-based overrides are applied
         before falling through to the block_type dispatch:
-        - ``manual`` / ``manual_ingestion`` → stub generator (human must write code)
-        - ``skip`` → stub generator (block is intentionally omitted)
+        - ``manual`` → stub generator (block has no Python equivalent)
         - all other strategies → normal block_type routing
 
         Args:
@@ -279,14 +278,10 @@ class TranslationRouter:
         """
         if block_plan is not None:
             match block_plan.strategy:
-                case TranslationStrategy.MANUAL_INGESTION:
-                    return _StrategyStubAdapter(self._stub_generator, "manual_ingestion")
                 case TranslationStrategy.MANUAL:
                     return self._stub_generator
-                case TranslationStrategy.SKIP:
-                    return self._stub_generator
                 case _:
-                    pass  # translate / translate_with_review fall through
+                    pass  # translated / translated_with_review / translate_best_effort fall through
 
         match block.block_type:
             case BlockType.DATA_STEP:

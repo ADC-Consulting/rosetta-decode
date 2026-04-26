@@ -163,8 +163,14 @@ module = ["src.worker.engine.router"]
 ignore_errors = true
 
 [[tool.mypy.overrides]]
-# test_worker_main has pre-existing type issues from the broader test suite
-module = ["tests.test_worker_main"]
+# these test files have pre-existing type issues; exclude from strict checks
+module = [
+    "tests.test_worker_main",
+    "tests.test_refine_loop",
+    "tests.test_jobs_routes_comprehensive",
+    "tests.test_worker_main_comprehensive",
+    "tests.test_worker_main_coverage",
+]
 ignore_errors = true
 
 # ---------- Pytest ----------
