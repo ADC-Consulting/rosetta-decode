@@ -254,11 +254,10 @@ class AcceptJobRequest(BaseModel):
 
 
 StrategyLiteral = Literal[
-    "translate",
-    "translate_with_review",
-    "manual_ingestion",
+    "translated",
+    "translated_with_review",
+    "translate_best_effort",
     "manual",
-    "skip",
 ]
 
 

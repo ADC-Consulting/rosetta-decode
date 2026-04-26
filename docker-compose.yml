@@ -32,6 +32,7 @@ services:
       - .env
     environment:
       - DATABASE_URL=postgresql+asyncpg://rosetta:rosetta@postgres:5432/rosetta
+      - UPLOAD_DIR=/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -73,6 +74,7 @@ services:
       - .env
     environment:
       - DATABASE_URL=postgresql+asyncpg://rosetta:rosetta@postgres:5432/rosetta
+      - UPLOAD_DIR=/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -80,6 +82,8 @@ services:
         condition: service_started
     networks:
       - rosetta-net
+    volumes:
+      - uploads:/uploads
 
   executor:
     build:
@@ -91,8 +95,10 @@ services:
       - rosetta-net
     volumes:
       - uploads:/uploads
+      - uploads:/workspace/data:ro
     environment:
       - PYTHONUNBUFFERED=1
+      - WORKSPACE_DATA_DIR=/workspace/data
 
   frontend:
     build:

@@ -82,7 +82,9 @@ async def migrate(
     session: AsyncSession = Depends(get_async_session),
     ref_dataset: UploadFile | None = None,
     zip_file: UploadFile | None = None,
+    ref_csv: UploadFile | None = None,
     name: str | None = Form(default=None),
+    ref_target_path: str | None = Form(default=None),
 ) -> MigrateResponse:
     """Accept SAS files or a zip archive and enqueue a migration job.
 
@@ -91,7 +93,10 @@ async def migrate(
         session: Injected async database session.
         ref_dataset: Optional .sas7bdat reference dataset for reconciliation.
         zip_file: A zip archive of SAS and supporting files (mutually exclusive with sas_files).
+        ref_csv: Optional .csv reference dataset stored as ``__ref_csv__`` for reconciliation.
         name: Optional human-readable label for the migration job.
+        ref_target_path: Optional path of a zip-extracted file to promote as the canonical
+            reconciliation reference (``__ref_csv__`` or ``__ref_sas7bdat__``).
 
     Returns:
         MigrateResponse with job UUID, accepted file list, and any rejected files.
@@ -159,6 +164,37 @@ async def migrate(
             with open(dest_path, "wb") as fh:
                 fh.write(ref_raw)
             file_contents["__ref_sas7bdat__"] = dest_path
+
+        if ref_csv is not None:
+            ref_csv_name = ref_csv.filename or "reference.csv"
+            if not ref_csv_name.lower().endswith(".csv"):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"ref_csv must be a .csv file; got '{ref_csv_name}'.",
+                )
+            csv_raw = await ref_csv.read()
+            hasher.update(csv_raw)
+            os.makedirs(backend_settings.upload_dir, exist_ok=True)
+            dest_path = os.path.join(backend_settings.upload_dir, f"{job_id}_{ref_csv_name}")
+            with open(dest_path, "wb") as fh:
+                fh.write(csv_raw)
+            file_contents["__ref_csv__"] = dest_path
+
+    # Promote a zip-extracted file to the canonical __ref_csv__ / __ref_sas7bdat__ sentinel
+    if ref_target_path:
+        ext = os.path.splitext(ref_target_path)[1].lower()
+        norm_target = ref_target_path.replace("\\", "/")
+        for key, disk_path in file_contents.items():
+            if (
+                key.startswith(f"__ref_{ext.lstrip('.')}_")
+                and key.endswith("__")
+                and norm_target in key
+            ):
+                if ext == ".csv":
+                    file_contents["__ref_csv__"] = disk_path
+                elif ext == ".sas7bdat":
+                    file_contents["__ref_sas7bdat__"] = disk_path
+                break
 
     input_hash = hasher.hexdigest()
 
