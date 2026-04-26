@@ -6,6 +6,14 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-04-26 (session — Codegen/executor fixes)
+
+- **Output variable naming convention:** output dataset variables use TABLE STEM ONLY (no libname prefix) — `DATA outdir.foo` → Python var `foo`; input datasets keep full `libname_table` form since they are pre-loaded. Rationale: prevents agents from referencing the output as if it were an input. · revisit never
+- **`build_context_section()` removed:** was dead code (never called by any agent); log context now injected inline in each agent's `_build_prompt()` · revisit never
+- **`result` as canonical executor output variable:** `assemble_flat()` appends `result = <output_var>` so the executor result-capture snippet can find it reliably via `globals().get('result')` · revisit never
+
+---
+
 ## 2026-04-25 (session — Agentic pipeline context + Editor UX polish)
 
 - **`manual_ingestion` is not untranslatable:** PROC IMPORT and similar I/O blocks have clear Python equivalents (`pd.read_csv`); they get `is_untranslatable=False`, `confidence_score=0.7`, and a `# TODO: verify delimiter and encoding` comment · revisit never

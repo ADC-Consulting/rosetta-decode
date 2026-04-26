@@ -102,7 +102,9 @@ async def list_jobs(
                 updated_at=j.updated_at,
                 error=j.error,
                 name=j.name,
-                file_count=len(j.files or {}),
+                file_count=sum(
+                    1 for k in (j.files or {}) if not (k.startswith("__") and k.endswith("__"))
+                ),
             )
             for j in jobs
         ]
@@ -351,7 +353,7 @@ async def download_job(
     job = result.scalar_one_or_none()
     if job is None:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
-    if job.status not in ("proposed", "accepted", "done"):
+    if job.status not in ("proposed", "accepted", "under_review", "done"):
         raise HTTPException(status_code=409, detail="Job is not yet complete.")
 
     audit_payload = {
@@ -465,7 +467,7 @@ async def get_job_plan(
     job = result.scalar_one_or_none()
     if job is None:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
-    if job.status not in ("proposed", "accepted", "done"):
+    if job.status not in ("proposed", "accepted", "under_review", "done"):
         return JSONResponse(status_code=202, content={"status": job.status})
     if job.migration_plan is None:
         return JSONResponse(
@@ -479,7 +481,7 @@ async def get_job_plan(
     return JobPlanResponse(**job.migration_plan, job_id=job.id)
 
 
-_REVIEW_STATUSES = frozenset({"proposed", "accepted"})
+_REVIEW_STATUSES = frozenset({"proposed", "accepted", "under_review"})
 
 
 @router.post("/jobs/{job_id}/accept", response_model=JobStatusResponse)
@@ -1624,7 +1626,7 @@ async def execute_job(
 # S7 — Tiered trust report
 # ---------------------------------------------------------------------------
 
-_MANUAL_STRATEGIES = frozenset({"manual", "manual_ingestion", "skip"})
+_MANUAL_STRATEGIES = frozenset({"manual"})
 _CONFIDENCE_ORDER = {"low": 0, "medium": 1, "high": 2, "unknown": -1}
 
 
@@ -1743,7 +1745,8 @@ async def get_job_trust_report(
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
 
     # If job not yet in a reviewable state, return an empty report.
-    if job.status not in ("proposed", "accepted", "done") or job.migration_plan is None:
+    reviewable = ("proposed", "accepted", "under_review", "done")
+    if job.status not in reviewable or job.migration_plan is None:
         return TrustReportResponse(
             job_id=str(job_id),
             lineage_available=job.lineage is not None,

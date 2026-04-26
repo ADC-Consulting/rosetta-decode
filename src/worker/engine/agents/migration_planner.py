@@ -16,7 +16,6 @@ from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.azure import AzureProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 from src.worker.core.config import worker_settings
-from src.worker.engine.agents.shared_context import build_context_section
 from src.worker.engine.models import (
     BlockPlan,
     BlockRisk,
@@ -67,14 +66,6 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
     analyse the full SAS codebase and produce a structured migration plan that guides
     the downstream translation agents and gives the client a clear action list.
 
-    **DEFAULT: always attempt a translation.** A best-effort translation with real code
-    is always preferred over an empty placeholder. Set ``confidence_score`` to your honest
-    estimate — low confidence is fine, but the code field must never be empty for
-    ``translate`` or ``translate_with_review`` strategies. Use ``uncertainty_notes`` to
-    explain what may differ. Only assign ``strategy="manual"`` when the SAS construct has
-    absolutely no Python equivalent (e.g., PROC OPTMODEL LP/NLP with complex solver
-    structure that cannot be approximated).
-
     Input:
     - One or more SAS source files with their filenames.
     - A list of pre-resolved macro variables.
@@ -82,27 +73,27 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
       (DATA_STEP | PROC_SQL | PROC_SORT | UNTRANSLATABLE), input_datasets, output_datasets.
 
     Your tasks:
-    1. Write 1-2 sentences describing what this SAS codebase does at a business level.
-       Write as if explaining to a non-technical business stakeholder — what business
-       process does it support, what decision or report does it produce? Do NOT mention
-       SAS, Python, datasets, files, code, or any technical terms. Focus solely on the
-       business outcome (e.g. "This pipeline calculates monthly revenue by region and
-       flags anomalies for the finance team's risk review.").
+    1. Write a 2-3 sentence plain-English summary of what this SAS codebase does as a
+       whole, at a business level (not technical). Assume the reader is a business analyst.
     2. For each block, assign:
        - strategy: one of the values below (use exactly these strings).
 
     Translation strategy values (use exactly these strings):
-    - "translate"             Fully auto-translated. DATA steps, PROC SQL, PROC SORT,
-                              PROC MEANS — anything the agents handle reliably.
-    - "translate_with_review" Translated but flagged for human check. Use when date/time
-                              semantics differ (INTNX, INTCK, SAS date literals), format
-                              conversions (PICTURE, INFORMATs), or ambiguous merges.
-    - "manual_ingestion"      PROC IMPORT / PROC EXPORT / any file I/O. Emit a pandas
-                              read/write shell with TODOs only.
-    - "manual"                PROC IML, PROC OPTMODEL, PROC FCMP, no pandas equivalent.
-                              Emit a # TODO placeholder comment only.
-    - "skip"                  PROC PRINT, PROC CONTENTS, PROC DATASETS, standalone
-                              comments, title/footnote statements. Emit nothing.
+    - "translated"             Fully auto-translated. DATA steps, PROC SQL, PROC SORT,
+                               PROC MEANS, PROC FREQ, PROC TRANSPOSE — anything the agents
+                               handle reliably.
+    - "translated_with_review" Translated but flagged for human check. Use when:
+                               - Date/time semantics differ (INTNX, INTCK, SAS date literals)
+                               - Format conversions (PICTURE, INFORMATs) or ambiguous merges
+                               - PROC IMPORT / PROC EXPORT (GenericProcAgent emits runnable
+                                 pd.read_csv / to_csv with TODO path comments)
+                               - PROC PRINT / PROC CONTENTS / PROC DATASETS (translate to
+                                 Python display/inspection equivalent)
+                               - PROC IML / PROC FCMP / PROC OPTMODEL (translate with review)
+                               - Any unrecognised PROC (PROC_UNKNOWN)
+    - "manual"                 ONLY when the block relies on features with genuinely no
+                               Python equivalent. MUST list those features in detected_features.
+                               NEVER use "manual" if detected_features would be empty.
        - risk: "low", "medium", or "high" based on:
            HIGH  — CALL SYMPUT/SYMPUTX, dynamic dataset names, nested macros, %INCLUDE,
                    PROC types we don't handle, deeply nested DO loops with RETAIN
@@ -118,6 +109,16 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
     5. List cross_file_dependencies: plain-English notes for any dataset that flows
        between files.
 
+    Special rules for macro utility blocks:
+    - Blocks inside `macros/` files (e.g. `working/macros/assert_rowcount.sas`) that are
+      assertion or validation helpers — recognisable by macro parameter names like `&ds` or
+      `&lib` used as dataset names — have no Python equivalent. Assign strategy: `manual`
+      and risk: `high` for these. Do NOT attempt to translate them as runnable PySpark/pandas
+      code. Set detected_features to the macro parameter names that make translation impossible.
+    - More generally: if a block references SAS macro parameters (variables of the form
+      `&<name>`) as dataset or library names, assign strategy: `manual` because the macro
+      context is not available at translation time.
+
     Return ONLY a JSON object — no prose, no markdown fences:
     {
       "summary": "...",
@@ -128,10 +129,11 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
           "source_file": "...",
           "start_line": <int>,
           "block_type": "DATA_STEP|PROC_SQL|PROC_SORT|UNTRANSLATABLE",
-          "strategy": "translate|translate_with_review|manual_ingestion|manual|skip",
+          "strategy": "translated|translated_with_review|manual",
           "risk": "low|medium|high",
           "rationale": "...",
-          "estimated_effort": "low|medium|high"
+          "estimated_effort": "low|medium|high",
+          "detected_features": ["<required non-empty when strategy=manual>"]
         }
       ],
       "recommended_review_blocks": ["source_file:start_line", ...],
@@ -235,10 +237,6 @@ def _build_prompt(context: JobContext) -> str:
     """
     parts: list[str] = []
 
-    ctx_section = build_context_section(context)
-    if ctx_section:
-        parts.append(ctx_section)
-
     parts.append("## Pre-resolved macro variables")
     if context.resolved_macros:
         for mv in context.resolved_macros:
@@ -264,6 +262,17 @@ def _build_prompt(context: JobContext) -> str:
     for filename, content in context.source_files.items():
         parts.append(f"\n### {filename}\n```sas\n{content}\n```")
 
+    if context.log_contents:
+        parts.append("## SAS execution logs")
+        parts.append(
+            "Use these logs to understand actual runtime behaviour, row counts,"
+            " NOTE: lines, and macro expansions."
+        )
+        for log_path, content in context.log_contents.items():
+            parts.append(f"### {log_path}")
+            log_lines = content.splitlines()
+            parts.append("\n".join(log_lines[:200]))
+
     return "\n".join(parts)
 
 
@@ -281,29 +290,17 @@ def _build_migration_plan(result: PlannerResult) -> MigrationPlan:
     """
     block_plans: list[BlockPlan] = []
     for bp in result.block_plans:
-        strategy = TranslationStrategy(bp.get("strategy", "translate"))
-        block_type = bp.get("block_type", "")
-        detected_features: list[str] = bp.get("detected_features") or []
-        if strategy == TranslationStrategy.MANUAL and not detected_features:
-            detected_features = [block_type] if block_type else ["UNSUPPORTED"]
-        no_translation = strategy in (
-            TranslationStrategy.MANUAL,
-            TranslationStrategy.MANUAL_INGESTION,
-            TranslationStrategy.SKIP,
-        )
         block_plans.append(
             BlockPlan(
                 block_id=bp.get("block_id", ""),
                 source_file=bp.get("source_file", ""),
                 start_line=int(bp.get("start_line", 1)),
-                block_type=block_type,
-                strategy=strategy,
+                block_type=bp.get("block_type", ""),
+                strategy=TranslationStrategy(bp.get("strategy", "translated")),
                 risk=BlockRisk(bp.get("risk", "low")),
                 rationale=bp.get("rationale", ""),
                 estimated_effort=bp.get("estimated_effort", "low"),
-                detected_features=detected_features,
-                confidence_score=0.0 if no_translation else 1.0,
-                confidence_band="very_low" if no_translation else "high",
+                detected_features=bp.get("detected_features", []),
             )
         )
 

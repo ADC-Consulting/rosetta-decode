@@ -13,7 +13,6 @@ from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.azure import AzureProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 from src.worker.core.config import worker_settings
-from src.worker.engine.agents.shared_context import build_context_section
 from src.worker.engine.models import GeneratedBlock, JobContext, SASBlock
 
 logger = logging.getLogger("src.worker.engine.agents.data_step")
@@ -26,7 +25,8 @@ class DataStepResult(BaseModel):
     """Structured output from the DataStepAgent LLM call."""
 
     python_code: str
-    strategy_used: str = "translate"
+    output_var: str | None = None
+    strategy_used: str = "translated"
     confidence_score: float = 0.9
     confidence_band: str = "high"
     uncertainty_notes: list[str] = Field(default_factory=list)
@@ -58,24 +58,16 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
     You are a SAS-to-Python migration engineer. Translate the SAS DATA step below into
     idiomatic Python targeting a modern Python 3.12 data platform.
 
-    **DEFAULT: always attempt a translation.** A best-effort translation with real code
-    is always preferred over an empty placeholder. Set ``confidence_score`` to your honest
-    estimate — low confidence is fine, but the code field must never be empty for
-    ``translate`` or ``translate_with_review`` strategies. Use ``uncertainty_notes`` to
-    explain what may differ. Only assign ``strategy="manual"`` when the SAS construct has
-    absolutely no Python equivalent (e.g., PROC OPTMODEL LP/NLP with complex solver
-    structure that cannot be approximated).
-
     Target environment: PySpark, pandas, numpy, pyarrow, scipy, statsmodels are all available.
-    PREFER PySpark idioms for all data transformations
-    (DataFrame API, Column expressions, Window functions).
-    Fall back to pandas/numpy only when PySpark has no equivalent for the specific construct.
-    The code must run in Databricks (PySpark native) or plain Python 3.12.
+    DEFAULT: use PySpark (DataFrame API, Column expressions, Window functions) for ALL operations.
+    pandas is a LAST RESORT — only when the specific construct is impossible in PySpark.
+    When you fall back to pandas, add a comment: # pandas fallback: <reason PySpark cannot do this>
+    The code must run in Databricks (PySpark native) or a local SparkSession (CLOUD=false).
 
     Output schema — ALL fields are REQUIRED:
     {
       "python_code": "<translated Python source>",
-      "strategy_used": "translate|translate_with_review",
+      "strategy_used": "translated|translated_with_review",
       "confidence_score": <float 0.0-1.0>,
       "confidence_band": "high|medium|low|very_low",
       "uncertainty_notes": ["<one sentence per uncertain construct>"],
@@ -88,47 +80,52 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
     - uncertainty_notes: REQUIRED list (may be empty [] for high confidence). Each entry must be
       one sentence naming the specific SAS construct or pattern that may not translate cleanly.
     - assumptions: list SAS semantic quirks your translation relies on.
-    - strategy_used: "translate" or "translate_with_review" (DATA steps are always translated).
+    - strategy_used: "translated" or "translated_with_review" (DATA steps are always translated).
     - For low/medium confidence constructs, insert before the relevant lines:
         # UNCERTAIN: <reason> — human review required
     - Add # SAS: <source_file>:<line_number> after each logical section.
     - Preserve SAS column names exactly, lowercased.
-    - Treat each SAS dataset name as an already-loaded Spark DataFrame variable (lowercased).
-      If falling back to pandas, treat as pd.DataFrame.
+    - INPUT datasets from `SET` / `MERGE` / `UPDATE` are already-loaded variables named
+      `libname_table` (lowercased, dot → underscore). E.g. `SET rawdir.transactions` → `rawdir_transactions`.
+    - OUTPUT datasets (`DATA libname.table`) do NOT exist yet — your code must CREATE them.
+      Name the output variable using the TABLE STEM ONLY (drop the libname prefix).
+      E.g. `DATA outdir.customer_revenue_daily` → variable is `customer_revenue_daily` (NOT `outdir_customer_revenue_daily`).
+      NEVER reference the output variable before assigning it.
     - Macro variables are pre-resolved; use their literal values directly.
 
     ## SAS semantic preservation rules (MUST follow)
-    - SAS std() = sample std (ddof=1). NumPy default is ddof=0 — always specify ddof=1
-      when computing standard deviations.
+    - SAS std() = sample std (ddof=1). In PySpark use F.stddev_samp(); in numpy specify ddof=1.
     - SAS date origin = 1 January 1960.
-      Conversion: pd.Timestamp('1960-01-01') + pd.to_timedelta(sas_date_value, unit='D')
-    - SAS missing numeric = . (propagates as NaN in pandas — correct by default).
-    - SAS special missings .A-.Z are not representable in float64.
-      Add to uncertainty_notes when present in the source.
-    - BY-group FIRST./LAST. logic must use .diff().ne(0) or groupby markers, not direct access.
+      In PySpark: F.date_add(F.lit("1960-01-01").cast("date"), sas_date_value.cast("int"))
+    - SAS missing numeric = . → null in PySpark (use F.isNull / F.when(...).otherwise(None)).
+    - SAS special missings .A-.Z are not representable in Spark. Add to uncertainty_notes.
+    - BY-group FIRST./LAST. logic → Window.partitionBy(var).orderBy(var) + lag() comparison.
 
-    ## Translation patterns (PySpark preferred; pandas as fallback)
-    - IF/THEN/ELSE → pyspark.sql.functions.when().otherwise() for simple;
-      df.withColumn with Column expr for multi-statement.
-      pandas fallback: np.where() for simple; .loc[mask] for multi-statement blocks.
-    - RETAIN → df.withColumn using Window lag/lead with accumulator UDF.
-      pandas fallback: iterrows() with explicit accumulator, or shift()+cumsum() for running totals.
-    - Arrays (ARRAY x{n}) → PySpark: list of Column references; iterate with for-loop.
-    - BY-group (BY var; FIRST.var / LAST.var) →
-      Window.partitionBy(var).orderBy(var) + lag() comparison.
-      pandas fallback: sort + groupby().transform() or .diff().ne(0).
+    ## Translation patterns (PySpark; pandas only as last resort)
+    - IF/THEN/ELSE → F.when(cond, val).when(...).otherwise(default) via df.withColumn.
+      pandas last resort: np.where() for simple; .loc[mask] for multi-statement blocks.
+    - RETAIN → Window lag/lead accumulator or pandas_udf wrapping iterative logic.
+      pandas last resort: iterrows() with explicit accumulator, or shift()+cumsum().
+    - Arrays (ARRAY x{n}) → list of Column references; iterate with Python for-loop.
+    - BY-group (BY var; FIRST.var / LAST.var) → Window.partitionBy(var).orderBy(var) + lag().
+      pandas last resort: sort + groupby().transform() or .diff().ne(0).
     - DO / END → for-loop over DataFrame operations; prefer vectorised Column expressions.
     - Implicit OUTPUT → every-row output; standard DataFrame construction.
-    - Explicit OUTPUT inside DO → build list of dicts, use spark.createDataFrame(rows).
+    - Explicit OUTPUT inside DO → build list of dicts, spark.createDataFrame(rows, schema).
     - MERGE with BY → df.join(right, on=key, how="outer").
-      pandas fallback: df.merge(..., how="outer") + sort_values(BY).
+      pandas last resort: df.merge(..., how="outer") + sort_values(BY).
     - KEEP / DROP → df.select([kept_cols]) or df.drop(col).
     - LENGTH / FORMAT / INFORMAT → comment out with # SAS: preserved as metadata.
     - SET with multiple datasets → df1.unionByName(df2).
-      pandas fallback: pd.concat([...], ignore_index=True).
-    - CALL SYMPUT/SYMPUTX → assign to a Python variable; add uncertainty note.
+      pandas last resort: pd.concat([...], ignore_index=True).
+    - CALL SYMPUT/SYMPUTX → extract scalar with .first()[col], assign to Python var.
+    - Complex statistical transforms (scipy required) → wrap in @pandas_udf and apply per-column.
 
-    Assign final output to lowercased OUTPUT dataset name (dots → underscores).
+    - Always include any imports your code needs at the top of your block (e.g. `from pyspark.sql import functions as F`). Do NOT assume pandas or any other library is pre-imported.
+    - After computing your output DataFrame, assign it to the stem-only variable name, then set `result` to it as the final line. Example:
+        customer_revenue_daily = rawdir_transactions.filter(...)
+        result = customer_revenue_daily
+    - Set the `output_var` field in your JSON response to that stem-only name. Example: "output_var": "customer_revenue_daily"
 """)
 
 
@@ -147,23 +144,36 @@ def _build_prompt(block: SASBlock, windowed: JobContext) -> str:
     """
     lines: list[str] = []
 
-    ctx_section = build_context_section(windowed)
-    if ctx_section:
-        lines.append(ctx_section)
-
     lines.append("## Macro variable context")
     for macro in windowed.resolved_macros:
         lines.append(f'- {macro.name} = "{macro.raw_value}"  ({macro.source_file}:{macro.line})')
 
     lines.append("")
-    lines.append("## Upstream datasets (dependency order)")
-    for i, ds in enumerate(windowed.dependency_order):
-        lines.append(f"{i + 1}. {ds}")
+    lines.append("## Input datasets (already-loaded Spark DataFrame variables, libname_table form)")
+    for i, ds in enumerate(block.input_datasets):
+        lines.append(f"{i + 1}. {ds.lower().replace('.', '_')}")
+
+    lines.append("")
+    lines.append("## Output datasets (must be CREATED by your code, use stem-only variable name)")
+    for ds in block.output_datasets:
+        stem = ds.lower().split(".")[-1]
+        lines.append(f"- {ds}  →  variable name: {stem}")
 
     lines.append("")
     lines.append("## Risk flags")
     for flag in windowed.risk_flags:
         lines.append(f"- {flag}")
+
+    if windowed.log_contents:
+        lines.append("")
+        lines.append(
+            "## SAS execution logs (use for actual row counts, NOTE lines,"
+            " WARNING/ERROR messages, and macro values)"
+        )
+        for log_path, content in windowed.log_contents.items():
+            lines.append(f"### {log_path}")
+            log_lines = content.splitlines()
+            lines.append("\n".join(log_lines[:200]))
 
     lines.append("")
     lines.append("## SAS DATA step to translate")
@@ -251,6 +261,7 @@ class DataStepAgent:
             return GeneratedBlock(
                 source_block=block,
                 python_code=output.python_code,
+                output_var=output.output_var,
                 confidence=output.confidence_band,
                 confidence_score=output.confidence_score,
                 confidence_band=output.confidence_band,

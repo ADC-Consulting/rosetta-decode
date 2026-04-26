@@ -37,11 +37,9 @@ _MODULE_TEMPLATE = """\
 {% if constants %}
 # ── Macro constants ──────────────────────────────────────────────────────────
 {% for c in constants %}
-{{ c.name }} = {{ c.raw_value }}  # SAS: {{ c.source_file }}:{{ c.line }}
+{{ c.name }} = {{ c.raw_value | macro_val }}  # SAS: {{ c.source_file }}:{{ c.line }}
 {% endfor %}
 {% endif %}
-
-import pandas as pd
 
 
 def run(dataframes: dict) -> dict:
@@ -79,11 +77,9 @@ _FLAT_TEMPLATE = """\
 
 # ── Macro constants ──────────────────────────────────────────────────────────
 {% for c in constants %}
-{{ c.name }} = {{ c.raw_value }}  # SAS: {{ c.source_file }}:{{ c.line }}
+{{ c.name }} = {{ c.raw_value | macro_val }}  # SAS: {{ c.source_file }}:{{ c.line }}
 {% endfor %}
 {% endif %}
-
-import pandas as pd
 {% for entry in entries %}
 
 # ── {{ entry.header }}
@@ -106,9 +102,32 @@ class _BlockEntry:
     block: GeneratedBlock
 
 
+def _macro_val_filter(v: str) -> object:
+    """Convert a SAS raw macro value to a valid Python literal.
+
+    Args:
+        v: The raw macro variable value string.
+
+    Returns:
+        An int, float, or repr'd string suitable for rendering as a Python literal.
+    """
+    stripped = v.strip()
+    try:
+        return int(stripped)
+    except ValueError:
+        pass
+    try:
+        return float(stripped)
+    except ValueError:
+        pass
+    return repr(stripped)
+
+
 def _make_env() -> Environment:
     """Return a Jinja2 environment with strict undefined checking."""
-    return Environment(undefined=StrictUndefined, keep_trailing_newline=True)
+    env = Environment(undefined=StrictUndefined, keep_trailing_newline=True)
+    env.filters["macro_val"] = _macro_val_filter
+    return env
 
 
 def _block_header(block: GeneratedBlock) -> str:
@@ -229,7 +248,7 @@ class CodeGenerator:
         """
         source_files = sorted({b.source_block.source_file for b in blocks})
         entries = [_BlockEntry(header=_block_header(b), block=b) for b in blocks]
-        return str(
+        rendered = str(
             self._flat_tmpl.render(
                 generated_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 source_files=source_files,
@@ -237,3 +256,11 @@ class CodeGenerator:
                 constants=macro_vars or [],
             )
         )
+        last_output_var: str | None = None
+        for block in reversed(blocks):
+            if block.output_var is not None:
+                last_output_var = block.output_var
+                break
+        if last_output_var is not None:
+            rendered += f"\nresult = {last_output_var}\n"
+        return rendered

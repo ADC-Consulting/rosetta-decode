@@ -6,6 +6,169 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-04-26 — Codegen/executor fixes, agent prompt hardening, output variable naming (incomplete)
+
+**Duration:** ~2h | **Focus:** Executor recon failures, generated code correctness, Spark warning suppression
+
+### Done
+- **Codegen:** removed unconditional `import pandas as pd` from `_MODULE_TEMPLATE` and `_FLAT_TEMPLATE`; each block now self-imports what it needs
+- **Codegen:** `assemble_flat()` appends `result = <output_var>` using the last block's `output_var` field
+- **Executor result-capture:** updated `_RESULT_CAPTURE_SNIPPET` to check `globals().get('result')` first before scanning all globals
+- **Executor Spark warnings:** added log4j2 properties file written at runtime; passed via `spark.driver.extraJavaOptions` to suppress `NativeCodeLoader` and `incubator modules` JVM warnings (requires `make docker-build`)
+- **Agent prompts — import rule:** all three translation agents (`data_step`, `proc`, `generic_proc`) now instruct: always import needed libraries at top of block; do not assume `pd` is pre-imported
+- **Agent prompts — `result =` convention:** all three agents instructed to set `result = <output_var>` as final line and populate `output_var` in JSON response
+- **Agent prompts — input vs output datasets:** `data_step._build_prompt()` now explicitly lists input datasets (libname_table form, already loaded) and output datasets (stem-only, must be created) as separate sections, replacing the ambiguous `dependency_order` list
+- **Migration planner prompt:** added rule to assign `strategy: manual` to blocks in `macros/` files that reference macro parameters as dataset names (e.g. `assert_rowcount`)
+- **Dead code removed:** `shared_context.py` `build_context_section()` deleted (was never called)
+- **`output_var` field:** added to `GeneratedBlock` and to Pydantic output models for all three translation agents
+
+### Decisions
+- Output dataset variable naming: use TABLE STEM ONLY (no libname prefix) for output variables. `DATA outdir.foo` → Python var `foo`. Input datasets keep full `libname_table` form since they are pre-loaded and must be unambiguous.
+
+### Open Questions
+- **`outdir_customer_revenue_daily` NameError still occurs** even after prompt fixes and worker restart — root cause not yet confirmed. Suspect the LLM is still seeing the full dotted name somewhere (possibly in the SAS source block itself or in macro expansion) and generating `outdir_customer_revenue_daily` as an output var. Need to log the actual user prompt sent to the agent to confirm.
+- Spark JVM warnings (`NativeCodeLoader`, `incubator`) still showing — log4j2 fix requires `make docker-build` which hasn't been run yet.
+- Coverage at 86%, below 88% threshold.
+- `make docker-build` still pending.
+
+### Next Session — Start Here
+1. **Debug the output variable NameError:** add temporary logging in `data_step.py` `_build_prompt()` to print the full user prompt (input/output dataset lists + raw SAS) to worker stdout, then re-submit the failing job and inspect. The LLM must be seeing `outdir_customer_revenue_daily` as the output variable name from somewhere.
+2. Once root cause confirmed, fix and re-test.
+3. Run `make docker-build` after code fixes to pick up executor log4j2 change and all other pending infra changes.
+4. Fix coverage to reach 88% (add tests for `_BestEffortAgentAdapter` or `build_context_section` removal).
+
+### Files Touched
+- `src/worker/engine/codegen.py`
+- `src/worker/engine/models.py`
+- `src/executor/runner.py`
+- `src/worker/engine/agents/data_step.py`
+- `src/worker/engine/agents/proc.py`
+- `src/worker/engine/agents/generic_proc.py`
+- `src/worker/engine/agents/migration_planner.py`
+- `src/worker/engine/agents/shared_context.py` (deleted)
+
+---
+
+## 2026-04-25 — History ordering, table UX, test fixes, upload redirect
+
+**Duration:** ~1.5h | **Focus:** Plan tab UX polish, test suite repair, upload page simplification
+
+### Done
+
+- **History pane ordering:** `VersionHistoryRail` and `EditorTab` history pane now show v1 at the top (oldest first), descending to the latest at the bottom. "Latest" badge and primary-border highlight both moved to the last (newest) entry.
+- **Collapsible block table:** `BlockPlanTable` in `PlanTab` is collapsed by default; a chevron + "Blocks" heading toggles it open.
+- **Rationale + Actions merged:** Rationale column removed; `Info` icon added as first action button in the Actions column, with tooltip "View rationale" and same Popover behaviour as before. `FileText` import removed.
+- **Version cache invalidation:** `saveBlockPython` now also invalidates `["job", jobId, "versions"]` so new saves appear in the history rail immediately.
+- **Upload redirect:** after a successful migration submission, `UploadPage` navigates directly to `/jobs` instead of showing the Phase 2 result card. All dead code (job polling, `StatusBadge`, `manifest`/`phase`/`jobStatus` state, `copyText`, result card JSX) removed.
+- **Test suite repair:** fixed 9 failing tests caused by uncommitted router and stub-generator changes from the previous session:
+  - `test_routes_manual_strategy_to_stub` / `test_routes_manual_ingestion_strategy_to_stub` → updated to assert `_BestEffortAgentAdapter` (intended new behaviour).
+  - `test_routes_skip_strategy_to_stub` → fixed accidental `SKIP` routing to `_BestEffortAgentAdapter` in `router.py`; reverted to `self._stub_generator`.
+  - `test_stub_generator_manual_ingestion_*` and `test_strategy_stub_adapter_*` → updated placeholder path assertions from `"path/to/input.csv"` to `"/workspace/data/"` prefix.
+  - `test_stub_generator_manual_ingestion_with_output_dataset` / `test_strategy_stub_adapter_translate` → updated `is_untranslatable` assertions from `True` to `False` (matches `4cd894c` behaviour change).
+- **Ruff fixes:** two `E501` line-length violations in `jobs.py` `save_block_python` (long `select(Job)` + `update(Job)` chains wrapped).
+
+### Decisions
+
+- Upload flow simplified: no intermediate result card — navigate directly to Jobs list on success. Cleaner UX, less state to maintain.
+
+### Open Questions
+
+- Coverage still at 86%, below the 88% threshold — needs dedicated test additions for `_BestEffortAgentAdapter`, new `stub_generator` path, or `build_context_section`.
+- `make docker-build` still pending to pick up executor volume, backend trigger fix, generated_files sync, and router changes.
+
+### Next Session — Start Here
+
+1. Run `make test` to verify suite is green (coverage fix needed: add tests for `_BestEffortAgentAdapter` and/or `build_context_section` to reach 88%).
+2. Commit remaining dirty files (backend, worker, frontend pages, docker-compose) as separate atomic commits.
+3. Run `make docker-build` once all code commits are done.
+
+### Files Touched
+
+- `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
+- `src/frontend/src/components/JobDetail/PlanTab.tsx`
+- `src/frontend/src/components/VersionHistoryRail.tsx`
+- `src/frontend/src/components/JobDetail/EditorTab.tsx`
+- `src/frontend/src/pages/UploadPage.tsx`
+- `src/worker/engine/router.py`
+- `src/backend/api/routes/jobs.py`
+- `tests/test_translation_router.py`
+- `tests/test_context_improvements.py`
+
+---
+
+## 2026-04-25 — Editor & Plan tab UX overhaul + agent confidence fixes
+
+**Duration:** ~3h | **Focus:** Plan/Editor tab bugs, history pane, block-scoped View Code, inline/side-by-side diff toggle, summary card layout, agent always-translate, file path conventions
+
+### Done
+
+- **History pane:** entries now show `v{revision_number}` instead of filename; clicking loads that block's Python revision into the Python editor imperatively (via `model.setValue()`); clicking no longer switches the selected SAS file; `onSelectBlock` removed from `BottomPanel` to prevent file navigation side-effect.
+- **Block View Code modal — SAS highlighting:** after mount, delta decorations highlight `start_line..start_line+20` with `monaco-block-highlight` CSS class; full file remains visible for context.
+- **Plan→Editor sync:** after `saveBlockPython` resolves, `queryClient.invalidateQueries(["job", jobId])` refreshes `job.generated_files` so `EditorTab` picks up the new code.
+- **Block refine trigger:** `POST /blocks/{block_id}/refine` now stores `trigger="agent"` (was `"human-refine"`); history pane `isHuman` check updated to `trigger === "human" || trigger === "restore"`.
+- **`generated_files` sync on PATCH:** `PATCH /blocks/{block_id}/python` now updates `job.generated_files[py_key]` after saving the `BlockRevision` so the per-file editor view stays current.
+- **Agents always attempt translation:** `router.py` routes `manual`/`manual_ingestion` strategies through agents with `_BestEffortAgentAdapter`; `StubGenerator` is fallback only on exception; `very_low` confidence prepends warning comment.
+- **Stub file path:** `StubGenerator` fallback changed from `"path/to/input.csv"` → `/workspace/data/{dataset_name}.csv`.
+- **Agent prompt file path convention:** `data_step.py` and `generic_proc.py` system prompts instruct agents to use `/workspace/data/<dataset_name>.csv` instead of placeholder paths.
+- **Executor workspace volume:** `docker-compose.yml` mounts `uploads:/workspace/data:ro` and sets `WORKSPACE_DATA_DIR=/workspace/data` env var on executor service.
+- **Full-page editor:** new `EditorFullPage.tsx` page at `/jobs/:id/editor`; toolbar shows `Minimize2` when in full-page mode, `Maximize2` when embedded; back navigates to `/jobs/:id?tab=editor`; header-bar back arrow removed from full-page mode.
+- **Language icons:** `mr-1.5` gap added between SVG icon and text in SAS/Python/Explorer pane headers.
+- **Pane header text:** explicit `color: "#374151"` for light-mode headers so text is readable when editor theme is dark but app theme is light.
+- **Bottom pane tab bar:** active tab uses explicit dark-mode colors (`text-white border-blue-400 bg-[#1e1e1e]`) instead of CSS vars that resolve incorrectly in dark-editor + light-app combo.
+- **History entry highlight:** theme-aware `border-l-2` highlight (`border-blue-400 bg-blue-400/10` in dark, `border-primary bg-primary/10` in light).
+- **Save/Edit buttons:** `EditorTab` now accepts `onSave`/`isSaving` props; toolbar shows `Save` + `Read-only` when editing, `Edit` when locked; styled to match Report tab.
+- **Copyable errors:** `ExecutionOutputPanel` stderr/fetchError wrapped in `relative` container with `Copy` icon button; `select-all` class on `<pre>`.
+- **Hash guard on save:** `lastSavedHashRef` + `pendingHashRef` in `JobDetailPage` skip `saveVersionMutation` if content hash unchanged.
+- **URL tab routing:** `JobDetailPage` reads `?tab=` search param on mount; `onExpand` navigates with `?tab=editor` to restore tab on return.
+- **Top-bar declutter:** "Save Changes" and "Refine" buttons removed from global top bar; save is now per-tab inline; refine stays per-block in Plan table.
+- **Inline/side-by-side diff toggle:** `BlockRevisionModal` has a segmented toggle (Inline default, Side by side); wired through `sideBySide` prop to `RevisionRow` → `MonacoDiffViewer`.
+- **`MonacoDiffViewer`:** `renderSideBySide` prop added (default `false`).
+- **Plan summary card:** horizontal split (`flex-row`) — summary text fills left, vertical divider, stats cluster on right; then reverted to vertical stack (`flex-col divide-y`) per user; text full-width on top, stats centered below; padding tightened to `py-2`.
+- **Block table groupBy default:** changed from dynamic folder/none logic to fixed `"file"`.
+- **`ChangelogEntry.trigger` type:** widened to explicit union including `"agent"`.
+
+### Decisions
+
+- History pane clicking should NOT change the selected SAS file — navigation and code loading are independent actions.
+- `trigger="agent"` is the correct label for LLM-generated revisions (whether initial or refine-triggered); `"human-refine"` was misleading.
+- Inline diff is the better default for revision history (less horizontal space required).
+- Block table defaults to file grouping (most intuitive for multi-file migrations).
+
+### Open Questions
+
+- `make docker-build` still needed to pick up executor volume mount + backend changes.
+- Coverage gate (87% < 88%) still unresolved from prior session.
+- `auto_verified` and `needs_attention` trust report counters still incorrect (tracked in backlog).
+- `overrideRevisionCode` pushed via `model.setValue()` — confirm this doesn't break undo history in the Monaco editor.
+
+### Next Session — Start Here
+
+1. Run `make docker-build` to pick up executor volume, backend trigger fix, and `generated_files` sync.
+2. Verify history pane click loads correct Python code into editor for a job with multiple block revisions.
+3. Fix coverage gate: add tests for `_BestEffortAgentAdapter` or `stub_generator` path change.
+4. Fix `auto_verified` / `needs_attention` trust report counters (tracked in backlog).
+5. Confirm copyable errors and hash-guard save work end-to-end in browser.
+
+### Files Touched
+
+- `src/frontend/src/components/JobDetail/EditorTab.tsx`
+- `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
+- `src/frontend/src/components/JobDetail/BlockRevisionDrawer.tsx`
+- `src/frontend/src/components/JobDetail/PlanTab.tsx`
+- `src/frontend/src/components/MonacoDiffViewer.tsx`
+- `src/frontend/src/pages/JobDetailPage.tsx`
+- `src/frontend/src/pages/EditorFullPage.tsx` (new)
+- `src/frontend/src/App.tsx`
+- `src/frontend/src/api/types.ts`
+- `src/backend/api/routes/jobs.py`
+- `src/worker/engine/router.py`
+- `src/worker/engine/stub_generator.py`
+- `src/worker/engine/agents/data_step.py`
+- `src/worker/engine/agents/generic_proc.py`
+- `docker-compose.yml`
+
+---
+
 ## 2026-04-25 — Agentic pipeline context + Editor UX polish
 
 **Duration:** ~4h | **Focus:** Folder-aware agent context, PROC IMPORT untranslatable root-cause fix, manual_ingestion stub rework, Lineage data-file nodes, Report tab version rail + header, TipTap table fix, EditorTab history UX

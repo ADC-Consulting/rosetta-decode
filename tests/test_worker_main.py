@@ -5,12 +5,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 from src.backend.db.models import Job
+from src.worker.engine.models import JobContext
 from src.worker.main import (
     JobOrchestrator,
     _claim_job,
+    _dataset_matches_file,
     _dict_to_recon_report,
+    _inject_data_file_nodes,
     _process_job,
     _recon_summary,
+    _sniff_file,
 )
 
 
@@ -195,6 +199,10 @@ def test_recon_summary_reconciliation_report_failed() -> None:
     report.diff_summary = "row 1 differs"
     result = _recon_summary(report)
     assert result == "Reconciliation failed. row 1 differs"
+
+
+async def _async_next(it: object) -> object:
+    return next(it)  # type: ignore[call-overload]
 
 
 # ── JobOrchestrator helpers ───────────────────────────────────────────────────
@@ -460,16 +468,19 @@ async def test_translate_with_refinement_passes_first_try() -> None:
     translator_mock.translate = AsyncMock(return_value=fake_gb)
     mocks["router"].route.return_value = translator_mock
     mocks["codegen"].assemble.return_value = "code"
-    mocks["reconciler"].run.return_value = fake_report
 
     with (
         patch("src.worker.main.BackendFactory") as mock_factory,
-        patch("src.worker.main.asyncio.to_thread", new=AsyncMock(return_value=fake_report)),
+        patch(
+            "src.worker.main.RemoteReconciliationService.run",
+            new=AsyncMock(return_value=fake_report),
+        ),
     ):
         mock_factory.create.return_value = MagicMock()
-        result = await orch._translate_two_phase([fake_block], fake_ctx, "", "")
+        blocks, recon_failed = await orch._translate_two_phase([fake_block], fake_ctx, "", "")
 
-    assert result == [fake_gb]
+    assert blocks == [fake_gb]
+    assert recon_failed is False
     mocks["failure_interpreter"].interpret.assert_not_called()
 
 
@@ -487,25 +498,29 @@ async def test_translate_with_refinement_retries_on_failure() -> None:
     translator_mock = MagicMock()
     translator_mock.translate = AsyncMock(return_value=fake_gb)
     mocks["router"].route.return_value = translator_mock
-    mocks["codegen"].assemble.return_value = "code"
+    mocks["codegen"].assemble.return_value = {"pipeline.py": "code"}
+    mocks["codegen"].assemble_flat.return_value = "code"
     mocks["failure_interpreter"].interpret = AsyncMock(
         return_value=("fix the rounding", "test.sas:1")
     )
 
     reports = iter([failed_report, passed_report])
 
-    async def _fake_to_thread(fn: object, *args: object) -> object:
-        return next(reports)
+    async def _run_side_effect(*a: object, **kw: object) -> object:
+        return next(reports)  # type: ignore[call-overload]
 
     with (
         patch("src.worker.main.BackendFactory") as mock_factory,
-        patch("src.worker.main.asyncio.to_thread", side_effect=_fake_to_thread),
+        patch(
+            "src.worker.main.RemoteReconciliationService.run",
+            side_effect=_run_side_effect,
+        ),
     ):
         mock_factory.create.return_value = MagicMock()
-        result = await orch._translate_two_phase([fake_block], fake_ctx, "", "")
+        blocks, _ = await orch._translate_two_phase([fake_block], fake_ctx, "", "")
 
     mocks["failure_interpreter"].interpret.assert_called_once()
-    assert len(result) == 1
+    assert len(blocks) == 1
 
 
 @pytest.mark.asyncio
@@ -524,13 +539,16 @@ async def test_translate_with_refinement_breaks_on_no_diff_summary() -> None:
 
     with (
         patch("src.worker.main.BackendFactory") as mock_factory,
-        patch("src.worker.main.asyncio.to_thread", new=AsyncMock(return_value=failed_report)),
+        patch(
+            "src.worker.main.RemoteReconciliationService.run",
+            new=AsyncMock(return_value=failed_report),
+        ),
     ):
         mock_factory.create.return_value = MagicMock()
-        result = await orch._translate_two_phase([fake_block], fake_ctx, "", "")
+        blocks, _ = await orch._translate_two_phase([fake_block], fake_ctx, "", "")
 
     mocks["failure_interpreter"].interpret.assert_not_called()
-    assert result == [fake_gb]
+    assert blocks == [fake_gb]
 
 
 @pytest.mark.asyncio
@@ -550,12 +568,15 @@ async def test_translate_with_refinement_breaks_when_interpreter_fails() -> None
 
     with (
         patch("src.worker.main.BackendFactory") as mock_factory,
-        patch("src.worker.main.asyncio.to_thread", new=AsyncMock(return_value=failed_report)),
+        patch(
+            "src.worker.main.RemoteReconciliationService.run",
+            new=AsyncMock(return_value=failed_report),
+        ),
     ):
         mock_factory.create.return_value = MagicMock()
-        result = await orch._translate_two_phase([fake_block], fake_ctx, "", "")
+        blocks, _ = await orch._translate_two_phase([fake_block], fake_ctx, "", "")
 
-    assert result == [fake_gb]
+    assert blocks == [fake_gb]
 
 
 # ── JobOrchestrator._retry_affected_block() ───────────────────────────────────
@@ -714,12 +735,15 @@ async def test_translate_with_refinement_dict_report_passed() -> None:
 
     with (
         patch("src.worker.main.BackendFactory") as mock_factory,
-        patch("src.worker.main.asyncio.to_thread", new=AsyncMock(return_value=dict_report)),
+        patch(
+            "src.worker.main.RemoteReconciliationService.run",
+            new=AsyncMock(return_value=dict_report),
+        ),
     ):
         mock_factory.create.return_value = MagicMock()
-        result = await orch._translate_two_phase([fake_block], fake_ctx, "", "")
+        blocks, _ = await orch._translate_two_phase([fake_block], fake_ctx, "", "")
 
-    assert result == [fake_gb]
+    assert blocks == [fake_gb]
     mocks["failure_interpreter"].interpret.assert_not_called()
 
 
@@ -858,3 +882,161 @@ async def test_execute_skips_llm_when_skip_llm_true() -> None:
     await orch._execute(session, job)
 
     orch._execute_rereconcile.assert_called_once()
+
+
+# ── Coverage-filling tests: error paths and edge cases ─────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_sniff_file_csv_succeeds(tmp_path) -> None:
+    """Test _sniff_file successfully reads CSV."""
+    import pandas as pd
+
+    disk_path = str(tmp_path / "data.csv")
+    df = pd.DataFrame({"col1": [1, 2, 3], "col2": ["a", "b", "c"]})
+    df.to_csv(disk_path, index=False)
+
+    cols, row_count = _sniff_file(disk_path, ".csv")
+    assert cols == ["col1", "col2"]
+    assert row_count == 3
+
+
+@pytest.mark.asyncio
+async def test_sniff_file_tsv_succeeds(tmp_path) -> None:
+    """Test _sniff_file successfully reads TSV."""
+    import pandas as pd
+
+    disk_path = str(tmp_path / "data.tsv")
+    df = pd.DataFrame({"x": [10, 20], "y": [30, 40]})
+    df.to_csv(disk_path, sep="\t", index=False)
+
+    cols, row_count = _sniff_file(disk_path, ".tsv")
+    assert cols == ["x", "y"]
+    assert row_count == 2
+
+
+def test_sniff_file_returns_empty_on_missing() -> None:
+    """Test _sniff_file returns ([], None) for missing files."""
+    cols, row_count = _sniff_file("/nonexistent/path/file.csv", ".csv")
+    assert cols == []
+    assert row_count is None
+
+
+def test_dict_to_recon_report_all_checks_pass() -> None:
+    """Test _dict_to_recon_report with all passing checks."""
+    report = {
+        "checks": [
+            {"name": "columns", "status": "pass"},
+            {"name": "row_count", "status": "pass"},
+            {"name": "aggregates", "status": "pass"},
+        ]
+    }
+    result = _dict_to_recon_report(report)
+
+    assert result.passed is True
+    assert result.column_match is True
+    assert result.row_count_match is True
+
+
+def test_dict_to_recon_report_mixed_results() -> None:
+    """Test _dict_to_recon_report with mixed pass/fail."""
+    report = {
+        "checks": [
+            {"name": "columns", "status": "pass"},
+            {"name": "row_count", "status": "fail", "detail": "expected 100, got 99"},
+        ]
+    }
+    result = _dict_to_recon_report(report)
+
+    assert result.passed is False
+    assert result.row_count_match is False
+    assert "expected 100, got 99" in result.diff_summary
+
+
+def test_dict_to_recon_report_no_checks() -> None:
+    """Test _dict_to_recon_report with no checks (skip reconciliation)."""
+    report = {"checks": []}
+    result = _dict_to_recon_report(report)
+
+    assert result.passed is True
+    assert result.diff_summary == "no checks run"
+
+
+def test_dataset_matches_file_stem_match() -> None:
+    """Test _dataset_matches_file with filename stem match."""
+    context = JobContext(
+        source_files={},
+        resolved_macros=[],
+        dependency_order=[],
+        risk_flags=[],
+        blocks=[],
+        generated=[],
+        libname_map={},
+    )
+    result = _dataset_matches_file(["customers"], "data/raw/customers.csv", context)
+    assert result is True
+
+
+def test_dataset_matches_file_qualified_name() -> None:
+    """Test _dataset_matches_file with lib.table qualified name."""
+    context = JobContext(
+        source_files={},
+        resolved_macros=[],
+        dependency_order=[],
+        risk_flags=[],
+        blocks=[],
+        generated=[],
+        libname_map={"rawdir": "data/raw"},
+    )
+    result = _dataset_matches_file(["rawdir.customers"], "data/raw/customers.csv", context)
+    assert result is True
+
+
+def test_dataset_matches_file_no_match() -> None:
+    """Test _dataset_matches_file returns False when no match."""
+    context = JobContext(
+        source_files={},
+        resolved_macros=[],
+        dependency_order=[],
+        risk_flags=[],
+        blocks=[],
+        generated=[],
+        libname_map={},
+    )
+    result = _dataset_matches_file(["other"], "data/raw/customers.csv", context)
+    assert result is False
+
+
+def test_inject_data_file_nodes_empty() -> None:
+    """Test _inject_data_file_nodes with no data files."""
+    lineage_data = {"nodes": [], "edges": []}
+    context = JobContext(
+        source_files={},
+        resolved_macros=[],
+        dependency_order=[],
+        risk_flags=[],
+        blocks=[],
+        generated=[],
+        libname_map={},
+        data_files={},
+    )
+    result = _inject_data_file_nodes(lineage_data, [], context)
+
+    assert result["nodes"] == []
+    assert result["edges"] == []
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_run_handles_other_http_errors() -> None:
+    """Test JobOrchestrator.run with non-429 HTTP error (should re-raise)."""
+    orch, _ = _make_orchestrator_with_mocks()
+    session = AsyncMock()
+    job = _make_job()
+
+    response_mock = MagicMock()
+    response_mock.status_code = 500
+    http_err = httpx.HTTPStatusError("500", request=MagicMock(), response=response_mock)
+    orch._execute = AsyncMock(side_effect=http_err)  # type: ignore[method-assign]
+
+    with pytest.raises(httpx.HTTPStatusError):
+        await orch.run(session, job)

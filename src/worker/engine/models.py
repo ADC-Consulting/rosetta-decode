@@ -109,8 +109,9 @@ class GeneratedBlock(BaseModel):
     confidence_band: str = "high"
     uncertainty_notes: list[str] = []
     assumptions: list[str] = []
-    strategy_used: str = "translate"
+    strategy_used: str = "translated"
     verified_confidence: str | None = None
+    output_var: str | None = None
 
 
 class ReconciliationReport(BaseModel):
@@ -126,11 +127,10 @@ class ReconciliationReport(BaseModel):
 class TranslationStrategy(StrEnum):
     """Strategy to apply when migrating a SAS block."""
 
-    TRANSLATE = "translate"
-    TRANSLATE_WITH_REVIEW = "translate_with_review"
-    MANUAL_INGESTION = "manual_ingestion"
+    TRANSLATED = "translated"
+    TRANSLATED_WITH_REVIEW = "translated_with_review"
+    TRANSLATE_BEST_EFFORT = "translate_best_effort"
     MANUAL = "manual"
-    SKIP = "skip"
 
 
 class BlockRisk(StrEnum):
@@ -327,6 +327,7 @@ class JobContext(BaseModel):
     enriched_lineage: EnrichedLineage | None = None
     data_files: dict[str, "DataFileInfo"] = Field(default_factory=dict)
     libname_map: dict[str, str] = Field(default_factory=dict)
+    log_contents: dict[str, str] = Field(default_factory=dict)
 
     def windowed_context(self, block: SASBlock) -> "JobContext":
         """Return a windowed view of this context scoped to a single block.
@@ -360,4 +361,5 @@ class JobContext(BaseModel):
             migration_plan=self.migration_plan,
             data_files=self.data_files,
             libname_map=self.libname_map,
+            log_contents=self.log_contents,
         )

@@ -139,17 +139,21 @@
 - [x] refactor(frontend): SAS Studio layout — persistent vertical split, bottom panel (Code|Log|Output|History tabs), Run ▶ first in toolbar, history moved to bottom panel tab
 - [x] fix(executor): per-run temp file for result JSON (avoids concurrent-run collisions at /tmp/rosetta_result.json)
 - [x] fix(frontend): stdout always shown even on error (logs up to crash point no longer dropped)
-- [ ] chore: `make docker-build` needed — picks up migration 013, executor service, new worker context code (shared_context.py, data_files, libname_map), frontend changes; also resolves PATCH /blocks/{block_id}/python 404 in production
+- [ ] chore: `make docker-build` needed — picks up executor log4j2 Spark warning suppression, executor volume mount, backend trigger fix, generated_files sync, agent router changes
+- [ ] fix(backend): output variable NameError — `outdir_customer_revenue_daily` not defined; agent still generating full libname_table form for output vars despite prompt fix; need to log user prompt to find root cause
 - [ ] UI bug (unresolved): TipTap toolbar cursor jumps to bottom after one keystroke — multiple fixes attempted, none confirmed working
-- [ ] UI bug (unresolved): version card not highlighted after saving — race condition fix attempted (await invalidateQueries), not confirmed
-- [ ] UI bug (unresolved): Editor tab version restore always shows original code — null sentinel + {} override fix attempted, not confirmed
 - [ ] UI bug (unresolved): tab heights not filling available space — `calc(100vh - 160px)` applied to all four tabs, not confirmed working
 - [ ] fix(backend): `translate_best_effort` strategy — add to migration planner prompt OR remove enum; currently dead (LLM never assigns it)
 - [x] fix(backend): `manual_ingestion` StubGenerator — now emits `pd.read_csv(disk_path)` scaffold with `is_untranslatable=False`, `confidence_score=0.7`; block_plan strategy passed to router via `block_plan_map` in `_translate_blocks()`
-- [ ] fix(backend): `auto_verified` trust report counter always 0 — `verified_confidence` never written; derive from `reconciliation_status == "pass" AND confidence in (high, medium)` instead
-- [ ] fix(backend): `needs_attention` too strict — requires recon failure; widen to: strategy in manual/skip OR recon fail OR confidence in (low, very_low, unknown)
-- [ ] fix(tests): coverage at 87%, below 88% threshold — add tests for `_sniff_file`, `_inject_data_file_nodes`, or `build_context_section`
+- [ ] fix(backend): `auto_verified` trust report counter always 0 — derive from `reconciliation_status == "pass" AND confidence in (high, medium)` instead
+- [ ] fix(backend): `needs_attention` too strict — widen to: strategy in manual/skip OR recon fail OR confidence in (low, very_low, unknown)
+- [ ] fix(tests): coverage at 86%, below 88% threshold — add tests for `_BestEffortAgentAdapter` or `stub_generator` path change (`build_context_section` removed)
 - [x] feat(backend): folder-aware agent context — `DataFileInfo` + `data_files` + `libname_map` on `JobContext`; `_sniff_file()` helper; `build_context_section()` shared utility; all 4 agents prepend context section
+- [x] UX: history pane ordering — v1 at top, descending to latest; "Latest" badge on last entry (`VersionHistoryRail` + `EditorTab`)
+- [x] UX: Plan tab block table collapsed by default; chevron toggle on "Blocks" heading
+- [x] UX: Rationale column merged into Actions as Info icon (tooltip + popover)
+- [x] fix: saveBlockPython invalidates `["job", jobId, "versions"]` so new saves appear in history rail immediately
+- [x] UX: UploadPage navigates directly to /jobs on submit success; Phase 2 result card removed
 - [x] feat(backend): DATA_FILE lineage nodes — `_inject_data_file_nodes()` appends DATA_FILE nodes + inferred edges linking blocks to real uploaded data files
 - [x] feat(backend): macro file content in windowed prompts — `windowed_context()` includes `macros/` and `autoexec.sas` so translation agents see macro definitions
 - [x] feat(backend): always-attempt instruction added to all 4 agents — agents must emit best-effort code, never empty stubs for translate/translate_with_review
@@ -157,8 +161,21 @@
 - [x] feat(frontend): Report tab — VersionHistoryRail restored; always-visible header; Edit/Save inline buttons; Save Changes hidden from top bar in report tab
 - [x] feat(frontend): Lineage DATA_FILE nodes — blue dashed border, extension badge, filename + column preview
 - [x] feat(frontend): EditorTab explorer panel max width 50% (was 30%)
-- [x] feat(frontend): EditorTab history tab — Latest badge, filename-only labels, click navigates Monaco to block start line
+- [x] feat(frontend): EditorTab history tab — v{n} version labels; clicking loads block's Python revision via model.setValue(); no longer changes selected SAS file; theme-aware highlight
+- [x] feat(frontend): full-page editor — EditorFullPage at /jobs/:id/editor; Maximize2/Minimize2 toggle; URL ?tab= routing on return
+- [x] feat(frontend): inline/side-by-side diff toggle in BlockRevisionModal — segmented button, inline default
+- [x] feat(frontend): Plan summary card — text full-width top, stats centered bottom, py-2 compact padding
+- [x] feat(frontend): block table groupBy defaults to "file"
+- [x] feat(frontend): save hash guard — skips saveVersionMutation if content unchanged
+- [x] feat(frontend): copyable errors in ExecutionOutputPanel — Copy button + select-all pre
+- [x] feat(backend): PATCH /blocks/{block_id}/python now updates job.generated_files[py_key] so EditorTab stays in sync
+- [x] feat(backend): block refine trigger changed from "human-refine" to "agent" — history pane now correctly shows 🤖
+- [x] feat(backend): _BestEffortAgentAdapter in router — manual/manual_ingestion routed to agents; StubGenerator fallback on exception only
+- [x] feat(backend): stub_generator fallback path → /workspace/data/{dataset_name}.csv
+- [x] feat(backend): agent prompts enforce /workspace/data/<name>.csv file path convention
+- [x] feat(infra): executor docker-compose volume mount uploads:/workspace/data:ro + WORKSPACE_DATA_DIR env var
 - [ ] verify: Log/Output tabs in EditorTab bottom panel — may still not load; user to confirm after `make docker-build`
+- [ ] verify: history pane click loads correct Python code in editor with multiple block revisions (needs docker-build first)
 
 ---
 

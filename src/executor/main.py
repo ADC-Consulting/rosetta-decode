@@ -64,6 +64,20 @@ def execute(request: ExecuteRequest) -> ExecuteResponse:
     logger.info("Executing code submission (%d chars)", len(request.code))
     run_result = run_code(request.code)
 
+    if run_result["error"]:
+        logger.warning("Execution error: %s", run_result["error"])
+    else:
+        rows = len(run_result["result_json"]) if run_result["result_json"] else 0
+        cols = run_result["result_columns"] or []
+        logger.info(
+            "Execution OK — %d rows, columns=%s, elapsed=%dms",
+            rows,
+            cols,
+            run_result["elapsed_ms"],
+        )
+    if run_result["stderr"]:
+        logger.warning("Execution stderr: %s", run_result["stderr"][:500])
+
     checks: list[dict] | None = None  # type: ignore[type-arg]
     if (request.ref_csv_path or request.ref_sas7bdat_path) and run_result["result_json"]:
         try:
@@ -72,9 +86,13 @@ def execute(request: ExecuteRequest) -> ExecuteResponse:
                 request.ref_csv_path,
                 request.ref_sas7bdat_path,
             )
+            statuses = {c["name"]: c["status"] for c in checks}
+            logger.info("Recon checks: %s", statuses)
         except Exception as exc:
             logger.warning("Recon failed: %s", exc)
             checks = [{"name": "execution", "status": "fail", "detail": str(exc)}]
+    elif request.ref_csv_path or request.ref_sas7bdat_path:
+        logger.info("Recon skipped — no result DataFrame produced by the code")
 
     return ExecuteResponse(
         stdout=run_result["stdout"],
