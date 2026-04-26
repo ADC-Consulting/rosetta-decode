@@ -64,7 +64,7 @@ export default function GlobalLineagePage(): React.ReactElement {
   }
 
   return (
-    <div className="px-6 py-8 overflow-y-auto flex-1 h-full">
+    <div className="px-6 py-2 overflow-y-auto flex-1 h-full">
       <div
         className="flex -mx-4 -mb-8"
         style={{ height: "calc(100vh - 64px)" }}
@@ -132,7 +132,9 @@ export default function GlobalLineagePage(): React.ReactElement {
           footer={
             <div className="p-3">
               {selected.size === 0 && (
-                <p className="text-xs text-muted-foreground px-3 pb-1">Select migrations above</p>
+                <p className="text-xs text-muted-foreground px-3 pb-1">
+                  Select migrations above
+                </p>
               )}
               <Button
                 onClick={() => void handleConnect()}
@@ -140,7 +142,9 @@ export default function GlobalLineagePage(): React.ReactElement {
                 className="w-full"
                 size="sm"
               >
-                {isConnecting ? "Connecting…" : `Connect${selected.size > 0 ? ` (${selected.size})` : ""}`}
+                {isConnecting
+                  ? "Connecting…"
+                  : `Connect${selected.size > 0 ? ` (${selected.size})` : ""}`}
               </Button>
               {connectError && (
                 <p className="text-xs text-destructive mt-2">{connectError}</p>

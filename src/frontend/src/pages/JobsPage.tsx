@@ -26,6 +26,7 @@ import {
   Folder,
   FolderOpen,
   ScrollText,
+  Target,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -126,6 +127,12 @@ function UploadStatusBadge({ status }: { status: string }) {
         Under Review
       </span>
     );
+  if (status === "under_review")
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400">
+        ⚠ Recon Failed
+      </span>
+    );
   if (status === "accepted")
     return (
       <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">
@@ -219,6 +226,8 @@ function TreeRow({
   toggleDir,
   onRemoveFile,
   onRemoveDir,
+  refTargetPath,
+  onSetRefTarget,
 }: {
   node: TreeNode;
   depth: number;
@@ -227,6 +236,8 @@ function TreeRow({
   toggleDir: (key: string) => void;
   onRemoveFile: (fullPath: string) => void;
   onRemoveDir: (node: TreeNode) => void;
+  refTargetPath: string | null;
+  onSetRefTarget: (path: string | null) => void;
 }) {
   const indent = { paddingLeft: `${0.75 + depth * 1}rem` };
 
@@ -283,6 +294,8 @@ function TreeRow({
               toggleDir={toggleDir}
               onRemoveFile={onRemoveFile}
               onRemoveDir={onRemoveDir}
+              refTargetPath={refTargetPath}
+              onSetRefTarget={onSetRefTarget}
             />
           ))}
       </>
@@ -291,6 +304,8 @@ function TreeRow({
 
   if (excluded.has(node.fullPath)) return null;
   const ext = fileExt(node.name);
+  const isEligible = ext === ".csv" || ext === ".sas7bdat";
+  const isTarget = refTargetPath === node.fullPath;
 
   return (
     <li className="flex items-center justify-between pr-3 py-1 text-sm border-b border-border/50 last:border-b-0">
@@ -301,20 +316,41 @@ function TreeRow({
         <span className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
         <FileIcon ext={ext} className="h-3.5 w-3.5 shrink-0" />
         <span className="truncate">{node.name}</span>
+        {isTarget && (
+          <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">
+            Target
+          </span>
+        )}
         {ext === "" && (
           <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-destructive/10 text-destructive">
             Unsupported
           </span>
         )}
       </span>
-      <button
-        type="button"
-        onClick={() => onRemoveFile(node.fullPath)}
-        aria-label={`Remove ${node.name}`}
-        className="ml-2 shrink-0 cursor-pointer text-muted-foreground hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        ✕
-      </button>
+      <span className="flex items-center gap-1 shrink-0">
+        {isEligible && (
+          <button
+            type="button"
+            onClick={() => onSetRefTarget(isTarget ? null : node.fullPath)}
+            aria-label={isTarget ? "Unmark as reconciliation target" : "Mark as reconciliation target"}
+            title={isTarget ? "Remove reconciliation target" : "Set as reconciliation target"}
+            className={cn(
+              "ml-1 shrink-0 cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors",
+              isTarget ? "text-primary" : "text-muted-foreground hover:text-primary",
+            )}
+          >
+            <Target className="h-3.5 w-3.5" />
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => onRemoveFile(node.fullPath)}
+          aria-label={`Remove ${node.name}`}
+          className="ml-1 shrink-0 cursor-pointer text-muted-foreground hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          ✕
+        </button>
+      </span>
     </li>
   );
 }
@@ -339,6 +375,8 @@ function ZipCard({
   onToggleExpanded,
   onRemoveZip,
   onExcludeEntry,
+  refTargetPath,
+  onSetRefTarget,
 }: {
   fileName: string;
   ext: string;
@@ -348,6 +386,8 @@ function ZipCard({
   onToggleExpanded: () => void;
   onRemoveZip: () => void;
   onExcludeEntry: (fullPath: string) => void;
+  refTargetPath: string | null;
+  onSetRefTarget: (path: string | null) => void;
 }) {
   const isExpanded = zipData?.expanded === true;
 
@@ -431,6 +471,8 @@ function ZipCard({
               toggleDir={toggleDir}
               onRemoveFile={onExcludeEntry}
               onRemoveDir={handleRemoveDir}
+              refTargetPath={refTargetPath}
+              onSetRefTarget={onSetRefTarget}
             />
           ))}
         </ul>
@@ -560,6 +602,8 @@ export default function JobsPage(): React.ReactElement {
     inputRef,
   } = useUploadState();
 
+  const [refTargetPath, setRefTargetPath] = useState<string | null>(null);
+
   // Per-zip open-folder state
   const [openDirs, setOpenDirs] = useState<Set<string>>(new Set());
   const toggleDir = (zipName: string, displayPath: string) => {
@@ -599,11 +643,12 @@ export default function JobsPage(): React.ReactElement {
 
   const mutation = useMutation({
     mutationFn: () =>
-      submitMigration(sasFiles, refDataset, zipFile, migrationName),
+      submitMigration(sasFiles, refDataset, zipFile, migrationName, refTargetPath),
     onSuccess: (data) => {
       setManifest(data);
       setPhase("submitted");
       void queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      handleDialogOpenChange(false);
     },
     onError: (err) => {
       toast.error(
@@ -619,7 +664,8 @@ export default function JobsPage(): React.ReactElement {
     files.length === 0 ||
     unknownFiles.length > 0 ||
     isPending ||
-    migrationName.trim() === "";
+    migrationName.trim() === "" ||
+    !refTargetPath;
 
   const isAccepted = jobStatus?.status === "accepted";
   const isProposed =
@@ -638,6 +684,7 @@ export default function JobsPage(): React.ReactElement {
     if (!open) {
       reset();
       setOpenDirs(new Set());
+      setRefTargetPath(null);
     }
     setUploadOpen(open);
   }
@@ -687,9 +734,14 @@ export default function JobsPage(): React.ReactElement {
                 onToggleExpanded={() => toggleZipExpanded(f.name)}
                 onRemoveZip={() => removeFile(f.name)}
                 onExcludeEntry={(p) => excludeZipEntry(f.name, p)}
+                refTargetPath={refTargetPath}
+                onSetRefTarget={setRefTargetPath}
               />
             );
           }
+
+          const isEligible = ext === ".csv" || ext === ".sas7bdat";
+          const isTarget = refTargetPath === f.name;
 
           return (
             <li
@@ -704,15 +756,36 @@ export default function JobsPage(): React.ReactElement {
                 />
                 <TypeBadge ext={ext} />
                 <span className="truncate text-foreground">{f.name}</span>
+                {isTarget && (
+                  <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">
+                    Target
+                  </span>
+                )}
               </span>
-              <button
-                type="button"
-                onClick={() => removeFile(f.name)}
-                aria-label={`Remove ${f.name}`}
-                className="ml-2 shrink-0 cursor-pointer rounded-sm text-muted-foreground hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                ✕
-              </button>
+              <span className="flex items-center gap-1 shrink-0">
+                {isEligible && (
+                  <button
+                    type="button"
+                    onClick={() => setRefTargetPath(isTarget ? null : f.name)}
+                    aria-label={isTarget ? "Unmark as reconciliation target" : "Mark as reconciliation target"}
+                    title={isTarget ? "Remove reconciliation target" : "Set as reconciliation target"}
+                    className={cn(
+                      "ml-1 shrink-0 cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors",
+                      isTarget ? "text-primary" : "text-muted-foreground hover:text-primary",
+                    )}
+                  >
+                    <Target className="h-3.5 w-3.5" />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => removeFile(f.name)}
+                  aria-label={`Remove ${f.name}`}
+                  className="ml-1 shrink-0 cursor-pointer rounded-sm text-muted-foreground hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  ✕
+                </button>
+              </span>
             </li>
           );
         })}
@@ -723,7 +796,7 @@ export default function JobsPage(): React.ReactElement {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="px-6 py-8 overflow-y-auto flex-1 h-full">
+    <div className="px-6 py-2 overflow-y-auto flex-1 h-full">
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold text-foreground">Migrations</h1>
@@ -1008,7 +1081,26 @@ export default function JobsPage(): React.ReactElement {
                     </p>
                   </div>
 
+                  {files.length > 0 && (
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-medium text-muted-foreground">
+                        <Target className="inline-block w-3 h-3 mr-1" />Select a target dataset for reconciliation
+                      </p>
+                      {refTargetPath && (
+                        <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                          ✓ Target set
+                        </span>
+                      )}
+                    </div>
+                  )}
+
                   {renderFileList()}
+
+                  {files.some((f) => { const e = fileExt(f.name); return e === ".csv" || e === ".sas7bdat"; }) && !refTargetPath && (
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      Click <Target className="inline h-3 w-3" /> next to a CSV or dataset file to set it as the reconciliation target.
+                    </p>
+                  )}
 
                   {validationError && (
                     <p role="alert" className="text-sm text-destructive">
@@ -1028,15 +1120,17 @@ export default function JobsPage(): React.ReactElement {
             >
               {manifest !== null ? "Done" : "Cancel"}
             </Button>
-            <Button
-              type="submit"
-              form="migration-form"
-              disabled={submitDisabled}
-              aria-busy={isPending}
-              className="cursor-pointer"
-            >
-              {isPending ? "Submitting…" : "Migrate"}
-            </Button>
+            {manifest === null && (
+              <Button
+                type="submit"
+                form="migration-form"
+                disabled={submitDisabled}
+                aria-busy={isPending}
+                className="cursor-pointer"
+              >
+                {isPending ? "Submitting…" : "Migrate"}
+              </Button>
+            )}
 
             {manifest !== null && (
               <Button

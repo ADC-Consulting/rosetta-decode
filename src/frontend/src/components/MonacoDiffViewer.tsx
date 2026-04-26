@@ -7,6 +7,7 @@ interface MonacoDiffViewerProps {
   onChange?: (value: string) => void;
   readOnly?: boolean;
   height?: string;
+  renderSideBySide?: boolean;
 }
 
 export default function MonacoDiffViewer({
@@ -15,6 +16,7 @@ export default function MonacoDiffViewer({
   onChange,
   readOnly = false,
   height = "500px",
+  renderSideBySide = false,
 }: MonacoDiffViewerProps): React.ReactElement {
   function handleMount(editor: Monaco.editor.IStandaloneDiffEditor): void {
     editor.getModifiedEditor().onDidChangeModelContent(() => {
@@ -36,7 +38,7 @@ export default function MonacoDiffViewer({
         </div>
       }
       options={{
-        renderSideBySide: true,
+        renderSideBySide,
         originalEditable: false,
         readOnly: readOnly,
         fontSize: 13,

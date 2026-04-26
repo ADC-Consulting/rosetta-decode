@@ -11,12 +11,9 @@ interface LineageDetailPanelProps {
 }
 
 const STRATEGY_COLOR: Record<string, string> = {
-  translate: "text-blue-700 bg-blue-50 border border-blue-200",
-  translate_with_review: "text-amber-700 bg-amber-50 border border-amber-200",
-  translate_best_effort: "text-orange-700 bg-orange-50 border border-orange-200",
-  manual: "text-red-700 bg-red-50 border border-red-200",
-  manual_ingestion: "text-red-700 bg-red-50 border border-red-200",
-  skip: "text-muted-foreground bg-muted border border-border",
+  translated: "bg-green-100 text-green-800",
+  translated_with_review: "bg-amber-100 text-amber-800",
+  manual: "bg-red-100 text-red-800",
 };
 
 const RISK_COLOR: Record<string, string> = {

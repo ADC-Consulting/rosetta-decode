@@ -24,8 +24,8 @@ import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
-import { useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useRef, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 export { STATUS_LABEL } from "@/components/JobDetail/constants";
 export { StatusBadge } from "@/components/JobDetail/StatusBadge";
@@ -33,7 +33,8 @@ export { StatusBadge } from "@/components/JobDetail/StatusBadge";
 export default function JobDetailPage(): React.ReactElement {
   const { id = "" } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState("plan");
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState(searchParams.get("tab") ?? "plan");
   const [editorCode, setEditorCode] = useState<string | null>(null);
   const [overrideGeneratedFiles, setOverrideGeneratedFiles] = useState<Record<
     string,
@@ -49,6 +50,14 @@ export default function JobDetailPage(): React.ReactElement {
   const [showAcceptConfirm, setShowAcceptConfirm] = useState(false);
   const [showRefineDialog, setShowRefineDialog] = useState(false);
   const [refineHint, setRefineHint] = useState("");
+
+  const lastSavedHashRef = useRef<Record<string, string>>({});
+  const pendingHashRef = useRef("");
+
+  const contentHash = (content: unknown): string => {
+    const str = JSON.stringify(content);
+    return `${str.length}:${str.slice(0, 20)}:${str.slice(-20)}`;
+  };
 
   const queryClient = useQueryClient();
 
@@ -75,6 +84,19 @@ export default function JobDetailPage(): React.ReactElement {
 
   const saveVersionMutation = useMutation({
     mutationFn: async () => {
+      const tabContent =
+        activeTab === "plan"
+          ? { block_overrides: Object.values(planOverrides) }
+          : activeTab === "editor"
+            ? {
+                python_code: displayedEditorCode,
+                generated_files:
+                  overrideGeneratedFiles ?? job?.generated_files ?? {},
+              }
+            : { doc: currentDoc ?? "" };
+      const hash = contentHash(tabContent);
+      if (hash === lastSavedHashRef.current[activeTab]) return;
+      pendingHashRef.current = hash;
       if (activeTab === "plan") {
         return saveVersion(id, "plan", {
           content: { block_overrides: Object.values(planOverrides) },
@@ -94,6 +116,7 @@ export default function JobDetailPage(): React.ReactElement {
       }
     },
     onSuccess: async () => {
+      lastSavedHashRef.current[activeTab] = pendingHashRef.current;
       await queryClient.invalidateQueries({
         queryKey: ["job", id, "versions", activeTab],
       });
@@ -134,7 +157,7 @@ export default function JobDetailPage(): React.ReactElement {
 
   const shortId = id.length >= 8 ? `${id.slice(0, 8)}…` : id;
 
-  const isReviewable = job?.status === "proposed" || job?.status === "accepted";
+  const isReviewable = job?.status === "proposed" || job?.status === "accepted" || job?.status === "under_review";
 
   const { data: planData } = useQuery({
     queryKey: ["job", id, "plan"],
@@ -143,7 +166,7 @@ export default function JobDetailPage(): React.ReactElement {
   });
 
   return (
-    <div className="px-6 py-8 overflow-y-auto flex-1 h-full">
+    <div className="px-6 py-2 overflow-y-auto flex-1 h-full">
       <Tabs
         value={activeTab}
         onValueChange={(v) => {
@@ -193,42 +216,22 @@ export default function JobDetailPage(): React.ReactElement {
             </TabsList>
 
             <div className="ml-auto flex items-center gap-2">
-              {activeTab !== "lineage" &&
-                activeTab !== "trust" &&
-                activeTab !== "history" &&
-                activeTab !== "report" && (
+              {(job?.status === "proposed" || job?.status === "under_review") && (
+                <>
+                  {job?.status === "under_review" && (
+                    <span className="text-sm text-amber-600 font-medium px-2 py-1 bg-amber-50 rounded border border-amber-200">
+                      ⚠ Under review — reconciliation failed
+                    </span>
+                  )}
                   <Button
                     size="sm"
-                    variant="secondary"
-                    onClick={() => saveVersionMutation.mutate()}
-                    disabled={saveVersionMutation.isPending}
+                    onClick={() => setShowAcceptConfirm(true)}
+                    disabled={acceptMutation.isPending}
                     className="cursor-pointer"
                   >
-                    {saveVersionMutation.isPending ? "Saving" : "Save Changes"}
+                    Accept migration
                   </Button>
-                )}
-
-              {isReviewable && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setShowRefineDialog(true)}
-                  disabled={refineMutation.isPending}
-                  className="cursor-pointer"
-                >
-                  Refine
-                </Button>
-              )}
-
-              {job?.status === "proposed" && (
-                <Button
-                  size="sm"
-                  onClick={() => setShowAcceptConfirm(true)}
-                  disabled={acceptMutation.isPending}
-                  className="cursor-pointer"
-                >
-                  Accept migration
-                </Button>
+                </>
               )}
 
               {job?.status === "accepted" && (
@@ -270,6 +273,9 @@ export default function JobDetailPage(): React.ReactElement {
                 code={displayedEditorCode}
                 setCode={(v) => setEditorCode(v)}
                 blockPlans={planData?.block_plans}
+                onSave={() => saveVersionMutation.mutate()}
+                isSaving={saveVersionMutation.isPending}
+                onExpand={() => navigate(`/jobs/${id}/editor`)}
               />
             </TabsContent>
 

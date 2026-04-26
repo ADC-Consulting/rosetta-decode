@@ -7,6 +7,7 @@ import { UploadStateProvider } from "./context/UploadStateContext";
 import JobsPage from "./pages/JobsPage";
 
 const JobDetailPage = lazy(() => import("./pages/JobDetailPage"));
+const EditorFullPage = lazy(() => import("./pages/EditorFullPage"));
 const GlobalLineagePage = lazy(() => import("./pages/GlobalLineagePage"));
 const DocsPage = lazy(() => import("./pages/DocsPage"));
 const ExplainPage = lazy(() => import("./pages/ExplainPage"));
@@ -29,6 +30,7 @@ function App(): React.ReactElement {
                 <Route path="/" element={<Navigate to="/jobs" replace />} />
                 <Route path="/jobs" element={<JobsPage />} />
                 <Route path="/jobs/:id" element={<JobDetailPage />} />
+                <Route path="/jobs/:id/editor" element={<EditorFullPage />} />
                 <Route path="/lineage" element={<GlobalLineagePage />} />
                 <Route path="/docs" element={<DocsPage />} />
                 <Route path="/explain" element={<ExplainPage />} />

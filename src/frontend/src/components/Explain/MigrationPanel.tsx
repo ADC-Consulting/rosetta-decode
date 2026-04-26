@@ -167,7 +167,7 @@ export default function MigrationPanel({
         {!isLoading && (filteredJobs?.length ?? 0) === 0 && (
           <p
             className={cn(
-              "text-xs text-muted-foreground py-4 whitespace-nowrap overflow-hidden transition-[opacity] duration-200 ease-in-out",
+              "text-xs text-muted-foreground py-4 whitespace-nowrap overflow-hidden transition-opacity duration-200 ease-in-out",
               collapsed && "opacity-0",
             )}
             style={{ paddingLeft: ICON_LEFT }}

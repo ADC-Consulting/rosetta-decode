@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Columns2, AlignLeft } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -26,7 +27,8 @@ interface BlockRevisionDrawerProps {
 // ---------------------------------------------------------------------------
 
 function TriggerIcon({ trigger }: { trigger: string }): React.ReactElement {
-  const isHuman = trigger === "human-refine" || trigger === "restore" || trigger === "human";
+  const isHuman =
+    trigger === "human-refine" || trigger === "restore" || trigger === "human";
   return (
     <span
       title={isHuman ? "Human edit" : "Agent generated"}
@@ -42,7 +44,11 @@ function TriggerIcon({ trigger }: { trigger: string }): React.ReactElement {
   );
 }
 
-function ConfidenceBadge({ confidence }: { confidence: string }): React.ReactElement {
+function ConfidenceBadge({
+  confidence,
+}: {
+  confidence: string;
+}): React.ReactElement {
   const lower = confidence.toLowerCase();
   const cls =
     lower === "high"
@@ -51,18 +57,39 @@ function ConfidenceBadge({ confidence }: { confidence: string }): React.ReactEle
         ? "bg-amber-100 text-amber-800"
         : "bg-red-100 text-red-800";
   return (
-    <span className={cn("inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide", cls)}>
+    <span
+      className={cn(
+        "inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+        cls,
+      )}
+    >
       {confidence}
     </span>
   );
 }
 
-function ReconciliationBadge({ status }: { status: "pass" | "fail" | null }): React.ReactElement {
+function ReconciliationBadge({
+  status,
+}: {
+  status: "pass" | "fail" | null;
+}): React.ReactElement {
   if (status === "pass")
-    return <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold bg-green-100 text-green-800">✓ pass</span>;
+    return (
+      <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold bg-green-100 text-green-800">
+        ✓ pass
+      </span>
+    );
   if (status === "fail")
-    return <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold bg-red-100 text-red-800">✗ fail</span>;
-  return <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold bg-muted text-muted-foreground">— n/a</span>;
+    return (
+      <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold bg-red-100 text-red-800">
+        ✗ fail
+      </span>
+    );
+  return (
+    <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold bg-muted text-muted-foreground">
+      — n/a
+    </span>
+  );
 }
 
 function formatTimestamp(iso: string): string {
@@ -74,9 +101,12 @@ function formatTimestamp(iso: string): string {
   if (diffH < 24) return `${diffH}h ago`;
   const diffD = Math.floor(diffH / 24);
   if (diffD < 7) return `${diffD}d ago`;
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
-
 
 // ---------------------------------------------------------------------------
 // RevisionRow
@@ -89,13 +119,15 @@ function RevisionRow({
   isAccepted,
   jobId,
   blockId,
+  sideBySide,
 }: {
   revision: BlockRevision;
-  previousCode: string;   // python_code from the revision before this one ("" for rev 1)
+  previousCode: string;
   isLatest: boolean;
   isAccepted?: boolean;
   jobId: string;
   blockId: string;
+  sideBySide: boolean;
 }): React.ReactElement {
   const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState(isLatest);
@@ -105,8 +137,12 @@ function RevisionRow({
     setRestoring(true);
     try {
       await restoreBlockRevision(jobId, blockId, revision.id);
-      await queryClient.invalidateQueries({ queryKey: ["block-revisions", jobId, blockId] });
-      await queryClient.invalidateQueries({ queryKey: ["trust-report", jobId] });
+      await queryClient.invalidateQueries({
+        queryKey: ["block-revisions", jobId, blockId],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["trust-report", jobId],
+      });
       toast.success(`Restored to revision ${revision.revision_number}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Restore failed");
@@ -116,10 +152,12 @@ function RevisionRow({
   };
 
   return (
-    <div className={cn(
-      "rounded-md border bg-background overflow-hidden",
-      isLatest ? "border-primary/40 shadow-sm" : "border-border",
-    )}>
+    <div
+      className={cn(
+        "rounded-md border bg-background overflow-hidden",
+        isLatest ? "border-primary/40 shadow-sm" : "border-border",
+      )}
+    >
       {/* Header — click to expand/collapse */}
       <button
         type="button"
@@ -128,7 +166,7 @@ function RevisionRow({
       >
         <TriggerIcon trigger={revision.trigger} />
         <span className="text-xs font-semibold text-foreground">
-          Rev {revision.revision_number}
+          V{revision.revision_number}
         </span>
         {isLatest && (
           <span className="text-[10px] font-medium text-primary bg-primary/10 rounded px-1.5 py-0.5">
@@ -162,6 +200,7 @@ function RevisionRow({
             modified={revision.python_code}
             readOnly
             height="320px"
+            renderSideBySide={sideBySide}
           />
         </div>
       )}
@@ -195,14 +234,14 @@ export function BlockRevisionModal({
   blockId,
   isAccepted,
 }: BlockRevisionDrawerProps): React.ReactElement {
+  const [sideBySide, setSideBySide] = useState(false);
+
   const { data, isLoading, isError } = useQuery({
     queryKey: ["block-revisions", jobId, blockId],
     queryFn: () => getBlockRevisions(jobId, blockId),
     enabled: open,
   });
 
-  // Sorted newest-first. For each revision at index i, the "previous" code is
-  // sorted[i+1].python_code, or "" for the oldest revision.
   const sorted = data
     ? [...data.revisions].sort((a, b) => b.revision_number - a.revision_number)
     : [];
@@ -211,25 +250,64 @@ export function BlockRevisionModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[95vw] w-275 max-h-[88vh] flex flex-col">
         <DialogHeader className="shrink-0">
-          <DialogTitle className="flex items-center gap-2">
-            Block History —{" "}
-            <code className="font-mono text-sm font-normal text-muted-foreground">
-              {blockId.replace(/:\d+$/, "")}
-            </code>
-            {sorted.length > 0 && (
-              <span className="ml-2 text-xs font-normal text-muted-foreground">
-                {sorted.length} revision{sorted.length !== 1 ? "s" : ""}
-              </span>
-            )}
-          </DialogTitle>
+          <div className="flex items-center gap-2 flex-wrap">
+            <DialogTitle className="flex items-center gap-2">
+              Block History —{" "}
+              <code className="font-mono text-sm font-normal text-muted-foreground">
+                {blockId.replace(/:\d+$/, "")}
+              </code>
+              {sorted.length > 0 && (
+                <span className="ml-2 text-xs font-normal text-muted-foreground">
+                  {sorted.length} revision{sorted.length !== 1 ? "s" : ""}
+                </span>
+              )}
+            </DialogTitle>
+
+            <div className="ml-auto flex items-center gap-0.5 rounded-md border border-border p-0.5 bg-muted/40">
+              <button
+                type="button"
+                onClick={() => setSideBySide(false)}
+                aria-label="Inline diff"
+                title="Inline diff"
+                className={cn(
+                  "flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors cursor-pointer",
+                  !sideBySide
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <AlignLeft size={13} />
+                Inline
+              </button>
+              <button
+                type="button"
+                onClick={() => setSideBySide(true)}
+                aria-label="Side by side diff"
+                title="Side by side diff"
+                className={cn(
+                  "flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors cursor-pointer",
+                  sideBySide
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <Columns2 size={13} />
+                Side by side
+              </button>
+            </div>
+          </div>
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto space-y-3 mt-2 pr-1">
           {isLoading && (
-            <p className="text-sm text-muted-foreground text-center py-8">Loading revisions…</p>
+            <p className="text-sm text-muted-foreground text-center py-8">
+              Loading revisions…
+            </p>
           )}
           {isError && (
-            <p className="text-sm text-destructive text-center py-8">Failed to load revisions.</p>
+            <p className="text-sm text-destructive text-center py-8">
+              Failed to load revisions.
+            </p>
           )}
           {data && sorted.length === 0 && (
             <p className="text-sm text-muted-foreground text-center py-8">
@@ -245,6 +323,7 @@ export function BlockRevisionModal({
               isAccepted={isAccepted}
               jobId={jobId}
               blockId={blockId}
+              sideBySide={sideBySide}
             />
           ))}
         </div>

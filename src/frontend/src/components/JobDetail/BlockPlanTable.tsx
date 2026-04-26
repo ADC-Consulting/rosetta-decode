@@ -93,22 +93,15 @@ function groupBlocks(
 }
 
 const STRATEGY_COLOR: Record<string, string> = {
-  translate: "text-blue-700 bg-blue-50 border border-blue-200",
-  translate_with_review: "text-amber-700 bg-amber-50 border border-amber-200",
-  translate_best_effort:
-    "text-orange-700 bg-orange-50 border border-orange-200",
+  translated: "text-blue-700 bg-blue-50 border border-blue-200",
+  translated_with_review: "text-amber-700 bg-amber-50 border border-amber-200",
   manual: "text-red-700 bg-red-50 border border-red-200",
-  manual_ingestion: "text-red-700 bg-red-50 border border-red-200",
-  skip: "text-muted-foreground bg-muted border border-border",
 };
 
 const STRATEGY_LABELS: Record<string, string> = {
-  translate: "Auto-translate",
-  translate_with_review: "Translate + review",
-  translate_best_effort: "Best effort",
+  translated: "Translated",
+  translated_with_review: "Review needed",
   manual: "Manual",
-  manual_ingestion: "Manual ingestion",
-  skip: "Skip",
 };
 
 const RISK_COLOR: Record<string, string> = {
@@ -212,32 +205,19 @@ function GlossaryDialog({
             <p className="font-semibold mb-1">Strategies</p>
             <ul className="space-y-1 text-muted-foreground text-xs">
               <li>
-                <span className="font-medium text-blue-700">translate</span> —
-                Fully auto-converted to Python/PySpark.
+                <span className="font-medium text-blue-700">Translated</span> —
+                Fully auto-converted to Python/PySpark with high confidence.
               </li>
               <li>
                 <span className="font-medium text-amber-700">
-                  translate_with_review
+                  Review needed
                 </span>{" "}
                 — Converted but flagged for human check (date semantics, format
-                conversions, ambiguous merges).
+                conversions, low confidence output).
               </li>
               <li>
-                <span className="font-medium text-orange-700">
-                  translate_best_effort
-                </span>{" "}
-                — Partial translation; complex constructs approximated, may be
-                incomplete.
-              </li>
-              <li>
-                <span className="font-medium text-red-700">manual</span> — No
-                Python equivalent exists; placeholder comment only. Requires
-                human rewrite.
-              </li>
-              <li>
-                <span className="font-medium text-muted-foreground">skip</span>{" "}
-                — PROC PRINT / housekeeping; nothing emitted to the output
-                pipeline.
+                <span className="font-medium text-red-700">Manual</span> — No
+                Python equivalent found; requires human implementation.
               </li>
             </ul>
           </div>
@@ -262,8 +242,8 @@ function GlossaryDialog({
               </li>
               <li>
                 <span className="font-medium text-foreground">Manual TODO</span>{" "}
-                — block has strategy manual or manual_ingestion; Python output
-                requires human authoring.
+                — block strategy is manual; Python output requires human
+                authoring.
               </li>
               <li>
                 <span className="font-medium text-red-700">Failed recon</span> —
@@ -276,6 +256,22 @@ function GlossaryDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function extractBlockSection(fullCode: string, blockId: string): string {
+  const lines = fullCode.split("\n");
+  // Find the header line that contains "— <blockId>"
+  const startIdx = lines.findIndex((l) => l.includes(`— ${blockId}`));
+  if (startIdx === -1) return fullCode; // safe fallback
+  // Find the next "# ──" header after startIdx
+  const endIdx = lines.findIndex(
+    (l, i) => i > startIdx && l.startsWith("# ──"),
+  );
+  return lines.slice(startIdx, endIdx === -1 ? undefined : endIdx).join("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -321,7 +317,7 @@ export default function BlockPlanTable({
         setCodeDialogPython(
           latest?.python_code ??
             (() => {
-              if (!generatedFiles) return jobPythonCode ?? "";
+              if (!generatedFiles) return extractBlockSection(jobPythonCode ?? "", codeBlockId);
               const pyFile = codeSasFile.replace(/\.sas$/i, ".py");
               return (
                 generatedFiles[pyFile] ??
@@ -330,8 +326,7 @@ export default function BlockPlanTable({
                     k.endsWith(pyFile.split("/").pop()!),
                   ) ?? ""
                 ] ??
-                jobPythonCode ??
-                ""
+                extractBlockSection(jobPythonCode ?? "", codeBlockId)
               );
             })(),
         );

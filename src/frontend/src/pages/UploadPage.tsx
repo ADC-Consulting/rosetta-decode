@@ -1,24 +1,22 @@
-import { getJob } from "@/api/jobs";
 import { submitMigration } from "@/api/migrate";
 import { Button } from "@/components/ui/button";
 import { useUploadState } from "@/context/UploadStateContext";
 import { cn } from "@/lib/utils";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import {
   Archive,
   ChevronDown,
   ChevronRight,
-  ClipboardCopy,
   Database,
-  ExternalLink,
   File,
   FileCode2,
   FileSpreadsheet,
   Folder,
   FolderOpen,
   ScrollText,
+  X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
@@ -95,48 +93,6 @@ function TypeBadge({ ext }: { ext: string }) {
   return (
     <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-destructive/10 text-destructive">
       Unsupported
-    </span>
-  );
-}
-
-function StatusBadge({ status }: { status: string }) {
-  if (status === "queued")
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
-        Queued
-      </span>
-    );
-  if (status === "running")
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400">
-        <span
-          className="h-2 w-2 rounded-full bg-blue-500 animate-pulse"
-          aria-hidden="true"
-        />
-        Running…
-      </span>
-    );
-  if (status === "proposed" || status === "done")
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">
-        Under Review
-      </span>
-    );
-  if (status === "accepted")
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">
-        Accepted
-      </span>
-    );
-  if (status === "failed")
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-destructive/10 text-destructive">
-        Failed
-      </span>
-    );
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
-      {status}
     </span>
   );
 }
@@ -330,10 +286,8 @@ export default function UploadPage() {
   const navigate = useNavigate();
   const {
     phase,
-    setPhase,
     files,
     zipEntries,
-    manifest,
     dragOver,
     setDragOver,
     migrationName,
@@ -342,11 +296,10 @@ export default function UploadPage() {
     removeFile,
     toggleZipExpanded,
     excludeZipEntry,
-    setManifest,
-    reset,
-    newMigration,
     inputRef,
   } = useUploadState();
+
+  const [refCsvFile, setRefCsvFile] = useState<File | null>(null);
 
   // Per-zip open-folder state: key = `${zipName}::${displayPath}`
   const [openDirs, setOpenDirs] = useState<Set<string>>(new Set());
@@ -373,24 +326,11 @@ export default function UploadPage() {
       ? `Unsupported file(s): ${unknownFiles.map((f) => f.name).join(", ")}`
       : null;
 
-  // Job polling
-  const jobId = manifest?.job_id ?? null;
-  const { data: jobStatus } = useQuery({
-    queryKey: ["job", jobId],
-    queryFn: () => getJob(jobId!),
-    enabled: jobId !== null,
-    refetchInterval: (query) => {
-      const s = query.state.data?.status;
-      return s === "accepted" || s === "failed" || s === "done" ? false : 3000;
-    },
-  });
-
   const mutation = useMutation({
     mutationFn: () =>
-      submitMigration(sasFiles, refDataset, zipFile, migrationName),
-    onSuccess: (data) => {
-      setManifest(data);
-      setPhase("submitted");
+      submitMigration(sasFiles, refDataset, zipFile, migrationName, refCsvFile),
+    onSuccess: () => {
+      navigate("/jobs");
     },
     onError: (err) => {
       toast.error(
@@ -416,7 +356,18 @@ export default function UploadPage() {
   function handleDrop(e: React.DragEvent<HTMLDivElement>) {
     e.preventDefault();
     setDragOver(false);
-    applyFiles(Array.from(e.dataTransfer.files));
+    const dropped = Array.from(e.dataTransfer.files);
+    const csvFiles = dropped.filter((f) => f.name.toLowerCase().endsWith(".csv"));
+    const otherFiles = dropped.filter((f) => !f.name.toLowerCase().endsWith(".csv"));
+    // If CSVs are dropped alongside SAS files (not inside a zip), treat the
+    // last CSV as the ref output file rather than adding it to the main list.
+    const hasSasOrOther = otherFiles.length > 0;
+    if (csvFiles.length > 0 && hasSasOrOther) {
+      setRefCsvFile(csvFiles[csvFiles.length - 1]);
+      applyFiles(otherFiles);
+    } else {
+      applyFiles(dropped);
+    }
   }
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -425,22 +376,6 @@ export default function UploadPage() {
     mutation.mutate();
   }
 
-  function copyText(text: string) {
-    void navigator.clipboard.writeText(text);
-  }
-
-  const isAccepted = jobStatus?.status === "accepted";
-  const isProposed =
-    jobStatus?.status === "proposed" || jobStatus?.status === "done"; // done = legacy
-  const isFailed = jobStatus?.status === "failed";
-
-  useEffect(() => {
-    if (isFailed && jobStatus?.error) {
-      toast.error(
-        "The migration could not be completed. Please check your files and try again.",
-      );
-    }
-  }, [isFailed, jobStatus?.error]);
 
   // ---------------------------------------------------------------------------
   // File list render
@@ -508,79 +443,9 @@ export default function UploadPage() {
   // ---------------------------------------------------------------------------
 
   return (
-    <div className="max-w-[800px] mx-auto w-full px-6 py-8 overflow-y-auto flex-1 h-full">
+    <div className="max-w-200 mx-auto w-full px-6 py-2 overflow-y-auto flex-1 h-full">
       <div className="max-w-lg mx-auto space-y-6">
         <h1 className="text-xl font-semibold text-foreground">New Migration</h1>
-
-        {/* ------------------------------------------------------------------ */}
-        {/* Phase 2 — Job result card                                           */}
-        {/* ------------------------------------------------------------------ */}
-        {manifest !== null && (
-          <div className="rounded-lg border border-border bg-background shadow-sm space-y-4 p-5">
-            {(isAccepted || isProposed) && (
-              <Button
-                type="button"
-                onClick={() => navigate(`/jobs/${manifest.job_id}`)}
-                className="w-full cursor-pointer"
-                aria-label="Open full job details"
-              >
-                Open full details
-                <ExternalLink className="ml-2 h-4 w-4" aria-hidden="true" />
-              </Button>
-            )}
-
-            <div className="flex items-start justify-between gap-4">
-              <div className="space-y-1">
-                {/* <p className="text-sm font-semibold text-foreground">
-                Migration submitted
-              </p> */}
-                {(manifest.name ?? migrationName) ? (
-                  <p className="text-base font-semibold text-foreground">
-                    {manifest.name ?? migrationName}
-                  </p>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <code className="font-mono text-xs text-muted-foreground truncate max-w-65">
-                      {manifest.job_id}
-                    </code>
-                    <button
-                      type="button"
-                      onClick={() => copyText(manifest.job_id)}
-                      aria-label="Copy job ID"
-                      className="shrink-0 cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      <ClipboardCopy className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                )}
-              </div>
-              <StatusBadge status={jobStatus?.status ?? "queued"} />
-            </div>
-
-            <div className="flex items-center gap-3 pt-1 border-t border-border">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={newMigration}
-                className="cursor-pointer"
-                aria-label="Start another migration without clearing this result"
-              >
-                Start another
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={reset}
-                aria-label="Accept result and clear this session"
-                className="cursor-pointer text-muted-foreground hover:text-foreground"
-              >
-                Accept & clear
-              </Button>
-            </div>
-          </div>
-        )}
 
         {/* ------------------------------------------------------------------ */}
         {/* Phase 1 — Staging form                                              */}
@@ -669,6 +534,66 @@ export default function UploadPage() {
               </p>
             </div>
 
+            {/* ---------------------------------------------------------------- */}
+            {/* Ref CSV zone                                                       */}
+            {/* ---------------------------------------------------------------- */}
+            <div className="space-y-1.5">
+              <div>
+                <p className="text-sm font-medium text-foreground">
+                  Reference output{" "}
+                  <span className="text-muted-foreground font-normal">(CSV)</span>
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  The expected final output of your SAS pipeline — used for reconciliation
+                </p>
+              </div>
+
+              {refCsvFile ? (
+                <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-1.5 text-sm w-fit max-w-full">
+                  <FileSpreadsheet className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                  <span className="truncate text-foreground text-xs">{refCsvFile.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => setRefCsvFile(null)}
+                    aria-label="Remove reference CSV"
+                    className="shrink-0 cursor-pointer rounded-sm text-muted-foreground hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ) : (
+                <label
+                  htmlFor="ref-csv-input"
+                  className={cn(
+                    "flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-2",
+                    "cursor-pointer text-xs text-muted-foreground hover:border-primary/50 hover:text-foreground",
+                    "transition-colors select-none w-fit",
+                  )}
+                >
+                  <FileSpreadsheet className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                  <span>
+                    Drop a CSV here or{" "}
+                    <span className="text-primary underline underline-offset-2">browse</span>
+                  </span>
+                  <input
+                    id="ref-csv-input"
+                    type="file"
+                    accept=".csv"
+                    className="sr-only"
+                    aria-hidden="true"
+                    tabIndex={-1}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] ?? null;
+                      setRefCsvFile(f);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+              )}
+            </div>
+
+            {renderFileList()}
+
             <Button
               type="submit"
               disabled={submitDisabled}
@@ -677,8 +602,6 @@ export default function UploadPage() {
             >
               {isPending ? "Submitting…" : "Migrate"}
             </Button>
-
-            {renderFileList()}
 
             {validationError && (
               <p role="alert" className="text-sm text-destructive">

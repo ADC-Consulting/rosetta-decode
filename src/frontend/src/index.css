@@ -130,3 +130,7 @@ body {
     @apply font-sans;
   }
 }
+.monaco-block-highlight {
+  background: rgba(99, 102, 241, 0.12) !important;
+  border-left: 2px solid rgba(99, 102, 241, 0.6);
+}

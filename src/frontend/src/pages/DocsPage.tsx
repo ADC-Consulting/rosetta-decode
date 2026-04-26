@@ -538,7 +538,7 @@ export default function DocsPage(): React.ReactElement {
   });
 
   return (
-    <div className="px-6 py-8 overflow-y-auto flex-1 h-full">
+    <div className="px-6 py-2 overflow-y-auto flex-1 h-full">
       <div className="space-y-6">
         <style>{`@keyframes shimmer{from{background-position:200% center}to{background-position:-200% center}}`}</style>
 

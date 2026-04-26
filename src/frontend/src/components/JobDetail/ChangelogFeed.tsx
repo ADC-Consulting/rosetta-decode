@@ -44,10 +44,26 @@ function ReconciliationBadge({ value }: { value: "pass" | "fail" | null }): Reac
   );
 }
 
+const STRATEGY_COLOR = {
+  translated: "bg-green-100 text-green-800",
+  translated_with_review: "bg-amber-100 text-amber-800",
+  manual: "bg-red-100 text-red-800",
+} as const;
+
+const STRATEGY_LABELS = {
+  translated: "Translated",
+  translated_with_review: "Review needed",
+  manual: "Manual",
+} as const;
+
 function StrategyBadge({ value }: { value: string }): React.ReactElement {
+  const colorClass =
+    STRATEGY_COLOR[value as keyof typeof STRATEGY_COLOR] ??
+    "bg-muted text-muted-foreground";
+  const label = STRATEGY_LABELS[value as keyof typeof STRATEGY_LABELS] ?? value;
   return (
-    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200">
-      {value}
+    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${colorClass}`}>
+      {label}
     </span>
   );
 }
