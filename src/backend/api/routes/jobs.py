@@ -145,8 +145,8 @@ async def get_job(
         user_overrides=job.user_overrides,
         accepted_at=job.accepted_at,
         parent_job_id=job.parent_job_id,
-        trigger=job.trigger,
-        skip_llm=job.skip_llm,
+        trigger=job.trigger or "agent",
+        skip_llm=job.skip_llm if job.skip_llm is not None else False,
     )
 
 
@@ -540,6 +540,8 @@ async def accept_job(
         generated_files=updated.generated_files,
         user_overrides=updated.user_overrides,
         accepted_at=updated.accepted_at,
+        trigger=updated.trigger or "agent",
+        skip_llm=updated.skip_llm if updated.skip_llm is not None else False,
     )
 
 

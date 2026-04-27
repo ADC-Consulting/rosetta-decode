@@ -202,3 +202,68 @@ def test_make_agent_azure_provider_path() -> None:
         result = _make_agent()
 
     assert result is mock_agent
+
+
+def test_make_agent_tensorzero_provider_path() -> None:
+    """_make_agent() takes the TensorZero branch when tensorzero_gateway_url is set."""
+    from unittest.mock import MagicMock, patch
+
+    mock_settings = MagicMock()
+    mock_settings.tensorzero_gateway_url = "http://tz:7000"
+    mock_settings.azure_openai_endpoint = ""
+    mock_settings.llm_model = "anthropic:claude-sonnet-4-6"
+
+    mock_tz_provider = MagicMock()
+    mock_model = MagicMock()
+    mock_agent = MagicMock()
+
+    with (
+        patch("src.worker.engine.agents.proc.worker_settings", mock_settings),
+        patch("src.worker.engine.agents.proc.OpenAIProvider", return_value=mock_tz_provider),
+        patch(
+            "src.worker.engine.agents.proc.OpenAIChatModel", return_value=mock_model
+        ) as mock_oai_model,
+        patch("src.worker.engine.agents.proc.Agent", return_value=mock_agent),
+    ):
+        from src.worker.engine.agents.proc import _make_agent
+
+        result = _make_agent()
+
+    call_kwargs = mock_oai_model.call_args
+    first_arg = call_kwargs.args[0] if call_kwargs.args else ""
+    model_name_arg = call_kwargs.kwargs.get("model_name", first_arg)
+    assert "tensorzero::" in model_name_arg
+    assert result is mock_agent
+
+
+# ── NEW COVERAGE: Azure branch (lines 206-216) ────────────────────────────────
+
+
+def test_make_agent_azure_branch() -> None:
+    """Lines 206-216: _make_agent uses AzureProvider when azure_openai_endpoint is set."""
+    from unittest.mock import MagicMock, patch
+
+    with (
+        patch(
+            "src.worker.engine.agents.proc.worker_settings",
+            tensorzero_gateway_url="",
+            azure_openai_endpoint="https://my.azure.openai.com",
+            azure_openai_api_key="fake-key",
+            openai_api_version="2024-05-01",
+            llm_model="azure:gpt-4o",
+        ),
+        patch("src.worker.engine.agents.proc.AzureProvider") as mock_azure,
+        patch("src.worker.engine.agents.proc.OpenAIChatModel") as mock_model,
+        patch("src.worker.engine.agents.proc.Agent") as mock_agent_cls,
+    ):
+        mock_azure.return_value = MagicMock()
+        mock_model.return_value = MagicMock()
+        mock_agent_cls.return_value = MagicMock()
+
+        from src.worker.engine.agents.proc import _make_agent
+
+        _make_agent()
+
+        mock_azure.assert_called_once()
+        call_kwargs = mock_azure.call_args[1]
+        assert call_kwargs["azure_endpoint"] == "https://my.azure.openai.com"

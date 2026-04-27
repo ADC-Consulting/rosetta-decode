@@ -103,7 +103,7 @@ def _load_reference(ref_csv_path: str, ref_sas7bdat_path: str) -> pd.DataFrame:
         Exception: Propagated from pandas / pyreadstat on load failure.
     """
     if ref_sas7bdat_path:
-        import pyreadstat  # type: ignore[import-untyped]
+        import pyreadstat  # type: ignore[import-untyped, unused-ignore]
 
         df, _ = pyreadstat.read_sas7bdat(ref_sas7bdat_path)
         return pd.DataFrame(df)

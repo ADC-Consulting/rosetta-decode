@@ -37,7 +37,8 @@ class LocalBackend(ComputeBackend):
             pandas DataFrame with all columns loaded.
         """
         df, _ = pyreadstat.read_sas7bdat(path)
-        return df
+        result: pd.DataFrame = df
+        return result
 
     def run_sql(self, query: str, context: dict[str, object]) -> pd.DataFrame:
         """Execute a SQL query against the provided DataFrames via SQLite.

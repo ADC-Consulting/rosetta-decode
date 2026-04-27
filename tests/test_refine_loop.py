@@ -168,8 +168,9 @@ class TestRetryLoop:
     def context(self) -> JobContext:
         return _make_context()
 
-    def _run(self, coro):  # type: ignore[no-untyped-def]
-        return asyncio.get_event_loop().run_until_complete(coro)
+    def _run(self, coro: object) -> list[GeneratedBlock]:
+        result: list[GeneratedBlock] = asyncio.get_event_loop().run_until_complete(coro)  # type: ignore[arg-type]
+        return result
 
     def test_passes_attempt_1_executor_called_once(
         self, block: SASBlock, context: JobContext
@@ -185,10 +186,6 @@ class TestRetryLoop:
         with (
             patch(
                 "src.worker.engine.block_executor.BlockExecutor",
-                return_value=mock_executor,
-            ),
-            patch(
-                "src.worker.main.BlockExecutor",
                 return_value=mock_executor,
             ),
             patch("src.worker.main.BackendFactory") as mock_factory,

@@ -110,9 +110,9 @@ def _make_agent() -> "Agent[GeneratedBlock]":
     else:
         model_obj = worker_settings.llm_model  # type: ignore[assignment]
 
-    return Agent(  # type: ignore[arg-type, return-value]
+    return Agent(
         model=model_obj,
-        output_type=GeneratedBlock,
+        output_type=GeneratedBlock,  # type: ignore[arg-type]
         system_prompt=_SYSTEM_PROMPT,
     )
 
@@ -159,7 +159,7 @@ def _make_text_agent() -> "Agent[str]":
     else:
         model_obj = worker_settings.llm_model  # type: ignore[assignment]
 
-    return Agent(  # type: ignore[arg-type, return-value]
+    return Agent(
         model=model_obj,
         output_type=str,
     )
@@ -269,7 +269,7 @@ class LLMClient:
 
         def _run() -> str:
             result = self._text_agent.run_sync(prompt)
-            return cast(str, result.output)
+            return result.output
 
         return await asyncio.to_thread(_run)
 

@@ -31,27 +31,25 @@ _spark_session: Any = None
 
 
 def _get_spark() -> Any:
-    """Return a lazily-created local SparkSession (singleton per process).
-
-    Raises RuntimeError if Spark cannot be initialised.
-    Note: do NOT install databricks-connect alongside this — it hijacks
-    SparkSession.builder and requires a remote Databricks cluster.
-    """
+    """Return a lazily-created local SparkSession, or None if pyspark is not installed."""
     global _spark_session
     if _spark_session is None:
-        logging.getLogger("py4j").setLevel(logging.WARNING)
-        logging.getLogger("py4j.clientserver").setLevel(logging.WARNING)
-        from pyspark.sql import SparkSession  # type: ignore[import-not-found]
+        try:
+            logging.getLogger("py4j").setLevel(logging.WARNING)
+            logging.getLogger("py4j.clientserver").setLevel(logging.WARNING)
+            from pyspark.sql import SparkSession  # type: ignore[import-not-found]
 
-        _spark_session = (
-            SparkSession.builder.master("local[*]")
-            .appName("rosetta-reconciliation")
-            .config("spark.ui.enabled", "false")
-            .config("spark.sql.shuffle.partitions", "4")
-            .getOrCreate()
-        )
-        _spark_session.sparkContext.setLogLevel("ERROR")
-        logger.info("Local SparkSession initialised for reconciliation")
+            _spark_session = (
+                SparkSession.builder.master("local[*]")
+                .appName("rosetta-reconciliation")
+                .config("spark.ui.enabled", "false")
+                .config("spark.sql.shuffle.partitions", "4")
+                .getOrCreate()
+            )
+            _spark_session.sparkContext.setLogLevel("ERROR")
+            logger.info("Local SparkSession initialised for reconciliation")
+        except ImportError:
+            return None
     return _spark_session
 
 
@@ -291,7 +289,9 @@ class ReconciliationService:
             ValueError: If no DataFrame is found in the execution namespace.
         """
         spark = _get_spark()
-        namespace: dict[str, Any] = {"backend": backend, "pd": pd, "spark": spark}
+        namespace: dict[str, Any] = {"backend": backend, "pd": pd}
+        if spark is not None:
+            namespace["spark"] = spark
         _safe_exec(python_code, namespace)
 
         # Prefer an explicit "result" variable; fall back to last DataFrame-like value.

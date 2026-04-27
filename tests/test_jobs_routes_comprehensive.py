@@ -1,6 +1,8 @@
 """Comprehensive coverage tests for src/backend/api/routes/jobs.py — fills 66 missing lines."""
 
+import pathlib
 import uuid
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -25,8 +27,8 @@ from src.backend.db.models import Job
 def _make_job(
     job_id: str | None = None,
     status: str = "proposed",
-    files: dict | None = None,
-    **kwargs,
+    files: dict[str, object] | None = None,
+    **kwargs: object,
 ) -> Job:
     """Factory for test Job instances."""
     if job_id is None:
@@ -35,12 +37,20 @@ def _make_job(
         job_id = str(job_id)
     if files is None:
         files = {"test.sas": "data step;"}
+    _now = datetime.now(UTC)
+    defaults: dict[str, object] = dict(
+        input_hash="abc123",
+        trigger="agent",
+        skip_llm=False,
+        created_at=_now,
+        updated_at=_now,
+    )
+    defaults.update(kwargs)
     job = Job(
         id=job_id,
         status=status,
-        input_hash="abc123",
         files=files,
-        **kwargs,
+        **defaults,
     )
     return job
 
@@ -73,8 +83,8 @@ def test_classify_attachment(ext: str, expected: str) -> None:
 async def test_list_jobs_no_filter() -> None:
     """Test list_jobs returns all jobs ordered by created_at desc."""
     session = AsyncMock()
-    job1 = _make_job("id1", status="proposed")
-    job2 = _make_job("id2", status="done")
+    job1 = _make_job(status="proposed")
+    job2 = _make_job(status="done")
     result_mock = MagicMock()
     result_mock.scalars.return_value.all.return_value = [job2, job1]
     session.execute.return_value = result_mock
@@ -90,7 +100,7 @@ async def test_list_jobs_no_filter() -> None:
 async def test_list_jobs_with_single_status_filter() -> None:
     """Test list_jobs with single status filter."""
     session = AsyncMock()
-    job1 = _make_job("id1", status="done")
+    job1 = _make_job(status="done")
     result_mock = MagicMock()
     result_mock.scalars.return_value.all.return_value = [job1]
     session.execute.return_value = result_mock
@@ -105,8 +115,8 @@ async def test_list_jobs_with_single_status_filter() -> None:
 async def test_list_jobs_with_multiple_status_filters() -> None:
     """Test list_jobs with comma-separated status filters."""
     session = AsyncMock()
-    job1 = _make_job("id1", status="proposed")
-    job2 = _make_job("id2", status="done")
+    job1 = _make_job(status="proposed")
+    job2 = _make_job(status="done")
     result_mock = MagicMock()
     result_mock.scalars.return_value.all.return_value = [job1, job2]
     session.execute.return_value = result_mock
@@ -258,7 +268,7 @@ async def test_get_attachments_skips_malformed_sentinel() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_attachments_skips_missing_disk_file(tmp_path) -> None:
+async def test_get_attachments_skips_missing_disk_file(tmp_path: object) -> None:
     """Test get_job_attachments skips missing disk files."""
     job_id = uuid.uuid4()
     job = _make_job(
@@ -276,7 +286,7 @@ async def test_get_attachments_skips_missing_disk_file(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_attachments_valid_file(tmp_path) -> None:
+async def test_get_attachments_valid_file(tmp_path: pathlib.Path) -> None:
     """Test get_job_attachments returns valid attachment."""
     job_id = uuid.uuid4()
     disk_path = str(tmp_path / "output.log")
@@ -373,7 +383,7 @@ async def test_download_attachment_disk_file_missing() -> None:
 
 
 @pytest.mark.asyncio
-async def test_download_attachment_success(tmp_path) -> None:
+async def test_download_attachment_success(tmp_path: pathlib.Path) -> None:
     """Test download_attachment returns FileResponse successfully."""
     job_id = uuid.uuid4()
     disk_path = str(tmp_path / "output.csv")
@@ -524,7 +534,9 @@ async def test_get_job_lineage_not_computed() -> None:
     response = await get_job_lineage(job_id, session)
 
     # Should return JSONResponse with 202
-    assert response.status_code == 202 or response == {}
+    from starlette.responses import JSONResponse as _JSONResponse
+
+    assert isinstance(response, _JSONResponse) and response.status_code == 202
 
 
 @pytest.mark.asyncio
@@ -532,8 +544,8 @@ async def test_get_job_lineage_available() -> None:
     """Test get_job_lineage returns data when available."""
     job_id = uuid.uuid4()
     lineage_data = {
-        "nodes": [{"id": "n1"}],
-        "edges": [{"source": "n1", "target": "n2"}],
+        "nodes": [{"id": "n1", "label": "Block 1"}],
+        "edges": [{"source": "n1", "target": "n2", "dataset": "ds1"}],
         "column_flows": [],
     }
     job = _make_job(str(job_id), lineage=lineage_data)
@@ -544,6 +556,9 @@ async def test_get_job_lineage_available() -> None:
 
     response = await get_job_lineage(job_id, session)
 
+    from src.backend.api.schemas import JobLineageResponse
+
+    assert isinstance(response, JobLineageResponse)
     assert response.job_id == job_id
     assert len(response.nodes) == 1
 
@@ -636,7 +651,9 @@ async def test_get_job_plan_not_complete() -> None:
 
     response = await get_job_plan(job_id, session)
 
-    assert response.status_code == 202
+    from starlette.responses import JSONResponse as _JSONResponse
+
+    assert isinstance(response, _JSONResponse) and response.status_code == 202
 
 
 @pytest.mark.asyncio
@@ -651,7 +668,9 @@ async def test_get_job_plan_no_plan_generated() -> None:
 
     response = await get_job_plan(job_id, session)
 
-    assert response.status_code == 202
+    from starlette.responses import JSONResponse as _JSONResponse
+
+    assert isinstance(response, _JSONResponse) and response.status_code == 202
 
 
 @pytest.mark.asyncio
@@ -660,8 +679,10 @@ async def test_get_job_plan_available() -> None:
     job_id = uuid.uuid4()
     plan_data = {
         "summary": "Plan summary",
+        "overall_risk": "low",
         "block_plans": [],
-        "block_overrides": [],
+        "recommended_review_blocks": [],
+        "cross_file_dependencies": [],
     }
     job = _make_job(str(job_id), status="done", migration_plan=plan_data)
     session = AsyncMock()
@@ -671,6 +692,9 @@ async def test_get_job_plan_available() -> None:
 
     response = await get_job_plan(job_id, session)
 
+    from src.backend.api.schemas import JobPlanResponse
+
+    assert isinstance(response, JobPlanResponse)
     assert response.summary == "Plan summary"
 
 
@@ -708,10 +732,12 @@ async def test_accept_job_success() -> None:
 
     request = AcceptJobRequest(notes="Looks good")
 
-    # Mock the second query for updated job
+    # Mock: 1st = select (scalar_one_or_none), 2nd = update, 3rd = select (scalar_one)
     updated_job = _make_job(str(job_id), status="accepted")
-    session.execute.side_effect = [result_mock, result_mock]
-    result_mock.scalar_one.return_value = updated_job
+    update_result = MagicMock()
+    result_mock2 = MagicMock()
+    result_mock2.scalar_one.return_value = updated_job
+    session.execute.side_effect = [result_mock, update_result, result_mock2]
 
     response = await accept_job(job_id, request, session)
 
@@ -794,3 +820,78 @@ async def test_patch_job_plan_invalid_status() -> None:
         await patch_job_plan(job_id, PatchPlanRequest(block_overrides=[]), session)
 
     assert exc_info.value.status_code == 409
+
+
+# ─── refine_job (POST /jobs/{id}/refine) — 409 when accepted ─────────────────
+
+
+@pytest.mark.asyncio
+async def test_refine_job_409_when_accepted() -> None:
+    """POST /jobs/{id}/refine returns 409 when job has been accepted."""
+    from datetime import UTC, datetime
+
+    from fastapi import HTTPException
+    from src.backend.api.routes.jobs import refine_job
+    from src.backend.api.schemas import RefineRequest
+
+    job_id = uuid.uuid4()
+    job = _make_job(str(job_id), status="accepted", accepted_at=datetime.now(UTC))
+    session = AsyncMock()
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = job
+    session.execute.return_value = result_mock
+
+    with pytest.raises(HTTPException) as exc_info:
+        await refine_job(job_id, RefineRequest(hint="try again"), session)
+
+    assert exc_info.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_refine_job_404_when_missing() -> None:
+    """POST /jobs/{id}/refine returns 404 when job not found."""
+    from fastapi import HTTPException
+    from src.backend.api.routes.jobs import refine_job
+    from src.backend.api.schemas import RefineRequest
+
+    job_id = uuid.uuid4()
+    session = AsyncMock()
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = None
+    session.execute.return_value = result_mock
+
+    with pytest.raises(HTTPException) as exc_info:
+        await refine_job(job_id, RefineRequest(hint="try again"), session)
+
+    assert exc_info.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_refine_job_creates_child_job() -> None:
+    """POST /jobs/{id}/refine creates a child job with refine_context."""
+    import json as _json
+
+    from src.backend.api.routes.jobs import refine_job
+    from src.backend.api.schemas import RefineRequest
+
+    job_id = uuid.uuid4()
+    job = _make_job(
+        str(job_id),
+        status="proposed",
+        python_code="df = pd.read_csv('in.csv')",
+        accepted_at=None,
+    )
+    session = AsyncMock()
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = job
+    session.execute.return_value = result_mock
+
+    response = await refine_job(job_id, RefineRequest(hint="fix the join"), session)
+
+    assert session.add.called
+    assert session.commit.called
+    new_job_arg = session.add.call_args[0][0]
+    assert new_job_arg.trigger == "human-refine"
+    ctx = _json.loads(new_job_arg.files["__refine_context__"])
+    assert ctx["hint"] == "fix the join"
+    assert response.job_id is not None

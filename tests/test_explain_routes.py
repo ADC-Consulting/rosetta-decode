@@ -444,3 +444,132 @@ async def test_explain_job_with_session_id_triggers_persist(
 
     assert resp.status_code == 200
     assert _sse_ends_with_done(resp.text)
+
+
+# ── NEW COVERAGE ADDITIONS ─────────────────────────────────────────────────────
+# Targets: lines 252, 303, 345-368
+
+
+@pytest.mark.asyncio
+async def test_explain_files_with_history(client: AsyncClient) -> None:
+    """POST /explain with messages JSON builds history in prompt (line ~252)."""
+    captured: list[str] = []
+
+    async def _cap_stream(
+        prompt: str,
+        audience: str = "tech",
+        mode: str = "migration",
+        session_id: str | None = None,
+        question: str | None = None,
+    ) -> object:
+        captured.append(prompt)
+        yield "Answer."
+
+    import src.backend.api.routes.explain as explain_module
+
+    with patch.object(explain_module._explain_agent, "answer_stream", _cap_stream):
+        resp = await client.post(
+            "/explain",
+            data={
+                "question": "Follow up?",
+                "messages": json.dumps(
+                    [
+                        {"role": "user", "content": "Initial question"},
+                        {"role": "assistant", "content": "Initial answer"},
+                    ]
+                ),
+            },
+        )
+
+    assert resp.status_code == 200
+    assert len(captured) == 1
+    assert "Initial question" in captured[0]
+
+
+@pytest.mark.asyncio
+async def test_explain_job_with_lineage(client: AsyncClient, db_session: AsyncSession) -> None:
+    """POST /explain/job with lineage field includes lineage in prompt (line ~303)."""
+    job_id = str(uuid.uuid4())
+    db_session.add(
+        Job(
+            id=job_id,
+            status="done",
+            input_hash="h",
+            files={},
+            python_code="result = df",
+            lineage={"nodes": [{"id": "block1"}], "edges": []},
+        )
+    )
+    await db_session.commit()
+
+    captured: list[str] = []
+
+    async def _cap_stream(
+        prompt: str,
+        audience: str = "tech",
+        mode: str = "migration",
+        session_id: str | None = None,
+        question: str | None = None,
+    ) -> object:
+        captured.append(prompt)
+        yield "Answer."
+
+    import src.backend.api.routes.explain as explain_module
+
+    with patch.object(explain_module._explain_agent, "answer_stream", _cap_stream):
+        resp = await client.post(
+            "/explain/job",
+            json={"job_id": job_id, "question": "Describe the lineage"},
+        )
+
+    assert resp.status_code == 200
+    assert "block1" in captured[0]
+
+
+@pytest.mark.asyncio
+async def test_explain_legacy_no_files(client: AsyncClient) -> None:
+    """POST /explain/legacy with no files returns a response (lines 345-368)."""
+    import src.backend.api.routes.explain as explain_module
+
+    async def _fake(*a: object, **k: object) -> object:
+        yield "Legacy answer."
+
+    with patch.object(explain_module._explain_agent, "answer_stream", _fake):
+        resp = await client.post(
+            "/explain/legacy",
+            data={"question": "What does this do?"},
+        )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "answer" in body
+
+
+@pytest.mark.asyncio
+async def test_explain_legacy_with_file(client: AsyncClient) -> None:
+    """POST /explain/legacy with an uploaded file (lines 351-355)."""
+    import src.backend.api.routes.explain as explain_module
+
+    async def _fake(*a: object, **k: object) -> object:
+        yield "Answer with file."
+
+    with patch.object(explain_module._explain_agent, "answer_stream", _fake):
+        resp = await client.post(
+            "/explain/legacy",
+            data={"question": "Explain this SAS"},
+            files=[("files", ("script.sas", b"data out; set in; run;", "text/plain"))],
+        )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["context_files"] == ["script.sas"]
+
+
+@pytest.mark.asyncio
+async def test_explain_legacy_bad_messages_json(client: AsyncClient) -> None:
+    """POST /explain/legacy with bad messages JSON returns 400 (line 348)."""
+    resp = await client.post(
+        "/explain/legacy",
+        data={"question": "Q?", "messages": "not-valid-json"},
+    )
+    assert resp.status_code == 400

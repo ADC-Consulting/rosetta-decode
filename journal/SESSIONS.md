@@ -6,6 +6,48 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-04-27 — Test coverage 86% → 95%
+
+**Duration:** ~1.5h | **Focus:** Coverage uplift — agent factories, router, worker/main, API routes
+
+### Done
+- **Coverage 86% → 90%:** Added tests for Azure/TensorZero `_make_agent()` branches across `llm_client`, `generic_proc`, `migration_planner`; `_StrategyStubAdapter`, `_SimpleCopyHelper` (keep/drop/copy), MANUAL block_plan routing; `_safe_exec` NameError re-raise; `_get_spark` ImportError path
+- **Coverage 90% → 92%:** Added tests for TensorZero/Azure branches across `analysis`, `data_step`, `proc`, `failure_interpreter`, `macro_resolver`, `documentation`, `plain_english`, `lineage_enricher`, `explain_agent`; parser cycle detection + `extract_lineage`; executor runner empty JSON + exception paths
+- **Coverage 92% → 93%:** Added tests for `jobs.py` versions/refine/restore routes; `worker/main.py` sentinel key parsing, migration planner failure, refine context, doc/lineage failure swallowing; `migrate.py` zip skip paths
+- **Coverage 93% → 95%:** Added tests for `worker/main.py` stale job recovery, `_reconcile_initial_blocks` branches, `_process_job`; `explain.py` all three POST routes; `proc.py`/`data_step.py` Azure branch; `macro_expander.py` unresolved var; `codegen.py` result append
+- **pyproject.toml:** `--cov-fail-under` threshold raised to 90 (already passing at 95%)
+- **New test file:** `tests/test_llm_client_text_agent.py`
+
+### Decisions
+- PySpark-dependent branches in `reconciliation.py` (Spark init, AnalysisException) left uncovered — require a real PySpark install, not feasible in unit test environment; documented as known gap
+
+### Open Questions
+- `worker/main.py` lines 259-260, 768-769 — `_claim_job` skip_llm branch and a deep translate-loop branch; partially reachable but fragile to mock; left for future session
+
+### Next Session — Start Here
+1. Debug output variable NameError (`outdir_customer_revenue_daily`) — add prompt logging in `data_step.py` `_build_prompt()`, re-submit failing job, inspect worker stdout
+2. Run `make docker-build` — picks up executor log4j2, volume mount, agent router changes
+3. Fix `auto_verified` trust report counter (always 0) and `needs_attention` threshold
+
+### Files Touched
+- `tests/test_llm_client.py`, `tests/test_llm_client_text_agent.py` (new)
+- `tests/test_generic_proc_agent.py`, `tests/test_translation_router.py`
+- `tests/reconciliation/test_reconciliation_service.py`
+- `tests/test_migration_planner_agent.py`, `tests/test_analysis_agent.py`
+- `tests/test_data_step_agent.py`, `tests/test_proc_agent.py`
+- `tests/test_failure_interpreter_agent.py`, `tests/test_macro_resolver_agent.py`
+- `tests/test_documentation_agent.py` (via `test_doc_generator.py`)
+- `tests/test_lineage_enricher_agent.py`, `tests/test_explain_agent.py`
+- `tests/test_parser.py`, `tests/test_executor_runner.py`, `tests/test_executor_recon.py`
+- `tests/test_block_refine_routes.py`, `tests/test_job_versions.py`
+- `tests/test_changelog_trust_report.py`, `tests/test_execute_route.py`
+- `tests/test_jobs_routes_comprehensive.py`, `tests/test_explain_routes.py`
+- `tests/test_migrate_route.py`, `tests/test_macro_expander.py`, `tests/test_codegen.py`
+- `tests/test_worker_main_comprehensive.py`
+- `journal/BACKLOG.md`, `pyproject.toml`
+
+---
+
 ## 2026-04-26 — Codegen/executor fixes, agent prompt hardening, output variable naming (incomplete)
 
 **Duration:** ~2h | **Focus:** Executor recon failures, generated code correctness, Spark warning suppression

@@ -102,3 +102,44 @@ def test_run_code_elapsed_ms_is_non_negative() -> None:
         result = runner.run_code("")
     assert isinstance(result["elapsed_ms"], int)
     assert result["elapsed_ms"] >= 0
+
+
+def test_run_code_empty_result_json_list(tmp_path: Path) -> None:
+    """An empty JSON array written by the capture snippet results in empty lists."""
+    import json
+    import tempfile
+    from unittest.mock import MagicMock
+
+    result_file = tmp_path / "rosetta_result_empty.json"
+    result_file.write_text(json.dumps([]))
+
+    real_ntf = tempfile.NamedTemporaryFile
+    call_count = [0]
+
+    def _fake_ntf(**kwargs):  # type: ignore[no-untyped-def]
+        call_count[0] += 1
+        if call_count[0] == 2:
+            m = MagicMock()
+            m.__enter__ = lambda s: m
+            m.__exit__ = MagicMock(return_value=False)
+            m.name = str(result_file)
+            return m
+        return real_ntf(**kwargs)
+
+    fake_proc = _FakeProc(returncode=0)
+    with (
+        patch("runner.subprocess.run", return_value=fake_proc),
+        patch("runner.tempfile.NamedTemporaryFile", side_effect=_fake_ntf),
+    ):
+        result = runner.run_code("pass")
+
+    assert result["result_json"] == []
+    assert result["result_columns"] == []
+
+
+def test_run_code_generic_exception_sets_error() -> None:
+    """A generic Exception during subprocess.run is caught and sets the error field."""
+    with patch("runner.subprocess.run", side_effect=OSError("disk full")):
+        result = runner.run_code("x = 1")
+    assert result["error"] == "disk full"
+    assert result["stdout"] == ""

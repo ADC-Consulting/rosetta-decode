@@ -13,8 +13,8 @@ import sys
 import uvicorn
 from fastapi import FastAPI
 from pydantic import BaseModel
-from recon import run_recon
-from runner import run_code
+from recon import run_recon  # type: ignore[import-not-found]
+from runner import run_code  # type: ignore[import-not-found]
 
 logging.basicConfig(
     level=logging.INFO,

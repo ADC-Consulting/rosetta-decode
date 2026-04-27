@@ -113,3 +113,26 @@ def test_input_blocks_not_mutated() -> None:
     # returned block is a new object
     assert result[0] is not block
     assert result[0].raw_sas == "DATA work.out; RUN;"
+
+
+# ── NEW COVERAGE: lines 50, 84 ────────────────────────────────────────────────
+
+
+def test_substitute_let_vars_unresolved_reference_left_intact() -> None:
+    """Line 50: unresolved &VAR reference is left intact in the output."""
+    from src.worker.engine.macro_expander import _substitute_let_vars
+
+    # &UNKNOWN is not in var_map → should remain as-is
+    result = _substitute_let_vars("data &UNKNOWN; set in; run;", {"KNOWN": "value"})
+    assert "&UNKNOWN" in result
+
+
+def test_inline_macros_unknown_name_without_args_left_intact() -> None:
+    """Line 84: an unknown macro name WITHOUT parentheses is left intact (not raised)."""
+    from src.worker.engine.macro_expander import _inline_macros
+
+    # %UNKNOWN_MACRO without parentheses → arg_part is None → returns m.group(0) intact
+    macro_defs: dict[str, str] = {}
+    result = _inline_macros("data out; set %UNKNOWN_MACRO; run;", macro_defs)
+    # Should not raise; the macro call with no args is left intact
+    assert "%UNKNOWN_MACRO" in result

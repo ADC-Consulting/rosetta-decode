@@ -130,48 +130,26 @@ disallow_incomplete_defs = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-# Third-party packages without stubs — added as src/ grows
-module = ["networkx", "networkx.*", "jinja2", "jinja2.*", "pyreadstat"]
+# networkx, jinja2, pyreadstat ship no PEP 561 stub packages and are not covered by
+# typeshed. ignore_missing_imports suppresses the "cannot find implementation or
+# library stub" error that would otherwise block the mypy gate on every run.
+module = ["networkx", "jinja2", "jinja2.*", "pyreadstat"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-# executor is a standalone microservice with its own module layout; exclude from root mypy
-module = ["src.executor.*", "recon", "runner"]
+# `recon` and `runner` are bare module imports inside the executor container.
+# They're unresolvable from the repo root — suppress the cascade of errors.
+module = ["recon", "runner"]
 ignore_errors = true
 
 [[tool.mypy.overrides]]
-# pyreadstat has no stubs; its read functions return Any — suppress only in this file.
-module = ["src.worker.compute.local"]
-warn_return_any = false
-
-[[tool.mypy.overrides]]
-# pydantic-ai Agent overloads don't support BaseModel output_type in strict mode;
-# the runtime behaviour is correct — ignore errors only in this file.
-module = ["src.worker.engine.llm_client"]
-ignore_errors = true
-
-[[tool.mypy.overrides]]
-# pyspark stubs may or may not be present depending on the environment;
-# suppress unused-ignore warnings so the type: ignore[import-not-found] comments
-# are harmless when pyspark is installed locally.
+# pyspark is an optional runtime dependency present only inside the Docker executor
+# image. reconciliation.py uses `type: ignore[import-not-found]` on the pyspark
+# import so the code compiles when pyspark is absent. When pyspark is NOT installed
+# locally, mypy treats those comments as unused and would error. Setting
+# warn_unused_ignores = false makes the file valid in both environments.
 module = ["src.worker.validation.reconciliation"]
 warn_unused_ignores = false
-
-[[tool.mypy.overrides]]
-# router uses MANUAL_INGESTION/SKIP strategy values that may not be in the enum stub
-module = ["src.worker.engine.router"]
-ignore_errors = true
-
-[[tool.mypy.overrides]]
-# these test files have pre-existing type issues; exclude from strict checks
-module = [
-    "tests.test_worker_main",
-    "tests.test_refine_loop",
-    "tests.test_jobs_routes_comprehensive",
-    "tests.test_worker_main_comprehensive",
-    "tests.test_worker_main_coverage",
-]
-ignore_errors = true
 
 # ---------- Pytest ----------
 [tool.pytest.ini_options]

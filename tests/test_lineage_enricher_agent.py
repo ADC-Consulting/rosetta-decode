@@ -230,3 +230,71 @@ async def test_enrich_populates_pipeline_steps(
     assert result.pipeline_steps[0].step_id == "step_1"
     assert result.pipeline_steps[0].inputs == ["work.in"]
     assert result.pipeline_steps[0].outputs == ["work.out"]
+
+
+def test_lineage_enricher_make_agent_tensorzero_path() -> None:
+    """_make_agent() uses TensorZero when tensorzero_gateway_url is set."""
+    from unittest.mock import MagicMock, patch
+
+    mock_settings = MagicMock()
+    mock_settings.tensorzero_gateway_url = "http://tz:7000"
+    mock_settings.azure_openai_endpoint = ""
+    mock_settings.llm_model = "anthropic:claude-sonnet-4-6"
+
+    mock_tz_provider = MagicMock()
+    mock_model = MagicMock()
+    mock_agent = MagicMock()
+
+    with (
+        patch("src.worker.engine.agents.lineage_enricher.worker_settings", mock_settings),
+        patch(
+            "src.worker.engine.agents.lineage_enricher.OpenAIProvider",
+            return_value=mock_tz_provider,
+        ),
+        patch(
+            "src.worker.engine.agents.lineage_enricher.OpenAIChatModel",
+            return_value=mock_model,
+        ) as mock_oai_model,
+        patch("src.worker.engine.agents.lineage_enricher.Agent", return_value=mock_agent),
+    ):
+        from src.worker.engine.agents.lineage_enricher import _make_agent
+
+        result = _make_agent()
+
+    call_kwargs = mock_oai_model.call_args
+    first_arg = call_kwargs.args[0] if call_kwargs.args else ""
+    model_name_arg = call_kwargs.kwargs.get("model_name", first_arg)
+    assert "tensorzero::" in model_name_arg
+    assert result is mock_agent
+
+
+def test_lineage_enricher_make_agent_azure_path() -> None:
+    """_make_agent() uses AzureProvider when azure_openai_endpoint is set."""
+    from unittest.mock import MagicMock, patch
+
+    mock_settings = MagicMock()
+    mock_settings.tensorzero_gateway_url = ""
+    mock_settings.azure_openai_endpoint = "https://my.azure.openai.com"
+    mock_settings.azure_openai_api_key = "fake-key"
+    mock_settings.openai_api_version = "2024-02-01"
+    mock_settings.llm_model = "azure:gpt-4o"
+
+    mock_azure_provider = MagicMock()
+    mock_model = MagicMock()
+    mock_agent = MagicMock()
+
+    with (
+        patch("src.worker.engine.agents.lineage_enricher.worker_settings", mock_settings),
+        patch(
+            "src.worker.engine.agents.lineage_enricher.AzureProvider",
+            return_value=mock_azure_provider,
+        ) as mock_az,
+        patch("src.worker.engine.agents.lineage_enricher.OpenAIChatModel", return_value=mock_model),
+        patch("src.worker.engine.agents.lineage_enricher.Agent", return_value=mock_agent),
+    ):
+        from src.worker.engine.agents.lineage_enricher import _make_agent
+
+        result = _make_agent()
+
+    mock_az.assert_called_once()
+    assert result is mock_agent

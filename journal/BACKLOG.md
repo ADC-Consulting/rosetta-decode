@@ -147,7 +147,7 @@
 - [x] fix(backend): `manual_ingestion` StubGenerator — now emits `pd.read_csv(disk_path)` scaffold with `is_untranslatable=False`, `confidence_score=0.7`; block_plan strategy passed to router via `block_plan_map` in `_translate_blocks()`
 - [ ] fix(backend): `auto_verified` trust report counter always 0 — derive from `reconciliation_status == "pass" AND confidence in (high, medium)` instead
 - [ ] fix(backend): `needs_attention` too strict — widen to: strategy in manual/skip OR recon fail OR confidence in (low, very_low, unknown)
-- [ ] fix(tests): coverage at 86%, below 88% threshold — add tests for `_BestEffortAgentAdapter` or `stub_generator` path change (`build_context_section` removed)
+- [x] fix(tests): coverage raised from 86% → 95% — comprehensive test additions across all agent factories, router, reconciliation, worker/main, jobs routes, explain routes, codegen, macro_expander
 - [x] feat(backend): folder-aware agent context — `DataFileInfo` + `data_files` + `libname_map` on `JobContext`; `_sniff_file()` helper; `build_context_section()` shared utility; all 4 agents prepend context section
 - [x] UX: history pane ordering — v1 at top, descending to latest; "Latest" badge on last entry (`VersionHistoryRail` + `EditorTab`)
 - [x] UX: Plan tab block table collapsed by default; chevron toggle on "Blocks" heading

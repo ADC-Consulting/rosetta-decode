@@ -248,3 +248,29 @@ def test_assemble_with_macro_vars_in_module(
 def test_assemble_empty_blocks_returns_only_pipeline(codegen: CodeGenerator) -> None:
     result = codegen.assemble([])
     assert list(result.keys()) == ["pipeline.py"]
+
+
+# ── NEW COVERAGE: lines 262-265 (result = last_output_var) ───────────────────
+
+
+def test_assemble_flat_appends_result_assignment_when_output_var_present(
+    codegen: CodeGenerator,
+) -> None:
+    """Lines 262-265: when block has output_var, assemble_flat appends 'result = <var>'."""
+    block = GeneratedBlock(
+        source_block=_sas_block(),
+        python_code="work_out = df.copy()  # SAS: etl.sas:1",
+        is_untranslatable=False,
+        confidence="high",
+        output_var="work_out",
+    )
+    output = codegen.assemble_flat([block])
+    assert "result = work_out" in output
+
+
+def test_assemble_flat_no_result_line_when_no_output_var(codegen: CodeGenerator) -> None:
+    """Lines 261-265: when no block has output_var, no 'result =' is appended."""
+    block = _gen_block(python_code="x = 1  # SAS: etl.sas:1")
+    # output_var defaults to None
+    output = codegen.assemble_flat([block])
+    assert "result = " not in output

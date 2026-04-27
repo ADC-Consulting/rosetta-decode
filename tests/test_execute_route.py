@@ -164,6 +164,76 @@ async def test_execute_route_409_no_python_code(
 
 
 @pytest.mark.asyncio
+async def test_execute_route_block_id_uses_revision_code(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """When request.block_id is set, the latest BlockRevision code is used."""
+    from src.backend.db.models import BlockRevision
+
+    job_id = str(uuid.uuid4())
+    db_session.add(
+        Job(
+            id=job_id,
+            status="proposed",
+            input_hash="abc",
+            files={},
+            python_code="job_level_code()",
+        )
+    )
+    rev_id = str(uuid.uuid4())
+    db_session.add(
+        BlockRevision(
+            id=rev_id,
+            job_id=job_id,
+            block_id="test.sas:1",
+            revision_number=1,
+            python_code="block_level_code()",
+            strategy="translate",
+            confidence="high",
+            trigger="agent",
+        )
+    )
+    await db_session.commit()
+
+    with patch(
+        "src.backend.api.routes.jobs.httpx.AsyncClient",
+        return_value=_mock_executor_client(_executor_response()),
+    ):
+        resp = await client.post(
+            f"/jobs/{job_id}/execute",
+            json={"block_id": "test.sas:1"},
+        )
+
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_execute_route_block_id_not_found_404(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """When block_id is set but revision does not exist, returns 404."""
+    job_id = str(uuid.uuid4())
+    db_session.add(
+        Job(
+            id=job_id,
+            status="proposed",
+            input_hash="abc",
+            files={},
+            python_code="job_level_code()",
+        )
+    )
+    await db_session.commit()
+
+    resp = await client.post(
+        f"/jobs/{job_id}/execute",
+        json={"block_id": "test.sas:1"},
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_execute_route_502_on_http_status_error(
     client: AsyncClient,
     job_with_code: str,
