@@ -326,6 +326,7 @@ class RemoteReconciliationService:
         python_code: str,
         ref_csv_path: str,
         ref_sas7bdat_path: str,
+        data_dir: str = "",
     ) -> dict[str, Any]:
         """Call the executor synchronously (intended for asyncio.to_thread use).
 
@@ -333,6 +334,8 @@ class RemoteReconciliationService:
             python_code: Python source to execute remotely.
             ref_csv_path: Path to reference CSV (may be empty string).
             ref_sas7bdat_path: Path to reference .sas7bdat (may be empty string).
+            data_dir: Directory where uploaded data files are stored; executor
+                rewrites /workspace/data/ references to this path before running.
 
         Returns:
             Parsed JSON response body from the executor.
@@ -342,6 +345,7 @@ class RemoteReconciliationService:
             "code": python_code,
             "ref_csv_path": ref_csv_path,
             "ref_sas7bdat_path": ref_sas7bdat_path,
+            "data_dir": data_dir,
         }
         with httpx.Client(timeout=120) as client:
             response = client.post(url, json=payload)
@@ -354,6 +358,7 @@ class RemoteReconciliationService:
         python_code: str,
         backend: ComputeBackend,
         ref_sas7bdat_path: str = "",
+        data_dir: str = "",
     ) -> dict[str, Any]:
         """Post the generated code to the executor and return reconciliation results.
 
@@ -365,6 +370,8 @@ class RemoteReconciliationService:
             python_code: Generated Python pipeline source.
             backend: Unused — kept for interface parity with ReconciliationService.
             ref_sas7bdat_path: Optional path to reference .sas7bdat.
+            data_dir: Directory where uploaded data files are stored; forwarded to
+                the executor so it can rewrite /workspace/data/ paths.
 
         Returns:
             ``{"checks": [...]}`` dict, or ``{"checks": []}`` on executor failure.
@@ -378,6 +385,7 @@ class RemoteReconciliationService:
                 python_code,
                 ref_csv_path,
                 ref_sas7bdat_path,
+                data_dir,
             )
             checks = raw.get("checks") or []
             return {"checks": checks}

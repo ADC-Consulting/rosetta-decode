@@ -50,6 +50,7 @@ export default function JobDetailPage(): React.ReactElement {
   const [showAcceptConfirm, setShowAcceptConfirm] = useState(false);
   const [showRefineDialog, setShowRefineDialog] = useState(false);
   const [refineHint, setRefineHint] = useState("");
+  const [isEditorFullScreen, setIsEditorFullScreen] = useState(false);
 
   const lastSavedHashRef = useRef<Record<string, string>>({});
   const pendingHashRef = useRef("");
@@ -264,19 +265,22 @@ export default function JobDetailPage(): React.ReactElement {
             </TabsContent>
 
             <TabsContent value="editor" className="mt-0 flex-1 min-h-0">
-              <EditorTab
-                jobId={id}
-                generatedFiles={
-                  overrideGeneratedFiles ?? job?.generated_files ?? null
-                }
-                onGeneratedFilesChange={setOverrideGeneratedFiles}
-                code={displayedEditorCode}
-                setCode={(v) => setEditorCode(v)}
-                blockPlans={planData?.block_plans}
-                onSave={() => saveVersionMutation.mutate()}
-                isSaving={saveVersionMutation.isPending}
-                onExpand={() => navigate(`/jobs/${id}/editor`)}
-              />
+              <div className={isEditorFullScreen ? "fixed inset-0 z-50 bg-background p-2 flex flex-col" : "h-full"}>
+                <EditorTab
+                  jobId={id}
+                  generatedFiles={
+                    overrideGeneratedFiles ?? job?.generated_files ?? null
+                  }
+                  onGeneratedFilesChange={setOverrideGeneratedFiles}
+                  code={displayedEditorCode}
+                  setCode={(v) => setEditorCode(v)}
+                  blockPlans={planData?.block_plans}
+                  onSave={() => saveVersionMutation.mutate()}
+                  isSaving={saveVersionMutation.isPending}
+                  isFullPage={isEditorFullScreen}
+                  onExpand={() => setIsEditorFullScreen((v) => !v)}
+                />
+              </div>
             </TabsContent>
 
             <TabsContent value="report" className="mt-0 flex-1 min-h-0">

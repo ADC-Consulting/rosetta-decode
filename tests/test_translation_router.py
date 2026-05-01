@@ -127,7 +127,8 @@ async def test_proc_sort_helper_by_clause() -> None:
     )
     helper = _ProcSortHelper()
     result = await helper.translate(block, ctx)
-    assert "ascending=[True, False]" in result.python_code
+    assert 'F.col("var1").asc()' in result.python_code
+    assert 'F.col("var2").desc()' in result.python_code
     assert result.is_untranslatable is False
 
 
@@ -145,7 +146,7 @@ async def test_proc_sort_helper_out_dataset() -> None:
     )
     helper = _ProcSortHelper()
     result = await helper.translate(block, ctx)
-    assert result.python_code.splitlines()[1].startswith("work2 = source.sort_values(")
+    assert "work2 = source.orderBy(" in result.python_code
 
 
 # ── Strategy-based routing tests ─────────────────────────────────────────────
@@ -235,7 +236,7 @@ async def test_proc_sort_helper_no_by_clause_returns_empty() -> None:
     result = await helper.translate(block, ctx)
     # With no BY clause, by=[] and ascending=[] — just assert no crash
     assert result.is_untranslatable is False
-    assert "sort_values" in result.python_code
+    assert "orderBy(" in result.python_code
 
 
 @pytest.mark.asyncio
@@ -253,7 +254,9 @@ async def test_proc_sort_helper_ascending_keyword() -> None:
     )
     helper = _ProcSortHelper()
     result = await helper.translate(block, ctx)
-    assert "ascending=[True, False, True]" in result.python_code
+    assert 'F.col("var1").asc()' in result.python_code
+    assert 'F.col("var2").desc()' in result.python_code
+    assert 'F.col("var3").asc()' in result.python_code
 
 
 # ── _StrategyStubAdapter (init + translate) ──────────────────────────────────

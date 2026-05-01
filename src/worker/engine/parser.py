@@ -9,6 +9,7 @@ Multi-file input is dependency-ordered using networkx so that a block that
 reads a dataset produced by another block is always translated after it.
 """
 
+import heapq
 import re
 from collections.abc import Iterator
 
@@ -240,7 +241,26 @@ def _topological_sort(blocks: list[SASBlock]) -> list[SASBlock]:
                 graph.add_edge(producer[ds], idx)  # producer must come first
 
     try:
-        order = list(nx.topological_sort(graph))
+        # Kahn's algorithm with a min-heap keyed on (source_file, start_line)
+        # so blocks with no dependency edge retain their natural SAS file order.
+        in_degree = {n: graph.in_degree(n) for n in graph.nodes()}
+        heap: list[tuple[str, int, int]] = []
+        for n, deg in in_degree.items():
+            if deg == 0:
+                heapq.heappush(heap, (blocks[n].source_file, blocks[n].start_line, n))
+        order: list[int] = []
+        while heap:
+            _, _, node = heapq.heappop(heap)
+            order.append(node)
+            for successor in graph.successors(node):
+                in_degree[successor] -= 1
+                if in_degree[successor] == 0:
+                    heapq.heappush(
+                        heap,
+                        (blocks[successor].source_file, blocks[successor].start_line, successor),
+                    )
+        if len(order) != len(blocks):
+            raise nx.NetworkXUnfeasible("cycle detected")
     except nx.NetworkXUnfeasible:
         # Cycle detected — fall back to original order
         order = list(range(len(blocks)))

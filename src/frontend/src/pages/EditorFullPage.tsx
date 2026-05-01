@@ -26,13 +26,21 @@ export default function EditorFullPage(): React.ReactElement {
     enabled: !!id,
   });
 
+  if (!job) {
+    return (
+      <div className="h-screen flex items-center justify-center text-sm text-muted-foreground">
+        Loading…
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen flex flex-col">
       <div className="flex-1 min-h-0 p-2">
         <EditorTab
           jobId={id}
-          generatedFiles={job?.generated_files ?? null}
-          code={job?.python_code ?? ""}
+          generatedFiles={job.generated_files ?? null}
+          code={job.python_code ?? ""}
           setCode={() => {}}
           blockPlans={planData?.block_plans ?? []}
           isFullPage

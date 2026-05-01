@@ -12,7 +12,7 @@ RUN pip install --no-cache-dir uv
 
 COPY src/executor/pyproject.toml ./pyproject.toml
 
-RUN uv pip install --system fastapi uvicorn pandas pyreadstat pyspark
+RUN uv pip install --system fastapi uvicorn pandas openpyxl pyreadstat pyspark
 
 COPY src/executor/ .
 

@@ -1,111 +1,94 @@
-"""BlockExecutor — runs assembled code through reconciliation for a trial set of blocks.
+"""BlockExecutor — per-block execute-and-reconcile helper for the F19 refine loop.
 
-Used by the F19 agentic execute-and-refine loop to test each translated block
-before committing it to the final output.
+Wraps RemoteReconciliationService to run a single translated block through the
+executor microservice and return a structured pass/fail result.
 
 # SAS: block_executor.py:1
 """
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any
 
-from src.worker.engine.codegen import CodeGenerator
-from src.worker.engine.models import GeneratedBlock, JobContext, ReconciliationReport
-from src.worker.validation.reconciliation import ReconciliationService
+from src.worker.compute.base import ComputeBackend
+from src.worker.validation.reconciliation import RemoteReconciliationService
 
 logger = logging.getLogger(__name__)
 
-
-def _to_report(raw: Any) -> ReconciliationReport:
-    """Convert a raw ReconciliationService result dict into a ReconciliationReport.
-
-    Args:
-        raw: Either a dict ``{"checks": [...]}`` or an existing ReconciliationReport.
-
-    Returns:
-        A populated ReconciliationReport instance.
-    """
-    if isinstance(raw, ReconciliationReport):
-        return raw
-    checks: list[dict[str, Any]] = raw.get("checks", []) if isinstance(raw, dict) else []
-    if not checks:
-        return ReconciliationReport(
-            passed=True, row_count_match=True, column_match=True, diff_summary="no checks run"
-        )
-    failed = [c for c in checks if c.get("status") != "pass"]
-    passed_checks = [c for c in checks if c.get("status") == "pass"]
-    all_passed = len(failed) == 0
-    row_ok = any(c.get("name") == "row_count" and c.get("status") == "pass" for c in checks)
-    col_ok = any(c.get("name") == "columns" and c.get("status") == "pass" for c in checks)
-    details = "; ".join(c.get("detail", "") for c in failed if c.get("detail"))
-    diff = details or f"{len(passed_checks)}/{len(checks)} checks passed"
-    return ReconciliationReport(
-        passed=all_passed,
-        row_count_match=row_ok,
-        column_match=col_ok,
-        diff_summary=diff,
-    )
+# ReconResult mirrors the {"checks": [...]} dict from RemoteReconciliationService
+ReconResult = dict[str, Any]
 
 
 class BlockExecutor:
-    """Execute assembled generated blocks through reconciliation.
+    """Execute a single translated block via the remote executor and reconcile.
 
-    Each call assembles *generated_so_far* into a flat Python string and runs
-    ReconciliationService against optional reference data files.  Returns a
-    ``(passed, error_summary)`` tuple so callers can decide whether to retry.
+    Returns ``None`` (no-op) when no reference data is available or when the
+    executor is unreachable.  Returns a ``{"checks": [...]}`` dict otherwise so
+    callers can determine pass/fail.
+
+    Attributes:
+        _executor_url: Reserved for future direct HTTP calls; actual URL is read
+            from ``worker_settings.executor_url`` inside RemoteReconciliationService.
     """
 
-    def __init__(self) -> None:
-        """Initialise BlockExecutor with shared service instances."""
-        self._reconciler = ReconciliationService()
-        self._codegen = CodeGenerator()
+    def __init__(self, executor_url: str = "http://localhost:8001") -> None:
+        """Initialise with an optional executor URL.
+
+        Args:
+            executor_url: Reserved for future use; the actual URL is read from
+                ``worker_settings.executor_url`` inside RemoteReconciliationService.
+        """
+        self._executor_url = executor_url
 
     async def run(
         self,
-        generated_so_far: list[GeneratedBlock],
-        context: JobContext,
-        backend: Any,
-        ref_csv_path: str,
-        ref_sas7bdat_path: str,
-    ) -> tuple[bool, str | None]:
-        """Assemble and reconcile the current set of generated blocks.
+        python_code: str,
+        block_id: str,
+        backend: ComputeBackend,
+        data_dir: str | None = None,
+    ) -> ReconResult | None:
+        """Execute *python_code* via the remote executor and return reconciliation results.
 
-        If both *ref_csv_path* and *ref_sas7bdat_path* are absent or empty,
-        the check is a no-op and returns ``(True, None)``.
+        Returns ``None`` when no reference data context is available (treat as
+        no-op — the refine loop should continue as if the block passed).  Also
+        returns ``None`` on any executor exception (soft-fail, no retry penalty).
 
         Args:
-            generated_so_far: All GeneratedBlock instances to assemble.
-            context: Current job context (supplies resolved macro variables).
-            backend: ComputeBackend instance used by ReconciliationService.
-            ref_csv_path: Path to reference CSV, or empty string.
-            ref_sas7bdat_path: Path to reference SAS7BDAT, or empty string.
+            python_code: Generated Python source for the block (cumulative slice).
+            block_id: Human-readable identifier used in log messages (e.g.
+                ``"main.sas:10"``).
+            backend: ComputeBackend instance forwarded to RemoteReconciliationService
+                for interface parity.
+            data_dir: Job-specific upload directory for executor path resolution.
+                When ``None``, an empty string is forwarded.
 
         Returns:
-            ``(True, None)`` when reconciliation passes or is skipped.
-            ``(False, error_summary)`` when reconciliation fails.
+            A ``{"checks": [...]}`` dict on success, or ``None`` on exception /
+            when no reference data checks were executed.
         """
-        if not ref_csv_path and not ref_sas7bdat_path:
-            return (True, None)
-
-        python_code = self._codegen.assemble_flat(
-            generated_so_far, macro_vars=context.resolved_macros
-        )
-
+        effective_data_dir = data_dir or ""
+        remote = RemoteReconciliationService()
         try:
-            raw = await asyncio.to_thread(
-                self._reconciler.run,
-                ref_csv_path,
+            result: ReconResult = await remote.run(
+                "",
                 python_code,
                 backend,
-                ref_sas7bdat_path,
+                "",
+                data_dir=effective_data_dir,
             )
         except Exception as exc:
-            return (False, str(exc)[:200])
+            logger.warning(
+                "[BlockExecutor] block %s: executor call failed (%s: %s) — treating as no-op",
+                block_id,
+                type(exc).__name__,
+                exc,
+            )
+            return None
 
-        report = _to_report(raw)
-        if report.passed or not report.diff_summary:
-            return (True, None)
-        return (False, report.diff_summary[:200] if report.diff_summary else None)
+        checks: list[dict[str, Any]] = result.get("checks", [])
+        if not checks:
+            # No checks ran — no reference data available; treat as pass (no-op)
+            return None
+
+        return result

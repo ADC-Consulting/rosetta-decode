@@ -5,6 +5,7 @@ import json
 import logging
 import re
 import sys
+import time
 import uuid as _uuid
 from typing import Any
 
@@ -23,6 +24,7 @@ from src.worker.engine.agents.lineage_enricher import LineageEnricherAgent
 from src.worker.engine.agents.migration_planner import MigrationPlannerAgent
 from src.worker.engine.agents.plain_english import PlainEnglishAgent
 from src.worker.engine.agents.proc import ProcAgent
+from src.worker.engine.block_executor import BlockExecutor
 from src.worker.engine.codegen import CodeGenerator
 from src.worker.engine.doc_generator import DocGenerator
 from src.worker.engine.llm_client import LLMClient, LLMTranslationError
@@ -38,6 +40,7 @@ from src.worker.engine.models import (
 from src.worker.engine.parser import SASParser, extract_lineage
 from src.worker.engine.router import TranslationRouter
 from src.worker.engine.stub_generator import StubGenerator
+from src.worker.engine.trace import JobCancelledError, TraceEmitter
 from src.worker.validation.reconciliation import ReconciliationService, RemoteReconciliationService
 
 logging.basicConfig(
@@ -292,8 +295,15 @@ def _build_recon_groups(
 class JobOrchestrator:
     """Runs the full agentic migration pipeline for a single job."""
 
-    def __init__(self) -> None:
-        """Initialise all pipeline components."""
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession] | None = None) -> None:
+        """Initialise all pipeline components.
+
+        Args:
+            session_factory: Optional async session factory used by TraceEmitter.
+                When None, tracing is a no-op (backward-compatible for tests that
+                instantiate JobOrchestrator without a real DB).
+        """
+        self._session_factory = session_factory
         self._analysis_agent = AnalysisAgent()
         stub = StubGenerator()
         self._router = TranslationRouter(
@@ -319,8 +329,24 @@ class JobOrchestrator:
             job: The claimed job to process.
         """
         logger.info("Processing job %s (agentic pipeline)", job.id)
+        # Instantiate a per-job tracer; fall back to a no-op when no factory is available.
+        tracer: TraceEmitter | None = (
+            TraceEmitter(str(job.id), self._session_factory)
+            if self._session_factory is not None
+            else None
+        )
+        self._tracer = tracer  # stored for use by _translate_blocks
+        self._current_job = job  # stored for cancel checks inside _translate_blocks
         try:
             await self._execute(session, job)
+            if tracer is not None:
+                await tracer.emit("job_done", {"job_id": str(job.id), "final_status": job.status})
+        except JobCancelledError as exc:
+            logger.info("Job %s cancelled: %s", job.id, exc)
+            await session.execute(update(Job).where(Job.id == job.id).values(status="cancelled"))
+            await session.commit()
+            if tracer is not None:
+                await tracer.emit("job_done", {"job_id": str(job.id), "final_status": "cancelled"})
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 429:
                 logger.warning("Job %s: circuit breaker tripped (HTTP 429)", job.id)
@@ -353,6 +379,7 @@ class JobOrchestrator:
         }
         ref_csv_path: str = str(job.files.get("__ref_csv__", ""))
         ref_sas7bdat_path: str = str(job.files.get("__ref_sas7bdat__", ""))
+        data_dir: str = worker_settings.upload_dir.rstrip("/") + "/" + str(job.id)
 
         # Refine context — injected by POST /jobs/{id}/refine
         refine_context_raw = job.files.get("__refine_context__")
@@ -464,6 +491,8 @@ class JobOrchestrator:
             ref_sas7bdat_path,
             prior_python_code=prior_python_code,
             hint=hint,
+            data_dir=data_dir,
+            session=session,
         )
 
         # Step 5: Assemble — dict form for generated_files, flat str for python_code column
@@ -481,6 +510,7 @@ class JobOrchestrator:
             python_code,
             backend,
             ref_sas7bdat_path,
+            data_dir=data_dir,
         )
 
         # Step 7.5: Lineage enrichment (best-effort)
@@ -595,6 +625,8 @@ class JobOrchestrator:
                 context,
                 ref_csv_path,
                 ref_sas7bdat_path,
+                generated,
+                data_dir=data_dir,
             )
 
     async def _reconcile_initial_blocks(
@@ -604,12 +636,15 @@ class JobOrchestrator:
         context: JobContext,
         ref_csv_path: str,
         ref_sas7bdat_path: str,
+        generated_blocks: list[GeneratedBlock],
+        data_dir: str = "",
     ) -> None:
         """Run RemoteReconciliationService for each eligible block and persist status.
 
         Skips blocks with strategy ``manual``, ``manual_ingestion``, or ``skip``.
         Skips entirely when no reference data paths are available.
         Writes ``reconciliation_status`` to the block's initial BlockRevision row.
+        Uses cumulative code slices so prior block outputs are available.
 
         Args:
             session: Active database session.
@@ -617,6 +652,9 @@ class JobOrchestrator:
             context: JobContext holding the migration plan.
             ref_csv_path: Path to reference CSV (may be empty string).
             ref_sas7bdat_path: Path to reference .sas7bdat (may be empty string).
+            generated_blocks: Ordered list of GeneratedBlock from the translation phase.
+            data_dir: Job-specific upload directory forwarded to the executor for
+                /workspace/data/ path resolution.
         """
         skip_strategies = frozenset({"manual", "manual_ingestion", "skip"})
         remote = RemoteReconciliationService()
@@ -628,13 +666,20 @@ class JobOrchestrator:
             else []
         )
 
+        # Build lookup: block_id → index in generated_blocks
+        # block_id convention mirrors TranslationRouter: "<source_file>:<start_line>"
+        block_order = {
+            f"{b.source_block.source_file}:{b.source_block.start_line}": i
+            for i, b in enumerate(generated_blocks)
+        }
+
         for bp in block_plans:
             block_id: str = bp.get("block_id", "")
             strategy: str = bp.get("strategy", "translate")
             if strategy in skip_strategies:
                 continue
 
-            # Fetch the initial (first) BlockRevision for this block
+            # Fetch the initial (first) BlockRevision for this block (for DB status update)
             rev_result = await session.execute(
                 select(BlockRevision)
                 .where(BlockRevision.job_id == str(job.id), BlockRevision.block_id == block_id)
@@ -645,12 +690,28 @@ class JobOrchestrator:
             if initial_rev is None or not initial_rev.python_code:
                 continue
 
+            # Build cumulative code slice up to and including this block
+            idx = block_order.get(block_id)
+            if idx is not None:
+                cumulative_code = self._codegen.assemble_flat(
+                    generated_blocks[: idx + 1],
+                    macro_vars=context.resolved_macros,
+                )
+            else:
+                cumulative_code = initial_rev.python_code
+
             try:
+                logger.debug(
+                    "_reconcile_initial_blocks: block_id=%s, rawdir_customers=%s",
+                    block_id,
+                    "rawdir_customers" in cumulative_code,
+                )
                 report = await remote.run(
                     ref_csv_path,
-                    initial_rev.python_code,
+                    cumulative_code,
                     backend,
                     ref_sas7bdat_path,
+                    data_dir=data_dir,
                 )
                 checks: list[dict[str, Any]] = report.get("checks", [])
                 if not checks:
@@ -675,6 +736,8 @@ class JobOrchestrator:
         *,
         prior_python_code: str | None = None,
         hint: str | None = None,
+        data_dir: str = "",
+        session: AsyncSession | None = None,
     ) -> tuple[list[GeneratedBlock], bool]:
         """Translate blocks using an explicit two-phase sequence.
 
@@ -689,13 +752,22 @@ class JobOrchestrator:
             ref_sas7bdat_path: Path to reference SAS7BDAT (optional).
             prior_python_code: Previous translation to improve (from refine context).
             hint: Reviewer hint to prepend to the LLM prompt (from refine context).
+            data_dir: Job-specific upload directory forwarded to the executor.
+            session: Active database session forwarded for cancel checks.
 
         Returns:
             (generated_blocks, recon_failed) tuple.
         """
         # Phase 1 — translate all blocks with group-aware per-block reconciliation
         generated_v1, recon_failed = await self._translate_blocks(
-            blocks, context, ref_csv_path, ref_sas7bdat_path, prior_python_code, hint
+            blocks,
+            context,
+            ref_csv_path,
+            ref_sas7bdat_path,
+            prior_python_code,
+            hint,
+            data_dir=data_dir,
+            session=session,
         )
 
         # If per-block recon already flagged failure, skip phase 2 — return what we have
@@ -711,6 +783,7 @@ class JobOrchestrator:
             python_code_v1,
             backend,
             ref_sas7bdat_path,
+            data_dir=data_dir,
         )
         report_v1 = (
             _dict_to_recon_report(raw_report_v1)
@@ -743,11 +816,32 @@ class JobOrchestrator:
         ref_sas7bdat_path: str = "",
         prior_python_code: str | None = None,
         hint: str | None = None,
+        data_dir: str = "",
+        session: AsyncSession | None = None,
     ) -> tuple[list[GeneratedBlock], bool]:
-        """Translate every block via the TranslationRouter. No per-block reconciliation.
+        """Translate every block via the TranslationRouter with a per-block refine loop.
+
+        Each block is translated up to 3 times.  After each attempt the generated
+        code is executed via :class:`BlockExecutor`.  On failure, a
+        ``recon_failure_attempt_N`` flag is injected into ``effective_context`` so
+        the next attempt benefits from the error summary.  After 3 failed attempts
+        the last generated code is kept as-is.
 
         Reconciliation runs once after all blocks are translated (in _translate_two_phase).
         Always returns recon_failed=False; the caller determines pass/fail from the full recon.
+
+        After each block completes, the job row is refreshed from the DB to check
+        ``cancellation_requested``.  If set, :class:`JobCancelledError` is raised.
+
+        Args:
+            blocks: Expanded SAS blocks to translate.
+            context: Current job context.
+            ref_csv_path: Path to reference CSV (may be empty string).
+            ref_sas7bdat_path: Path to reference .sas7bdat (may be empty string).
+            prior_python_code: Previous translation to improve (from refine context).
+            hint: Reviewer hint to prepend to the LLM prompt (from refine context).
+            data_dir: Job-specific upload directory forwarded to BlockExecutor.
+            session: Active database session used for cancel checks (optional).
 
         Returns:
             (generated_blocks, False)
@@ -768,25 +862,131 @@ class JobOrchestrator:
             for bp in context.migration_plan.block_plans:
                 block_plan_map[bp.block_id] = bp
 
+        backend = BackendFactory.create()
+        block_ex = BlockExecutor(executor_url=worker_settings.executor_url)
         generated: list[GeneratedBlock] = []
+        tracer: TraceEmitter | None = getattr(self, "_tracer", None)
 
         for block in blocks:
             block_id = f"{block.source_file}:{block.start_line}"
             block_plan = block_plan_map.get(block_id)
             translator = self._router.route(block, block_plan=block_plan)
-            agent_name = type(translator).__name__
-            logger.info("[F19] %s block %s --> translating", agent_name, block_id)
-            try:
-                gb = await translator.translate(block, effective_context)
-            except Exception as exc:
-                logger.warning(
-                    "[F19] %s block %s --> translation error: %s",
-                    agent_name,
+
+            gb: GeneratedBlock | None = None
+            attempt_context = effective_context
+
+            for attempt in range(1, 4):
+                logger.info(
+                    "[F19] %s block %s attempt %d/3",
+                    type(translator).__name__,
                     block_id,
-                    type(exc).__name__,
+                    attempt,
                 )
-                continue
-            generated.append(gb)
+                if tracer is not None:
+                    await tracer.emit(
+                        "block_start",
+                        {
+                            "block_id": block_id,
+                            "agent": type(translator).__name__,
+                            "attempt": attempt,
+                        },
+                    )
+                t0 = time.monotonic()
+                try:
+                    gb = await translator.translate(block, attempt_context)
+                except Exception as exc:
+                    logger.warning(
+                        "[F19] %s block %s attempt %d/3 --> translation error: %s",
+                        type(translator).__name__,
+                        block_id,
+                        attempt,
+                        type(exc).__name__,
+                    )
+                    gb = None
+                    break
+
+                recon_result = await block_ex.run(
+                    gb.python_code,
+                    block_id,
+                    backend,
+                    data_dir=data_dir or None,
+                )
+                elapsed_ms = int((time.monotonic() - t0) * 1000)
+
+                if recon_result is None:
+                    # No reference data — treat as pass
+                    if tracer is not None:
+                        await tracer.emit(
+                            "block_done",
+                            {
+                                "block_id": block_id,
+                                "attempt": attempt,
+                                "status": "pass",
+                                "elapsed_ms": elapsed_ms,
+                            },
+                        )
+                    break
+
+                checks: list[dict[str, Any]] = recon_result.get("checks", [])
+                all_passed = all(c.get("status") == "pass" for c in checks)
+                recon_passed = all_passed
+
+                if tracer is not None:
+                    await tracer.emit(
+                        "block_done",
+                        {
+                            "block_id": block_id,
+                            "attempt": attempt,
+                            "status": "pass" if recon_passed else "fail",
+                            "elapsed_ms": elapsed_ms,
+                        },
+                    )
+                    if checks:
+                        await tracer.emit(
+                            "recon_result",
+                            {
+                                "block_id": block_id,
+                                "checks": [
+                                    {
+                                        "name": c.get("name", ""),
+                                        "status": c.get("status", ""),
+                                        "detail": c.get("detail", ""),
+                                    }
+                                    for c in checks
+                                ],
+                                "all_passed": all_passed,
+                            },
+                        )
+
+                if all_passed:
+                    break
+
+                if attempt < 3:
+                    # Summarise first failure for the next attempt's context
+                    failed_details = [
+                        c.get("detail", c.get("name", "unknown"))
+                        for c in checks
+                        if c.get("status") != "pass"
+                    ]
+                    error_summary = "; ".join(failed_details)
+                    error_summary = error_summary.replace("\n", " ")[:200]
+                    flag = f"recon_failure_attempt_{attempt}: {error_summary}"
+                    attempt_context = attempt_context.model_copy(
+                        update={"risk_flags": [*attempt_context.risk_flags, flag]}
+                    )
+                # On attempt 3 fall through — use last generated code as-is
+
+            if gb is not None:
+                generated.append(gb)
+
+            # Cancel check: open a fresh session so we don't touch the outer
+            # session's identity map (the job object may be detached or expired).
+            _job: Job | None = getattr(self, "_current_job", None)
+            if self._session_factory is not None and _job is not None:
+                async with self._session_factory() as _cs:
+                    fresh = await _cs.get(Job, _job.id)
+                    if fresh is not None and fresh.cancellation_requested:
+                        raise JobCancelledError(f"Job {_job.id} cancelled by user")
 
         # Reconciliation runs once after all blocks are translated (see _translate_two_phase).
         return generated, False
@@ -948,7 +1148,7 @@ async def _recover_stale_jobs(session: AsyncSession) -> None:
 async def poll_loop() -> None:
     """Continuously poll for queued jobs and process them."""
     session_factory = _make_session_factory()
-    orchestrator = JobOrchestrator()
+    orchestrator = JobOrchestrator(session_factory=session_factory)
     logger.info("Worker started — polling every %ds", worker_settings.poll_interval_seconds)
 
     async with session_factory() as session:

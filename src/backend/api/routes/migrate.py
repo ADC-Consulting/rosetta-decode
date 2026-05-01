@@ -65,8 +65,9 @@ def _unpack_zip(
             if ext == ".sas":
                 file_contents[norm_path] = data.decode("utf-8", errors="replace")
             else:
-                os.makedirs(upload_dir, exist_ok=True)
-                dest = os.path.join(upload_dir, f"{job_id}_{name}")
+                job_dir = os.path.join(upload_dir, job_id)
+                os.makedirs(job_dir, exist_ok=True)
+                dest = os.path.join(job_dir, name)
                 with open(dest, "wb") as fh:
                     fh.write(data)
                 sentinel = f"__ref_{ext.lstrip('.')}_{norm_path}__"
@@ -159,8 +160,9 @@ async def migrate(
                 )
             ref_raw = await ref_dataset.read()
             hasher.update(ref_raw)
-            os.makedirs(backend_settings.upload_dir, exist_ok=True)
-            dest_path = os.path.join(backend_settings.upload_dir, f"{job_id}_{ref_name}")
+            job_dir = os.path.join(backend_settings.upload_dir, job_id)
+            os.makedirs(job_dir, exist_ok=True)
+            dest_path = os.path.join(job_dir, ref_name)
             with open(dest_path, "wb") as fh:
                 fh.write(ref_raw)
             file_contents["__ref_sas7bdat__"] = dest_path
@@ -174,8 +176,9 @@ async def migrate(
                 )
             csv_raw = await ref_csv.read()
             hasher.update(csv_raw)
-            os.makedirs(backend_settings.upload_dir, exist_ok=True)
-            dest_path = os.path.join(backend_settings.upload_dir, f"{job_id}_{ref_csv_name}")
+            job_dir = os.path.join(backend_settings.upload_dir, job_id)
+            os.makedirs(job_dir, exist_ok=True)
+            dest_path = os.path.join(job_dir, ref_csv_name)
             with open(dest_path, "wb") as fh:
                 fh.write(csv_raw)
             file_contents["__ref_csv__"] = dest_path

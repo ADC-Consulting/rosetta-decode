@@ -16,12 +16,16 @@ For backward compatibility (reconciliation, DB storage) ``assemble_flat()`` retu
 the classic single-string concatenation.
 """
 
+import logging
 import os
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from jinja2 import Environment, StrictUndefined
 from src.worker.engine.models import GeneratedBlock, MacroVar
+
+logger = logging.getLogger(__name__)
 
 # SAS: codegen.py:1
 
@@ -256,11 +260,17 @@ class CodeGenerator:
                 constants=macro_vars or [],
             )
         )
+        if "rawdir_customers" in rendered:
+            logger.warning(
+                "assemble_flat: 'rawdir_customers' found in assembled code — check block outputs"
+            )
         last_output_var: str | None = None
         for block in reversed(blocks):
             if block.output_var is not None:
                 last_output_var = block.output_var
                 break
-        if last_output_var is not None:
+        if last_output_var is not None and re.search(
+            rf"\b{re.escape(last_output_var)}\s*=", rendered
+        ):
             rendered += f"\nresult = {last_output_var}\n"
         return rendered

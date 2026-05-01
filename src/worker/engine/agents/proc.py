@@ -4,6 +4,7 @@
 """
 
 import logging
+import re as _re
 import textwrap
 
 from pydantic import BaseModel, Field
@@ -13,6 +14,7 @@ from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.azure import AzureProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 from src.worker.core.config import worker_settings
+from src.worker.engine.agents.shared import normalise_output_var, normalise_output_var_in_code
 from src.worker.engine.models import BlockType, GeneratedBlock, JobContext, SASBlock
 
 logger = logging.getLogger("src.worker.engine.agents.proc")
@@ -89,7 +91,11 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
     - Macro variables are pre-resolved; use their literal values directly.
 
     Translation patterns (PySpark; pandas/duckdb only as last resort):
-    - JOIN → df.join(right, on=[...], how="inner|left|right|outer").
+    - JOIN → df.join(right, on=[col_name_strings], how="inner|left|right|outer").
+      NEVER use dot-qualified column references like col("t.TX_DATE") or F.col("alias.col") in
+      join conditions or post-join expressions — PySpark resolves columns by name after join, not
+      by table alias. Use plain col("TX_DATE") or rename ambiguous columns with .alias() before joining.
+      For multi-condition joins use a boolean expression: F.col("TX_DATE") == F.col("DATE").
       pandas last resort: df.merge(right, on=[...], how=...)
     - GROUP BY + agg → df.groupBy([...]).agg(F.sum("col"), ...).
       pandas last resort: .groupby([...]).agg({...}).reset_index()
@@ -97,8 +103,7 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
       pandas last resort: boolean indexing or .query()
     - HAVING (post-agg) → df.filter(condition) after .agg().
       pandas last resort: .loc[condition] after .agg()
-    - ORDER BY → df.orderBy([...]).
-      pandas last resort: .sort_values([...])
+    - ORDER BY → df.orderBy([...]). NEVER use .sort_values() — it does not exist on Spark DataFrames.
     - CREATE TABLE x AS SELECT → assign to x (lowercased) as Spark DataFrame.
     - DISTINCT → df.distinct().
       pandas last resort: .drop_duplicates()
@@ -117,9 +122,13 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
     - CALCULATED col → use Python expression; no SAS CALCULATED keyword
 
     - Always include any imports your code needs at the top of your block (e.g. `from pyspark.sql import functions as F`). Do NOT assume pandas or any other library is pre-imported.
-    - Variable naming: use the DATASET STEM only (no libname prefix).
-      `CREATE TABLE outdir.foo AS ...` → assign result to `foo` (not `outdir_foo`).
-      Input tables use full `libname_table` form.
+    - Variable naming: use the DATASET STEM only — strip the libname prefix entirely.
+        - CORRECT: `CREATE TABLE outdir.foo AS ...` → Python variable `foo`
+        - WRONG:   `outdir_foo`, `outdir.foo`, any form with the libname
+      The output variable name in your code MUST exactly match the `output_var` field you return in JSON.
+      NEVER use the libname or a dot/underscore-joined form for the output variable.
+      Input tables: use EXACTLY the variable name shown in the prompt (`→ variable name: <name>`).
+      External source files use `libname_table` form; inter-block datasets use stem-only.
     - After computing your primary output DataFrame, set `result = <output_var>` as the final line.
       Example: `result = customer_revenue_daily`
     - Set the `output_var` field in your JSON response to the stem-only name.
@@ -130,12 +139,13 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
 # ── Prompt builder ────────────────────────────────────────────────────────────
 
 
-def _build_prompt(block: SASBlock, windowed: JobContext) -> str:
+def _build_prompt(block: SASBlock, windowed: JobContext, all_blocks: list[SASBlock]) -> str:
     """Build the user prompt for a PROC SQL translation.
 
     Args:
         block: The SAS block to translate.
         windowed: A windowed JobContext scoped to this block.
+        all_blocks: All SAS blocks in the job (used to resolve inter-block variable names).
 
     Returns:
         A formatted prompt string for the LLM.
@@ -146,10 +156,22 @@ def _build_prompt(block: SASBlock, windowed: JobContext) -> str:
     for macro in windowed.resolved_macros:
         lines.append(f'- {macro.name} = "{macro.raw_value}"  ({macro.source_file}:{macro.line})')
 
+    block_output_stems: dict[str, str] = {}
+    for b in all_blocks:
+        for ds in b.output_datasets:
+            stem = ds.lower().split(".")[-1]
+            block_output_stems[ds.lower()] = stem
+            block_output_stems[ds.lower().replace(".", "_")] = stem
+
     lines.append("")
     lines.append("## Upstream datasets (dependency order)")
     for i, ds in enumerate(windowed.dependency_order):
-        lines.append(f"{i + 1}. {ds}")
+        ds_lower = ds.lower()
+        if ds_lower in block_output_stems:
+            var_name = block_output_stems[ds_lower]
+        else:
+            var_name = ds_lower.replace(".", "_")
+        lines.append(f"{i + 1}. {ds}  →  variable name: {var_name}")
 
     lines.append("")
     lines.append("## Risk flags")
@@ -253,13 +275,25 @@ class ProcAgent:
             )
         try:
             windowed = context.windowed_context(block)
-            user_prompt = _build_prompt(block, windowed)
+            user_prompt = _build_prompt(block, windowed, context.blocks)
             result = await self._agent.run(user_prompt, model_settings={"max_tokens": 4000})
             output: ProcResult = result.output  # type: ignore[assignment]
+            fixed_code = normalise_output_var_in_code(
+                output.python_code, block.output_datasets, "ProcAgent"
+            )
+            fixed_output_var = normalise_output_var(block.output_datasets, output.output_var)
+            if fixed_output_var and not _re.search(
+                rf"\b{_re.escape(fixed_output_var)}\s*=", fixed_code
+            ):
+                logger.warning(
+                    "ProcAgent: output_var '%s' not found as assignment in generated code"
+                    " after rename — check LLM output",
+                    fixed_output_var,
+                )
             return GeneratedBlock(
                 source_block=block,
-                python_code=output.python_code,
-                output_var=output.output_var,
+                python_code=fixed_code,
+                output_var=fixed_output_var,
                 confidence=output.confidence_band,
                 confidence_score=output.confidence_score,
                 confidence_band=output.confidence_band,

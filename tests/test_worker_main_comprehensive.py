@@ -1019,7 +1019,7 @@ async def test_reconcile_initial_blocks_skips_manual_strategy() -> None:
 
     with patch("src.worker.main.BackendFactory") as mock_factory:
         mock_factory.create.return_value = MagicMock()
-        await orchestrator._reconcile_initial_blocks(session, fake_job, ctx, "ref.csv", "")
+        await orchestrator._reconcile_initial_blocks(session, fake_job, ctx, "ref.csv", "", [])
 
     # No DB queries for block revisions since all strategies are skipped
     session.execute.assert_not_called()
@@ -1036,7 +1036,7 @@ async def test_reconcile_initial_blocks_no_plan_does_nothing() -> None:
 
     with patch("src.worker.main.BackendFactory") as mock_factory:
         mock_factory.create.return_value = MagicMock()
-        await orchestrator._reconcile_initial_blocks(session, fake_job, ctx, "ref.csv", "")
+        await orchestrator._reconcile_initial_blocks(session, fake_job, ctx, "ref.csv", "", [])
 
     session.execute.assert_not_called()
 
@@ -1074,7 +1074,7 @@ async def test_reconcile_initial_blocks_handles_exception_gracefully() -> None:
     ):
         mock_factory.create.return_value = MagicMock()
         # Should not raise — exception is caught and logged at line 667
-        await orchestrator._reconcile_initial_blocks(session, fake_job, ctx, "ref.csv", "")
+        await orchestrator._reconcile_initial_blocks(session, fake_job, ctx, "ref.csv", "", [])
 
 
 # ─── NEW COVERAGE ADDITIONS ────────────────────────────────────────────────────
@@ -1602,7 +1602,7 @@ async def test_reconcile_initial_blocks_skips_strategy_in_skip_set() -> None:
 
     with patch("src.worker.main.BackendFactory") as mock_factory:
         mock_factory.create.return_value = MagicMock()
-        await orchestrator._reconcile_initial_blocks(session, fake_job, ctx, "ref.csv", "")
+        await orchestrator._reconcile_initial_blocks(session, fake_job, ctx, "ref.csv", "", [])
 
     session.execute.assert_not_called()
 
@@ -1637,7 +1637,7 @@ async def test_reconcile_initial_blocks_recon_exception_swallowed() -> None:
         instance = mock_remote.return_value
         instance.run = AsyncMock(side_effect=RuntimeError("block recon failed"))
         # Should NOT raise
-        await orchestrator._reconcile_initial_blocks(session, fake_job, ctx, "ref.csv", "")
+        await orchestrator._reconcile_initial_blocks(session, fake_job, ctx, "ref.csv", "", [])
 
 
 @pytest.mark.asyncio

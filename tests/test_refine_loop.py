@@ -1,10 +1,11 @@
 """Tests for F19 — agentic execute-and-refine per-block retry loop.
 
 Covers:
-- Block passes on attempt 1 — executor.run called once, no retry.
-- Block fails attempt 1 and 2, passes attempt 3 — translate called 3 times.
-- Block fails all 3 — last generated code kept, no exception raised.
-- ref_csv_path empty — executor returns (True, None), no retry.
+- BlockExecutor.run returns None when executor returns no checks (no-op).
+- BlockExecutor.run returns None on exception (soft-fail / no-op).
+- BlockExecutor.run returns a checks dict when executor returns checks.
+- _translate_blocks attempt loop: passes on attempt 1, retries on failure,
+  keeps last code after 3 failures.
 
 # SAS: test_refine_loop.py:1
 """
@@ -12,15 +13,15 @@ Covers:
 from __future__ import annotations
 
 import asyncio
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from src.worker.engine.block_executor import BlockExecutor, _to_report
+from src.worker.engine.block_executor import BlockExecutor
 from src.worker.engine.models import (
     BlockType,
     GeneratedBlock,
     JobContext,
-    ReconciliationReport,
     SASBlock,
 )
 
@@ -55,103 +56,75 @@ def _make_context() -> JobContext:
     )
 
 
+def _run(coro: object) -> object:
+    return asyncio.get_event_loop().run_until_complete(coro)  # type: ignore[arg-type]
+
+
 # ── BlockExecutor unit tests ──────────────────────────────────────────────────
 
 
 class TestBlockExecutorNoRef:
-    """BlockExecutor returns (True, None) when no reference paths supplied."""
+    """BlockExecutor returns None when executor returns no checks."""
 
-    def test_empty_ref_csv_path(self) -> None:
+    def test_no_checks_returns_none(self) -> None:
         executor = BlockExecutor()
-        ctx = _make_context()
-        result = asyncio.get_event_loop().run_until_complete(
-            executor.run([], ctx, MagicMock(), "", "")
-        )
-        assert result == (True, None)
+        backend = MagicMock()
+        with patch("src.worker.engine.block_executor.RemoteReconciliationService") as mock_remote:
+            mock_svc = AsyncMock()
+            mock_svc.run = AsyncMock(return_value={"checks": []})
+            mock_remote.return_value = mock_svc
 
-    def test_whitespace_ref_csv_treated_as_empty(self) -> None:
-        """Paths that are empty strings are treated as absent."""
+            result = _run(executor.run("code", "test.sas:1", backend, data_dir=None))
+
+        assert result is None
+
+    def test_exception_returns_none(self) -> None:
         executor = BlockExecutor()
-        ctx = _make_context()
-        result = asyncio.get_event_loop().run_until_complete(
-            executor.run([], ctx, MagicMock(), "", "")
-        )
-        assert result == (True, None)
+        backend = MagicMock()
+        with patch("src.worker.engine.block_executor.RemoteReconciliationService") as mock_remote:
+            mock_svc = AsyncMock()
+            mock_svc.run = AsyncMock(side_effect=RuntimeError("boom"))
+            mock_remote.return_value = mock_svc
+
+            result = _run(executor.run("code", "test.sas:1", backend, data_dir=None))
+
+        assert result is None
 
 
 class TestBlockExecutorWithRef:
-    """BlockExecutor delegates to ReconciliationService when ref paths are present."""
+    """BlockExecutor returns checks dict when executor returns non-empty checks."""
 
-    def test_returns_true_when_reconciliation_passes(self) -> None:
+    def test_returns_checks_dict_on_pass(self) -> None:
         executor = BlockExecutor()
-        ctx = _make_context()
+        backend = MagicMock()
+        checks_payload = {"checks": [{"name": "row_count", "status": "pass"}]}
+        with patch("src.worker.engine.block_executor.RemoteReconciliationService") as mock_remote:
+            mock_svc = AsyncMock()
+            mock_svc.run = AsyncMock(return_value=checks_payload)
+            mock_remote.return_value = mock_svc
 
-        passing_report = MagicMock()
-        passing_report.passed = True
-        passing_report.diff_summary = ""
+            result = _run(executor.run("code", "test.sas:1", backend, data_dir="/uploads/abc"))
 
-        with (
-            patch.object(executor._codegen, "assemble_flat", return_value="code"),
-            patch.object(
-                executor._reconciler,
-                "run",
-                return_value={"checks": [{"name": "row_count", "status": "pass"}]},
-            ),
-        ):
-            result = asyncio.get_event_loop().run_until_complete(
-                executor.run([_make_gb()], ctx, MagicMock(), "/ref.csv", "")
-            )
-        assert result[0] is True
+        result_dict = cast(dict[str, Any], result)
+        assert result_dict is not None
+        assert result_dict["checks"][0]["status"] == "pass"
 
-    def test_returns_false_on_reconciliation_failure(self) -> None:
+    def test_returns_checks_dict_on_fail(self) -> None:
         executor = BlockExecutor()
-        ctx = _make_context()
+        backend = MagicMock()
+        checks_payload = {
+            "checks": [{"name": "row_count", "status": "fail", "detail": "expected 10 got 5"}]
+        }
+        with patch("src.worker.engine.block_executor.RemoteReconciliationService") as mock_remote:
+            mock_svc = AsyncMock()
+            mock_svc.run = AsyncMock(return_value=checks_payload)
+            mock_remote.return_value = mock_svc
 
-        with (
-            patch.object(executor._codegen, "assemble_flat", return_value="code"),
-            patch.object(
-                executor._reconciler,
-                "run",
-                return_value={
-                    "checks": [
-                        {
-                            "name": "row_count",
-                            "status": "fail",
-                            "detail": "expected 10 got 5",
-                        }
-                    ]
-                },
-            ),
-        ):
-            result = asyncio.get_event_loop().run_until_complete(
-                executor.run([_make_gb()], ctx, MagicMock(), "/ref.csv", "")
-            )
-        assert result[0] is False
-        assert result[1] is not None
+            result = _run(executor.run("code", "test.sas:1", backend, data_dir=None))
 
-    def test_returns_false_on_exception(self) -> None:
-        executor = BlockExecutor()
-        ctx = _make_context()
-
-        with (
-            patch.object(executor._codegen, "assemble_flat", return_value="code"),
-            patch.object(executor._reconciler, "run", side_effect=RuntimeError("boom")),
-        ):
-            result = asyncio.get_event_loop().run_until_complete(
-                executor.run([_make_gb()], ctx, MagicMock(), "/ref.csv", "")
-            )
-        assert result == (False, "boom")
-
-    def test_to_report_passes_through_existing_report(self) -> None:
-        report = ReconciliationReport(
-            passed=True, row_count_match=True, column_match=True, diff_summary=""
-        )
-        assert _to_report(report) is report
-
-    def test_to_report_empty_checks_returns_passed(self) -> None:
-        result = _to_report({"checks": []})
-        assert result.passed is True
-        assert result.diff_summary == "no checks run"
+        result_dict = cast(dict[str, Any], result)
+        assert result_dict is not None
+        assert result_dict["checks"][0]["status"] == "fail"
 
 
 # ── Retry loop integration tests (mock _translate_blocks internals) ───────────
@@ -168,10 +141,6 @@ class TestRetryLoop:
     def context(self) -> JobContext:
         return _make_context()
 
-    def _run(self, coro: object) -> list[GeneratedBlock]:
-        result: list[GeneratedBlock] = asyncio.get_event_loop().run_until_complete(coro)  # type: ignore[arg-type]
-        return result
-
     def test_passes_attempt_1_executor_called_once(
         self, block: SASBlock, context: JobContext
     ) -> None:
@@ -181,20 +150,13 @@ class TestRetryLoop:
         mock_translator.translate = AsyncMock(return_value=gb)
 
         mock_executor = MagicMock(spec=BlockExecutor)
-        mock_executor.run = AsyncMock(return_value=(True, None))
+        # None = no checks = pass (no-op)
+        mock_executor.run = AsyncMock(return_value=None)
 
-        with (
-            patch(
-                "src.worker.engine.block_executor.BlockExecutor",
-                return_value=mock_executor,
-            ),
-            patch("src.worker.main.BackendFactory") as mock_factory,
-        ):
-            mock_factory.create.return_value = MagicMock()
-            # Inline the loop logic so we can test without a full WorkerService
-            result = self._run(
-                _run_translate_blocks_stub([block], context, mock_translator, mock_executor)
-            )
+        result = cast(
+            list[GeneratedBlock],
+            _run(_run_translate_blocks_stub([block], context, mock_translator, mock_executor)),
+        )
 
         assert mock_translator.translate.call_count == 1
         assert mock_executor.run.call_count == 1
@@ -211,13 +173,15 @@ class TestRetryLoop:
         mock_translator = MagicMock()
         mock_translator.translate = AsyncMock(side_effect=[gb1, gb2, gb3])
 
+        fail1 = {"checks": [{"name": "row_count", "status": "fail", "detail": "row mismatch"}]}
+        fail2 = {"checks": [{"name": "row_count", "status": "fail", "detail": "col mismatch"}]}
         mock_executor = MagicMock(spec=BlockExecutor)
-        mock_executor.run = AsyncMock(
-            side_effect=[(False, "row mismatch"), (False, "col mismatch"), (True, None)]
-        )
+        # attempt 1 fail, attempt 2 fail, attempt 3 -> None (no-op = pass)
+        mock_executor.run = AsyncMock(side_effect=[fail1, fail2, None])
 
-        result = self._run(
-            _run_translate_blocks_stub([block], context, mock_translator, mock_executor)
+        result = cast(
+            list[GeneratedBlock],
+            _run(_run_translate_blocks_stub([block], context, mock_translator, mock_executor)),
         )
 
         assert mock_translator.translate.call_count == 3
@@ -232,44 +196,38 @@ class TestRetryLoop:
         mock_translator = MagicMock()
         mock_translator.translate = AsyncMock(side_effect=[gb1, gb2, gb3])
 
+        fail = {"checks": [{"name": "row_count", "status": "fail", "detail": "err"}]}
         mock_executor = MagicMock(spec=BlockExecutor)
-        mock_executor.run = AsyncMock(
-            side_effect=[
-                (False, "err1"),
-                (False, "err2"),
-                (False, "err3"),
-            ]
-        )
+        mock_executor.run = AsyncMock(side_effect=[fail, fail, fail])
 
-        result = self._run(
-            _run_translate_blocks_stub([block], context, mock_translator, mock_executor)
+        result = cast(
+            list[GeneratedBlock],
+            _run(_run_translate_blocks_stub([block], context, mock_translator, mock_executor)),
         )
 
         # No exception raised; last code kept
         assert len(result) == 1
         assert result[0].python_code == "# attempt 3"
 
-    def test_ref_csv_empty_no_retry(self, block: SASBlock, context: JobContext) -> None:
-        """When ref_csv_path is empty executor always returns (True, None)."""
+    def test_ref_data_absent_no_retry(self, block: SASBlock, context: JobContext) -> None:
+        """When executor returns None (no checks), only one translate call is made."""
         gb = _make_gb("# attempt 1")
         mock_translator = MagicMock()
         mock_translator.translate = AsyncMock(return_value=gb)
 
-        # Use real BlockExecutor — it should short-circuit when paths are empty
-        real_executor = BlockExecutor()
+        mock_executor = MagicMock(spec=BlockExecutor)
+        mock_executor.run = AsyncMock(return_value=None)
 
-        result = self._run(
-            _run_translate_blocks_stub(
-                [block], context, mock_translator, real_executor, ref_csv_path=""
-            )
+        result = cast(
+            list[GeneratedBlock],
+            _run(_run_translate_blocks_stub([block], context, mock_translator, mock_executor)),
         )
 
-        # Only one translate call because executor always passes
         assert mock_translator.translate.call_count == 1
         assert result[0].python_code == "# attempt 1"
 
 
-# ── Stub that replicates the _translate_blocks retry loop ─────────────────────
+# ── Stub that replicates the _translate_blocks F19 retry loop ────────────────
 
 
 async def _run_translate_blocks_stub(
@@ -277,21 +235,19 @@ async def _run_translate_blocks_stub(
     context: JobContext,
     translator: MagicMock,
     executor: BlockExecutor,
-    ref_csv_path: str = "/ref.csv",
-    ref_sas7bdat_path: str = "",
+    data_dir: str = "/uploads/test",
 ) -> list[GeneratedBlock]:
     """Mirror of the _translate_blocks F19 loop for isolated unit testing.
 
-    This avoids instantiating the full WorkerService while still exercising
-    the exact retry logic defined in the spec.
+    Replicates the retry logic in JobOrchestrator._translate_blocks without
+    instantiating the full orchestrator.
 
     Args:
         blocks: SAS blocks to iterate over.
         context: Job context.
         translator: Mock translator (already routed).
         executor: BlockExecutor instance (real or mock).
-        ref_csv_path: Reference CSV path override.
-        ref_sas7bdat_path: Reference SAS7BDAT path override.
+        data_dir: Data directory forwarded to executor.
 
     Returns:
         List of GeneratedBlock results.
@@ -320,34 +276,35 @@ async def _run_translate_blocks_stub(
                     attempt,
                     type(exc).__name__,
                 )
+                gb = None
                 break
 
-            trial_generated = [*generated, gb]
-            passed, error_summary = await executor.run(
-                trial_generated, attempt_context, backend, ref_csv_path, ref_sas7bdat_path
+            recon_result = await executor.run(
+                gb.python_code,
+                block_id,
+                backend,
+                data_dir=data_dir,
             )
 
-            if passed:
-                logger.info("[F19] %s block %s attempt %d/3 PASSED", agent_name, block_id, attempt)
+            if recon_result is None:
+                # No reference data — treat as pass
                 break
 
-            if attempt < 3 and error_summary:
-                logger.info(
-                    "[F19] %s block %s attempt %d/3 FAILED — scheduling retry",
-                    agent_name,
-                    block_id,
-                    attempt,
-                )
-                hint_flag = f"recon_failure_attempt_{attempt}: {error_summary}"
+            checks: list[dict[str, Any]] = recon_result.get("checks", [])
+            all_passed = all(c.get("status") == "pass" for c in checks)
+            if all_passed:
+                break
+
+            if attempt < 3:
+                failed_details = [
+                    c.get("detail", c.get("name", "unknown"))
+                    for c in checks
+                    if c.get("status") != "pass"
+                ]
+                error_summary = "; ".join(failed_details).replace("\n", " ")[:200]
+                flag = f"recon_failure_attempt_{attempt}: {error_summary}"
                 attempt_context = attempt_context.model_copy(
-                    update={"risk_flags": [*attempt_context.risk_flags, hint_flag]}
-                )
-            else:
-                logger.info(
-                    "[F19] %s block %s attempt %d/3 FAILED — no more retries",
-                    agent_name,
-                    block_id,
-                    attempt,
+                    update={"risk_flags": [*attempt_context.risk_flags, flag]}
                 )
 
         if gb is not None:

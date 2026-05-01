@@ -80,7 +80,7 @@ if _result_path:
 """
 
 
-def run_code(code: str, timeout: int = 60) -> dict[str, Any]:
+def run_code(code: str, timeout: int = 60, data_dir: str = "") -> dict[str, Any]:
     """Execute *code* in a subprocess and return captured outputs.
 
     The code is written to a temp file, the result-capture snippet is appended,
@@ -90,6 +90,8 @@ def run_code(code: str, timeout: int = 60) -> dict[str, Any]:
     Args:
         code: Python source code to execute.
         timeout: Maximum seconds to allow the subprocess to run.
+        data_dir: If non-empty, replaces ``/workspace/data/`` prefix in *code* so
+            uploaded files are resolved to the correct job-specific directory.
 
     Returns:
         Dict with keys:
@@ -100,6 +102,8 @@ def run_code(code: str, timeout: int = 60) -> dict[str, Any]:
             error (str | None): Exception message if subprocess crashed.
             elapsed_ms (int): Wall-clock time in milliseconds.
     """
+    if data_dir:
+        code = code.replace("/workspace/data/", data_dir.rstrip("/") + "/")
     prefix = _SPARK_INIT_SNIPPET if re.search(r"\bspark\b", code) else ""
     augmented = prefix + code + "\n" + _RESULT_CAPTURE_SNIPPET
 
@@ -129,7 +133,12 @@ def run_code(code: str, timeout: int = 60) -> dict[str, Any]:
             env=env,
         )
         stdout = proc.stdout
-        stderr = proc.stderr
+        # Strip JVM noise that appears before log4j initialises.
+        stderr = "\n".join(
+            line
+            for line in proc.stderr.splitlines()
+            if "incubator modules" not in line and line.strip()
+        )
 
         # Read captured DataFrame result if it was written
         try:

@@ -482,6 +482,7 @@ interface ExecutionOutputPanelProps {
   onClose?: () => void;
   activeTab: ExecOutputTab;
   onTabChange: (tab: ExecOutputTab) => void;
+  theme?: "dark" | "light";
 }
 
 function ExecutionOutputPanel({
@@ -489,7 +490,9 @@ function ExecutionOutputPanel({
   fetchError,
   activeTab,
   onTabChange,
+  theme = "light",
 }: ExecutionOutputPanelProps): React.ReactElement {
+  const dk = theme === "dark";
   const hasResult = result !== null && result.result_json !== null;
   const hasRecon =
     result !== null && result.checks !== null && result.checks.length > 0;
@@ -522,17 +525,27 @@ function ExecutionOutputPanel({
       aria-label="Execution output"
     >
       {/* Sub-tab strip */}
-      <div className="flex items-center gap-0.5 px-2 py-1 border-b border-border shrink-0">
+      <div
+        className="flex items-center gap-0.5 px-2 py-1 shrink-0"
+        style={{
+          borderBottom: dk ? "1px solid #3e3e3e" : "1px solid var(--border)",
+          background: dk ? "#252526" : undefined,
+        }}
+      >
         {tabs.map((t) => (
           <button
             key={t.key}
             onClick={() => onTabChange(t.key)}
-            className={cn(
-              "px-2.5 py-0.5 text-[11px] font-medium rounded transition-colors cursor-pointer",
+            className="px-2.5 py-0.5 text-[11px] font-medium rounded transition-colors cursor-pointer"
+            style={
               activeTab === t.key
-                ? "bg-background text-foreground border border-border"
-                : "text-muted-foreground hover:text-foreground",
-            )}
+                ? dk
+                  ? { background: "#1e1e1e", color: "#60a5fa", border: "1px solid #3e3e3e" }
+                  : { background: "var(--background)", color: "var(--foreground)", border: "1px solid var(--border)" }
+                : dk
+                  ? { color: "#858585" }
+                  : { color: "var(--muted-foreground)" }
+            }
           >
             {t.key === "output" && fetchError
               ? "Run failed"
@@ -549,7 +562,7 @@ function ExecutionOutputPanel({
       </div>
 
       {/* Panel body */}
-      <div className="flex-1 overflow-auto bg-background">
+      <div className="flex-1 overflow-auto" style={{ background: dk ? "#1e1e1e" : "#ffffff" }}>
         {/* Output tab */}
         {activeTab === "output" && (
           <div className="p-3">
@@ -772,7 +785,7 @@ function BottomPanel({
         {bottomTab === "code" && (
           <>
             {executeResult === null && executeError === null ? (
-              <p className="text-xs text-muted-foreground italic p-3">
+              <p className="text-xs italic p-3" style={{ color: theme === "dark" ? "#858585" : "var(--muted-foreground)" }}>
                 Run Python ▶ to see output here.
               </p>
             ) : (
@@ -781,6 +794,7 @@ function BottomPanel({
                 fetchError={executeError}
                 activeTab={execOutputTab}
                 onTabChange={setExecOutputTab}
+                theme={theme}
               />
             )}
           </>
@@ -924,10 +938,26 @@ export default function EditorTab({
   const [pythonEditable, setPythonEditable] = useState(false);
   const [selectedBlock, setSelectedBlock] = useState<BlockPlan | null>(null);
   const [executing, setExecuting] = useState(false);
+  const _execKey = `editor-exec-${jobId}`;
   const [executeResult, setExecuteResult] = useState<ExecuteResponse | null>(
-    null,
+    () => {
+      try {
+        const s = sessionStorage.getItem(_execKey);
+        return s ? (JSON.parse(s) as ExecuteResponse) : null;
+      } catch {
+        return null;
+      }
+    },
   );
   const [executeError, setExecuteError] = useState<string | null>(null);
+
+  const _setExecuteResult = (r: ExecuteResponse | null) => {
+    setExecuteResult(r);
+    try {
+      if (r) sessionStorage.setItem(_execKey, JSON.stringify(r));
+      else sessionStorage.removeItem(_execKey);
+    } catch { /* sessionStorage unavailable */ }
+  };
   const [execOutputTab, setExecOutputTab] = useState<ExecOutputTab>("output");
   const pythonEditorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const sasEditorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
@@ -988,18 +1018,25 @@ export default function EditorTab({
     }
   }, [overrideRevisionCode]);
 
+  useEffect(() => {
+    if (pythonEditorRef.current) {
+      const model = pythonEditorRef.current.getModel();
+      if (model && model.getValue() !== rightCode) model.setValue(rightCode ?? "");
+    }
+  }, [rightCode]);
+
 
   const hasPythonCode = !!(rightCode && rightCode.trim().length > 0);
 
   const handleRun = async () => {
     if (executing || !hasPythonCode) return;
     setExecuting(true);
-    setExecuteResult(null);
+    _setExecuteResult(null);
     setExecuteError(null);
     setBottomTab("code");
     try {
       const result = await executeJob(jobId, selectedBlock?.block_id);
-      setExecuteResult(result);
+      _setExecuteResult(result);
       setExecOutputTab("output");
     } catch (e: unknown) {
       setExecuteError(e instanceof Error ? e.message : String(e));
@@ -1119,9 +1156,10 @@ export default function EditorTab({
             orientation="horizontal"
             className="rounded-md overflow-hidden h-full"
             style={{
-              border: editorDark
-                ? "1px solid #3e3e3e"
-                : "1px solid var(--border)",
+              borderTop: editorDark ? "1px solid #3e3e3e" : "1px solid var(--border)",
+              borderLeft: editorDark ? "1px solid #3e3e3e" : "1px solid var(--border)",
+              borderRight: editorDark ? "1px solid #3e3e3e" : "1px solid var(--border)",
+              borderBottom: "none",
             }}
           >
             <ResizablePanel defaultSize={50} minSize={50} maxSize={300}>
@@ -1323,19 +1361,19 @@ export default function EditorTab({
           </ResizablePanelGroup>
         </ResizablePanel>
 
-        <ResizableHandle withHandle />
+        <ResizableHandle withHandle className="w-full flex items-center justify-center [&>div]:h-2 [&>div]:w-6" />
 
         {/* BOTTOM panel — tabbed output area */}
         <ResizablePanel defaultSize={25} minSize={10}>
           <div
             className="h-full overflow-hidden"
             style={{
-              borderTop: "none",
               borderRadius: "0 0 6px 6px",
               border: editorDark
                 ? "1px solid #3e3e3e"
                 : "1px solid var(--border)",
-              background: editorDark ? "#1e1e1e" : undefined,
+              borderTop: "none",
+              background: editorDark ? "#1e1e1e" : "#ffffff",
             }}
           >
             <BottomPanel

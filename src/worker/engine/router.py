@@ -91,10 +91,12 @@ class _ProcSortHelper:
         Returns:
             A 2-tuple of (out_dataset, in_dataset).
         """
-        out_match = re.search(r"\bOUT\s*=\s*(\w+)", raw_sas, re.IGNORECASE)
-        in_dataset = input_datasets[0] if input_datasets else "df"
+        out_match = re.search(r"\bOUT\s*=\s*([\w.]+)", raw_sas, re.IGNORECASE)
+        raw_in = input_datasets[0] if input_datasets else "df"
+        in_dataset = raw_in.lower().split(".")[-1]
 
-        out_dataset = out_match.group(1) if out_match else in_dataset
+        raw_out = out_match.group(1) if out_match else raw_in
+        out_dataset = raw_out.lower().split(".")[-1]
 
         return out_dataset, in_dataset
 
@@ -111,13 +113,15 @@ class _ProcSortHelper:
         vars_, ascending = self._parse_by_clause(block.raw_sas)
         out_dataset, in_dataset = self._parse_out_dataset(block.raw_sas, block.input_datasets)
 
-        vars_repr = ", ".join(f'"{v}"' for v in vars_)
-        ascending_repr = ", ".join(str(a) for a in ascending)
+        order_cols = ", ".join(
+            f'F.col("{v}").asc()' if asc else f'F.col("{v}").desc()'
+            for v, asc in zip(vars_, ascending, strict=True)
+        )
 
         python_code = (
             f"# SAS: {block.source_file}:{block.start_line}\n"
-            f"{out_dataset} = {in_dataset}.sort_values("
-            f"by=[{vars_repr}], ascending=[{ascending_repr}])"
+            f"from pyspark.sql import functions as F\n"
+            f"{out_dataset} = {in_dataset}.orderBy({order_cols})"
         )
 
         return GeneratedBlock(

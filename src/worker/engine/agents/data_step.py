@@ -4,6 +4,7 @@
 """
 
 import logging
+import re as _re
 import textwrap
 
 from pydantic import BaseModel, Field
@@ -13,6 +14,7 @@ from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.azure import AzureProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 from src.worker.core.config import worker_settings
+from src.worker.engine.agents.shared import normalise_output_var, normalise_output_var_in_code
 from src.worker.engine.models import GeneratedBlock, JobContext, SASBlock
 
 logger = logging.getLogger("src.worker.engine.agents.data_step")
@@ -85,11 +87,16 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
         # UNCERTAIN: <reason> — human review required
     - Add # SAS: <source_file>:<line_number> after each logical section.
     - Preserve SAS column names exactly, lowercased.
-    - INPUT datasets from `SET` / `MERGE` / `UPDATE` are already-loaded variables named
-      `libname_table` (lowercased, dot → underscore). E.g. `SET rawdir.transactions` → `rawdir_transactions`.
+    - INPUT datasets from `SET` / `MERGE` / `UPDATE` are already-loaded variables. The exact
+      variable name for each input is shown in the prompt as `→  variable name: <name>`. Use
+      EXACTLY that name — do not derive it yourself. External source files use `libname_table`
+      form (e.g. `rawdir_transactions`); inter-block datasets use stem-only (e.g. `customer_revenue_daily`).
     - OUTPUT datasets (`DATA libname.table`) do NOT exist yet — your code must CREATE them.
-      Name the output variable using the TABLE STEM ONLY (drop the libname prefix).
-      E.g. `DATA outdir.customer_revenue_daily` → variable is `customer_revenue_daily` (NOT `outdir_customer_revenue_daily`).
+      Name the output variable using the TABLE STEM ONLY — strip the libname prefix entirely.
+        - CORRECT: `DATA outdir.customer_revenue_daily` → Python variable `customer_revenue_daily`
+        - WRONG:   `outdir_customer_revenue_daily`, `outdir.customer_revenue_daily`, any form with the libname
+      The output variable name in your code MUST exactly match the `output_var` field you return in JSON.
+      NEVER use the libname or a dot/underscore-joined form for the output variable.
       NEVER reference the output variable before assigning it.
     - Macro variables are pre-resolved; use their literal values directly.
 
@@ -112,8 +119,7 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
     - DO / END → for-loop over DataFrame operations; prefer vectorised Column expressions.
     - Implicit OUTPUT → every-row output; standard DataFrame construction.
     - Explicit OUTPUT inside DO → build list of dicts, spark.createDataFrame(rows, schema).
-    - MERGE with BY → df.join(right, on=key, how="outer").
-      pandas last resort: df.merge(..., how="outer") + sort_values(BY).
+    - MERGE with BY → df.join(right, on=key, how="outer").orderBy(BY_cols). NEVER use sort_values().
     - KEEP / DROP → df.select([kept_cols]) or df.drop(col).
     - LENGTH / FORMAT / INFORMAT → comment out with # SAS: preserved as metadata.
     - SET with multiple datasets → df1.unionByName(df2).
@@ -132,12 +138,13 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
 # ── Prompt builder ────────────────────────────────────────────────────────────
 
 
-def _build_prompt(block: SASBlock, windowed: JobContext) -> str:
+def _build_prompt(block: SASBlock, windowed: JobContext, all_blocks: list[SASBlock]) -> str:
     """Build the user prompt for a DATA step translation.
 
     Args:
         block: The SAS block to translate.
         windowed: A windowed JobContext scoped to this block.
+        all_blocks: All SAS blocks in the job (used to resolve inter-block variable names).
 
     Returns:
         A formatted prompt string for the LLM.
@@ -148,10 +155,27 @@ def _build_prompt(block: SASBlock, windowed: JobContext) -> str:
     for macro in windowed.resolved_macros:
         lines.append(f'- {macro.name} = "{macro.raw_value}"  ({macro.source_file}:{macro.line})')
 
+    # Maps both dot form (rawdir.customers) and underscore form (rawdir_customers) → stem (customers).
+    # Must use ALL blocks (not just the windowed single block) so that upstream PROC IMPORT outputs
+    # are visible when resolving input variable names for downstream DATA steps.
+    block_output_stems: dict[str, str] = {}
+    for b in all_blocks:
+        for ds in b.output_datasets:
+            stem = ds.lower().split(".")[-1]
+            block_output_stems[ds.lower()] = stem
+            block_output_stems[ds.lower().replace(".", "_")] = stem
+
     lines.append("")
-    lines.append("## Input datasets (already-loaded Spark DataFrame variables, libname_table form)")
+    lines.append("## Input datasets (already-loaded Spark DataFrame variables)")
     for i, ds in enumerate(block.input_datasets):
-        lines.append(f"{i + 1}. {ds.lower().replace('.', '_')}")
+        ds_lower = ds.lower()
+        if ds_lower in block_output_stems:
+            # Inter-block dataset: upstream block named it with stem-only
+            var_name = block_output_stems[ds_lower]
+        else:
+            # External source file: loaded under libname_table form
+            var_name = ds_lower.replace(".", "_")
+        lines.append(f"{i + 1}. {ds}  →  variable name: {var_name}")
 
     lines.append("")
     lines.append("## Output datasets (must be CREATED by your code, use stem-only variable name)")
@@ -255,13 +279,25 @@ class DataStepAgent:
         """
         try:
             windowed = context.windowed_context(block)
-            user_prompt = _build_prompt(block, windowed)
+            user_prompt = _build_prompt(block, windowed, context.blocks)
             result = await self._agent.run(user_prompt, model_settings={"max_tokens": 4000})
             output: DataStepResult = result.output  # type: ignore[assignment]
+            fixed_code = normalise_output_var_in_code(
+                output.python_code, block.output_datasets, "DataStepAgent"
+            )
+            fixed_output_var = normalise_output_var(block.output_datasets, output.output_var)
+            if fixed_output_var and not _re.search(
+                rf"\b{_re.escape(fixed_output_var)}\s*=", fixed_code
+            ):
+                logger.warning(
+                    "DataStepAgent: output_var '%s' not found as assignment in generated code"
+                    " after rename — check LLM output",
+                    fixed_output_var,
+                )
             return GeneratedBlock(
                 source_block=block,
-                python_code=output.python_code,
-                output_var=output.output_var,
+                python_code=fixed_code,
+                output_var=fixed_output_var,
                 confidence=output.confidence_band,
                 confidence_score=output.confidence_score,
                 confidence_band=output.confidence_band,

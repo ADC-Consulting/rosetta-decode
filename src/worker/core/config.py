@@ -22,6 +22,7 @@ class WorkerSettings(BaseSettings):
     # TensorZero gateway — when set, LLM calls are routed through the gateway
     tensorzero_gateway_url: str | None = None
     executor_url: str = "http://executor:8001"
+    upload_dir: str = "/uploads"
 
 
 worker_settings = WorkerSettings()

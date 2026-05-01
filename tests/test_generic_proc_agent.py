@@ -230,7 +230,7 @@ def test_build_prompt_with_all_context_fields() -> None:
         log_contents={"test.log": "NOTE: 100 observations read.\nWARNING: numeric overflow"},
     )
     windowed = context.windowed_context(block)
-    prompt = _build_prompt(block, windowed)
+    prompt = _build_prompt(block, windowed, context.blocks)
 
     assert "DEPT" in prompt
     assert "SALES" in prompt
@@ -246,7 +246,7 @@ def test_build_prompt_empty_context() -> None:
     block = _make_block(BlockType.PROC_FREQ)
     context = _make_context()
     windowed = context.windowed_context(block)
-    prompt = _build_prompt(block, windowed)
+    prompt = _build_prompt(block, windowed, [])
 
     assert "(none)" in prompt
 

@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any
 
 import sqlalchemy as sa
-from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -47,6 +47,9 @@ class Job(Base):
     skip_llm: Mapped[bool] = mapped_column(
         sa.Boolean, nullable=False, default=False, server_default=sa.text("false")
     )
+    cancellation_requested: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa.text("false"), nullable=False
+    )
     parent_job_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     trigger: Mapped[str] = mapped_column(
         String(32), nullable=False, default="agent", server_default=sa.text("'agent'")
@@ -65,6 +68,9 @@ class Job(Base):
     )
     block_revisions: Mapped[list["BlockRevision"]] = relationship(
         "BlockRevision", back_populates="job", cascade="all, delete-orphan"
+    )
+    traces: Mapped[list["JobTrace"]] = relationship(
+        "JobTrace", back_populates="job", cascade="all, delete-orphan"
     )
 
 
@@ -112,6 +118,26 @@ class BlockRevision(Base):
     )
 
     job: Mapped["Job"] = relationship("Job", back_populates="block_revisions")
+
+
+class JobTrace(Base):
+    """An immutable audit event emitted during job execution."""
+
+    __tablename__ = "job_traces"
+    __table_args__ = (Index("ix_job_traces_job_id_id", "job_id", "id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # block_start | block_done | recon_result | job_done | error
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    payload: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    job: Mapped["Job"] = relationship("Job", back_populates="traces")
 
 
 class ExplainSession(Base):

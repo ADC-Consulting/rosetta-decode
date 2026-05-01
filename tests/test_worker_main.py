@@ -1,5 +1,6 @@
 """Unit tests for src/worker/main.py — mocks DB session and engine components."""
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -486,14 +487,13 @@ async def test_translate_with_refinement_passes_first_try() -> None:
 
 @pytest.mark.asyncio
 async def test_translate_with_refinement_retries_on_failure() -> None:
-    """When reconciliation fails with a diff, failure interpreter is called."""
+    """When phase-1 reconciliation fails with a diff, phase-2 re-translates the block."""
     orch, mocks = _make_orchestrator_with_mocks()
     fake_block = _make_fake_block(source_file="test.sas", start_line=1)
     fake_gb = _make_fake_generated_block()
     fake_ctx = _make_fake_context()
 
     failed_report = _make_fake_report(passed=False, diff_summary="row 1 differs")
-    passed_report = _make_fake_report(passed=True)
 
     translator_mock = MagicMock()
     translator_mock.translate = AsyncMock(return_value=fake_gb)
@@ -504,22 +504,27 @@ async def test_translate_with_refinement_retries_on_failure() -> None:
         return_value=("fix the rounding", "test.sas:1")
     )
 
-    reports = iter([failed_report, passed_report])
-
-    async def _run_side_effect(*a: object, **kw: object) -> object:
-        return next(reports)  # type: ignore[call-overload]
-
     with (
         patch("src.worker.main.BackendFactory") as mock_factory,
+        # BlockExecutor.run always returns None (no reference data) — prevents it from
+        # consuming items from the RemoteReconciliationService iterator.
+        patch(
+            "src.worker.engine.block_executor.RemoteReconciliationService.run",
+            new=AsyncMock(return_value={"checks": []}),
+        ),
         patch(
             "src.worker.main.RemoteReconciliationService.run",
-            side_effect=_run_side_effect,
+            new=AsyncMock(return_value=failed_report),
         ),
     ):
         mock_factory.create.return_value = MagicMock()
         blocks, _ = await orch._translate_two_phase([fake_block], fake_ctx, "", "")
 
+    # Phase 2 should have called interpret and re-translated the affected block.
     mocks["failure_interpreter"].interpret.assert_called_once()
+    # translate() is called at least once in phase 1 (per-block loop) and once more
+    # in _retry_affected_block for the phase-2 re-translation — total >= 2.
+    assert translator_mock.translate.call_count >= 2
     assert len(blocks) == 1
 
 
@@ -888,7 +893,7 @@ async def test_execute_skips_llm_when_skip_llm_true() -> None:
 
 
 @pytest.mark.asyncio
-async def test_sniff_file_csv_succeeds(tmp_path) -> None:
+async def test_sniff_file_csv_succeeds(tmp_path: Any) -> None:
     """Test _sniff_file successfully reads CSV."""
     import pandas as pd
 
@@ -902,7 +907,7 @@ async def test_sniff_file_csv_succeeds(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_sniff_file_tsv_succeeds(tmp_path) -> None:
+async def test_sniff_file_tsv_succeeds(tmp_path: Any) -> None:
     """Test _sniff_file successfully reads TSV."""
     import pandas as pd
 
@@ -955,7 +960,7 @@ def test_dict_to_recon_report_mixed_results() -> None:
 
 def test_dict_to_recon_report_no_checks() -> None:
     """Test _dict_to_recon_report with no checks (skip reconciliation)."""
-    report = {"checks": []}
+    report: dict[str, Any] = {"checks": []}
     result = _dict_to_recon_report(report)
 
     assert result.passed is True
@@ -1009,7 +1014,7 @@ def test_dataset_matches_file_no_match() -> None:
 
 def test_inject_data_file_nodes_empty() -> None:
     """Test _inject_data_file_nodes with no data files."""
-    lineage_data = {"nodes": [], "edges": []}
+    lineage_data: dict[str, Any] = {"nodes": [], "edges": []}
     context = JobContext(
         source_files={},
         resolved_macros=[],
