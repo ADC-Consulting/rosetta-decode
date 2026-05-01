@@ -255,3 +255,17 @@ export async function executeJob(
   if (!res.ok) throw new Error(await extractApiError(res));
   return res.json() as Promise<ExecuteResponse>;
 }
+
+// ── F20: Live Trace ───────────────────────────────────────────────────────────
+
+export function openTraceStream(jobId: string, sinceSeq = 0): EventSource {
+  return new EventSource(`${BASE}/jobs/${jobId}/trace/stream?since_seq=${sinceSeq}`);
+}
+
+export async function cancelJob(jobId: string): Promise<void> {
+  const res = await fetch(`${BASE}/jobs/${jobId}/cancel`, { method: "POST" });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { detail?: string }).detail ?? `Cancel failed: ${res.status}`);
+  }
+}

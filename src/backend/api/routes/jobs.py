@@ -9,6 +9,7 @@ import mimetypes
 import os
 import uuid
 import zipfile
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from typing import Any
 
@@ -54,8 +55,8 @@ from src.backend.api.schemas import (
     UpdatePythonCodeRequest,
 )
 from src.backend.core.config import settings
-from src.backend.db.models import BlockRevision, Job, JobVersion
-from src.backend.db.session import get_async_session
+from src.backend.db.models import BlockRevision, Job, JobTrace, JobVersion
+from src.backend.db.session import AsyncSessionLocal, get_async_session
 from src.worker.compute.local import LocalBackend
 from src.worker.engine.agents.data_step import DataStepAgent
 from src.worker.engine.agents.generic_proc import GenericProcAgent
@@ -103,7 +104,14 @@ async def list_jobs(
                 error=j.error,
                 name=j.name,
                 file_count=sum(
-                    1 for k in (j.files or {}) if not (k.startswith("__") and k.endswith("__"))
+                    1
+                    for k in (j.files or {})
+                    if not k.startswith("__")
+                    or (
+                        k.startswith("__ref_")
+                        and k.endswith("__")
+                        and k not in ("__ref_csv__", "__ref_sas7bdat__")
+                    )
                 ),
             )
             for j in jobs
@@ -1577,21 +1585,54 @@ async def execute_job(
     python_code: str | None = None
 
     if request.block_id is not None:
-        rev_result = await session.execute(
-            select(BlockRevision)
-            .where(
-                BlockRevision.job_id == str(job_id),
-                BlockRevision.block_id == request.block_id,
+        # Build cumulative code up to and including the requested block
+        migration_plan: dict[str, Any] | None = job.migration_plan
+        ordered_block_ids: list[str] = []
+        if migration_plan:
+            ordered_block_ids = [
+                bp.get("block_id", "")
+                for bp in migration_plan.get("block_plans", [])
+                if bp.get("block_id")
+            ]
+
+        target_idx: int | None = None
+        if request.block_id in ordered_block_ids:
+            target_idx = ordered_block_ids.index(request.block_id)
+
+        if target_idx is not None:
+            # Fetch the latest revision for each block in the cumulative slice
+            slice_ids = ordered_block_ids[: target_idx + 1]
+            code_parts: list[str] = []
+            for bid in slice_ids:
+                bid_result = await session.execute(
+                    select(BlockRevision)
+                    .where(
+                        BlockRevision.job_id == str(job_id),
+                        BlockRevision.block_id == bid,
+                    )
+                    .order_by(BlockRevision.revision_number.desc())
+                )
+                rev = bid_result.scalars().first()
+                if rev and rev.python_code:
+                    code_parts.append(rev.python_code)
+            python_code = "\n\n".join(code_parts) if code_parts else None
+        else:
+            # Fallback: fetch just the requested block's latest revision
+            rev_result = await session.execute(
+                select(BlockRevision)
+                .where(
+                    BlockRevision.job_id == str(job_id),
+                    BlockRevision.block_id == request.block_id,
+                )
+                .order_by(BlockRevision.revision_number.desc())
             )
-            .order_by(BlockRevision.revision_number.desc())
-        )
-        latest_rev = rev_result.scalars().first()
-        if latest_rev is None:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Block '{request.block_id}' not found for job '{job_id}'.",
-            )
-        python_code = latest_rev.python_code
+            latest_rev = rev_result.scalars().first()
+            if latest_rev is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Block '{request.block_id}' not found for job '{job_id}'.",
+                )
+            python_code = latest_rev.python_code
     else:
         python_code = job.python_code
 
@@ -1601,10 +1642,12 @@ async def execute_job(
     ref_csv_path: str = str((job.files or {}).get("__ref_csv__", ""))
     ref_sas7bdat_path: str = str((job.files or {}).get("__ref_sas7bdat__", ""))
 
+    data_dir = settings.upload_dir.rstrip("/") + "/" + str(job_id)
     payload: dict[str, Any] = {
         "code": python_code,
         "ref_csv_path": ref_csv_path,
         "ref_sas7bdat_path": ref_sas7bdat_path,
+        "data_dir": data_dir,
     }
 
     try:
@@ -1622,6 +1665,103 @@ async def execute_job(
             status_code=502,
             detail=f"Executor returned an error: {exc.response.status_code}",
         ) from exc
+
+
+# ---------------------------------------------------------------------------
+# F20 A3 — Cancel a queued or running job
+# ---------------------------------------------------------------------------
+
+
+@router.post("/jobs/{job_id}/cancel")
+async def cancel_job(
+    job_id: uuid.UUID,
+    session: AsyncSession = Depends(get_async_session),
+) -> dict[str, object]:
+    """Cancel a queued or running job.
+
+    For a ``queued`` job the status is flipped to ``cancelled`` immediately.
+    For a ``running`` job ``cancellation_requested`` is set to ``True`` so the
+    worker can detect and honour it at the next checkpoint.
+
+    Args:
+        job_id: UUID of the migration job.
+        session: Injected async database session.
+
+    Returns:
+        Dict with ``job_id``, ``previous_status``, and ``cancelled=True``.
+
+    Raises:
+        HTTPException: 404 if the job does not exist.
+        HTTPException: 409 if the job is not in a cancellable state.
+    """
+    job = await session.get(Job, str(job_id))
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status not in ("queued", "running"):
+        raise HTTPException(status_code=409, detail=f"Job is not cancellable: {job.status}")
+    prev_status = job.status
+    if job.status == "queued":
+        job.status = "cancelled"
+    else:  # running
+        job.cancellation_requested = True
+    await session.commit()
+    return {"job_id": str(job_id), "previous_status": prev_status, "cancelled": True}
+
+
+# ---------------------------------------------------------------------------
+# F20 A4 — SSE trace stream for a job
+# ---------------------------------------------------------------------------
+
+
+@router.get("/jobs/{job_id}/trace/stream")
+async def stream_job_trace(
+    job_id: uuid.UUID,
+    since_seq: int = 0,
+) -> StreamingResponse:
+    """Stream job execution trace events as Server-Sent Events.
+
+    Polls ``job_traces`` for new rows since ``since_seq`` and emits each as a
+    JSON-encoded SSE data line.  Closes automatically when a ``job_done`` event
+    is encountered, or when the job reaches a terminal state with no pending
+    traces.
+
+    Args:
+        job_id: UUID of the migration job.
+        since_seq: Sequence id (``JobTrace.id``) to resume from; defaults to 0
+            so the stream starts from the beginning.
+
+    Returns:
+        StreamingResponse with ``text/event-stream`` content type.
+    """
+
+    async def generate() -> AsyncGenerator[str, None]:
+        last_id = since_seq
+        while True:
+            async with AsyncSessionLocal() as session:
+                rows = await session.execute(
+                    select(JobTrace)
+                    .where(
+                        JobTrace.job_id == str(job_id),
+                        JobTrace.id > last_id,
+                    )
+                    .order_by(JobTrace.id)
+                )
+                for row in rows.scalars():
+                    payload = {"event_type": row.event_type, **row.payload}
+                    yield f"data: {json.dumps(payload)}\n\n"
+                    last_id = row.id
+                    if row.event_type == "job_done":
+                        return
+
+            # Check if job is in a terminal state with no more traces to emit.
+            async with AsyncSessionLocal() as session:
+                job = await session.get(Job, str(job_id))
+            if job is None or job.status not in ("queued", "running"):
+                return
+
+            await asyncio.sleep(0.5)
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 # ---------------------------------------------------------------------------

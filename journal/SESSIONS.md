@@ -6,6 +6,170 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-05-01 — F20 Stream A: live trace popup + session cancel
+
+**Duration:** ~2h | **Focus:** F20 Stream A — per-block trace events, cancellation, SSE endpoint, LiveTraceDialog
+
+### Done
+- **F20 A1:** `JobTrace` model + `cancellation_requested` on `Job` + Alembic migration 016
+- **F20 A2:** `TraceEmitter` (independent sessions, never raises) + `JobCancelledError` + per-block `block_start`/`block_done`/`recon_result`/`job_done` emit in `_translate_blocks` + cancel check between blocks
+- **F20 A3:** `POST /jobs/{id}/cancel` — queued jobs cancelled immediately, running jobs set `cancellation_requested=True`
+- **F20 A4:** `GET /jobs/{id}/trace/stream` SSE endpoint — polls `job_traces` at 0.5s, closes on `job_done` or terminal status
+- **F20 A5:** `TraceEvent` union type + `openTraceStream` / `cancelJob` API client functions
+- **F20 A6:** `LiveTraceDialog` — redesigned with left vertical timeline rail, shadcn color tokens, per-event-type dot + row styling, auto-scroll, elapsed timer, Stop button
+- **F20 A7:** Activity button in `JobsPage` for queued/running/done jobs; `LiveTraceDialog` mounted at page root
+- **fix(worker):** cancel check crash — `session.refresh(job)` replaced with fresh-session `get()` via `session_factory`; fixes "not persistent within this Session" error
+- **make test green:** all 7 gates pass after ruff/mypy/eslint/build fixes
+
+### Decisions
+- `JobTrace` append-only via `TraceEmitter` with independent sessions; SSE polls DB (no WebSocket) · revisit never
+- Cancel check uses fresh session — outer session's Job object detaches after LLM calls · revisit never
+- Agent thinking stream: model-agnostic structured events chosen over Claude-only extended thinking; deferred · revisit never
+
+### Open Questions
+- F19 retry loop still not implemented — only 1 attempt fires even when recon fails; quick fix is ~30 min
+- F20 Stream B (ExecutionOutputPanel + Trust tab) not started
+- `make docker-build` needed to deploy Alembic 016 + new endpoints
+
+### Next Session — Start Here
+1. `make docker-build && docker compose up` — apply migration 016, verify LiveTraceDialog works end-to-end
+2. Implement F19 quick retry loop: per-block `for attempt in range(1, 4)` in `_translate_blocks`, inject recon error into `risk_flags` on fail
+3. Then F20 Stream B: ExecutionOutputPanel improvements + Trust tab in EditorTab
+
+### Files Touched
+- `src/backend/db/models.py` — `JobTrace` model, `cancellation_requested` on `Job`
+- `alembic/versions/016_add_job_traces_cancel.py` — new migration
+- `src/backend/api/routes/jobs.py` — `POST /cancel`, `GET /trace/stream`
+- `src/worker/engine/trace.py` — new: `TraceEmitter`, `JobCancelledError`
+- `src/worker/main.py` — TraceEmitter wired, cancel check fixed (fresh session)
+- `src/frontend/src/api/types.ts` — `TraceEvent` union types
+- `src/frontend/src/api/jobs.ts` — `openTraceStream`, `cancelJob`
+- `src/frontend/src/components/LiveTraceDialog.tsx` — new component (timeline rail design)
+- `src/frontend/src/pages/JobsPage.tsx` — Activity button + dialog mount
+
+---
+
+## 2026-04-28 — rawdir_customers root-cause fix + F19 S2+S3 plan
+
+**Duration:** ~2h | **Focus:** Tracing `rawdir_customers` NameError to its true root cause; planning the F19 per-block execute-and-refine loop
+
+### Done
+- **Root cause identified:** `windowed_context()` sets `blocks=[block]` (only the current block), so `block_output_stems` in all three agent `_build_prompt` functions was built without any upstream block outputs. Downstream prompts fell back to `rawdir_customers` instead of `customers` for PROC IMPORT outputs.
+- **Fix applied:** Added `all_blocks: list[SASBlock]` parameter to `_build_prompt` in all three agents (`data_step.py`, `proc.py`, `generic_proc.py`); call sites updated to pass `context.blocks` (the full job block list). Both dot form (`rawdir.customers`) and underscore form (`rawdir_customers`) now registered in `block_output_stems`.
+- **Prompt hardening:** `generic_proc.py` system prompt updated with explicit `OUT=` stem-only naming rule, wrong/correct examples, and corrected output variable examples throughout.
+- **Debug logging added:** `generic_proc.py` logs prompt input hints, raw LLM output, and post-normalise state at DEBUG; `codegen.py` warns at WARNING if `rawdir_customers` survives into assembled code.
+- **Confirmed all previous bug-fix changes necessary:** Audit via fullstack-planner confirmed all changes from previous session (shared.py, `_file_io_types` exclusion removal, etc.) are correct and non-redundant.
+- **F19 S2+S3 planned:** Full implementation plan written at `.claude/plans/first-plan-properly-with-tidy-bubble.md` covering `BlockExecutor` remote recon swap, `_translate_blocks` per-block retry loop, `data_dir` threading, and tests.
+- **Post-fix result:** Executor now fails on `AnalysisException` (PySpark column resolution) rather than `NameError` — a genuine LLM translation error, not a pipeline bug, which F19 is designed to fix.
+
+### Decisions
+- **`block_output_stems` must use full `context.blocks`:** `windowed_context` is intentionally narrow (single block) for LLM prompt scoping, but the variable name resolution map needs global visibility of all upstream outputs — the two concerns are now separated. · revisit never
+- **Debugging approach:** when tracing a persistent bug, add surgical DEBUG logging at each stage of the pipeline (prompt construction → LLM output → post-processing → assembly) before changing any logic. Confirmed root cause via logs, not guesswork.
+
+### Open Questions
+- F19 S2+S3 not yet implemented — the per-block execute→refine loop is planned but not coded.
+- `auto_verified` counter and `needs_attention` threshold still not fixed (deferred again).
+
+### Next Session — Start Here
+1. Implement F19 S2+S3: update `BlockExecutor` to use `RemoteReconciliationService`, add per-block retry loop to `_translate_blocks`, forward `data_dir` — see `.claude/plans/first-plan-properly-with-tidy-bubble.md`
+2. Run `make test` after implementation
+3. `docker compose restart worker` and resubmit to verify loop fires
+
+### Files Touched
+- `src/worker/engine/agents/data_step.py` — `all_blocks` param in `_build_prompt`, call site fix
+- `src/worker/engine/agents/proc.py` — same
+- `src/worker/engine/agents/generic_proc.py` — same + system prompt hardening + debug logging
+- `src/worker/engine/codegen.py` — warning log if `rawdir_customers` in assembled code
+
+---
+
+## 2026-04-27 — Executor runtime fixes: data_dir routing, xlsx, output_var normalisation, file_count
+
+**Duration:** ~2.5h | **Focus:** Unblocking executor execution — uploaded files not found, xlsx crash, rawdir NameError, file count off-by-one
+
+### Done
+- **`data_dir` routing:** uploaded non-SAS files now saved to `/uploads/<job_id>/<basename>` (per-job subdir, no `<job_id>_` prefix); `data_dir` param added to `ExecuteRequest`, `run_code`, `RemoteReconciliationService.run`, and all call sites in worker; executor rewrites `/workspace/data/` → `data_dir/` before running code
+- **xlsx fix (two layers):** (1) GenericProcAgent system prompt updated with `pd.read_excel + spark.createDataFrame` pattern; (2) `_fix_excel_spark_reads()` post-gen guard rewrites `spark.read.*load(*.xlsx)` calls automatically; (3) `openpyxl` added to executor Dockerfile
+- **Nested workspace path guard:** `_fix_workspace_paths()` normalises `/workspace/data/working/data/raw/foo.csv` → `/workspace/data/foo.csv` (basename only); prompt listing also fixed to show basename only
+- **PROC IMPORT output_var naming:** removed `_file_io_types` exclusion from `all_block_outputs` in all three agents — PROC IMPORT outputs now correctly shown as stem-only in downstream prompts (root cause of `rawdir_customers` NameError in downstream blocks)
+- **`normalise_output_var` + `normalise_output_var_in_code`:** shared utilities extracted to `src/worker/engine/agents/shared.py`; all three agents delegate both the code-body rename and the `output_var` field correction to these — handles both dot form and underscore form; local `_fix_output_var_naming` removed from all three agents
+- **`file_count` fix:** now counts SAS source files + per-path `__ref_<ext>_<path>__` sentinels; excludes bare canonical aliases (`__ref_csv__`, `__ref_sas7bdat__`) and `__refine_context__` — was showing 20 instead of 19
+- **`upload_dir` added to `WorkerSettings`:** default `/uploads`; used to derive `data_dir` per job
+
+### Decisions
+- **Per-job upload subdir:** non-SAS files saved to `/uploads/<job_id>/<basename>` (was `/uploads/<job_id>_<basename>`); enables `data_dir` param to point executor at correct directory without any per-job volume magic · revisit never
+- **`data_dir` param in executor:** executor rewrites `/workspace/data/` at execution time rather than relying on static volume mount path matching; keeps generated code portable (always `/workspace/data/<basename>`) · revisit never
+- **`normalise_output_var` in shared.py:** single source of truth for stem-only normalisation of both `output_var` field and code body — handles dot form and underscore form; agents no longer duplicate this logic · revisit never
+
+### Open Questions
+- `auto_verified` counter and `needs_attention` threshold still not fixed (deferred again)
+- F19 retry loop (per-block execute→refine) still not implemented — pre-conditions now unblocked
+- `make docker-build` still needed to deploy all changes
+
+### Next Session — Start Here
+1. Run `make docker-build` and resubmit — verify executor finds files, xlsx loads, no NameError
+2. Fix `auto_verified` trust report counter and `needs_attention` threshold
+3. Implement F19 S1: `BlockExecutor.run()` helper in `src/worker/engine/block_executor.py`
+
+### Files Touched
+- `src/backend/api/routes/migrate.py` — per-job subdir for uploaded files
+- `src/backend/api/routes/jobs.py` — file_count sentinel filter fix
+- `src/executor/Dockerfile` — openpyxl added
+- `src/executor/pyproject.toml` — openpyxl added
+- `src/executor/main.py` — data_dir field in ExecuteRequest
+- `src/executor/runner.py` — data_dir param, workspace path rewrite
+- `src/worker/core/config.py` — upload_dir setting
+- `src/worker/engine/agents/shared.py` — new: normalise_output_var, normalise_output_var_in_code
+- `src/worker/engine/agents/data_step.py` — delegates to shared, removed _fix_output_var_naming, removed _file_io_types exclusion
+- `src/worker/engine/agents/proc.py` — same as data_step
+- `src/worker/engine/agents/generic_proc.py` — same + _fix_workspace_paths + _fix_excel_spark_reads + prompt fixes
+- `src/worker/main.py` — data_dir derived and threaded through all recon call sites
+- `src/worker/validation/reconciliation.py` — data_dir param in _post_execute + run
+
+---
+
+## 2026-04-27 — Executor NameError root-cause fix: block ordering + variable naming
+
+**Duration:** ~2h | **Focus:** Eliminating `NameError: name 'outdir_customer_revenue_daily' is not defined` in executor; correct PROC IMPORT path generation
+
+### Done
+- **Cumulative recon slices:** `_reconcile_initial_blocks` now passes `generated_blocks` and sends `assemble_flat(blocks[:i+1])` per block — prior block outputs are available in scope
+- **Editor Run cumulative code:** `execute_job` (backend) assembles cumulative code from `migration_plan.block_plans` order when `block_id` is provided
+- **Output var renamer:** `_fix_output_var_naming()` added to all three agents (`DataStepAgent`, `ProcAgent`, `GenericProcAgent`) — detects when LLM uses `outdir_foo` form in code body and renames to stem `foo`; also corrects `output_var` field if wrong
+- **Input variable naming in prompts:** all three `_build_prompt()` functions now show `→ variable name: <name>` for each input, distinguishing inter-block datasets (stem-only) from external source files (`libname_table` form); `PROC_IMPORT`/`PROC_EXPORT` outputs excluded from the inter-block set
+- **Block ordering fix (root cause):** `_topological_sort` in `parser.py` replaced `nx.topological_sort` with Kahn's algorithm + `(source_file, start_line)` min-heap — unconnected blocks (e.g. `PROC_IML` with no `DATA=`/`OUT=`) now retain natural SAS file order instead of floating to front
+- **`GenericProcAgent` prompt hardened:** system prompt + `_build_prompt` aligned with `DataStepAgent`/`ProcAgent` naming rules; `data_files` injected into prompt as `## Uploaded data files` section
+- **PROC IMPORT path rule:** system prompt now says derive path from `DATAFILE=` basename only → `/workspace/data/<basename>`; ignore SAS macro-expanded paths; example updated from `<infile_path>` placeholder to concrete `/workspace/data/customers.csv`
+- **Executor debug logging removed:** temporary `logger.info("Code to execute:\n%s", ...)` removed from `src/executor/main.py`
+- **codegen guard:** `assemble_flat` skips `result = <output_var>` if variable not found as assignment in rendered code (prevents crash when LLM naming mismatch survives)
+
+### Decisions
+- **Inter-block vs external-source variable naming:** datasets produced by transform blocks (DATA_STEP, PROC_SQL, etc.) are listed in prompts as stem-only; datasets produced by PROC_IMPORT/PROC_EXPORT keep `libname_table` form — this is the stable convention for all agents · revisit never
+- **Topo sort tiebreaker:** Kahn's with `(source_file, start_line)` min-heap chosen over `nx.lexicographic_topological_sort` (not available in networkx 3.6.1) · revisit if networkx upgraded
+
+### Open Questions
+- PROC IMPORT blocks still crash executor when real source files aren't uploaded — graceful skip needed (executor returns error, recon marks `no_data`, job continues)
+- `make docker-build` still needed to deploy all worker + executor changes
+- `auto_verified` counter and `needs_attention` threshold fixes still pending
+
+### Next Session — Start Here
+1. Run `make docker-build` and resubmit the failing job — verify no NameError and PROC IMPORT uses `/workspace/data/` paths
+2. Fix `auto_verified` trust report counter (always 0) and `needs_attention` threshold
+3. Begin F19 (agentic per-block execute-and-refine loop) — S1: `BlockExecutor.run()` helper
+
+### Files Touched
+- `src/worker/engine/parser.py` — Kahn's topo sort with file/line tiebreaker
+- `src/worker/engine/codegen.py` — guard on `result =` append
+- `src/worker/engine/agents/data_step.py` — `_fix_output_var_naming`, input naming, PROC_IMPORT exclusion
+- `src/worker/engine/agents/proc.py` — same as data_step
+- `src/worker/engine/agents/generic_proc.py` — all of the above + data_files in prompt + PROC IMPORT path rule
+- `src/worker/main.py` — `_reconcile_initial_blocks` cumulative slices
+- `src/backend/api/routes/jobs.py` — `execute_job` cumulative code for block_id
+- `src/executor/main.py` — removed debug logging
+- `tests/test_worker_main_comprehensive.py` — updated call sites for new signature
+
+---
+
 ## 2026-04-27 — Test coverage 86% → 95%
 
 **Duration:** ~1.5h | **Focus:** Coverage uplift — agent factories, router, worker/main, API routes

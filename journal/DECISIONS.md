@@ -6,6 +6,38 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-05-01 (session — F20 Stream A: live trace popup)
+
+- **JobTrace as append-only audit table:** trace events written by worker via `TraceEmitter` (independent short-lived sessions, never raises); SSE endpoint polls `job_traces` by `(job_id, id)` composite index at 0.5s interval — keeps backend stateless and avoids WebSocket complexity · revisit never
+- **Cancel check uses fresh session:** `_translate_blocks` cancel check opens a new session via `session_factory` instead of calling `session.refresh(job)` on the outer long-lived session — the Job object becomes detached/expired after LLM calls; fresh `get()` by PK is safe · revisit never
+- **Agent thinking stream deferred:** real LLM reasoning tokens are Claude-only (extended thinking); model-agnostic structured `thinking` events (agent name, block type, attempt context) chosen instead — deferred to next session · revisit never
+
+---
+
+## 2026-04-28 (session — rawdir_customers root-cause fix + F19 plan)
+
+- **`block_output_stems` uses full `context.blocks` (not `windowed.blocks`):** `windowed_context` correctly narrows the context to a single block for LLM prompt scoping, but the upstream output variable name map must see all job blocks — these two concerns are now separated in all three `_build_prompt` functions · revisit never
+- **Debugging discipline:** when a bug persists across multiple fix attempts, add targeted DEBUG logging at every pipeline stage (prompt construction → LLM output → post-normalise → assembly) before changing any logic; confirm root cause via log evidence before patching · revisit never
+
+---
+
+## 2026-04-27 (session — Executor runtime fixes: data_dir, xlsx, output_var, file_count)
+
+- **Per-job upload subdir:** non-SAS files now saved to `/uploads/<job_id>/<basename>` instead of `/uploads/<job_id>_<basename>`; enables a single `data_dir` param to resolve all file paths without per-job volume magic · revisit never
+- **`data_dir` executor param:** executor rewrites `/workspace/data/` at execution time using the job-specific directory; generated code stays portable (always `/workspace/data/<basename>`); rewrite happens in `runner.py` before subprocess · revisit never
+- **`normalise_output_var` / `normalise_output_var_in_code` in `agents/shared.py`:** single source of truth for libname→stem normalisation; handles both dot form (`rawdir.customers`) and underscore form (`rawdir_customers`); all three translation agents delegate both the code-body rewrite and the `output_var` field correction here · revisit never
+- **PROC IMPORT included in `all_block_outputs`:** removed the `_file_io_types` exclusion — PROC IMPORT outputs are renamed to stem-only by the agent renamer, so downstream prompts must show stem-only names to match the runtime variable · revisit never
+
+---
+
+## 2026-04-27 (session — Executor NameError root-cause fix)
+
+- **Inter-block vs external-source variable naming in prompts:** transform block outputs (DATA_STEP, PROC_SQL, PROC_IML, etc.) are named stem-only in agent prompts; PROC_IMPORT/PROC_EXPORT outputs keep `libname_table` underscore form — applied consistently across all three agents · revisit never
+- **Topo sort tiebreaker (Kahn's + min-heap):** `_topological_sort` uses Kahn's algorithm with a `(source_file, start_line)` priority queue instead of `nx.topological_sort`; ensures unconnected blocks (PROC_IML has no `DATA=`/`OUT=`) retain natural SAS file order. `nx.lexicographic_topological_sort` not available in networkx 3.6.1 · revisit if networkx upgraded
+- **PROC IMPORT path convention:** generated code always uses `/workspace/data/<basename>` — basename extracted from SAS `DATAFILE=` value, macro-expanded prefix stripped. Executor volume mounts uploads at `/workspace/data/` · revisit never
+
+---
+
 ## 2026-04-26 (session — Codegen/executor fixes)
 
 - **Output variable naming convention:** output dataset variables use TABLE STEM ONLY (no libname prefix) — `DATA outdir.foo` → Python var `foo`; input datasets keep full `libname_table` form since they are pre-loaded. Rationale: prevents agents from referencing the output as if it were an input. · revisit never

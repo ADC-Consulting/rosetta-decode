@@ -1,5 +1,6 @@
 import { downloadJob, getJob, listJobs } from "@/api/jobs";
 import { submitMigration } from "@/api/migrate";
+import LiveTraceDialog from "@/components/LiveTraceDialog";
 import type { JobStatusValue, JobSummary } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { STATUS_LABEL } from "@/pages/JobDetailPage";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Activity,
   Archive,
   ChevronDown,
   ChevronRight,
@@ -579,6 +581,7 @@ export default function JobsPage(): React.ReactElement {
   // ── Dialog state ──────────────────────────────────────────────────────────
 
   const [uploadOpen, setUploadOpen] = useState<boolean>(false);
+  const [traceJobId, setTraceJobId] = useState<string | null>(null);
 
   // ── Upload state (from shared context) ───────────────────────────────────
 
@@ -890,19 +893,36 @@ export default function JobsPage(): React.ReactElement {
                         {new Date(job.created_at).toLocaleString()}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        {job.status === "accepted" && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void downloadJob(job.job_id);
-                            }}
-                            aria-label={`Download results for job ${job.job_id.slice(0, 8)}`}
-                          >
-                            Download
-                          </Button>
-                        )}
+                        <span className="inline-flex items-center gap-1 justify-end">
+                          {(job.status === "queued" || job.status === "running" || job.status === "done") && (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7"
+                              title="Live trace"
+                              aria-label={`Live trace for job ${job.job_id.slice(0, 8)}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setTraceJobId(job.job_id);
+                              }}
+                            >
+                              <Activity className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {job.status === "accepted" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void downloadJob(job.job_id);
+                              }}
+                              aria-label={`Download results for job ${job.job_id.slice(0, 8)}`}
+                            >
+                              Download
+                            </Button>
+                          )}
+                        </span>
                       </td>
                     </tr>
                   );
@@ -1146,6 +1166,16 @@ export default function JobsPage(): React.ReactElement {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <LiveTraceDialog
+        open={!!traceJobId}
+        jobId={traceJobId ?? ""}
+        jobName={jobs?.find((j) => j.job_id === traceJobId)?.name ?? null}
+        onOpenChange={(open) => {
+          if (!open) setTraceJobId(null);
+        }}
+        onJobDone={() => queryClient.invalidateQueries({ queryKey: ["jobs"] })}
+      />
     </div>
   );
 }

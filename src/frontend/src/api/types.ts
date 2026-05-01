@@ -298,3 +298,56 @@ export interface TrustReportResponse {
   blocks: TrustReportBlock[];
   review_queue: TrustReportBlock[];
 }
+
+// ── F20 — Live Trace types ────────────────────────────────────────────────────
+
+export interface TraceEventBase {
+  event_type: string;
+  ts: string; // ISO 8601
+}
+
+export interface BlockStartEvent extends TraceEventBase {
+  event_type: "block_start";
+  block_id: string;
+  agent: string;
+  attempt: number;
+}
+
+export interface BlockDoneEvent extends TraceEventBase {
+  event_type: "block_done";
+  block_id: string;
+  attempt: number;
+  status: "pass" | "fail" | "error";
+  elapsed_ms: number;
+}
+
+export interface ReconCheck {
+  name: string;
+  status: string;
+  detail: string;
+}
+
+export interface ReconResultEvent extends TraceEventBase {
+  event_type: "recon_result";
+  block_id: string;
+  checks: ReconCheck[];
+  all_passed: boolean;
+}
+
+export interface JobDoneEvent extends TraceEventBase {
+  event_type: "job_done";
+  job_id: string;
+  final_status: string;
+}
+
+export interface TraceErrorEvent extends TraceEventBase {
+  event_type: "error";
+  message: string;
+}
+
+export type TraceEvent =
+  | BlockStartEvent
+  | BlockDoneEvent
+  | ReconResultEvent
+  | JobDoneEvent
+  | TraceErrorEvent;
