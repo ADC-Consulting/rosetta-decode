@@ -89,6 +89,7 @@ export interface BlockPlan {
   block_id: string;
   source_file: string;
   start_line: number;
+  end_line: number;
   block_type: string;
   strategy: TranslationStrategy;
   risk: "low" | "medium" | "high";
@@ -273,6 +274,7 @@ export interface TrustReportBlock {
   reconciliation_status: "pass" | "fail" | null;
   needs_attention: boolean;
   blast_radius: number | null;
+  effective_confidence_band?: string;
 }
 
 export interface TrustReportFile {

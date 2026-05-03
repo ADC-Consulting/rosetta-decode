@@ -21,6 +21,7 @@ from src.worker.engine.models import (
     BlockRisk,
     JobContext,
     MigrationPlan,
+    SASBlock,
     TranslationStrategy,
 )
 
@@ -220,7 +221,7 @@ class MigrationPlannerAgent:
             raise MigrationPlannerError(f"MigrationPlannerAgent failed: {exc}", cause=exc) from exc
 
         planner_result: PlannerResult = result.output  # type: ignore[assignment]
-        return _build_migration_plan(planner_result)
+        return _build_migration_plan(planner_result, context.blocks)
 
 
 # ── Prompt builder ────────────────────────────────────────────────────────────
@@ -279,22 +280,28 @@ def _build_prompt(context: JobContext) -> str:
 # ── Plan assembler ────────────────────────────────────────────────────────────
 
 
-def _build_migration_plan(result: PlannerResult) -> MigrationPlan:
+def _build_migration_plan(result: PlannerResult, blocks: list[SASBlock]) -> MigrationPlan:
     """Convert a PlannerResult into a typed MigrationPlan.
 
     Args:
         result: Raw structured output from the LLM.
+        blocks: Parsed SASBlock objects used to resolve end_line by block_id.
 
     Returns:
         A fully-typed MigrationPlan instance.
     """
+    end_line_by_id: dict[str, int] = {f"{b.source_file}:{b.start_line}": b.end_line for b in blocks}
     block_plans: list[BlockPlan] = []
     for bp in result.block_plans:
+        source_file = bp.get("source_file", "")
+        start_line = int(bp.get("start_line", 1))
+        block_id = bp.get("block_id", f"{source_file}:{start_line}")
         block_plans.append(
             BlockPlan(
-                block_id=bp.get("block_id", ""),
-                source_file=bp.get("source_file", ""),
-                start_line=int(bp.get("start_line", 1)),
+                block_id=block_id,
+                source_file=source_file,
+                start_line=start_line,
+                end_line=end_line_by_id.get(f"{source_file}:{start_line}", 0),
                 block_type=bp.get("block_type", ""),
                 strategy=TranslationStrategy(bp.get("strategy", "translated")),
                 risk=BlockRisk(bp.get("risk", "low")),

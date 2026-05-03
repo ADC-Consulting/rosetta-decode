@@ -148,6 +148,7 @@ class BlockPlan(BaseModel):
         block_id: Unique identifier for the block.
         source_file: Name of the `.sas` file containing the block.
         start_line: 1-based line number where the block starts.
+        end_line: 1-based line number where the block ends (inclusive); 0 if unknown.
         block_type: SAS construct type (e.g. DATA_STEP, PROC_SQL).
         strategy: Translation strategy to apply.
         risk: Risk level for this block.
@@ -161,6 +162,7 @@ class BlockPlan(BaseModel):
     block_id: str
     source_file: str
     start_line: int
+    end_line: int = Field(ge=0, default=0)
     block_type: str
     strategy: TranslationStrategy
     risk: BlockRisk

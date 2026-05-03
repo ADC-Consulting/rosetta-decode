@@ -1,6 +1,6 @@
 # F20 — Live Trace Popup + Rich Execution Results
 
-**Status:** in-progress — Stream A complete, Stream B pending
+**Status:** in-progress — Stream A complete, Stream B pending; LiveTraceDialog UX overhaul lost (never committed) — must re-implement
 
 ## Context
 

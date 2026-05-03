@@ -6,6 +6,16 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-05-03 (session — join fixes, confidence/status overhaul, SAS highlight)
+
+- **Join key type-save/restore:** save `_type = df.schema[col].dataType` before normalising to string, restore with `.cast(_type)` after join — generic, works for all Spark types, no hardcoded `cast("long")`; scoped to identifier/key columns only · revisit never
+- **`effective_confidence_band` in trust report read layer:** planner's `confidence_score` is audit-trail; `effective_confidence_band` computed at read time — `pass` upgrades to at least `medium`, `fail` downgrades, no recon keeps LLM estimate · revisit never
+- **Two-phase job DB commit (10a/10b):** status + code written immediately after recon; doc + lineage after best-effort enrichment — eliminates 30–60s UI lag · revisit never
+- **Baseline recon status from `exec_ok`:** `_persist_initial_revisions` writes `"pass"`/`"fail"` from translation loop — every translated block gets a status immediately; ref-based recon upgrades it when available · revisit never
+- **MigrationPlannerAgent must output `confidence_score`:** was defaulting to 1.0 silently; now in JSON schema with guidance thresholds; default 0.5/"unknown" · revisit never
+
+---
+
 ## 2026-05-01 (session — F20 Stream A: live trace popup)
 
 - **JobTrace as append-only audit table:** trace events written by worker via `TraceEmitter` (independent short-lived sessions, never raises); SSE endpoint polls `job_traces` by `(job_id, id)` composite index at 0.5s interval — keeps backend stateless and avoids WebSocket complexity · revisit never

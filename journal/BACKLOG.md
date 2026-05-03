@@ -183,8 +183,20 @@
 - [x] fix(worker): cancel check in `_translate_blocks` — open fresh session via `session_factory` instead of `session.refresh()` on outer session (fixes "not persistent within this Session" crash)
 - [x] F20 Stream A: JobTrace model + Alembic 016, TraceEmitter, POST /cancel, GET /trace/stream SSE, LiveTraceDialog (timeline rail, shadcn tokens), trace button in JobsPage → see `docs/plans/latest/F20-live-trace-popup.md`
 - [ ] F20 Stream B: ExecutionOutputPanel improvements (elapsed label, stderr split, recon cards) + Trust tab in EditorTab → see `docs/plans/latest/F20-live-trace-popup.md`
-- [ ] F19 quick implementation: per-block retry loop in `_translate_blocks` (up to 3 attempts, inject recon error into risk_flags) — no BlockExecutor needed → see `docs/plans/latest/F19-agentic-refine-loop.md`
-- [ ] make docker-build needed — picks up Alembic 016, TraceEmitter, cancel endpoint, SSE endpoint, LiveTraceDialog
+- [ ] LiveTraceDialog UX overhaul LOST — frozen elapsed, FinalStatusChip in header, timing pill, all-expandable blocks, pipeline:full always open + red on fail — must be re-implemented
+- [x] fix(prompt): unified join key normalisation — save type before join, regexp_replace+cast, restore original type after join; single section replaces two conflicting ones
+- [x] fix(prompt): generic schema-mismatch cast hint — per-column "output is X but ref expects Y — cast to match" in retry hint
+- [x] fix(prompt): near-zero aggregate parity hint — floating point drift advisory injected when ref_sum < 1e-3
+- [x] fix(worker): job status written immediately after recon (step 10a) — UI reflects proposed/under_review without waiting for doc/lineage LLM calls
+- [x] fix(worker): `exec_ok` field on `GeneratedBlock`; threaded into `_persist_initial_revisions` to write baseline recon status (pass/fail) for every translated block
+- [x] fix(worker): `_reconcile_initial_blocks` skip guard — only skips blocks with ref-based checks, allowing execution-only passes to be upgraded
+- [x] feat(planner): `confidence_score` asked from MigrationPlannerAgent LLM; `BlockPlan` defaults changed (1.0→0.5, "high"→"unknown")
+- [x] feat(backend): `effective_confidence_band` computed post-recon in trust report; added to `TrustReportBlock` schema
+- [x] feat(backend): `end_line` threaded from `SASBlock` → `BlockPlan` → API
+- [x] feat(frontend): derived strategy badge — "Translated" (green on pass, blue on no-recon), "Review Needed" (amber on fail), "Manual" (red always)
+- [x] feat(frontend): SAS highlight uses actual `end_line` instead of hardcoded `startLine + 20`
+- [x] feat(frontend): Activity button pulses (animate-pulse text-primary) when job is running/queued
+- [x] fix(tests): deleted stale `tests/test_reconciliation_coerce.py` (imported removed `_coerce_sas_dates`)
 
 ---
 

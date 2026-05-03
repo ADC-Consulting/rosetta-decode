@@ -92,11 +92,6 @@ function groupBlocks(
   ).map(([key, items]) => ({ key, items }));
 }
 
-const STRATEGY_COLOR: Record<string, string> = {
-  translated: "text-blue-700 bg-blue-50 border border-blue-200",
-  translated_with_review: "text-amber-700 bg-amber-50 border border-amber-200",
-  manual: "text-red-700 bg-red-50 border border-red-200",
-};
 
 const STRATEGY_LABELS: Record<string, string> = {
   translated: "Translated",
@@ -583,11 +578,27 @@ export default function BlockPlanTable({
 
                         {/* Strategy */}
                         <td className="px-3 py-2 text-xs">
-                          <span
-                            className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${STRATEGY_COLOR[bp.strategy] ?? ""}`}
-                          >
-                            {STRATEGY_LABELS[bp.strategy] ?? bp.strategy}
-                          </span>
+                          {(() => {
+                            const recon = trust?.reconciliation_status;
+                            const isManual = bp.strategy === "manual";
+                            const derivedLabel = isManual ? "Manual"
+                              : recon === "fail" ? "Review Needed"
+                              : "Translated";
+                            const derivedColor = isManual
+                              ? "text-red-700 bg-red-50 border border-red-200"
+                              : recon === "fail"
+                              ? "text-amber-700 bg-amber-50 border border-amber-200"
+                              : recon === "pass"
+                              ? "text-green-700 bg-green-50 border border-green-200"
+                              : "text-blue-700 bg-blue-50 border border-blue-200";
+                            return (
+                              <span
+                                className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${derivedColor}`}
+                              >
+                                {derivedLabel}
+                              </span>
+                            );
+                          })()}
                         </td>
 
                         {/* Risk */}
@@ -887,8 +898,11 @@ export default function BlockPlanTable({
                         editor.revealLineInCenter(line);
                         editor.setPosition({ lineNumber: line, column: 1 });
                       }
+                      const openBp = blockPlans.find((b) => b.block_id === codeBlockId);
                       const startLine = line > 0 ? line : 1;
-                      const endLine = startLine + 20;
+                      const endLine = openBp?.end_line && openBp.end_line > startLine
+                        ? openBp.end_line
+                        : startLine + 20;
                       decorationsRef.current = editor.deltaDecorations(
                         decorationsRef.current,
                         [

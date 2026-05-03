@@ -6,6 +6,52 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-05-03 — join fixes, recon coverage, confidence/status overhaul, SAS highlight
+
+**Duration:** ~3h | **Focus:** PySpark join correctness, recon column completeness, status/confidence semantics, SAS highlight bug
+
+### Done
+- **fix(prompt):** unified join key normalisation — save original type, regexp_replace+cast both sides, restore type after join; removes two conflicting sections; scoped to identifier/key columns only
+- **fix(prompt):** generic per-column schema-mismatch cast hint in retry logic (`"column X: output is Y but ref expects Z — cast to match"`)
+- **fix(prompt):** near-zero aggregate parity advisory — when `ref_sum < 1e-3`, hint tells LLM this is IEEE 754 drift and to add a comment, not a logic fix
+- **fix(worker):** job status written immediately after recon (step 10a/10b split) — UI no longer waits for doc/lineage LLM calls before showing proposed/under_review
+- **fix(worker):** `exec_ok` on `GeneratedBlock`; `_persist_initial_revisions` writes baseline `reconciliation_status="pass"/"fail"` for every translated block — eliminates `—` in Plan table
+- **fix(worker):** `_reconcile_initial_blocks` skip guard changed to `status=="pass" AND recon_checks non-empty` — execution-only passes get upgraded to full recon when ref available
+- **feat(planner):** MigrationPlannerAgent now asked for `confidence_score` (0.0–1.0); `BlockPlan` defaults changed from 1.0/"high" to 0.5/"unknown" — fixes confidence always showing 100%
+- **feat(backend):** `effective_confidence_band` computed post-recon (`pass`→upgrade, `fail`→downgrade) and added to `TrustReportBlock`
+- **feat(backend):** `end_line` threaded from `SASBlock` → `BlockPlan` → API
+- **feat(frontend):** Strategy badge derived from `(strategy, reconciliation_status)` — green Translated on pass, blue on no-recon, amber Review Needed on fail, red Manual always
+- **feat(frontend):** SAS highlight in View Code dialog uses actual `end_line` instead of `startLine + 20`
+- **feat(frontend):** Activity button in jobs table pulses when job is running/queued
+- **fix(tests):** deleted stale `tests/test_reconciliation_coerce.py`
+
+### Decisions
+- Join key type-save/restore pattern: `_type = df.schema[col].dataType` before cast, `.cast(_type)` after join — generic, works for all Spark types, no hardcoding
+- `effective_confidence_band` lives in trust report (read layer), not in `BlockPlan` (write layer) — keeps planner's estimate as audit trail, adjusts display post-recon
+- Job status written in two DB commits: step 10a (status + code) immediately after recon, step 10b (doc + lineage) after best-effort enrichment
+
+### Open Questions
+- LiveTraceDialog UX overhaul (frozen elapsed, FinalStatusChip, timing pill, expandable blocks) was lost — prior sessions marked it done in backlog but it was never committed; needs re-implementation
+- F20 Stream B (ExecutionOutputPanel + Trust tab) still pending
+
+### Next Session — Start Here
+1. Re-implement LiveTraceDialog UX overhaul (see backlog item + F20 plan Stream B section)
+2. F20 Stream B — ExecutionOutputPanel improvements + Trust tab in EditorTab
+
+### Files Touched
+- `src/worker/engine/agents/shared.py` — join key prompt unified
+- `src/worker/engine/agents/migration_planner.py` — confidence_score in prompt + _build_migration_plan; end_line threaded
+- `src/worker/engine/models.py` — `exec_ok` on GeneratedBlock; BlockPlan defaults + end_line field
+- `src/worker/main.py` — step 10a/10b split; exec_ok set in _translate_blocks; _persist_initial_revisions baseline recon; skip guard fix; schema-mismatch + near-zero hints
+- `src/backend/api/schemas.py` — `effective_confidence_band` on TrustReportBlock
+- `src/backend/api/routes/jobs.py` — `_effective_confidence()` helper + trust report loop
+- `src/frontend/src/api/types.ts` — `end_line` on BlockPlan; `effective_confidence_band` on TrustReportBlock
+- `src/frontend/src/components/JobDetail/BlockPlanTable.tsx` — derived strategy badge; end_line SAS highlight
+- `src/frontend/src/pages/JobsPage.tsx` — Activity shimmer for running/queued
+- `tests/test_reconciliation_coerce.py` — deleted (stale import)
+
+---
+
 ## 2026-05-01 — F20 Stream A: live trace popup + session cancel
 
 **Duration:** ~2h | **Focus:** F20 Stream A — per-block trace events, cancellation, SSE endpoint, LiveTraceDialog

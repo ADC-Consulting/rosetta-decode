@@ -906,7 +906,7 @@ export default function JobsPage(): React.ReactElement {
                                 setTraceJobId(job.job_id);
                               }}
                             >
-                              <Activity className="h-4 w-4" />
+                              <Activity className={`h-4 w-4 ${["running", "queued"].includes(job.status) ? "animate-pulse text-primary" : ""}`} />
                             </Button>
                           )}
                           {job.status === "accepted" && (
