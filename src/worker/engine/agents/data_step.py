@@ -14,7 +14,11 @@ from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.azure import AzureProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 from src.worker.core.config import worker_settings
-from src.worker.engine.agents.shared import normalise_output_var, normalise_output_var_in_code
+from src.worker.engine.agents.shared import (
+    SHARED_TRANSLATION_RULES,
+    normalise_output_var,
+    normalise_output_var_in_code,
+)
 from src.worker.engine.models import GeneratedBlock, JobContext, SASBlock
 
 logger = logging.getLogger("src.worker.engine.agents.data_step")
@@ -54,7 +58,8 @@ class DataStepError(Exception):
 
 # ── System prompt ─────────────────────────────────────────────────────────────
 
-_SYSTEM_PROMPT = textwrap.dedent("""\
+_SYSTEM_PROMPT = textwrap.dedent(
+    """\
     # agent: DataStepAgent
 
     You are a SAS-to-Python migration engineer. Translate the SAS DATA step below into
@@ -132,7 +137,9 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
         customer_revenue_daily = rawdir_transactions.filter(...)
         result = customer_revenue_daily
     - Set the `output_var` field in your JSON response to that stem-only name. Example: "output_var": "customer_revenue_daily"
-""")
+"""
+    + SHARED_TRANSLATION_RULES
+)
 
 
 # ── Prompt builder ────────────────────────────────────────────────────────────

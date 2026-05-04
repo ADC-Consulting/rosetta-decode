@@ -22,7 +22,11 @@ from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.azure import AzureProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 from src.worker.core.config import worker_settings
-from src.worker.engine.agents.shared import normalise_output_var, normalise_output_var_in_code
+from src.worker.engine.agents.shared import (
+    SHARED_TRANSLATION_RULES,
+    normalise_output_var,
+    normalise_output_var_in_code,
+)
 from src.worker.engine.models import GeneratedBlock, JobContext, SASBlock
 
 logger = logging.getLogger("src.worker.engine.agents.generic_proc")
@@ -111,7 +115,8 @@ class GenericProcError(Exception):
 
 # ── System prompt ─────────────────────────────────────────────────────────────
 
-_SYSTEM_PROMPT = textwrap.dedent("""\
+_SYSTEM_PROMPT = textwrap.dedent(
+    """\
     # agent: GenericProcAgent
 
     You are a SAS-to-Python migration engineer targeting a modern Python 3.12 data platform.
@@ -308,7 +313,9 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
         # UNCERTAIN: <reason> — human review required
     - python_code MUST be non-empty for translated and translated_with_review.
     - For manual, python_code contains a justified stub with suggested library.
-""")
+"""
+    + SHARED_TRANSLATION_RULES
+)
 
 
 # ── Prompt builder ────────────────────────────────────────────────────────────

@@ -129,11 +129,12 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
           "block_id": "source_file:start_line",
           "source_file": "...",
           "start_line": <int>,
-          "block_type": "DATA_STEP|PROC_SQL|PROC_SORT|UNTRANSLATABLE",
+          "block_type": "<exact value from the parsed block list above, e.g. if the list says type=PROC_IML write PROC_IML>",
           "strategy": "translated|translated_with_review|manual",
           "risk": "low|medium|high",
           "rationale": "...",
           "estimated_effort": "low|medium|high",
+          "confidence_score": "<float 0.0-1.0, how confident are you this block can be translated correctly? 0.0 = impossible, 1.0 = trivial>",
           "detected_features": ["<required non-empty when strategy=manual>"]
         }
       ],
@@ -141,6 +142,20 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
       "cross_file_dependencies": ["...", ...]
     }
 """)
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+
+def _score_to_band(score: float) -> str:
+    """Map a confidence score to a named band."""
+    if score >= 0.85:
+        return "high"
+    if score >= 0.65:
+        return "medium"
+    if score >= 0.40:
+        return "low"
+    return "very_low"
 
 
 # ── Agent factory ─────────────────────────────────────────────────────────────
@@ -291,22 +306,30 @@ def _build_migration_plan(result: PlannerResult, blocks: list[SASBlock]) -> Migr
         A fully-typed MigrationPlan instance.
     """
     end_line_by_id: dict[str, int] = {f"{b.source_file}:{b.start_line}": b.end_line for b in blocks}
+    # Authoritative block_type from the parser — never trust the LLM's copy
+    parsed_type_by_id: dict[str, str] = {
+        f"{b.source_file}:{b.start_line}": b.block_type for b in blocks
+    }
     block_plans: list[BlockPlan] = []
     for bp in result.block_plans:
         source_file = bp.get("source_file", "")
         start_line = int(bp.get("start_line", 1))
         block_id = bp.get("block_id", f"{source_file}:{start_line}")
+        confidence_score = float(bp.get("confidence_score", 0.5))
+        confidence_band = _score_to_band(confidence_score)
         block_plans.append(
             BlockPlan(
                 block_id=block_id,
                 source_file=source_file,
                 start_line=start_line,
                 end_line=end_line_by_id.get(f"{source_file}:{start_line}", 0),
-                block_type=bp.get("block_type", ""),
+                block_type=parsed_type_by_id.get(block_id, bp.get("block_type", "")),
                 strategy=TranslationStrategy(bp.get("strategy", "translated")),
                 risk=BlockRisk(bp.get("risk", "low")),
                 rationale=bp.get("rationale", ""),
                 estimated_effort=bp.get("estimated_effort", "low"),
+                confidence_score=confidence_score,
+                confidence_band=confidence_band,
                 detected_features=bp.get("detected_features", []),
             )
         )
