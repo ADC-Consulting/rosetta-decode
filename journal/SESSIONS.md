@@ -6,6 +6,30 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-05-04 (session 2) — F20 Stream B audit + log usage investigation
+
+**Duration:** ~30m | **Focus:** F20 Stream B verification, codebase Q&A
+
+### Done
+- **verified(frontend):** F20 Stream B (ExecutionOutputPanel improvements + Trust tab) was already fully implemented; only a missing `Badge` import in `EditorTab.tsx` was added
+- **investigated:** confirmed SAS log files ARE injected into LLM context before attempt 1 — loaded at job start into `JobContext.log_contents`, passed to MigrationPlannerAgent + all translation agents on every attempt (first 200 lines per file); retry attempts also receive `risk_flags` with recon failure details
+
+### Decisions
+- none
+
+### Open Questions
+- none
+
+### Next Session — Start Here
+1. Implement `_enrich_block_plan_post_run` in `src/worker/main.py` — called after `_persist_initial_revisions`; updates `context.migration_plan.block_plans` risk+rationale in-place using recon results + confidence band (rule-based, no LLM), then re-persists `job.migration_plan`
+2. Rebuild Docker: `docker compose build worker executor && docker compose up -d worker executor`
+3. Run a job → confirm no NameErrors; confirm risk reflects recon outcome in Plan tab
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/EditorTab.tsx`
+
+---
+
 ## 2026-05-04 — cumulative block execution, risk post-run enrichment design, block_type planner fix
 
 **Duration:** ~1h | **Focus:** cross-block NameError root cause fix, migration planner correctness
