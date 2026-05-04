@@ -39,7 +39,7 @@ def test_translate_untranslatable_skips_agent() -> None:
     mock_agent.run_sync.assert_not_called()
     assert result.is_untranslatable is True
     assert "PROC REPORT not supported" in result.python_code
-    assert "# SAS-UNTRANSLATABLE" in result.python_code
+    assert "# SAS-UNRECOGNIZED" in result.python_code
 
 
 def test_translate_untranslatable_default_reason() -> None:

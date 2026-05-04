@@ -165,7 +165,7 @@ def test_stub_generator_normal_stub() -> None:
     stub = StubGenerator()
     block = _make_block()
     gb = stub.generate(block, strategy=None)
-    assert "SAS-UNTRANSLATABLE" in gb.python_code
+    assert "SAS-UNRECOGNIZED" in gb.python_code
     assert gb.is_untranslatable is True
 
 

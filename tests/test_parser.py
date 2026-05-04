@@ -223,7 +223,7 @@ def test_extract_lineage_untranslatable_block_status(parser: SASParser) -> None:
         untranslatable_reason="unsupported PROC",
     )
     lineage = extract_lineage([block], "job-999")
-    assert lineage["nodes"][0]["status"] == "untranslatable"
+    assert lineage["nodes"][0]["status"] == "unrecognized"
 
 
 # ── PROC SORT extraction ──────────────────────────────────────────────────────

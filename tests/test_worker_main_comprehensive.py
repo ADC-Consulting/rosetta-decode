@@ -704,13 +704,13 @@ def test_build_recon_groups_no_output_datasets_excluded() -> None:
 
 
 def test_build_recon_groups_fallback_to_job_level_ref() -> None:
-    """Blocks with outputs but no matching data file use job-level ref (lines 282-286)."""
+    """Blocks with outputs but no matching data file are NOT assigned — per-block recon
+    is skipped; the job-level ref is used only in the final pipeline:full run."""
     block = _make_sas_block(output_datasets=["out_ds"])
     ctx = _make_context_with_data_files({})  # no data files
     result = _build_recon_groups([block], ctx, "job_ref.csv", "")
-    # Block 0 should be assigned job-level fallback
-    assert 0 in result
-    assert result[0] == ("job_ref.csv", "")
+    # No specific data-file match → block not in result; pipeline:full handles job-level ref
+    assert 0 not in result
 
 
 def test_build_recon_groups_matches_csv_by_stem() -> None:
@@ -750,7 +750,8 @@ def test_build_recon_groups_matches_sas7bdat_by_stem() -> None:
 
 
 def test_build_recon_groups_unsupported_extension_skipped() -> None:
-    """Files with unsupported extension (not csv/tsv/sas7bdat) are skipped (lines 250-251)."""
+    """Files with unsupported extension (not csv/tsv/sas7bdat) are skipped; block gets
+    no per-block assignment — pipeline:full handles the job-level ref instead."""
     block = _make_sas_block(output_datasets=["report"])
     data_files = {
         "data/report.xlsx": DataFileInfo(
@@ -763,13 +764,13 @@ def test_build_recon_groups_unsupported_extension_skipped() -> None:
     }
     ctx = _make_context_with_data_files(data_files)
     result = _build_recon_groups([block], ctx, "job_ref.csv", "")
-    # Falls back to job-level ref
-    assert 0 in result
-    assert result[0] == ("job_ref.csv", "")
+    # xlsx is skipped; no specific match → block not assigned
+    assert 0 not in result
 
 
-def test_build_recon_groups_bfs_backward_transitive() -> None:
-    """BFS backward through input_datasets includes upstream blocks (lines 265-275)."""
+def test_build_recon_groups_direct_match_only() -> None:
+    """Direct-match only: only the block whose output_datasets matches the file stem is assigned.
+    Upstream blocks that feed into it are NOT assigned the ref (they produce different shapes)."""
     # block0 outputs "raw_data"; block1 reads "raw_data" and outputs "customers"
     block0 = _make_sas_block(start_line=1, output_datasets=["raw_data"])
     block1 = _make_sas_block(
@@ -786,10 +787,9 @@ def test_build_recon_groups_bfs_backward_transitive() -> None:
     }
     ctx = _make_context_with_data_files(data_files)
     result = _build_recon_groups([block0, block1], ctx, "ref.csv", "")
-    # Both blocks should be in the group for customers.csv
-    assert 0 in result
+    # Only block1 (direct output match) should be assigned; block0 is upstream, different shape
+    assert 0 not in result
     assert 1 in result
-    assert result[0] == ("/tmp/customers.csv", "")
     assert result[1] == ("/tmp/customers.csv", "")
 
 

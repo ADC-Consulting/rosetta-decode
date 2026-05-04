@@ -68,12 +68,12 @@ def test_assemble_flat_section_header_format(codegen: CodeGenerator) -> None:
 
 def test_assemble_flat_untranslatable_block_has_warning(codegen: CodeGenerator) -> None:
     block = _gen_block(
-        python_code="# SAS-UNTRANSLATABLE: PROC REPORT not supported",
+        python_code="# SAS-UNRECOGNIZED: PROC REPORT not supported",
         is_untranslatable=True,
         block_type=BlockType.UNTRANSLATABLE,
     )
     output = codegen.assemble_flat([block])
-    assert "UNTRANSLATABLE" in output
+    assert "UNRECOGNIZED" in output
     assert "WARNING" in output
 
 

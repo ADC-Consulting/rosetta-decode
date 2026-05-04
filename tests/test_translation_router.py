@@ -97,7 +97,7 @@ def test_stub_generator_output() -> None:
     result = StubGenerator().generate(block)
     lines = result.python_code.splitlines()
     assert len(lines) == 3
-    assert lines[0] == "# SAS-UNTRANSLATABLE: PROC TABULATE not supported"
+    assert lines[0] == "# SAS-UNRECOGNIZED: PROC TABULATE not supported"
     assert lines[1] == "# TODO: manual review required"
     assert lines[2] == "# SAS: test.sas:1"
     assert result.is_untranslatable is True
@@ -106,7 +106,7 @@ def test_stub_generator_output() -> None:
 def test_stub_reason_missing() -> None:
     block = _make_block(BlockType.UNTRANSLATABLE, untranslatable_reason=None)
     result = StubGenerator().generate(block)
-    assert result.python_code.startswith("# SAS-UNTRANSLATABLE: unsupported construct")
+    assert result.python_code.startswith("# SAS-UNRECOGNIZED: unsupported construct")
     assert result.is_untranslatable is True
 
 

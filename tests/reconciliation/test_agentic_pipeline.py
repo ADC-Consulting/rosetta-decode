@@ -177,7 +177,7 @@ async def test_untranslatable_block_produces_stub() -> None:
     translator = router.route(stub_block)
     gb = await translator.translate(stub_block, context)
 
-    assert "# SAS-UNTRANSLATABLE" in gb.python_code
+    assert "# SAS-UNRECOGNIZED" in gb.python_code
     assert "# TODO: manual review required" in gb.python_code
     assert gb.is_untranslatable
 
