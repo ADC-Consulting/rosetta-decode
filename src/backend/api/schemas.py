@@ -82,7 +82,7 @@ class LineageNode(BaseModel):
     label: str
     source_file: str = ""
     block_type: str = ""
-    status: Literal["migrated", "manual_review", "untranslatable"] = "migrated"
+    status: Literal["migrated", "manual_review", "unrecognized"] = "migrated"
 
 
 class LineageEdge(BaseModel):
@@ -153,7 +153,7 @@ class FileNodeResponse(BaseModel):
     filename: str
     file_type: Literal["PROGRAM", "MACRO", "AUTOEXEC", "LOG", "OTHER"]
     blocks: list[str] = []
-    status: Literal["OK", "UNTRANSLATABLE", "ERROR_PRONE"] | None = None
+    status: Literal["OK", "UNRECOGNIZED", "ERROR_PRONE"] | None = None
     status_reason: str | None = None
 
 
@@ -182,7 +182,7 @@ class BlockStatusResponse(BaseModel):
     """Per-block translation/health status."""
 
     block_id: str
-    status: Literal["OK", "UNTRANSLATABLE", "ERROR_PRONE"]
+    status: Literal["OK", "UNRECOGNIZED", "ERROR_PRONE"]
     reason: str | None = None
 
 
@@ -417,6 +417,7 @@ class TrustReportBlock(BaseModel):
     reconciliation_status: str | None
     needs_attention: bool
     blast_radius: int | None  # null if lineage unavailable
+    effective_confidence_band: str = "unknown"
 
 
 class TrustReportFile(BaseModel):

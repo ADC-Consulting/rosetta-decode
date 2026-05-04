@@ -1789,6 +1789,14 @@ def _blast_radius_map(cross_file_edges: list[dict[str, Any]]) -> dict[str, int]:
     return counts
 
 
+def _effective_confidence(band: str, recon_status: str | None) -> str:
+    if recon_status == "pass":
+        return band if band in ("high", "medium") else "medium"
+    if recon_status == "fail":
+        return "low" if band in ("high", "medium") else "very_low"
+    return band
+
+
 def _block_sort_key(block: TrustReportBlock) -> tuple[int, int, int]:
     """Return a sort key: needs_attention DESC, blast_radius DESC, confidence ASC."""
     attention = 0 if block.needs_attention else 1
@@ -1961,6 +1969,9 @@ async def get_job_trust_report(
                 reconciliation_status=reconciliation_status,
                 needs_attention=needs_attention,
                 blast_radius=radius,
+                effective_confidence_band=_effective_confidence(
+                    confidence_band or "unknown", reconciliation_status
+                ),
             )
         )
 
