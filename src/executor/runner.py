@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import pathlib
 import re
 import subprocess
 import sys
@@ -49,6 +50,39 @@ spark = (
 spark.sparkContext.setLogLevel("ERROR")
 """
 
+# Prepended when a session_dir is provided and contains existing .parquet files.
+# Uses Spark to load Parquet so prior-block Spark DataFrames are available by name.
+_DATAFRAME_LOAD_SNIPPET_TEMPLATE = """\
+import pathlib as _path_load
+for _pf in _path_load.Path({session_dir!r}).glob("*.parquet"):
+    try:
+        globals()[_pf.stem] = spark.read.parquet(str(_pf))
+    except Exception:
+        pass
+"""
+
+# Appended after _RESULT_CAPTURE_SNIPPET to persist non-private Spark DataFrames to the cache.
+_DATAFRAME_SAVE_SNIPPET = """\
+import pathlib as _path_save, os as _os_save
+_session_dir = _os_save.environ.get("_ROSETTA_SESSION_DIR", "")
+if _session_dir:
+    _path_save.Path(_session_dir).mkdir(parents=True, exist_ok=True)
+    try:
+        from pyspark.sql import DataFrame as _SparkDF
+    except ImportError:
+        _SparkDF = None
+    for _vname, _vval in list(globals().items()):
+        if _vname.startswith("_") or _SparkDF is None:
+            continue
+        if isinstance(_vval, _SparkDF):
+            try:
+                _vval.write.mode("overwrite").parquet(
+                    f"{_session_dir}/{_vname}.parquet"
+                )
+            except Exception:
+                pass
+"""
+
 # Injected at the end of every submitted code string.
 # Captures the `result` variable first, then falls back to any DataFrame in globals.
 _RESULT_CAPTURE_SNIPPET = """
@@ -80,18 +114,30 @@ if _result_path:
 """
 
 
-def run_code(code: str, timeout: int = 60, data_dir: str = "") -> dict[str, Any]:
+def run_code(
+    code: str,
+    timeout: int = 60,
+    data_dir: str = "",
+    session_dir: str = "",
+) -> dict[str, Any]:
     """Execute *code* in a subprocess and return captured outputs.
 
     The code is written to a temp file, the result-capture snippet is appended,
     and the file is executed with the current Python interpreter.  Any DataFrame
     produced by the code is read back from ``/tmp/rosetta_result.json``.
 
+    When *session_dir* is non-empty, DataFrames from previous block runs are
+    loaded from ``.parquet`` files in that directory before the user's code runs,
+    and any DataFrames produced by this run are saved back to it.
+
     Args:
         code: Python source code to execute.
         timeout: Maximum seconds to allow the subprocess to run.
         data_dir: If non-empty, replaces ``/workspace/data/`` prefix in *code* so
             uploaded files are resolved to the correct job-specific directory.
+        session_dir: If non-empty, path to a directory used as a per-job DataFrame
+            cache.  Prior blocks' outputs are loaded at the start; this block's
+            DataFrames are saved at the end.
 
     Returns:
         Dict with keys:
@@ -105,7 +151,19 @@ def run_code(code: str, timeout: int = 60, data_dir: str = "") -> dict[str, Any]
     if data_dir:
         code = code.replace("/workspace/data/", data_dir.rstrip("/") + "/")
     prefix = _SPARK_INIT_SNIPPET if re.search(r"\bspark\b", code) else ""
-    augmented = prefix + code + "\n" + _RESULT_CAPTURE_SNIPPET
+
+    load_prefix = ""
+    if session_dir:
+        sdir = pathlib.Path(session_dir)
+        if sdir.exists() and any(sdir.glob("*.parquet")):
+            load_prefix = _DATAFRAME_LOAD_SNIPPET_TEMPLATE.format(session_dir=session_dir)
+        # Always init Spark when session_dir is set — load/save snippets need spark
+        if not prefix:
+            prefix = _SPARK_INIT_SNIPPET
+
+    capture = "\n" + _RESULT_CAPTURE_SNIPPET + "\n" + _DATAFRAME_SAVE_SNIPPET
+    # Order: Spark init → load prior-block DataFrames → user code → capture/save
+    augmented = prefix + load_prefix + code + capture
 
     result_json: list[dict[str, Any]] | None = None
     result_columns: list[str] | None = None
@@ -124,6 +182,8 @@ def run_code(code: str, timeout: int = 60, data_dir: str = "") -> dict[str, Any]
 
         env = os.environ.copy()
         env["_ROSETTA_RESULT_PATH"] = result_path
+        if session_dir:
+            env["_ROSETTA_SESSION_DIR"] = session_dir
 
         proc = subprocess.run(
             [sys.executable, tmp_path],

@@ -33,6 +33,7 @@ class ExecuteRequest(BaseModel):
     ref_csv_path: str = ""
     ref_sas7bdat_path: str = ""
     data_dir: str = ""
+    session_dir: str = ""
 
 
 class ExecuteResponse(BaseModel):
@@ -63,7 +64,7 @@ def execute(request: ExecuteRequest) -> ExecuteResponse:
         any error message, and wall-clock elapsed time.
     """
     logger.info("Executing code submission (%d chars)", len(request.code))
-    run_result = run_code(request.code, data_dir=request.data_dir)
+    run_result = run_code(request.code, data_dir=request.data_dir, session_dir=request.session_dir)
 
     if run_result["error"]:
         logger.warning("Execution error: %s", run_result["error"])

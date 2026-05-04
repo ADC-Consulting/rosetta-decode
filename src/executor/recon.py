@@ -139,6 +139,23 @@ def run_recon(
 
     actual_df = pd.DataFrame(result_json)
 
+    # Normalize column names to lowercase so SAS uppercase cols match Python lowercase
+    ref_df.columns = ref_df.columns.str.lower()
+    actual_df.columns = actual_df.columns.str.lower()
+
+    logger.debug(
+        "recon ref   rows=%d cols=%s dtypes=%s",
+        len(ref_df),
+        list(ref_df.columns),
+        ref_df.dtypes.to_dict(),
+    )
+    logger.debug(
+        "recon actual rows=%d cols=%s dtypes=%s",
+        len(actual_df),
+        list(actual_df.columns),
+        actual_df.dtypes.to_dict(),
+    )
+
     return [
         _schema_parity(ref_df, actual_df),
         _row_count(ref_df, actual_df),
