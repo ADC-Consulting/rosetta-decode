@@ -47,6 +47,9 @@ class BlockExecutor:
         block_id: str,
         backend: ComputeBackend,
         data_dir: str | None = None,
+        session_dir: str = "",
+        ref_csv_path: str = "",
+        ref_sas7bdat_path: str = "",
     ) -> ReconResult | None:
         """Execute *python_code* via the remote executor and return reconciliation results.
 
@@ -62,6 +65,10 @@ class BlockExecutor:
                 for interface parity.
             data_dir: Job-specific upload directory for executor path resolution.
                 When ``None``, an empty string is forwarded.
+            session_dir: If non-empty, path to the per-job DataFrame parquet cache so
+                prior blocks' DataFrames are pre-loaded before this block runs.
+            ref_csv_path: Path to reference CSV for reconciliation checks.
+            ref_sas7bdat_path: Path to reference .sas7bdat for reconciliation checks.
 
         Returns:
             A ``{"checks": [...]}`` dict on success, or ``None`` on exception /
@@ -71,11 +78,12 @@ class BlockExecutor:
         remote = RemoteReconciliationService()
         try:
             result: ReconResult = await remote.run(
-                "",
+                ref_csv_path,
                 python_code,
                 backend,
-                "",
+                ref_sas7bdat_path,
                 data_dir=effective_data_dir,
+                session_dir=session_dir,
             )
         except Exception as exc:
             logger.warning(
@@ -88,7 +96,16 @@ class BlockExecutor:
 
         checks: list[dict[str, Any]] = result.get("checks", [])
         if not checks:
-            # No checks ran — no reference data available; treat as pass (no-op)
+            if ref_csv_path or ref_sas7bdat_path:
+                # Ref provided but no checks returned — code likely crashed.
+                # Synthetic failure so the retry loop fires.
+                crash_check = {
+                    "name": "execution",
+                    "status": "fail",
+                    "detail": "no checks returned (runtime crash)",
+                }
+                return {"checks": [crash_check]}
+            # No ref data at all — genuine no-op, treat as pass
             return None
 
         return result

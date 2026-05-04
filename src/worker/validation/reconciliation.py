@@ -265,9 +265,34 @@ class ReconciliationService:
             checks.append(_check_result("execution", passed=False, detail=error_detail))
             return {"checks": checks}
 
+        logger.debug(
+            "recon ref   rows=%d cols=%s dtypes=%s",
+            len(ref_df),
+            list(ref_df.columns),
+            ref_df.dtypes.to_dict(),
+        )
+        logger.debug(
+            "recon actual rows=%d cols=%s dtypes=%s",
+            len(actual_df),
+            list(actual_df.columns),
+            actual_df.dtypes.to_dict(),
+        )
+
         checks.append(_schema_parity(ref_df, actual_df))
         checks.append(_row_count(ref_df, actual_df))
         checks.append(_aggregate_parity(ref_df, actual_df))
+        for c in checks:
+            status = c.get("status", "?")
+            name = c.get("name", "?")
+            detail = c.get("detail", "")
+            if status == "pass":
+                logger.info("recon check %-20s PASS", name)
+            else:
+                logger.warning("recon check %-20s FAIL  %s", name, detail)
+        all_passed = all(c.get("status") == "pass" for c in checks)
+        logger.info(
+            "reconciliation summary: %s (%d checks)", "PASS" if all_passed else "FAIL", len(checks)
+        )
         return {"checks": checks}
 
     @staticmethod
@@ -327,6 +352,7 @@ class RemoteReconciliationService:
         ref_csv_path: str,
         ref_sas7bdat_path: str,
         data_dir: str = "",
+        session_dir: str = "",
     ) -> dict[str, Any]:
         """Call the executor synchronously (intended for asyncio.to_thread use).
 
@@ -336,6 +362,8 @@ class RemoteReconciliationService:
             ref_sas7bdat_path: Path to reference .sas7bdat (may be empty string).
             data_dir: Directory where uploaded data files are stored; executor
                 rewrites /workspace/data/ references to this path before running.
+            session_dir: If non-empty, path to the per-job DataFrame parquet cache;
+                forwarded to the executor so it can pre-load prior blocks' outputs.
 
         Returns:
             Parsed JSON response body from the executor.
@@ -346,6 +374,7 @@ class RemoteReconciliationService:
             "ref_csv_path": ref_csv_path,
             "ref_sas7bdat_path": ref_sas7bdat_path,
             "data_dir": data_dir,
+            "session_dir": session_dir,
         }
         with httpx.Client(timeout=120) as client:
             response = client.post(url, json=payload)
@@ -359,6 +388,7 @@ class RemoteReconciliationService:
         backend: ComputeBackend,
         ref_sas7bdat_path: str = "",
         data_dir: str = "",
+        session_dir: str = "",
     ) -> dict[str, Any]:
         """Post the generated code to the executor and return reconciliation results.
 
@@ -372,6 +402,8 @@ class RemoteReconciliationService:
             ref_sas7bdat_path: Optional path to reference .sas7bdat.
             data_dir: Directory where uploaded data files are stored; forwarded to
                 the executor so it can rewrite /workspace/data/ paths.
+            session_dir: If non-empty, path to the per-job DataFrame parquet cache;
+                forwarded to the executor so prior blocks' outputs are pre-loaded.
 
         Returns:
             ``{"checks": [...]}`` dict, or ``{"checks": []}`` on executor failure.
@@ -386,8 +418,23 @@ class RemoteReconciliationService:
                 ref_csv_path,
                 ref_sas7bdat_path,
                 data_dir,
+                session_dir,
             )
             checks = raw.get("checks") or []
+            for c in checks:
+                name = c.get("name", "?")
+                detail = c.get("detail", "")
+                if c.get("status") == "pass":
+                    logger.info("recon check %-20s PASS", name)
+                else:
+                    logger.warning("recon check %-20s FAIL  %s", name, detail)
+            if checks:
+                all_passed = all(c.get("status") == "pass" for c in checks)
+                logger.info(
+                    "reconciliation summary: %s (%d checks)",
+                    "PASS" if all_passed else "FAIL",
+                    len(checks),
+                )
             return {"checks": checks}
         except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError) as exc:
             logger.warning("RemoteReconciliationService: executor unreachable: %s", exc)

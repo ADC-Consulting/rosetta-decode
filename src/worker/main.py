@@ -218,31 +218,26 @@ def _build_recon_groups(
 ) -> dict[int, tuple[str, str]]:
     """Return mapping of block_index → (ref_csv_path, ref_sas_path) for reconciliation.
 
-    A block belongs to a reconciliation group defined by the reference file that
-    its outputs, directly or transitively, feed into. The group's reference file
-    is the uploaded data file matching that terminal output dataset.
+    Only blocks that directly output a dataset matching the uploaded file stem
+    (or a libname alias) are assigned that file as their per-block ref. No backward
+    traversal through input_datasets is performed — intermediate/upstream blocks are
+    intentionally excluded to avoid wrong schema/row-count failures.
 
-    Blocks with no output_datasets (macro utilities, assertions, print blocks) are
-    excluded from reconciliation — they cannot produce a comparable dataset.
-
-    When context.data_files is empty, all blocks with outputs fall back to the
-    job-level ref CSV/SAS7BDAT.
-
-    Algorithm:
-    1. Build dataset→[block_indices] map from direct output_datasets.
-    2. For each reference file, BFS backwards through input_datasets to find all
-       blocks that transitively contribute to that file's dataset.
-    3. Assign each block the most specific reference file found; fall back to
-       job-level ref for blocks with outputs that don't trace to any uploaded file.
+    Blocks with no matching direct output are excluded from per-block recon. The
+    final full-pipeline run handles the job-level ref CSV/SAS7BDAT for those blocks.
     """
-    # Map: dataset name (lowercased) → list of block indices that output it
-    dataset_to_blocks: dict[str, list[int]] = {}
-    for idx, block in enumerate(blocks):
-        for ds in block.output_datasets:
-            dataset_to_blocks.setdefault(ds.lower(), []).append(idx)
-
     # Map: block index → (ref_csv, ref_sas) — start with no assignment
     assignment: dict[int, tuple[str, str]] = {}
+
+    logger.debug(
+        "[recon_groups] data_files=%s libname_map=%s",
+        list(context.data_files.keys()),
+        context.libname_map,
+    )
+    logger.debug(
+        "[recon_groups] block outputs: %s",
+        {i: b.output_datasets for i, b in enumerate(blocks)},
+    )
 
     for norm_path, info in context.data_files.items():
         ext = info.extension
@@ -253,42 +248,20 @@ def _build_recon_groups(
         else:
             continue
 
-        # Seed: datasets whose name matches this reference file stem
+        # Match by file stem only — direct output match, no backward traversal
         file_stem = norm_path.rsplit("/", 1)[-1].rsplit(".", 1)[0].lower()
-        frontier: set[str] = {file_stem}
+        match_names: set[str] = {file_stem}
+        logger.debug("[recon_groups] file=%s stem=%s", norm_path, file_stem)
 
-        # Also resolve via libname_map
-        for alias, path in context.libname_map.items():
-            if path == norm_path or path.startswith(norm_path.rsplit("/", 1)[0]):
-                frontier.add(alias)
+        for idx, block in enumerate(blocks):
+            for ds in block.output_datasets:
+                # Strip libname prefix (e.g. "outdir.revenue" → "revenue")
+                ds_stem = ds.lower().rsplit(".", 1)[-1]
+                if ds_stem in match_names and idx not in assignment:
+                    logger.debug("[recon_groups] MATCH block=%d ds=%s → %s", idx, ds, norm_path)
+                    assignment[idx] = ref_pair
 
-        visited_datasets: set[str] = set()
-        group_indices: set[int] = set()
-
-        while frontier:
-            ds = frontier.pop()
-            if ds in visited_datasets:
-                continue
-            visited_datasets.add(ds)
-            for idx in dataset_to_blocks.get(ds, []):
-                if idx not in group_indices:
-                    group_indices.add(idx)
-                    # Walk backwards through this block's inputs
-                    for inp in blocks[idx].input_datasets:
-                        frontier.add(inp.lower())
-
-        for idx in group_indices:
-            # Most specific wins — don't overwrite with a less specific assignment
-            if idx not in assignment:
-                assignment[idx] = ref_pair
-
-    # Blocks with outputs but no group assignment → job-level fallback
-    fallback = (job_ref_csv, job_ref_sas)
-    for idx, block in enumerate(blocks):
-        if block.output_datasets and idx not in assignment:
-            assignment[idx] = fallback
-
-    # Blocks with no outputs → not assigned (no reconciliation)
+    logger.debug("[recon_groups] final assignment=%s", {k: v[0] for k, v in assignment.items()})
     return assignment
 
 
@@ -565,6 +538,8 @@ class JobOrchestrator:
             logger.warning(
                 "Job %s completed with reconciliation failures — status=under_review", job.id
             )
+
+        # Step 10a: Write status + code immediately (UI shows result before doc/lineage is ready)
         await session.execute(
             update(Job)
             .where(Job.id == job.id)
@@ -575,14 +550,26 @@ class JobOrchestrator:
                 migration_plan=(
                     context.migration_plan.model_dump() if context.migration_plan else None
                 ),
-                report=report,
                 llm_model=worker_settings.llm_model,
+            )
+        )
+        await session.commit()
+        logger.info("Job %s completed successfully", job.id)
+
+        # Step 10b: Write doc/lineage (best-effort enrichment — already computed above)
+        await session.execute(
+            update(Job)
+            .where(Job.id == job.id)
+            .values(
+                report=report,
                 lineage=lineage_data,
                 doc=doc,
             )
         )
         await session.commit()
-        logger.info("Job %s completed successfully", job.id)
+
+        # Step 10c: Persist initial BlockRevision rows for every translated block
+        await self._persist_initial_revisions(session, job, generated, context)
 
         # Auto-save initial v1 for every tab so the rail shows the agent-generated baseline.
         plan_overrides = (
@@ -617,17 +604,61 @@ class JobOrchestrator:
             session.add(v)
         await session.commit()
 
-        # Step 11: Initial per-block reconciliation via remote executor (best-effort)
-        if context.migration_plan and (ref_csv_path or ref_sas7bdat_path):
-            await self._reconcile_initial_blocks(
-                session,
-                job,
-                context,
-                ref_csv_path,
-                ref_sas7bdat_path,
-                generated,
-                data_dir=data_dir,
+        # Step 11: Per-block reconciliation is handled during _translate_blocks with
+        # correctly matched per-block ref files. The old job-level post-pass is
+        # intentionally skipped here to avoid reconciling intermediate blocks against
+        # the final output schema.
+
+    async def _persist_initial_revisions(
+        self,
+        session: AsyncSession,
+        job: Job,
+        generated_blocks: list[GeneratedBlock],
+        context: JobContext,
+    ) -> None:
+        """Create revision-1 BlockRevision rows for every translated block.
+
+        Sets reconciliation_status from exec_ok so the Plan table shows pass/fail
+        immediately without waiting for the full reference-based recon pass.
+        Skips blocks that already have a revision row (idempotent).
+        """
+        block_plan_map: dict[str, BlockPlan] = {}
+        if context.migration_plan:
+            for bp in context.migration_plan.block_plans:
+                block_plan_map[bp.block_id] = bp
+
+        for gb in generated_blocks:
+            block_id = f"{gb.source_block.source_file}:{gb.source_block.start_line}"
+
+            existing = await session.execute(
+                select(BlockRevision)
+                .where(BlockRevision.job_id == str(job.id), BlockRevision.block_id == block_id)
+                .limit(1)
             )
+            if existing.scalar_one_or_none() is not None:
+                continue
+
+            block_plan: BlockPlan | None = block_plan_map.get(block_id)
+            strategy = block_plan.strategy if block_plan is not None else gb.strategy_used
+
+            rev = BlockRevision(
+                id=str(_uuid.uuid4()),
+                job_id=str(job.id),
+                block_id=block_id,
+                revision_number=1,
+                python_code=gb.python_code,
+                strategy=strategy,
+                confidence=gb.confidence_band,
+                uncertainty_notes=gb.uncertainty_notes,
+                reconciliation_status="pass" if gb.exec_ok else "fail",
+                trigger="agent",
+                notes=None,
+                hint=None,
+                diff_vs_previous=None,
+            )
+            session.add(rev)
+
+        await session.commit()
 
     async def _reconcile_initial_blocks(
         self,
@@ -638,6 +669,7 @@ class JobOrchestrator:
         ref_sas7bdat_path: str,
         generated_blocks: list[GeneratedBlock],
         data_dir: str = "",
+        tracer: TraceEmitter | None = None,
     ) -> None:
         """Run RemoteReconciliationService for each eligible block and persist status.
 
@@ -655,6 +687,8 @@ class JobOrchestrator:
             generated_blocks: Ordered list of GeneratedBlock from the translation phase.
             data_dir: Job-specific upload directory forwarded to the executor for
                 /workspace/data/ path resolution.
+            tracer: Optional TraceEmitter — when provided, emits ``recon_result``
+                and corrective ``block_done`` events into the SSE stream.
         """
         skip_strategies = frozenset({"manual", "manual_ingestion", "skip"})
         remote = RemoteReconciliationService()
@@ -689,6 +723,9 @@ class JobOrchestrator:
             initial_rev = rev_result.scalar_one_or_none()
             if initial_rev is None or not initial_rev.python_code:
                 continue
+            already_recon = getattr(initial_rev, "recon_checks", None)
+            if initial_rev.reconciliation_status == "pass" and already_recon:
+                continue
 
             # Build cumulative code slice up to and including this block
             idx = block_order.get(block_id)
@@ -721,9 +758,34 @@ class JobOrchestrator:
                 await session.execute(
                     update(BlockRevision)
                     .where(BlockRevision.id == initial_rev.id)
-                    .values(reconciliation_status=recon_status)
+                    .values(reconciliation_status=recon_status, recon_checks=checks)
                 )
                 await session.commit()
+                if tracer is not None:
+                    await tracer.emit(
+                        "recon_result",
+                        {
+                            "block_id": block_id,
+                            "checks": [
+                                {
+                                    "name": c.get("name", ""),
+                                    "status": c.get("status", ""),
+                                    "detail": c.get("detail", ""),
+                                }
+                                for c in checks
+                            ],
+                            "all_passed": all_passed,
+                        },
+                    )
+                    await tracer.emit(
+                        "block_done",
+                        {
+                            "block_id": block_id,
+                            "attempt": 1,
+                            "status": recon_status,
+                            "elapsed_ms": 0,
+                        },
+                    )
             except Exception as exc:
                 logger.warning("Job %s: block recon failed for %s: %s", job.id, block_id, exc)
 
@@ -867,12 +929,16 @@ class JobOrchestrator:
         generated: list[GeneratedBlock] = []
         tracer: TraceEmitter | None = getattr(self, "_tracer", None)
 
-        for block in blocks:
+        # Build per-block reference file mapping using output_datasets + uploaded files
+        recon_groups = _build_recon_groups(blocks, context, ref_csv_path, ref_sas7bdat_path)
+
+        for block_idx, block in enumerate(blocks):
             block_id = f"{block.source_file}:{block.start_line}"
             block_plan = block_plan_map.get(block_id)
             translator = self._router.route(block, block_plan=block_plan)
 
             gb: GeneratedBlock | None = None
+            exec_ok: bool = True
             attempt_context = effective_context
 
             for attempt in range(1, 4):
@@ -902,14 +968,48 @@ class JobOrchestrator:
                         attempt,
                         type(exc).__name__,
                     )
+                    elapsed_ms = int((time.monotonic() - t0) * 1000)
+                    if tracer is not None:
+                        await tracer.emit(
+                            "block_done",
+                            {
+                                "block_id": block_id,
+                                "attempt": attempt,
+                                "status": "error",
+                                "elapsed_ms": elapsed_ms,
+                            },
+                        )
                     gb = None
+                    if attempt < 3:
+                        flag = (
+                            f"translation_error_attempt_{attempt}: "
+                            f"{type(exc).__name__}: {str(exc)[:200]}"
+                        )
+                        attempt_context = attempt_context.model_copy(
+                            update={"risk_flags": [*attempt_context.risk_flags, flag]}
+                        )
+                        continue
                     break
 
+                # Build cumulative code: all prior blocks' code + this block's code.
+                # This ensures upstream variables (e.g. revenue_sorted from block N-1)
+                # are defined when block N runs — no cross-process session cache needed.
+                prior_code = self._codegen.assemble_flat(
+                    generated, macro_vars=context.resolved_macros
+                )
+                exec_code = (
+                    (prior_code + "\n\n" + gb.python_code).strip() if prior_code else gb.python_code
+                )
+                # Point the result-capture snippet at this block's output var
+                if gb.output_var:
+                    exec_code += f"\nresult = {gb.output_var}\n"
                 recon_result = await block_ex.run(
-                    gb.python_code,
+                    exec_code,
                     block_id,
                     backend,
                     data_dir=data_dir or None,
+                    ref_csv_path=recon_groups.get(block_idx, ("", ""))[0],
+                    ref_sas7bdat_path=recon_groups.get(block_idx, ("", ""))[1],
                 )
                 elapsed_ms = int((time.monotonic() - t0) * 1000)
 
@@ -930,6 +1030,7 @@ class JobOrchestrator:
                 checks: list[dict[str, Any]] = recon_result.get("checks", [])
                 all_passed = all(c.get("status") == "pass" for c in checks)
                 recon_passed = all_passed
+                exec_ok = all_passed
 
                 if tracer is not None:
                     await tracer.emit(
@@ -968,8 +1069,65 @@ class JobOrchestrator:
                         for c in checks
                         if c.get("status") != "pass"
                     ]
-                    error_summary = "; ".join(failed_details)
-                    error_summary = error_summary.replace("\n", " ")[:200]
+                    extra_hints: list[str] = []
+                    for check in checks:
+                        if check.get("status") == "pass":
+                            continue
+                        name = check.get("name", "")
+                        detail = check.get("detail", "")
+                        if name == "schema_parity" and detail:
+                            for col_part in detail.split(";"):
+                                col_part = col_part.strip()
+                                if "ref=" in col_part and "actual=" in col_part:
+                                    col_name = col_part.split(":")[0].strip()
+                                    try:
+                                        ref_type = col_part.split("ref=")[1].split(",")[0].strip()
+                                        actual_type = col_part.split("actual=")[1].strip()
+                                        # Generate a concrete cast instruction
+                                        if ref_type == "object" and "numeric" in actual_type:
+                                            cast_hint = (
+                                                f"column '{col_name}': ref is string/object"
+                                                f" but output is {actual_type} —"
+                                                f" add .withColumn('{col_name}',"
+                                                f" F.col('{col_name}').cast('string'))"
+                                            )
+                                        elif "numeric" in ref_type and ref_type != actual_type:
+                                            cast_hint = (
+                                                f"column '{col_name}': ref is {ref_type}"
+                                                f" but output is {actual_type} —"
+                                                f" add .withColumn('{col_name}',"
+                                                f" F.col('{col_name}').cast('{ref_type}'))"
+                                            )
+                                        else:
+                                            cast_hint = (
+                                                f"column '{col_name}': output is"
+                                                f" {actual_type} but ref expects"
+                                                f" {ref_type} — cast to match"
+                                            )
+                                        extra_hints.append(cast_hint)
+                                    except IndexError:
+                                        pass
+                        elif name == "aggregate_parity" and detail:
+                            for col_part in detail.split(";"):
+                                col_part = col_part.strip()
+                                if "ref_sum=" in col_part:
+                                    try:
+                                        ref_sum = float(
+                                            col_part.split("ref_sum=")[1].split(",")[0].strip()
+                                        )
+                                        if abs(ref_sum) < 1e-3:
+                                            extra_hints.append(
+                                                "ref_sum is near zero — this may be floating point"
+                                                " drift between SAS and Spark rather than a logic"
+                                                " error; if so, add a comment in the generated code"
+                                                " explaining this (e.g. '# NOTE: sum ≈ 0 by"
+                                                " construction; deviation from SAS ref is IEEE 754"
+                                                " floating point drift, not a logic error')"
+                                            )
+                                    except (IndexError, ValueError):
+                                        pass
+                    error_summary = "; ".join(failed_details + extra_hints)
+                    error_summary = error_summary.replace("\n", " ")[:500]
                     flag = f"recon_failure_attempt_{attempt}: {error_summary}"
                     attempt_context = attempt_context.model_copy(
                         update={"risk_flags": [*attempt_context.risk_flags, flag]}
@@ -977,6 +1135,7 @@ class JobOrchestrator:
                 # On attempt 3 fall through — use last generated code as-is
 
             if gb is not None:
+                gb.exec_ok = exec_ok
                 generated.append(gb)
 
             # Cancel check: open a fresh session so we don't touch the outer
@@ -987,6 +1146,56 @@ class JobOrchestrator:
                     fresh = await _cs.get(Job, _job.id)
                     if fresh is not None and fresh.cancellation_requested:
                         raise JobCancelledError(f"Job {_job.id} cancelled by user")
+
+        # Final full-pipeline recon — all blocks concatenated, no session cache
+        if tracer is not None and generated and (ref_csv_path or ref_sas7bdat_path):
+            await tracer.emit(
+                "block_start",
+                {"block_id": "pipeline:full", "agent": "FinalRecon", "attempt": 1},
+            )
+            full_code = self._codegen.assemble_flat(generated, macro_vars=context.resolved_macros)
+            t0_f = time.monotonic()
+            final_result = await block_ex.run(
+                full_code,
+                "pipeline:full",
+                backend,
+                data_dir=data_dir or None,
+                session_dir="",  # run everything fresh — no cache
+                ref_csv_path=ref_csv_path,
+                ref_sas7bdat_path=ref_sas7bdat_path,
+            )
+            elapsed_f = int((time.monotonic() - t0_f) * 1000)
+            final_checks: list[dict[str, Any]] = (
+                final_result.get("checks", []) if final_result else []
+            )
+            all_passed_f = (
+                all(c.get("status") == "pass" for c in final_checks) if final_checks else False
+            )
+            if final_checks:
+                await tracer.emit(
+                    "recon_result",
+                    {
+                        "block_id": "pipeline:full",
+                        "checks": [
+                            {
+                                "name": c.get("name", ""),
+                                "status": c.get("status", ""),
+                                "detail": c.get("detail", ""),
+                            }
+                            for c in final_checks
+                        ],
+                        "all_passed": all_passed_f,
+                    },
+                )
+            await tracer.emit(
+                "block_done",
+                {
+                    "block_id": "pipeline:full",
+                    "attempt": 1,
+                    "status": "pass" if (final_result is not None and all_passed_f) else "fail",
+                    "elapsed_ms": elapsed_f,
+                },
+            )
 
         # Reconciliation runs once after all blocks are translated (see _translate_two_phase).
         return generated, False
