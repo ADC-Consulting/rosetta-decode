@@ -3,6 +3,8 @@ import type {
     BlockRefineRequest,
     BlockRefineResponse,
     BlockRevisionHistory,
+    ExecuteResponse,
+    JobAttachmentsResponse,
     JobChangelogResponse,
     JobDocResponse,
     JobHistoryResponse,
@@ -152,7 +154,7 @@ export async function refineBlock(
   blockId: string,
   request: BlockRefineRequest,
 ): Promise<BlockRefineResponse> {
-  const encodedBlockId = encodeURIComponent(blockId);
+  const encodedBlockId = blockId.replace(/:/g, '%3A');
   const res = await fetch(`${BASE}/jobs/${jobId}/blocks/${encodedBlockId}/refine`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -168,7 +170,7 @@ export async function getBlockRevisions(
   jobId: string,
   blockId: string,
 ): Promise<BlockRevisionHistory> {
-  const encodedBlockId = encodeURIComponent(blockId);
+  const encodedBlockId = blockId.replace(/:/g, '%3A');
   const res = await fetch(`${BASE}/jobs/${jobId}/blocks/${encodedBlockId}/revisions`);
   if (!res.ok) throw new Error(await extractApiError(res));
   return res.json() as Promise<BlockRevisionHistory>;
@@ -181,13 +183,34 @@ export async function restoreBlockRevision(
   blockId: string,
   revisionId: string,
 ): Promise<BlockRefineResponse> {
-  const encodedBlockId = encodeURIComponent(blockId);
+  const encodedBlockId = blockId.replace(/:/g, '%3A');
   const res = await fetch(
     `${BASE}/jobs/${jobId}/blocks/${encodedBlockId}/revisions/${revisionId}/restore`,
     { method: "POST" },
   );
   if (!res.ok) throw new Error(await extractApiError(res));
   return res.json() as Promise<BlockRefineResponse>;
+}
+
+// ── Human python edit ────────────────────────────────────────────────────────
+
+export async function saveBlockPython(
+  jobId: string,
+  blockId: string,
+  pythonCode: string,
+  notes?: string,
+): Promise<{ revision_number: number; block_id: string }> {
+  const encodedBlockId = blockId.replace(/:/g, '%3A');
+  const res = await fetch(
+    `${BASE}/jobs/${jobId}/blocks/${encodedBlockId}/python`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ python_code: pythonCode, notes }),
+    },
+  );
+  if (!res.ok) throw new Error(await res.text());
+  return res.json() as Promise<{ revision_number: number; block_id: string }>;
 }
 
 // ── F4: Job changelog ─────────────────────────────────────────────────────────
@@ -204,4 +227,45 @@ export async function getJobTrustReport(jobId: string): Promise<TrustReportRespo
   const res = await fetch(`${BASE}/jobs/${jobId}/trust-report`);
   if (!res.ok) throw new Error(await extractApiError(res));
   return res.json() as Promise<TrustReportResponse>;
+}
+
+// ── Attachments ───────────────────────────────────────────────────────────────
+
+export async function getJobAttachments(jobId: string): Promise<JobAttachmentsResponse> {
+  const res = await fetch(`${BASE}/jobs/${jobId}/attachments`);
+  if (!res.ok) throw new Error(await extractApiError(res));
+  return res.json() as Promise<JobAttachmentsResponse>;
+}
+
+export function getAttachmentUrl(jobId: string, pathKey: string): string {
+  return `${BASE}/jobs/${jobId}/attachments/${encodeURIComponent(pathKey)}`;
+}
+
+// ── Execute ───────────────────────────────────────────────────────────────────
+
+export async function executeJob(
+  jobId: string,
+  blockId?: string,
+): Promise<ExecuteResponse> {
+  const res = await fetch(`${BASE}/jobs/${jobId}/execute`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ block_id: blockId ?? null }),
+  });
+  if (!res.ok) throw new Error(await extractApiError(res));
+  return res.json() as Promise<ExecuteResponse>;
+}
+
+// ── F20: Live Trace ───────────────────────────────────────────────────────────
+
+export function openTraceStream(jobId: string, sinceSeq = 0): EventSource {
+  return new EventSource(`${BASE}/jobs/${jobId}/trace/stream?since_seq=${sinceSeq}`);
+}
+
+export async function cancelJob(jobId: string): Promise<void> {
+  const res = await fetch(`${BASE}/jobs/${jobId}/cancel`, { method: "POST" });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { detail?: string }).detail ?? `Cancel failed: ${res.status}`);
+  }
 }

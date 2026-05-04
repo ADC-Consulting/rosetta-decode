@@ -1,9 +1,12 @@
 import { cn } from "@/lib/utils";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
+import { Table } from "@tiptap/extension-table";
+import { TableCell } from "@tiptap/extension-table-cell";
+import { TableHeader } from "@tiptap/extension-table-header";
+import { TableRow } from "@tiptap/extension-table-row";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { common, createLowlight } from "lowlight";
-import { closeHistory } from "prosemirror-history";
 import {
   Bold,
   FileCode,
@@ -16,6 +19,7 @@ import {
   Strikethrough,
   Undo2,
 } from "lucide-react";
+import { closeHistory } from "prosemirror-history";
 import { useEffect, useRef } from "react";
 
 const lowlight = createLowlight(common);
@@ -56,21 +60,23 @@ function ToolbarButton({
           if (!disabled) onClick();
         }}
         className={cn(
-          "h-7 w-7 flex items-center justify-center rounded text-sm transition-colors cursor-pointer",
+          "h-7 w-7 flex items-center justify-center rounded text-sm transition-colors",
           active
             ? "bg-muted text-foreground font-bold"
             : "text-muted-foreground hover:text-foreground hover:bg-muted",
-          disabled && "opacity-40 cursor-not-allowed",
+          disabled ? "opacity-30 cursor-not-allowed" : "cursor-pointer",
         )}
       >
         {children}
       </button>
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 mt-1.5 z-50 rounded-md bg-foreground px-2 py-1 text-xs font-medium text-background whitespace-nowrap opacity-0 transition-opacity duration-100 group-hover/tip:opacity-100"
-      >
-        {label}
-      </div>
+      {!disabled && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 mt-1.5 z-50 rounded-md bg-foreground px-2 py-1 text-xs font-medium text-background whitespace-nowrap opacity-0 transition-opacity duration-100 group-hover/tip:opacity-100"
+        >
+          {label}
+        </div>
+      )}
     </div>
   );
 }
@@ -81,103 +87,121 @@ function Divider(): React.ReactElement {
 
 function Toolbar({
   editor,
+  readOnly,
 }: {
   editor: ReturnType<typeof useEditor>;
+  readOnly: boolean;
 }): React.ReactElement | null {
   if (!editor) return null;
 
   return (
-    <div className="flex flex-wrap items-center gap-0.5 p-1 border-b border-border bg-muted/30">
+    <div
+      className={cn(
+        "flex flex-wrap items-center gap-0.5 p-1 border-b border-border bg-muted/30",
+        readOnly && "opacity-50",
+      )}
+    >
       <ToolbarButton
-        onClick={() => editor.chain().toggleBold().run()}
+        onClick={() => editor.chain().focus().toggleBold().run()}
         active={editor.isActive("bold")}
+        disabled={readOnly}
         label="Bold"
       >
         <Bold size={13} />
       </ToolbarButton>
       <ToolbarButton
-        onClick={() => editor.chain().toggleItalic().run()}
+        onClick={() => editor.chain().focus().toggleItalic().run()}
         active={editor.isActive("italic")}
+        disabled={readOnly}
         label="Italic"
       >
         <Italic size={13} />
       </ToolbarButton>
       <ToolbarButton
-        onClick={() => editor.chain().toggleStrike().run()}
+        onClick={() => editor.chain().focus().toggleStrike().run()}
         active={editor.isActive("strike")}
+        disabled={readOnly}
         label="Strikethrough"
       >
         <Strikethrough size={13} />
       </ToolbarButton>
       <Divider />
       <ToolbarButton
-        onClick={() => editor.chain().toggleHeading({ level: 1 }).run()}
+        onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
         active={editor.isActive("heading", { level: 1 })}
+        disabled={readOnly}
         label="Heading 1"
       >
         <span className="text-[11px] font-bold leading-none">H1</span>
       </ToolbarButton>
       <ToolbarButton
-        onClick={() => editor.chain().toggleHeading({ level: 2 }).run()}
+        onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
         active={editor.isActive("heading", { level: 2 })}
+        disabled={readOnly}
         label="Heading 2"
       >
         <span className="text-[11px] font-bold leading-none">H2</span>
       </ToolbarButton>
       <ToolbarButton
-        onClick={() => editor.chain().toggleHeading({ level: 3 }).run()}
+        onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
         active={editor.isActive("heading", { level: 3 })}
+        disabled={readOnly}
         label="Heading 3"
       >
         <span className="text-[11px] font-bold leading-none">H3</span>
       </ToolbarButton>
       <Divider />
       <ToolbarButton
-        onClick={() => editor.chain().toggleBulletList().run()}
+        onClick={() => editor.chain().focus().toggleBulletList().run()}
         active={editor.isActive("bulletList")}
+        disabled={readOnly}
         label="Bullet list"
       >
         <List size={13} />
       </ToolbarButton>
       <ToolbarButton
-        onClick={() => editor.chain().toggleOrderedList().run()}
+        onClick={() => editor.chain().focus().toggleOrderedList().run()}
         active={editor.isActive("orderedList")}
+        disabled={readOnly}
         label="Ordered list"
       >
         <ListOrdered size={13} />
       </ToolbarButton>
       <Divider />
       <ToolbarButton
-        onClick={() => editor.chain().toggleBlockquote().run()}
+        onClick={() => editor.chain().focus().toggleBlockquote().run()}
         active={editor.isActive("blockquote")}
+        disabled={readOnly}
         label="Blockquote"
       >
         <Quote size={13} />
       </ToolbarButton>
       <ToolbarButton
-        onClick={() => editor.chain().toggleCodeBlock().run()}
+        onClick={() => editor.chain().focus().toggleCodeBlock().run()}
         active={editor.isActive("codeBlock")}
+        disabled={readOnly}
         label="Code block"
       >
         <FileCode size={13} />
       </ToolbarButton>
       <ToolbarButton
-        onClick={() => editor.chain().setHorizontalRule().run()}
+        onClick={() => editor.chain().focus().setHorizontalRule().run()}
+        disabled={readOnly}
         label="Horizontal rule"
       >
         <Minus size={13} />
       </ToolbarButton>
       <Divider />
       <ToolbarButton
-        onClick={() => editor.chain().undo().run()}
-        disabled={!editor.can().undo()}
+        onClick={() => editor.chain().focus().undo().run()}
+        disabled={readOnly || !editor.can().undo()}
         label="Undo"
       >
         <Undo2 size={13} />
       </ToolbarButton>
       <ToolbarButton
-        onClick={() => editor.chain().redo().run()}
-        disabled={!editor.can().redo()}
+        onClick={() => editor.chain().focus().redo().run()}
+        disabled={readOnly || !editor.can().redo()}
         label="Redo"
       >
         <Redo2 size={13} />
@@ -201,6 +225,10 @@ export default function TiptapEditor({
         heading: { levels: [1, 2, 3, 4, 5, 6] },
       }),
       CodeBlockLowlight.configure({ lowlight }),
+      Table.configure({ resizable: false }),
+      TableRow,
+      TableHeader,
+      TableCell,
     ],
     content: "",
     editable: !readOnly,
@@ -211,14 +239,11 @@ export default function TiptapEditor({
     },
   });
 
-  // Sync editable state when readOnly prop changes dynamically.
   useEffect(() => {
     if (!editor) return;
     editor.setEditable(!readOnly);
   }, [editor, readOnly]);
 
-  // Load content whenever the prop changes. The ref guards against the echo loop:
-  // onUpdate → onChange → parent state → content prop → setContent → onUpdate.
   useEffect(() => {
     if (!editor || content === undefined) return;
     if (content === loadedContent.current) return;
@@ -226,19 +251,16 @@ export default function TiptapEditor({
     settingContent.current = true;
     editor.commands.setContent(content, false);
     settingContent.current = false;
-    // Close the history group at the load boundary so undo can't remove loaded content.
     editor.view.dispatch(closeHistory(editor.state.tr));
   }, [editor, content]);
 
   return (
     <div className="rounded-md border border-border overflow-hidden">
-      {!readOnly && <Toolbar editor={editor} />}
+      <Toolbar editor={editor} readOnly={readOnly} />
       <EditorContent
         editor={editor}
         className={cn(
           "p-3 min-h-[180px] focus:outline-none text-sm",
-          // Explicit heading + list styles since Tailwind Preflight resets browser defaults
-          // and @tailwindcss/typography is not installed.
           "[&_.ProseMirror]:outline-none [&_.ProseMirror]:min-h-[160px]",
           "[&_.ProseMirror_h1]:text-2xl [&_.ProseMirror_h1]:font-bold [&_.ProseMirror_h1]:mt-4 [&_.ProseMirror_h1]:mb-2",
           "[&_.ProseMirror_h2]:text-xl [&_.ProseMirror_h2]:font-bold [&_.ProseMirror_h2]:mt-3 [&_.ProseMirror_h2]:mb-2",
@@ -254,6 +276,11 @@ export default function TiptapEditor({
           "[&_.ProseMirror_em]:italic",
           "[&_.ProseMirror_code]:bg-muted [&_.ProseMirror_code]:rounded [&_.ProseMirror_code]:px-1 [&_.ProseMirror_code]:text-xs [&_.ProseMirror_code]:font-mono",
           "[&_.ProseMirror_pre]:bg-muted [&_.ProseMirror_pre]:rounded [&_.ProseMirror_pre]:p-3 [&_.ProseMirror_pre]:my-2 [&_.ProseMirror_pre]:overflow-x-auto",
+          // Table styles
+          "[&_.ProseMirror_table]:w-full [&_.ProseMirror_table]:border-collapse [&_.ProseMirror_table]:my-3 [&_.ProseMirror_table]:text-sm",
+          "[&_.ProseMirror_th]:border [&_.ProseMirror_th]:border-border [&_.ProseMirror_th]:bg-muted [&_.ProseMirror_th]:px-3 [&_.ProseMirror_th]:py-1.5 [&_.ProseMirror_th]:text-left [&_.ProseMirror_th]:font-semibold",
+          "[&_.ProseMirror_td]:border [&_.ProseMirror_td]:border-border [&_.ProseMirror_td]:px-3 [&_.ProseMirror_td]:py-1.5",
+          "[&_.ProseMirror_.selectedCell]:bg-primary/10",
         )}
       />
     </div>

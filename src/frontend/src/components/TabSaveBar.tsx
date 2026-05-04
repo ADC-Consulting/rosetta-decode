@@ -26,7 +26,7 @@ export default function TabSaveBar({
           disabled={disabled || isSaving}
           className="cursor-pointer"
         >
-          {isSaving ? "Saving…" : saveLabel}
+          {isSaving ? "Saving" : saveLabel}
         </Button>
       )}
       {children}

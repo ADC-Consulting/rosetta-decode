@@ -8,6 +8,7 @@ export async function submitMigration(
   refDataset?: File,
   zipFile?: File,
   name?: string,
+  refTargetPath?: string | null,
 ): Promise<MigrateResponse> {
   const fd = new FormData();
   if (zipFile) {
@@ -21,6 +22,7 @@ export async function submitMigration(
     }
   }
   if (name) fd.append("name", name);
+  if (refTargetPath) fd.append("ref_target_path", refTargetPath);
   const res = await fetch(`${BASE}/migrate`, { method: "POST", body: fd });
   if (!res.ok) throw new Error(await extractApiError(res));
   return res.json() as Promise<MigrateResponse>;

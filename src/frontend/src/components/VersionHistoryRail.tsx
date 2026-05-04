@@ -56,7 +56,7 @@ export default function VersionHistoryRail({
     sorted.map((v, idx) => [v.id, idx + 1]),
   );
 
-  const displayed = [...sorted].reverse();
+  const displayed = sorted;
 
   async function handleCardClick(versionId: string): Promise<void> {
     if (restoring) return;
@@ -100,7 +100,7 @@ export default function VersionHistoryRail({
               month: "short",
             });
             const isSelected = selectedVersionId === v.id;
-            const isLatest = idx === 0;
+            const isLatest = idx === displayed.length - 1;
             const hasSelection = !!selectedVersionId;
 
             return (

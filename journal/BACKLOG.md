@@ -91,11 +91,16 @@
 - [X] F-UI-postmvp History tab: version timeline with agent/human icons, click-to-navigate
 - [x] F5 S-13: `make test` pass + delete `src/frontend/@/` artefact + commit gate → see `docs/plans/F5-tab-versions.md`
 - [x] feat(lineage): extend LineageEnricherAgent with FileNode, FileEdge, PipelineStep, BlockStatus, LogLink; multi-level view toggle (Blocks/Files/Pipeline) in LineageGraph (`feat/S-lineage-enricher-pipeline-levels`)
-- [x] F4: Graded confidence-aware translation + per-block refine loop + change history → see `docs/plans/F4-confidence-refine-history.md` (S1–S11 complete; Docker path issue discovered at end of session — needs `make docker-build` verification)
+- [x] F4: Graded confidence-aware translation + per-block refine loop + change history → see `docs/plans/F4-confidence-refine-history.md` (complete)
 - [x] UX fix: overall confidence bar now uses average LLM `confidence_score` (not reconciliation ratio); `overall_confidence_score: float` added to `TrustReportResponse`; bar width reflects exact %
-- [ ] F-UI-postmvp S-FE7: `GlobalLineagePage`
-- [ ] F-UI-postmvp S-FE8: `DocsPage`
-- [ ] F-UI-postmvp S-FE9: `ExplainPage` stub
+- [x] F-UI-postmvp S-FE7: `GlobalLineagePage` — Pipeline tab: migration multi-select + Connect → merged ReactFlow graph (`src/frontend/src/lib/lineage-merge.ts`); Datasets + Columns tabs stubbed/disabled (future)
+- [x] F-UI-postmvp S-FE8: `DocsPage` — migration cards (proposed/accepted), confidence/risk badges, read-only file tree, TiptapEditor popup with Plain English / Technical tabs; Rationale tooltip removed; ReportTab always-visible grey header + Modify button for both tabs
+- [x] F-UI-postmvp S-FE9: `ExplainPage` — full implementation: file upload Q&A + migration context Q&A, chat UI, migration panel, Monaco code blocks; backend POST /explain + POST /explain/job + GET /jobs?status= filter
+- [x] UI polish: ExplainPage full-height layout fix; Upload page promoted to inline Dialog on JobsPage; "Upload" nav item removed
+- [x] UI polish: BlockPlanTable — default groupBy=folder, chevron leftmost in group header, History icon (counter-clockwise clock), "Filter by" label, basename-only file names in rows
+- [x] UI polish: View Code dialog in Plan table — SAS (left) + Python (right) panels, Edit/Lock/Save, Sun/Moon theme toggle, parallel data fetch with loading state
+- [x] feat(backend): PATCH /jobs/{id}/blocks/{block_id}/python — human edit recorded as BlockRevision (creates rev 1 if none exists); unified diff stored
+- [x] feat(backend): improved LLM guardrails in explain_agent.py (scope boundary, no hallucination, structured fallback)
 - [X] F-UI-postmvp S-FE12: Upload UX — unified drop-zone (.sas/.sas7bdat/.zip/.log/.csv/.xls/.xlsx), manifest view
 - [X] F-UI-postmvp S-FE13: API client extensions (types + jobs.ts + migrate.ts)
 - [X] UI polish: sonner toast for all errors, human-friendly error copy
@@ -109,10 +114,111 @@
 - [X] fix(frontend): remove `asChild` from Base UI `TooltipTrigger` in EditorTab (nested button hydration error)
 - [X] fix(frontend): `NODE_TYPES`/`EDGE_TYPES` module-scope constants in LineageGraph (React Flow warning #002)
 - [X] fix(frontend): remove all `console.log` debug calls from VersionHistoryRail
+- [x] fix(frontend): block API calls (refine/revisions/restore/python) — replace `encodeURIComponent` with `blockId.replace(/:/g, '%3A')` to preserve path separators for FastAPI `block_id:path`
+- [x] fix(frontend): View Code dialog SAS panel — exact key lookup first, then fuzzy fallback; `language="sas"` + `beforeMount={registerSasLanguage}` restores syntax highlighting
+- [x] fix(frontend): View Code dialog Python panel — falls back to `generatedFiles[*.py]` then `jobPythonCode` (no longer shows full concatenated output when no revision exists); `generatedFiles` prop wired JobDetailPage → PlanTab → BlockPlanTable
+- [x] fix(frontend): save handler invalidates `["block-revisions"]` query so History popup reflects new revision immediately
+- [x] UX: View Code dialog — SAS/Python SVG logos in panel headers; button order resequenced (theme → edit/lock → save)
+- [x] UX: History button highlights with primary ring when a human edit exists for that block (`humanEditedBlocks` set updated on save)
+- [x] UX: BlockRevisionDrawer replaced with Monaco DiffEditor (`MonacoDiffViewer`) — each revision shows `previousCode` (rev n-1) vs `python_code` (rev n) side-by-side; latest revision auto-expanded; older revisions collapsed
+- [x] UX: RightSidebar — `subtitle` prop for per-item secondary text; `sidebarKey` prop for independent per-page collapse state
+- [x] UX: GlobalLineagePage sidebar — job items show `status · date` subtitle; Connect button shows selected count, disabled when empty; helper text when nothing selected; `sidebarKey="lineage-sidebar-collapsed"`
+- [x] UX: ExplainPage sidebar — job items show status subtitle; `sidebarKey="explain-sidebar-collapsed"`
+- [x] fix(backend): PlainEnglishAgent system prompt — field name corrected from `"markdown"` to `"non_technical_doc"` to match Pydantic output model; contradictory bullet/prose rule removed
+- [x] feat(backend): PlainEnglishAgent prompt restructured — 5 sections (Purpose, Source Data, How It Works, Outputs, Migration Status) with explicit bullet/numbered list formatting per section; token limit raised to 1800
+- [x] feat(frontend): Plan tab full UX overhaul — single Card summary, inline metrics ribbon, 8-col table, rationale icon+popover, Pass/Fail badges, stat pill tooltips, shadcn primitives throughout
+- [x] fix(frontend): View Code dialog alignment — unified full-width toolbar + matching panel headers; both Monaco editors start at identical vertical offset
+- [x] fix(backend): confidence 100% bug for manual/skip/untranslatable blocks — StubGenerator + migration_planner now emit confidence_score=0.0/band=very_low for non-translated blocks
+- [x] feat(explain): two chat modes (Migration Chat + SAS General), 3-layer LLM prompt composition, react-markdown renderer, session restore fix, mode tabs, sidebar polish — migration 013
+- [x] feat(explain): mode×audience suggestion chips (4 sets), SAS General always-open input, send bug fix, Monaco syntax highlighting with language map, RightSidebar header slot
+- [x] feat(frontend): SAS EG–style editor — Code|Log|Output sub-tab bar, LogView (NOTE/WARNING/ERROR coloring), OutputView (CSV data grid), block tree sidebar with expandable DATA/PROC nodes, Run ▶ button
+- [x] feat(backend): GET /jobs/{id}/attachments + GET /jobs/{id}/attachments/{path_key} — list and stream non-SAS uploaded files by category (log/output/other)
+- [x] feat(executor): new Python sandbox microservice (src/executor/, port 8001, subprocess + tempfile isolation); POST /execute endpoint; ReconciliationService logic self-contained
+- [x] feat(backend): POST /jobs/{id}/execute — proxy endpoint to executor; block_id optional; 404/503/502 error handling
+- [x] feat(worker): RemoteReconciliationService — delegates recon to executor over HTTP with graceful fallback; _reconcile_initial_blocks() sets per-block reconciliation_status after initial migration run
+- [x] refactor(frontend): SAS Studio layout — persistent vertical split, bottom panel (Code|Log|Output|History tabs), Run ▶ first in toolbar, history moved to bottom panel tab
+- [x] fix(executor): per-run temp file for result JSON (avoids concurrent-run collisions at /tmp/rosetta_result.json)
+- [x] fix(frontend): stdout always shown even on error (logs up to crash point no longer dropped)
+- [x] chore: `make docker-build` needed — picks up executor log4j2 Spark warning suppression, executor volume mount, backend trigger fix, generated_files sync, agent router changes (still need one more build for today's fixes)
+- [x] fix(backend): output variable NameError — root cause was (1) block topo sort placing PROC_IML before its producer, (2) GenericProcAgent prompt using wrong `libname_table` form for inter-block inputs; fixed via Kahn's sort tiebreaker + prompt/renamer fixes across all agents
 - [ ] UI bug (unresolved): TipTap toolbar cursor jumps to bottom after one keystroke — multiple fixes attempted, none confirmed working
-- [ ] UI bug (unresolved): version card not highlighted after saving — race condition fix attempted (await invalidateQueries), not confirmed
-- [ ] UI bug (unresolved): Editor tab version restore always shows original code — null sentinel + {} override fix attempted, not confirmed
 - [ ] UI bug (unresolved): tab heights not filling available space — `calc(100vh - 160px)` applied to all four tabs, not confirmed working
+- [ ] fix(backend): `translate_best_effort` strategy — add to migration planner prompt OR remove enum; currently dead (LLM never assigns it)
+- [x] fix(backend): `manual_ingestion` StubGenerator — now emits `pd.read_csv(disk_path)` scaffold with `is_untranslatable=False`, `confidence_score=0.7`; block_plan strategy passed to router via `block_plan_map` in `_translate_blocks()`
+- [x] fix(executor): data_dir routing — uploaded files saved to `/uploads/<job_id>/<basename>`; executor rewrites `/workspace/data/` → `data_dir/` at run time; `data_dir` threaded through all recon call sites
+- [x] fix(executor): xlsx support — openpyxl added to Dockerfile; `_fix_excel_spark_reads()` guard rewrites bad Spark xlsx reads; prompt updated with pandas bridge pattern
+- [x] fix(backend): PROC IMPORT output_var naming — removed `_file_io_types` exclusion from `all_block_outputs`; `normalise_output_var` + `normalise_output_var_in_code` shared utilities in `agents/shared.py`
+- [x] fix(backend): file_count off-by-one — counts per-path `__ref_*__` sentinels; excludes canonical aliases and `__refine_context__`
+- [ ] fix(backend): `auto_verified` trust report counter always 0 — derive from `reconciliation_status == "pass" AND confidence in (high, medium)` instead
+- [ ] fix(backend): `needs_attention` too strict — widen to: strategy in manual/skip OR recon fail OR confidence in (low, very_low, unknown)
+- [x] fix(tests): coverage raised from 86% → 95% — comprehensive test additions across all agent factories, router, reconciliation, worker/main, jobs routes, explain routes, codegen, macro_expander
+- [x] feat(backend): folder-aware agent context — `DataFileInfo` + `data_files` + `libname_map` on `JobContext`; `_sniff_file()` helper; `build_context_section()` shared utility; all 4 agents prepend context section
+- [x] UX: history pane ordering — v1 at top, descending to latest; "Latest" badge on last entry (`VersionHistoryRail` + `EditorTab`)
+- [x] UX: Plan tab block table collapsed by default; chevron toggle on "Blocks" heading
+- [x] UX: Rationale column merged into Actions as Info icon (tooltip + popover)
+- [x] fix: saveBlockPython invalidates `["job", jobId, "versions"]` so new saves appear in history rail immediately
+- [x] UX: UploadPage navigates directly to /jobs on submit success; Phase 2 result card removed
+- [x] feat(backend): DATA_FILE lineage nodes — `_inject_data_file_nodes()` appends DATA_FILE nodes + inferred edges linking blocks to real uploaded data files
+- [x] feat(backend): macro file content in windowed prompts — `windowed_context()` includes `macros/` and `autoexec.sas` so translation agents see macro definitions
+- [x] feat(backend): always-attempt instruction added to all 4 agents — agents must emit best-effort code, never empty stubs for translate/translate_with_review
+- [x] fix(frontend): TipTap table rendering — named imports for Table/TableCell/TableHeader/TableRow; toolbar always visible (dimmed in readonly); table CSS styles added
+- [x] feat(frontend): Report tab — VersionHistoryRail restored; always-visible header; Edit/Save inline buttons; Save Changes hidden from top bar in report tab
+- [x] feat(frontend): Lineage DATA_FILE nodes — blue dashed border, extension badge, filename + column preview
+- [x] feat(frontend): EditorTab explorer panel max width 50% (was 30%)
+- [x] feat(frontend): EditorTab history tab — v{n} version labels; clicking loads block's Python revision via model.setValue(); no longer changes selected SAS file; theme-aware highlight
+- [x] feat(frontend): full-page editor — EditorFullPage at /jobs/:id/editor; Maximize2/Minimize2 toggle; URL ?tab= routing on return
+- [x] feat(frontend): inline/side-by-side diff toggle in BlockRevisionModal — segmented button, inline default
+- [x] feat(frontend): Plan summary card — text full-width top, stats centered bottom, py-2 compact padding
+- [x] feat(frontend): block table groupBy defaults to "file"
+- [x] feat(frontend): save hash guard — skips saveVersionMutation if content unchanged
+- [x] feat(frontend): copyable errors in ExecutionOutputPanel — Copy button + select-all pre
+- [x] feat(backend): PATCH /blocks/{block_id}/python now updates job.generated_files[py_key] so EditorTab stays in sync
+- [x] feat(backend): block refine trigger changed from "human-refine" to "agent" — history pane now correctly shows 🤖
+- [x] feat(backend): _BestEffortAgentAdapter in router — manual/manual_ingestion routed to agents; StubGenerator fallback on exception only
+- [x] feat(backend): stub_generator fallback path → /workspace/data/{dataset_name}.csv
+- [x] feat(backend): agent prompts enforce /workspace/data/<name>.csv file path convention
+- [x] feat(infra): executor docker-compose volume mount uploads:/workspace/data:ro + WORKSPACE_DATA_DIR env var
+- [ ] verify: Log/Output tabs in EditorTab bottom panel — may still not load; user to confirm after `make docker-build`
+- [ ] verify: history pane click loads correct Python code in editor with multiple block revisions (needs docker-build first)
+- [x] fix(worker): cancel check in `_translate_blocks` — open fresh session via `session_factory` instead of `session.refresh()` on outer session (fixes "not persistent within this Session" crash)
+- [x] F20 Stream A: JobTrace model + Alembic 016, TraceEmitter, POST /cancel, GET /trace/stream SSE, LiveTraceDialog (timeline rail, shadcn tokens), trace button in JobsPage → see `docs/plans/latest/F20-live-trace-popup.md`
+- [ ] F20 Stream B: ExecutionOutputPanel improvements (elapsed label, stderr split, recon cards) + Trust tab in EditorTab → see `docs/plans/latest/F20-live-trace-popup.md`
+- [x] LiveTraceDialog UX overhaul — block colour states, pipeline:full banner, human-friendly check labels, user-toggleable expand, shimmer keyframe fixed → see `docs/plans/latest/F20-live-trace-popup.md`
+- [x] feat(executor): per-block DataFrame session cache (Parquet) — `session_dir` threaded executor→recon→block_executor→main; prior block outputs pre-loaded; cleanup after loop
+- [x] feat(worker): `pipeline:full` final recon run after all blocks — emits block_start/recon_result/block_done SSE events; displayed as summary banner in popup
+- [x] fix(recon): `_build_recon_groups` fallback removed — per-block recon only fires for specifically-matched data files; job-level ref used only in pipeline:full run
+- [x] fix(recon): column names normalized to lowercase in `recon.py` before all three checks (defensive; guards against SAS UPPERCASE ref headers)
+- [x] fix(prompt): Rule 2 in `SHARED_TRANSLATION_RULES` strengthened — mandatory `toDF(*[c.lower() for c in df.columns])` after every file read; removes SAS uppercase/Python lowercase mismatch at source
+- [x] fix(prompt): unified join key normalisation — save type before join, regexp_replace+cast, restore original type after join; single section replaces two conflicting ones
+- [x] fix(prompt): generic schema-mismatch cast hint — per-column "output is X but ref expects Y — cast to match" in retry hint
+- [x] fix(prompt): near-zero aggregate parity hint — floating point drift advisory injected when ref_sum < 1e-3
+- [x] fix(worker): job status written immediately after recon (step 10a) — UI reflects proposed/under_review without waiting for doc/lineage LLM calls
+- [x] fix(worker): `exec_ok` field on `GeneratedBlock`; threaded into `_persist_initial_revisions` to write baseline recon status (pass/fail) for every translated block
+- [x] fix(worker): `_reconcile_initial_blocks` skip guard — only skips blocks with ref-based checks, allowing execution-only passes to be upgraded
+- [x] feat(planner): `confidence_score` asked from MigrationPlannerAgent LLM; `BlockPlan` defaults changed (1.0→0.5, "high"→"unknown")
+- [x] feat(backend): `effective_confidence_band` computed post-recon in trust report; added to `TrustReportBlock` schema
+- [x] feat(backend): `end_line` threaded from `SASBlock` → `BlockPlan` → API
+- [x] feat(frontend): derived strategy badge — "Translated" (green on pass, blue on no-recon), "Review Needed" (amber on fail), "Manual" (red always)
+- [x] feat(frontend): SAS highlight uses actual `end_line` instead of hardcoded `startLine + 20`
+- [x] feat(frontend): Activity button pulses (animate-pulse text-primary) when job is running/queued
+- [x] fix(tests): deleted stale `tests/test_reconciliation_coerce.py` (imported removed `_coerce_sas_dates`)
+- [x] fix(frontend): no-recon blocks now show green (not amber) in LiveTraceDialog — amber was misleading for execution-only pass
+- [x] fix(recon): `_build_recon_groups` — strip libname prefix from output_datasets before stem match (`outdir.revenue_summary` → `revenue_summary`)
+- [x] fix(block_executor): empty checks + ref present → synthetic `execution: fail` so retry loop fires on crash (was silently treating as pass)
+- [x] fix(worker): translation exception now injects error as risk_flag and `continue`s to next attempt (was `break` on attempt 1)
+- [x] fix(worker): `_reconcile_initial_blocks` (step 11) disabled — was running job-level ref against all intermediate blocks with wrong schema
+- [x] fix(executor): session cache uses PySpark `spark.read/write.parquet` (was pandas); Spark init always included when session_dir set; load snippet runs after Spark init
+- [x] fix(executor): session cache path changed to `/tmp/rosetta_cache/...` — `/workspace/data` is mounted read-only
+- [x] fix(frontend): LiveTraceDialog — every completed block has chevron + expandable panel; no-ref blocks show "Executed — no reference file matched"
+- [x] feat(frontend): Plan tab recon column — CheckCircle2/XCircle icons instead of Pass/Fail badges; manual strategy always shows `—`
+- [x] feat(parser): MacroDef model, filename_map, PROC IML/FORMAT extractors, DROP/KEEP/WHERE/OUTPUT/ARRAY fields on SASBlock
+- [x] feat(prompt): SHARED_TRANSLATION_RULES — explicit "always PySpark, never pandas" + "never cast to match ref schema" rules
+- [x] feat(recon): DEBUG logs showing ref/actual rows, columns, dtypes before each check run
+- [x] fix(worker): cumulative code execution — prior-block NameErrors fixed; Parquet session cache removed; `result = <output_var>` injected for correct recon capture
+- [x] fix(prompt): `.schema[col]` introspection on inter-block DataFrames suppressed via `SHARED_TRANSLATION_RULES`
+- [x] fix(planner): `block_type` authoritative from parser; PROC_IML no longer shows as UNTRANSLATABLE
+- [ ] feat(planner): post-run risk+rationale enrichment — `_enrich_block_plan_post_run` in `main.py`; rule-based, no LLM call; re-persists `job.migration_plan` after `_persist_initial_revisions`
+- [ ] F20 Stream B: ExecutionOutputPanel improvements + Trust tab in EditorTab → see `docs/plans/latest/F20-live-trace-popup.md`
 
 ---
 

@@ -248,3 +248,24 @@ async def test_write_through_plan_updates_user_overrides(
     job = result.scalar_one()
     assert job.user_overrides is not None
     assert job.user_overrides["block_overrides"] == block_overrides
+
+
+# ── GET /jobs/{id}/versions — 422 for invalid tab ────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_get_versions_invalid_tab_422(client: AsyncClient, db_session: AsyncSession) -> None:
+    """GET /jobs/{id}/versions returns 422 for an unrecognised tab name."""
+    job_id = await _insert_job(db_session)
+    response = await client.get(f"/jobs/{job_id}/versions?tab=not_a_real_tab")
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_get_versions_job_not_found_404(
+    client: AsyncClient,
+) -> None:
+    """GET /jobs/{id}/versions returns 404 when job does not exist."""
+    fake_id = str(uuid.uuid4())
+    response = await client.get(f"/jobs/{fake_id}/versions?tab=editor")
+    assert response.status_code == 404

@@ -1,4 +1,4 @@
-import { OnMount } from "@monaco-editor/react";
+import type { OnMount } from "@monaco-editor/react";
 
 /**
  * Default Monaco Editor theme.

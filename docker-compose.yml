@@ -32,11 +32,14 @@ services:
       - .env
     environment:
       - DATABASE_URL=postgresql+asyncpg://rosetta:rosetta@postgres:5432/rosetta
+      - UPLOAD_DIR=/uploads
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - rosetta-net
+    volumes:
+      - uploads:/uploads
 
   tensorzero:
     image: tensorzero/gateway:latest
@@ -71,6 +74,7 @@ services:
       - .env
     environment:
       - DATABASE_URL=postgresql+asyncpg://rosetta:rosetta@postgres:5432/rosetta
+      - UPLOAD_DIR=/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -78,6 +82,23 @@ services:
         condition: service_started
     networks:
       - rosetta-net
+    volumes:
+      - uploads:/uploads
+
+  executor:
+    build:
+      context: .
+      dockerfile: src/executor/Dockerfile
+    ports:
+      - "8001:8001"
+    networks:
+      - rosetta-net
+    volumes:
+      - uploads:/uploads
+      - uploads:/workspace/data:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+      - WORKSPACE_DATA_DIR=/workspace/data
 
   frontend:
     build:
@@ -96,6 +117,7 @@ services:
 volumes:
   postgres_data:
   frontend_node_modules:
+  uploads:
 
 networks:
   rosetta-net:

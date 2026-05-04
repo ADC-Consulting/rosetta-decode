@@ -8,7 +8,6 @@ import {
   MessageSquare,
   Moon,
   Sun,
-  Upload,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useState } from "react";
@@ -21,7 +20,6 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { to: "/upload", label: "Upload", Icon: Upload },
   { to: "/jobs", label: "Migrations", Icon: LayoutList },
   { to: "/lineage", label: "Lineage", Icon: GitFork },
   { to: "/docs", label: "Docs", Icon: FileText },

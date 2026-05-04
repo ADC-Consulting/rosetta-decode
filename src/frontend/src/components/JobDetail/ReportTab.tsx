@@ -1,5 +1,5 @@
 import TiptapEditor from "@/components/TiptapEditor";
-import { Lock, Pencil } from "lucide-react";
+import { Lock, Pencil, Save } from "lucide-react";
 import { marked } from "marked";
 import { useMemo, useState } from "react";
 import { extractMarkdown } from "./utils";
@@ -10,12 +10,16 @@ export default function ReportTab({
   onDocChange,
   restoreKey = 0,
   nonTechnicalDoc = null,
+  onSave,
+  isSaving = false,
 }: {
   isDone: boolean;
   doc: string | null;
   onDocChange?: (doc: string) => void;
   restoreKey?: number;
   nonTechnicalDoc?: string | null;
+  onSave?: () => void;
+  isSaving?: boolean;
 }): React.ReactElement {
   const [readOnly, setReadOnly] = useState(true);
   const [showTechnical, setShowTechnical] = useState(true);
@@ -43,8 +47,8 @@ export default function ReportTab({
 
   return (
     <div className="h-full min-h-0 flex flex-col pb-6">
-      {/* Toolbar */}
-      <div className="flex items-center gap-2 mb-2 shrink-0">
+      {/* Header — always visible */}
+      <div className="flex items-center gap-2 px-3 py-2 mb-2 shrink-0 rounded-md bg-muted/40 border border-border">
         <h3 className="text-sm font-semibold">Migration summary</h3>
 
         {/* Technical / Plain English toggle */}
@@ -73,16 +77,34 @@ export default function ReportTab({
           </button>
         </div>
 
-        {/* Read-only / edit toggle — only relevant when technical doc is shown */}
-        {showTechnical && (
+        {/* Right-side actions */}
+        <div className="ml-auto flex items-center gap-1.5">
+          {!readOnly && onSave && (
+            <button
+              onClick={onSave}
+              disabled={isSaving}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium border border-border bg-background hover:bg-muted transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <Save size={12} />
+              {isSaving ? "Saving…" : "Save"}
+            </button>
+          )}
           <button
             onClick={() => setReadOnly((v) => !v)}
             aria-label={readOnly ? "Enable editing" : "Lock editing"}
-            className="ml-auto p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium border border-border bg-background hover:bg-muted transition-colors cursor-pointer"
           >
-            {readOnly ? <Lock size={14} /> : <Pencil size={14} />}
+            {readOnly ? (
+              <>
+                <Pencil size={12} /> Edit
+              </>
+            ) : (
+              <>
+                <Lock size={12} /> Read-only
+              </>
+            )}
           </button>
-        )}
+        </div>
       </div>
 
       {/* Content */}
@@ -102,7 +124,7 @@ export default function ReportTab({
           <TiptapEditor
             key={`plain-${restoreKey}`}
             content={nonTechHtml}
-            readOnly={true}
+            readOnly={readOnly}
           />
         ) : (
           <p className="text-sm text-muted-foreground">

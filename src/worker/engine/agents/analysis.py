@@ -55,6 +55,14 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
     already-resolved macro variables, perform a structural analysis and return a single
     JSON object — no prose, no markdown fences.
 
+    **DEFAULT: always attempt a translation.** A best-effort translation with real code
+    is always preferred over an empty placeholder. Set ``confidence_score`` to your honest
+    estimate — low confidence is fine, but the code field must never be empty for
+    ``translate`` or ``translate_with_review`` strategies. Use ``uncertainty_notes`` to
+    explain what may differ. Only assign ``strategy="manual"`` when the SAS construct has
+    absolutely no Python equivalent (e.g., PROC OPTMODEL LP/NLP with complex solver
+    structure that cannot be approximated).
+
     Your tasks:
     1. Identify all macro variable declarations (%LET) and their resolved values.
        Include pre-resolved macro vars supplied in the input AND any additional ones you

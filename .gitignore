@@ -219,3 +219,8 @@ vite.config.ts.timestamp-*
 coverage/
 
 .DS_Store
+
+# Local working directories and IDE state
+working/
+.claire/
+src/frontend/@/

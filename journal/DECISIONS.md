@@ -6,6 +6,118 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-05-04 — cumulative execution, planner correctness, post-run risk design
+
+- **Cumulative code over Parquet session cache:** each block is executed with all prior blocks' code prepended; Parquet cache silently left gaps when upstream blocks crashed mid-execution leaving no save; cumulative code is always correct regardless of upstream crash · revisit never
+- **Parser `block_type` is authoritative in `_build_migration_plan`:** LLM's returned `block_type` is overridden by the parsed `SASBlock.block_type` keyed by `block_id`; the prompt enum was incomplete (missing PROC_IML etc.) causing UNTRANSLATABLE misclassification · revisit never
+- **Post-run risk+rationale enrichment (design agreed, not yet implemented):** `risk` and `rationale` on `BlockPlan` to be recomputed after translation using recon results + confidence band; rule-based, no LLM call; re-persists `job.migration_plan`; pre-run planner values are initial estimates only — recon pass + high conf → low; recon fail → high; no recon + low conf → high · revisit never
+
+---
+
+## 2026-05-03 (session 3 — recon grouping fixes, retry loop, session cache, parser enhancements)
+
+- **`_build_recon_groups` direct-match only:** strip libname prefix from `output_datasets` before stem match; no BFS backward traversal — upstream blocks produce different shapes and must not be reconciled against the terminal output ref · revisit never
+- **`_reconcile_initial_blocks` (step 11) disabled:** was redundant and harmful — ran job-level ref against every intermediate block post-translation; per-block recon in `_translate_blocks` handles this correctly · revisit never
+- **Session cache uses `/tmp`:** `/workspace/data` is mounted read-only in executor; session Parquet cache lives at `/tmp/rosetta_cache/<id>/`; Spark init always included when session_dir set so `spark.read/write.parquet` available · revisit never
+- **Translation exception retries:** `except Exception` in retry loop now `continue`s (not `break`s) on attempts 1–2, injecting error as risk_flag; `block_done status=error` emitted so popup shows red immediately · revisit never
+- **PySpark-only prompt rule:** `SHARED_TRANSLATION_RULES` explicitly forbids pandas and casting columns to match ref schema — PySpark types are authoritative · revisit never
+- **SAS parser enhancements:** MacroDef, filename_map, PROC IML/FORMAT dedicated extractors, DROP/KEEP/WHERE/OUTPUT/ARRAY fields on SASBlock — provides richer context to translation agents · revisit never
+
+## 2026-05-03 (session 2 — per-block recon cache, popup UX overhaul, column casing)
+
+- **Executor DataFrame session cache via Parquet:** per-block recon passes `session_dir` to executor; after each successful run, all non-private DataFrames saved to `session_dir/<name>.parquet`; next block's code gets a load-snippet prepended — avoids re-running N-1 blocks for block N; cache cleaned up after translation loop · revisit when blocks produce large DataFrames (100k+ rows) or PySpark DataFrames (can't `.to_parquet` without `.toPandas()`)
+- **`_build_recon_groups` fallback removed:** per-block recon now ONLY fires when a block's output_dataset specifically matches an uploaded data file stem; job-level ref applies only to `pipeline:full` final run — prevents comparing intermediate blocks against the wrong (final output) reference · revisit never
+- **Column name normalization: two-layer defence:** (1) LLM prompt `SHARED_TRANSLATION_RULES` Rule 2 mandates `toDF(*[c.lower() for c in df.columns])` after every file read — fixes at source; (2) `recon.py` normalizes both ref and actual to lowercase before checks — defensive guard for user-uploaded uppercase ref CSVs · revisit never
+- **`pipeline:full` final recon run in `_translate_blocks`:** after all blocks complete, a fresh full-pipeline execution (no session cache) runs against the job-level ref and emits `block_start`/`recon_result`/`block_done` SSE events; displayed as `PipelineSummaryBanner` in LiveTraceDialog · revisit never
+- **LiveTraceDialog toggle UX:** `expanded` state uses `userToggled: boolean | null` — `null` means "follow data" (auto-expand when recon arrives), non-null means "user chose" (override); prevents auto-expand from permanently locking the row open · revisit never
+
+## 2026-05-03 (session — recon popup, UNRECOGNIZED rename, per-block recon wiring)
+
+- **Per-block recon uses `_build_recon_groups`:** single final-output ref file must NOT be used for intermediate blocks — each block maps to its own uploaded reference file via output_datasets → context.data_files stem match; fall back to job-level ref for terminal blocks; blocks with no outputs skipped · revisit never
+- **`_reconcile_initial_blocks` emits `recon_result` + corrective `block_done` trace events:** step 11 runs post-translation while SSE stream still open; second `block_done` overwrites first optimistic "pass" in frontend groupMap · revisit never
+- **UNTRANSLATABLE → UNRECOGNIZED everywhere:** enum value, frontend types, generated comments, test assertions — consistent signal that a block was not recognised, not that translation was attempted and failed · revisit never
+- **Amber attention strip removed from PlanTab:** replaced by per-block strategy badge coloring (pass=green, fail=amber, manual=red, pending=blue) · revisit never
+- **`docker-compose.override.yml` bind-mounts `src/worker`:** rebuilds are never needed for worker code changes; `docker compose restart worker` is sufficient · revisit never
+
+## 2026-05-03 (session — join fixes, confidence/status overhaul, SAS highlight)
+
+- **Join key type-save/restore:** save `_type = df.schema[col].dataType` before normalising to string, restore with `.cast(_type)` after join — generic, works for all Spark types, no hardcoded `cast("long")`; scoped to identifier/key columns only · revisit never
+- **`effective_confidence_band` in trust report read layer:** planner's `confidence_score` is audit-trail; `effective_confidence_band` computed at read time — `pass` upgrades to at least `medium`, `fail` downgrades, no recon keeps LLM estimate · revisit never
+- **Two-phase job DB commit (10a/10b):** status + code written immediately after recon; doc + lineage after best-effort enrichment — eliminates 30–60s UI lag · revisit never
+- **Baseline recon status from `exec_ok`:** `_persist_initial_revisions` writes `"pass"`/`"fail"` from translation loop — every translated block gets a status immediately; ref-based recon upgrades it when available · revisit never
+- **MigrationPlannerAgent must output `confidence_score`:** was defaulting to 1.0 silently; now in JSON schema with guidance thresholds; default 0.5/"unknown" · revisit never
+
+---
+
+## 2026-05-01 (session — F20 Stream A: live trace popup)
+
+- **JobTrace as append-only audit table:** trace events written by worker via `TraceEmitter` (independent short-lived sessions, never raises); SSE endpoint polls `job_traces` by `(job_id, id)` composite index at 0.5s interval — keeps backend stateless and avoids WebSocket complexity · revisit never
+- **Cancel check uses fresh session:** `_translate_blocks` cancel check opens a new session via `session_factory` instead of calling `session.refresh(job)` on the outer long-lived session — the Job object becomes detached/expired after LLM calls; fresh `get()` by PK is safe · revisit never
+- **Agent thinking stream deferred:** real LLM reasoning tokens are Claude-only (extended thinking); model-agnostic structured `thinking` events (agent name, block type, attempt context) chosen instead — deferred to next session · revisit never
+
+---
+
+## 2026-04-28 (session — rawdir_customers root-cause fix + F19 plan)
+
+- **`block_output_stems` uses full `context.blocks` (not `windowed.blocks`):** `windowed_context` correctly narrows the context to a single block for LLM prompt scoping, but the upstream output variable name map must see all job blocks — these two concerns are now separated in all three `_build_prompt` functions · revisit never
+- **Debugging discipline:** when a bug persists across multiple fix attempts, add targeted DEBUG logging at every pipeline stage (prompt construction → LLM output → post-normalise → assembly) before changing any logic; confirm root cause via log evidence before patching · revisit never
+
+---
+
+## 2026-04-27 (session — Executor runtime fixes: data_dir, xlsx, output_var, file_count)
+
+- **Per-job upload subdir:** non-SAS files now saved to `/uploads/<job_id>/<basename>` instead of `/uploads/<job_id>_<basename>`; enables a single `data_dir` param to resolve all file paths without per-job volume magic · revisit never
+- **`data_dir` executor param:** executor rewrites `/workspace/data/` at execution time using the job-specific directory; generated code stays portable (always `/workspace/data/<basename>`); rewrite happens in `runner.py` before subprocess · revisit never
+- **`normalise_output_var` / `normalise_output_var_in_code` in `agents/shared.py`:** single source of truth for libname→stem normalisation; handles both dot form (`rawdir.customers`) and underscore form (`rawdir_customers`); all three translation agents delegate both the code-body rewrite and the `output_var` field correction here · revisit never
+- **PROC IMPORT included in `all_block_outputs`:** removed the `_file_io_types` exclusion — PROC IMPORT outputs are renamed to stem-only by the agent renamer, so downstream prompts must show stem-only names to match the runtime variable · revisit never
+
+---
+
+## 2026-04-27 (session — Executor NameError root-cause fix)
+
+- **Inter-block vs external-source variable naming in prompts:** transform block outputs (DATA_STEP, PROC_SQL, PROC_IML, etc.) are named stem-only in agent prompts; PROC_IMPORT/PROC_EXPORT outputs keep `libname_table` underscore form — applied consistently across all three agents · revisit never
+- **Topo sort tiebreaker (Kahn's + min-heap):** `_topological_sort` uses Kahn's algorithm with a `(source_file, start_line)` priority queue instead of `nx.topological_sort`; ensures unconnected blocks (PROC_IML has no `DATA=`/`OUT=`) retain natural SAS file order. `nx.lexicographic_topological_sort` not available in networkx 3.6.1 · revisit if networkx upgraded
+- **PROC IMPORT path convention:** generated code always uses `/workspace/data/<basename>` — basename extracted from SAS `DATAFILE=` value, macro-expanded prefix stripped. Executor volume mounts uploads at `/workspace/data/` · revisit never
+
+---
+
+## 2026-04-26 (session — Codegen/executor fixes)
+
+- **Output variable naming convention:** output dataset variables use TABLE STEM ONLY (no libname prefix) — `DATA outdir.foo` → Python var `foo`; input datasets keep full `libname_table` form since they are pre-loaded. Rationale: prevents agents from referencing the output as if it were an input. · revisit never
+- **`build_context_section()` removed:** was dead code (never called by any agent); log context now injected inline in each agent's `_build_prompt()` · revisit never
+- **`result` as canonical executor output variable:** `assemble_flat()` appends `result = <output_var>` so the executor result-capture snippet can find it reliably via `globals().get('result')` · revisit never
+
+---
+
+## 2026-04-25 (session — Agentic pipeline context + Editor UX polish)
+
+- **`manual_ingestion` is not untranslatable:** PROC IMPORT and similar I/O blocks have clear Python equivalents (`pd.read_csv`); they get `is_untranslatable=False`, `confidence_score=0.7`, and a `# TODO: verify delimiter and encoding` comment · revisit never
+- **Absolute disk path in `manual_ingestion` stub:** the uploaded file's absolute path (sentinel `disk_path`) is used so the generated code is immediately runnable locally; relative project path is a post-migration concern · revisit when executor sandbox path mapping is clarified
+- **`build_context_section()` shared utility:** a single function in `shared_context.py` renders the project context prompt section from `JobContext.data_files` and `libname_map`; all agents call it identically; adding a new context field requires changing only this one function · revisit never
+- **DATA_FILE lineage nodes use `inferred: True` edges:** consistent with existing cross-file inferred-edge convention; frontend uses the `inferred` flag to style edges differently · revisit never
+- **`_translate_blocks()` must pass `block_plan` per block:** migration planner strategy was being computed but discarded — root cause of PROC IMPORT staying UNTRANSLATABLE despite correct plan; fixed via `block_plan_map` dict keyed on `"{source_file}:{start_line}"` · revisit never
+
+---
+
+## 2026-04-24 (session — SAS EG editor UX + executor microservice)
+
+- **`executor` microservice (new Docker service, port 8001):** generated Python runs in a subprocess sandbox inside a separate container rather than `exec()` in-process; isolates execution, enables cloud scaling, and exposes a `POST /execute` HTTP endpoint reusable by worker and backend · revisit when adding SAS execution support
+- **Shared `uploads` volume between `backend` and `executor`:** reference files (.csv, .sas7bdat) uploaded by the user must be readable by the executor at the same absolute path; named Docker volume `uploads` mounted at `/uploads` in both services · revisit never
+- **`RemoteReconciliationService` with graceful fallback:** worker delegates recon to executor over HTTP; `ConnectError`/`TimeoutException` return `{"checks": []}` and log a warning rather than failing the job — executor unavailability is non-fatal · revisit never
+- **Bottom panel always-visible split (SAS Studio layout):** execution output, log, output data, and history are shown in a persistent resizable bottom panel (vertical `ResizablePanelGroup`) instead of a slide-in overlay; matches SAS Studio UX familiar to SAS users · revisit never
+- **`translate_best_effort` strategy is dead:** defined in the enum but absent from the migration planner prompt — LLM never assigns it; needs to be either added to the prompt with a definition or removed · revisit next session
+- **`manual_ingestion` stub is identical to `manual`:** `StubGenerator` ignores strategy — both produce `# SAS-UNTRANSLATABLE`; `manual_ingestion` was supposed to emit a `pd.read_csv()` scaffold · fix next session
+- **`auto_verified` counter always 0:** `verified_confidence` field is never written by any agent; `auto_verified` should derive from `reconciliation_status == "pass" AND confidence in (high, medium)` · fix next session
+
+## 2026-04-24 (session — Explain overhaul)
+
+- **ExplainAgent 3-layer prompt composition:** base + mode-specific + audience-specific sections composed at construction time into a 4-agent cache; adding a new mode or audience requires only a new dict entry — revisit never
+- **`_persist_messages` must own its own DB session:** FastAPI SSE request-scoped sessions are closed before `asyncio.create_task` fire-and-forget tasks complete; all future background persistence tasks must open their own `AsyncSessionLocal()` — revisit never
+- **Worktree agents must not be used for implementation on branches with uncommitted work:** worktree agents clone a clean HEAD, losing all uncommitted changes in the working tree; always commit staged work before delegating to a worktree agent, or use the main tree agent with explicit file paths — revisit never (process change)
+- **`mode='sas_general'` replaces `'upload'`:** "upload" described the mechanism, not the intent; migration 013 backfills all existing rows; frontend and backend literals updated atomically — revisit never
+
+---
+
 ## 2026-04-19 (session 18 — F3 proposed/accepted, S-BE5/BE6, UI fixes)
 
 - **`jobs_status_check` constraint expanded to include `proposed`/`accepted`:** migration 008 drops and recreates the constraint to allow new statuses before running the UPDATE · revisit never
@@ -15,6 +127,13 @@ Format: date · decision · rationale · revisit?
 - **`skip_llm` flag + `trigger` column for versioning:** `PUT /python_code` sets `skip_llm=True` and `trigger="human-rereconcile"`; `POST /refine` spawns a child job with `trigger="human-refine"`; allows the History tab to distinguish agent vs human changes · revisit never
 - **History tab walks `parent_job_id` chain:** linear parent chain enables full version history without a separate events table; siblings (branches) are collected via a second query on parent IDs · revisit if branching history is needed
 - **Refine context injected as `__refine_context__` sentinel in `job.files`:** avoids adding more DB columns while keeping prior code and hint available to the worker prompt; sentinel is stripped from sources display · revisit never
+
+---
+
+## 2026-04-23 (session 23 — Plan tab UX overhaul)
+
+- **View Code dialog layout:** unified full-width toolbar row + identical-height panel header row (grid-cols-2) above the editors — eliminates SAS/Python vertical misalignment without JS measurement; `border-border` used throughout for theme-agnostic separators · revisit never
+- **Confidence default fix location:** applied at StubGenerator and migration_planner (the two write paths) rather than at the API read/serialisation layer — ensures DB values are correct for all new jobs from the point of the fix · revisit never
 
 ---
 
@@ -28,6 +147,24 @@ Format: date · decision · rationale · revisit?
 - **`diff_vs_previous` computed in FastAPI route handler:** both old and new code available at insert time; uses `difflib.unified_diff`; worker has no access to prior revision · revisit never
 - **`verified_confidence` stored under `job.lineage["block_confidence"]`:** piggybacks on existing schemaless JSON column; no DB migration needed; backward-compatible (old jobs lack the key) · revisit never
 - **Refine dialog: user notes are primary input, injected first into LLM context:** user-authored instructions take precedence over auto-generated hints; injected as leading `risk_flags` entry · revisit never
+
+---
+
+## 2026-04-23 (session 22 — UI polish, View Code dialog, Upload→Dialog, PATCH /python)
+
+- **Upload page promoted to Dialog on JobsPage:** reduces nav clutter; upload is a sub-action of "Migrations", not a top-level destination · revisit never
+- **`PATCH /jobs/{id}/blocks/{block_id:path}/python` creates revision 1 when no prior revision exists:** uses defaults (`strategy="translate"`, `confidence="medium"`) rather than 404; any block is editable regardless of agent history · revisit never
+- **SAS source in View Code dialog via `getJobSources`:** reuses existing endpoint mapping `source_file` → full SAS content; no new DB columns · revisit never
+- **`revisions[0]` is the latest revision (backend returns `revision_number DESC`):** fixed bug where code was reading `revisions[length-1]` (oldest) instead of `revisions[0]` (newest) · revisit never
+
+---
+
+## 2026-04-22 (session 22 — FE9 ExplainPage)
+
+- **ExplainPage backend is stateless:** frontend owns the accumulated `messages` array and sends it on each request; avoids session storage for an ephemeral chat feature · revisit if multi-turn context management becomes complex
+- **LLM called inline in backend process (not worker queue):** explain questions need to feel synchronous; worker queue polling latency is inappropriate for chat; backend already imports worker agents · revisit if LLM calls become slow enough to time out the HTTP request
+- **Separate `/explain` and `/explain/job` endpoints (not one unified endpoint):** multipart form data and JSON body cannot be cleanly unified; different validation and auth requirements; keeps route logic simple · revisit never
+- **Code blocks in chat rendered as read-only Monaco editors:** user preference over styled `<pre>` blocks; consistent with editor components used elsewhere in the app · revisit never
 
 ---
 
@@ -207,6 +344,15 @@ Format: date · decision · rationale · revisit?
 - **Docker job independent of test:** Dockerfile correctness is unrelated to Python logic; running in parallel reduces wall-clock CI time · revisit never
 - **Reconciliation coverage scoped separately:** `src/worker/validation` measured in isolation via `.coveragerc-reconciliation` at 80% gate; main suite covers all of `src` at 90% · raise to 90% when missing lines covered
 - **astral-sh/setup-uv pinned to full semver:** `v8` floating tag does not exist; must use `v8.1.0` · update when new minor released
+
+---
+
+## 2026-04-23 (session — Plan tab UX + BlockRevisionDrawer + PlainEnglishAgent)
+
+- **block_id URL encoding uses `.replace(/:/g, '%3A')` not `encodeURIComponent`:** FastAPI `block_id:path` params decode `%2F` back to `/` before route matching, causing 404 when slash is encoded; colons must be encoded but slashes must be preserved as literal path segments · revisit never
+- **BlockRevisionDrawer diff uses MonacoDiffViewer with `previousCode` prop:** instead of parsing unified diff strings (fragile, misaligned columns), each revision receives the prior revision's `python_code` directly; Monaco handles all diffing natively · revisit never
+- **PlainEnglishAgent output field was `"markdown"` in prompt vs `"non_technical_doc"` in Pydantic model:** mismatch silently produced empty docs; corrected to match model field · revisit never
+- **PlainEnglishAgent restructured to 5 sections with explicit list formatting:** Purpose (prose) + Source Data (bullets) + How It Works (numbered) + Outputs (bold bullets) + Migration Status (one sentence); "8-12 sentences, no bullet points" rule removed as it forced unstructured output · revisit never
 
 ---
 

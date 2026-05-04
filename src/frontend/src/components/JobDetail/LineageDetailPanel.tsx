@@ -11,12 +11,9 @@ interface LineageDetailPanelProps {
 }
 
 const STRATEGY_COLOR: Record<string, string> = {
-  translate: "text-blue-700 bg-blue-50 border border-blue-200",
-  translate_with_review: "text-amber-700 bg-amber-50 border border-amber-200",
-  translate_best_effort: "text-orange-700 bg-orange-50 border border-orange-200",
-  manual: "text-red-700 bg-red-50 border border-red-200",
-  manual_ingestion: "text-red-700 bg-red-50 border border-red-200",
-  skip: "text-muted-foreground bg-muted border border-border",
+  translated: "bg-green-100 text-green-800",
+  translated_with_review: "bg-amber-100 text-amber-800",
+  manual: "bg-red-100 text-red-800",
 };
 
 const RISK_COLOR: Record<string, string> = {
@@ -38,7 +35,7 @@ const FILE_STATUS_STYLE: Record<
   { bg: string; text: string; label: string }
 > = {
   OK: { bg: "bg-green-100", text: "text-green-700", label: "OK" },
-  UNTRANSLATABLE: { bg: "bg-red-100", text: "text-red-700", label: "Untranslatable" },
+  UNRECOGNIZED: { bg: "bg-red-100", text: "text-red-700", label: "Unrecognized" },
   ERROR_PRONE: { bg: "bg-amber-100", text: "text-amber-700", label: "Error Prone" },
 };
 
@@ -51,7 +48,7 @@ const SEVERITY_STYLE: Record<LogLink["severity"], { bg: string; text: string }> 
 function BlockStatusIcon({ status }: { status: BlockStatus["status"] }): React.ReactElement | null {
   if (status === "OK") return <CheckCircle2 size={12} className="text-green-500 shrink-0" />;
   if (status === "ERROR_PRONE") return <AlertTriangle size={12} className="text-amber-500 shrink-0" />;
-  if (status === "UNTRANSLATABLE") return <XCircle size={12} className="text-red-500 shrink-0" />;
+  if (status === "UNRECOGNIZED") return <XCircle size={12} className="text-red-500 shrink-0" />;
   return null;
 }
 

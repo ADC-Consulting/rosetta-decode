@@ -299,3 +299,81 @@ async def test_plain_english_agent_generate_returns_doc(monkeypatch: pytest.Monk
     )
     result = await agent.generate(ctx, python_code="pass", recon_summary="all ok")
     assert result == "hello"
+
+
+# ── _blast_radius_map direct tests ────────────────────────────────────────────
+
+
+def test_blast_radius_map_counts_source_files() -> None:
+    """_blast_radius_map counts outgoing edges per source_file."""
+    from src.backend.api.routes.jobs import _blast_radius_map
+
+    edges = [
+        {"source_file": "a.sas", "target_file": "b.sas"},
+        {"source_file": "a.sas", "target_file": "c.sas"},
+        {"source_file": "b.sas", "target_file": "c.sas"},
+        {"source_file": "", "target_file": "c.sas"},  # empty source — skipped
+    ]
+    result = _blast_radius_map(edges)
+    assert result["a.sas"] == 2
+    assert result["b.sas"] == 1
+    assert "" not in result
+
+
+def test_blast_radius_map_empty_list() -> None:
+    """_blast_radius_map returns empty dict for empty input."""
+    from src.backend.api.routes.jobs import _blast_radius_map
+
+    assert _blast_radius_map([]) == {}
+
+
+# ── trust-report with cross_file_edges (covers line 1783 branch) ─────────────
+
+
+@pytest.mark.asyncio
+async def test_trust_report_with_multiple_revisions_same_block(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """Trust report with multiple BlockRevisions for same block selects latest."""
+    import uuid as _uuid
+
+    from src.backend.db.models import BlockRevision
+
+    job_id = str(_uuid.uuid4())
+    job = _make_job(
+        status="proposed",
+        migration_plan=_SAMPLE_PLAN,
+        lineage={
+            "nodes": [],
+            "edges": [],
+            "cross_file_edges": [{"source_file": "test.sas", "target_file": "other.sas"}],
+        },
+    )
+    job.id = job_id
+    db_session.add(job)
+    await db_session.commit()
+
+    # Insert two revisions for the same block_id — second one should be used
+    for rn, status in ((1, "fail"), (2, "pass")):
+        rev = BlockRevision(
+            id=str(_uuid.uuid4()),
+            job_id=job_id,
+            block_id="test.sas:1",
+            revision_number=rn,
+            python_code=f"# rev {rn}",
+            strategy="translate",
+            confidence="high",
+            trigger="agent",
+            reconciliation_status=status,
+        )
+        db_session.add(rev)
+    await db_session.commit()
+
+    response = await client.get(f"/jobs/{job_id}/trust-report")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total_blocks"] == 2
+    # The translate block had revision 2 = pass, manual block has no revision
+    translate_blocks = [b for b in data["blocks"] if b["strategy"] == "translate"]
+    assert any(b["reconciliation_status"] == "pass" for b in translate_blocks)

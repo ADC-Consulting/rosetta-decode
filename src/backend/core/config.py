@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     upload_dir: str = "/tmp/rosetta-uploads"
     max_zip_bytes: int = 524_288_000
     cors_origins_raw: str = Field(default="*", alias="CORS_ORIGINS")
+    executor_url: str = "http://executor:8001"
 
     @property
     def cors_origins(self) -> list[str]:

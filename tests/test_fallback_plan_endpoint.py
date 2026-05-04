@@ -1,4 +1,4 @@
-"""Tests for GET /jobs/{id}/plan endpoint with fallback plan handling."""
+"""Tests for GET /jobs/{id}/plan endpoint."""
 
 import uuid
 from collections.abc import AsyncGenerator
@@ -10,8 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from src.backend.db.models import Base, Job
 from src.backend.db.session import get_async_session
 from src.backend.main import app
-from src.worker.engine.models import BlockRisk, BlockType, SASBlock
-from src.worker.main import _make_fallback_plan
 
 # Use an async SQLite database so tests run without a real PostgreSQL instance
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
@@ -143,45 +141,3 @@ async def test_get_job_plan_returns_202_when_job_still_running(
     assert response.status_code == 202
     data = response.json()
     assert data["status"] == "running"
-
-
-def test_make_fallback_plan() -> None:
-    """Test fallback plan generation when planning agent fails."""
-    from src.worker.engine.models import JobContext
-
-    # Create a minimal context with some blocks
-    context = JobContext(
-        source_files={"test.sas": "data a; run;"},
-        resolved_macros=[],
-        dependency_order=[],
-        risk_flags=[],
-        blocks=[
-            SASBlock(
-                block_type=BlockType.DATA_STEP,
-                source_file="test.sas",
-                start_line=1,
-                end_line=2,
-                raw_sas="data a; run;",
-            ),
-            SASBlock(
-                block_type=BlockType.PROC_SORT,
-                source_file="test.sas",
-                start_line=4,
-                end_line=5,
-                raw_sas="proc sort data=a; run;",
-            ),
-        ],
-        generated=[],
-    )
-
-    plan = _make_fallback_plan(context)
-
-    # Verify fallback plan structure
-    assert plan.summary == "Auto-generated fallback plan due to planning agent unavailability."
-    assert plan.overall_risk == BlockRisk.HIGH
-    assert len(plan.block_plans) == 2
-    assert plan.block_plans[0].source_file == "test.sas"
-    assert plan.block_plans[0].start_line == 1
-    assert all(bp.confidence_score == 0.0 for bp in plan.block_plans)
-    assert all(bp.confidence_band == "very_low" for bp in plan.block_plans)
-    assert "fallback" in plan.block_plans[0].rationale.lower()

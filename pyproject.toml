@@ -45,9 +45,14 @@ parsers = [
 ]
 
 cloud = [
-    # Databricks / Spark — only installed when CLOUD=true workflows are needed
+    # Local PySpark — works without a Databricks cluster
     "pyspark>=3.5",
     "databricks-sdk>=0.24",
+]
+
+databricks = [
+    # databricks-connect hijacks SparkSession.builder and requires a remote cluster.
+    # Only install this extra when targeting a real Databricks workspace (CLOUD=true + DBX creds).
     "databricks-connect>=15.0",
 ]
 
@@ -109,6 +114,8 @@ convention = "google"
 "tests/**/*.py" = ["D"] # tests don't need docstrings
 # FastAPI requires Depends() in function signatures — B008 is a false positive here
 "src/backend/api/routes/*.py" = ["B008"]
+# Agent prompt strings contain long natural-language lines that must not be wrapped
+"src/worker/engine/agents/*.py" = ["E501"]
 
 # ---------- Mypy ----------
 [tool.mypy]
@@ -123,20 +130,26 @@ disallow_incomplete_defs = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-# Third-party packages without stubs — added as src/ grows
-module = ["networkx", "networkx.*", "jinja2", "jinja2.*", "pyreadstat"]
+# networkx, jinja2, pyreadstat ship no PEP 561 stub packages and are not covered by
+# typeshed. ignore_missing_imports suppresses the "cannot find implementation or
+# library stub" error that would otherwise block the mypy gate on every run.
+module = ["networkx", "jinja2", "jinja2.*", "pyreadstat"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-# pyreadstat has no stubs; its read functions return Any — suppress only in this file.
-module = ["src.worker.compute.local"]
-warn_return_any = false
+# `recon` and `runner` are bare module imports inside the executor container.
+# They're unresolvable from the repo root — suppress the cascade of errors.
+module = ["recon", "runner"]
+ignore_errors = true
 
 [[tool.mypy.overrides]]
-# pydantic-ai Agent overloads don't support BaseModel output_type in strict mode;
-# the runtime behaviour is correct — ignore errors only in this file.
-module = ["src.worker.engine.llm_client"]
-ignore_errors = true
+# pyspark is an optional runtime dependency present only inside the Docker executor
+# image. reconciliation.py uses `type: ignore[import-not-found]` on the pyspark
+# import so the code compiles when pyspark is absent. When pyspark is NOT installed
+# locally, mypy treats those comments as unused and would error. Setting
+# warn_unused_ignores = false makes the file valid in both environments.
+module = ["src.worker.validation.reconciliation"]
+warn_unused_ignores = false
 
 # ---------- Pytest ----------
 [tool.pytest.ini_options]

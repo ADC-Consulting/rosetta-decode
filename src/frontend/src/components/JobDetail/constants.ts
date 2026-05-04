@@ -30,11 +30,9 @@ export const STATUS_SHIMMER: Record<JobStatusValue, boolean> = {
 export const POLLING_STATUSES: JobStatusValue[] = ["queued", "running", "proposed"];
 
 export const STRATEGY_LABELS: Record<string, string> = {
-  translate: "Auto-translate",
-  translate_with_review: "Translate + review",
-  manual_ingestion: "Manual ingestion",
+  translated: "Translated",
+  translated_with_review: "Review needed",
   manual: "Manual",
-  skip: "Skip",
 };
 
 export const RISK_BADGE: Record<"low" | "medium" | "high", string> = {

@@ -148,6 +148,84 @@ def test_parses_sample_file(parser: SASParser) -> None:
     assert BlockType.UNTRANSLATABLE not in types
 
 
+# ── Cycle detection fallback ──────────────────────────────────────────────────
+
+
+def test_cyclic_dependency_falls_back_to_original_order(parser: SASParser) -> None:
+    """When blocks form a cycle, _sort_by_dependency falls back to original order."""
+    from unittest.mock import patch
+
+    import networkx as nx
+
+    # Two blocks that reference each other — forces a cycle in the graph
+    sas_a = "DATA cycle_b;\n    SET cycle_a;\nRUN;\n"
+    sas_b = "DATA cycle_a;\n    SET cycle_b;\nRUN;\n"
+    with patch.object(nx, "topological_sort", side_effect=nx.NetworkXUnfeasible("cycle")):
+        result = parser.parse({"a.sas": sas_a, "b.sas": sas_b})
+    # Should not raise and should return all blocks
+    assert len(result.blocks) >= 2
+
+
+# ── extract_lineage ───────────────────────────────────────────────────────────
+
+
+def test_extract_lineage_returns_correct_structure(parser: SASParser) -> None:
+    """extract_lineage() must return job_id, nodes, and edges."""
+    from src.worker.engine.parser import extract_lineage
+
+    sas_a = "DATA out_a;\n    SET raw;\nRUN;\n"
+    sas_b = "PROC SQL;\n    CREATE TABLE out_b AS SELECT * FROM out_a;\nQUIT;\n"
+    result = parser.parse({"a.sas": sas_a, "b.sas": sas_b})
+    lineage = extract_lineage(result.blocks, "job-123")
+    assert lineage["job_id"] == "job-123"
+    assert isinstance(lineage["nodes"], list)
+    assert isinstance(lineage["edges"], list)
+    assert len(lineage["nodes"]) >= 2
+
+
+def test_extract_lineage_nodes_have_required_keys(parser: SASParser) -> None:
+    """Each node must include id, label, source_file, block_type, status."""
+    from src.worker.engine.parser import extract_lineage
+
+    sas = "DATA work_out;\n    SET work_in;\nRUN;\n"
+    result = parser.parse({"test.sas": sas})
+    lineage = extract_lineage(result.blocks, "job-abc")
+    for node in lineage["nodes"]:
+        for key in ("id", "label", "source_file", "block_type", "status"):
+            assert key in node, f"Node missing key: {key}"
+
+
+def test_extract_lineage_edges_connect_producer_to_consumer(parser: SASParser) -> None:
+    """extract_lineage() must produce an edge from the DATA step to the PROC SQL."""
+    from src.worker.engine.parser import extract_lineage
+
+    sas_a = "DATA shared;\n    SET raw;\nRUN;\n"
+    sas_b = "PROC SQL;\n    CREATE TABLE final AS SELECT * FROM shared;\nQUIT;\n"
+    result = parser.parse({"a.sas": sas_a, "b.sas": sas_b})
+    lineage = extract_lineage(result.blocks, "job-xyz")
+    edges = lineage["edges"]
+    assert any(e["dataset"] == "shared" for e in edges)
+
+
+def test_extract_lineage_untranslatable_block_status(parser: SASParser) -> None:
+    """Blocks of type UNTRANSLATABLE must have status='untranslatable' in the node."""
+    from src.worker.engine.models import BlockType, SASBlock
+    from src.worker.engine.parser import extract_lineage
+
+    block = SASBlock(
+        block_type=BlockType.UNTRANSLATABLE,
+        source_file="f.sas",
+        start_line=1,
+        end_line=3,
+        raw_sas="PROC REPORT; RUN;",
+        input_datasets=[],
+        output_datasets=[],
+        untranslatable_reason="unsupported PROC",
+    )
+    lineage = extract_lineage([block], "job-999")
+    assert lineage["nodes"][0]["status"] == "unrecognized"
+
+
 # ── PROC SORT extraction ──────────────────────────────────────────────────────
 
 

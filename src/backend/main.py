@@ -2,7 +2,7 @@
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from src.backend.api.routes import jobs, migrate
+from src.backend.api.routes import explain, jobs, migrate
 from src.backend.core.config import settings
 from src.backend.core.logging import configure_logging
 
@@ -24,6 +24,7 @@ app.add_middleware(
 
 app.include_router(migrate.router)
 app.include_router(jobs.router)
+app.include_router(explain.router)
 
 
 @app.get("/health")

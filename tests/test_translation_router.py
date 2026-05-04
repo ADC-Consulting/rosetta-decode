@@ -97,7 +97,7 @@ def test_stub_generator_output() -> None:
     result = StubGenerator().generate(block)
     lines = result.python_code.splitlines()
     assert len(lines) == 3
-    assert lines[0] == "# SAS-UNTRANSLATABLE: PROC TABULATE not supported"
+    assert lines[0] == "# SAS-UNRECOGNIZED: PROC TABULATE not supported"
     assert lines[1] == "# TODO: manual review required"
     assert lines[2] == "# SAS: test.sas:1"
     assert result.is_untranslatable is True
@@ -106,7 +106,7 @@ def test_stub_generator_output() -> None:
 def test_stub_reason_missing() -> None:
     block = _make_block(BlockType.UNTRANSLATABLE, untranslatable_reason=None)
     result = StubGenerator().generate(block)
-    assert result.python_code.startswith("# SAS-UNTRANSLATABLE: unsupported construct")
+    assert result.python_code.startswith("# SAS-UNRECOGNIZED: unsupported construct")
     assert result.is_untranslatable is True
 
 
@@ -127,7 +127,8 @@ async def test_proc_sort_helper_by_clause() -> None:
     )
     helper = _ProcSortHelper()
     result = await helper.translate(block, ctx)
-    assert "ascending=[True, False]" in result.python_code
+    assert 'F.col("var1").asc()' in result.python_code
+    assert 'F.col("var2").desc()' in result.python_code
     assert result.is_untranslatable is False
 
 
@@ -145,7 +146,7 @@ async def test_proc_sort_helper_out_dataset() -> None:
     )
     helper = _ProcSortHelper()
     result = await helper.translate(block, ctx)
-    assert result.python_code.splitlines()[1].startswith("work2 = source.sort_values(")
+    assert "work2 = source.orderBy(" in result.python_code
 
 
 # ── Strategy-based routing tests ─────────────────────────────────────────────
@@ -173,18 +174,29 @@ def test_routes_manual_strategy_to_stub() -> None:
     assert router.route(block, block_plan=block_plan) is stub_generator
 
 
-def test_routes_manual_ingestion_strategy_to_stub() -> None:
-    router, _, _, stub_generator = _make_router()
-    block = _make_block(BlockType.DATA_STEP, raw_sas="DATA out; SET in; IF flag = 1; RUN;")
-    block_plan = _make_block_plan(TranslationStrategy.MANUAL_INGESTION)
-    assert router.route(block, block_plan=block_plan) is stub_generator
+def test_proc_print_routes_to_generic_proc_agent() -> None:
+    """PROC_PRINT blocks must route to GenericProcAgent, not StubGenerator."""
+    data_step_agent = MagicMock()
+    proc_agent = MagicMock()
+    stub_generator = StubGenerator()
+    generic_proc_agent = MagicMock()
+    router = TranslationRouter(
+        data_step_agent=data_step_agent,
+        proc_agent=proc_agent,
+        stub_generator=stub_generator,
+        generic_proc_agent=generic_proc_agent,
+    )
+    block = _make_block(BlockType.PROC_PRINT, raw_sas="PROC PRINT DATA=work; RUN;")
+    result = router.route(block)
+    assert result is generic_proc_agent
+    assert result is not stub_generator
 
 
-def test_routes_skip_strategy_to_stub() -> None:
-    router, _, _, stub_generator = _make_router()
-    block = _make_block(BlockType.DATA_STEP, raw_sas="DATA out; SET in; IF flag = 1; RUN;")
-    block_plan = _make_block_plan(TranslationStrategy.SKIP)
-    assert router.route(block, block_plan=block_plan) is stub_generator
+def test_manual_strategies_set() -> None:
+    """_MANUAL_STRATEGIES must equal frozenset({'manual'})."""
+    from src.backend.api.routes.jobs import _MANUAL_STRATEGIES
+
+    assert frozenset({"manual"}) == _MANUAL_STRATEGIES
 
 
 @pytest.mark.asyncio
@@ -202,3 +214,237 @@ async def test_proc_sort_provenance() -> None:
     helper = _ProcSortHelper()
     result = await helper.translate(block, ctx)
     assert "# SAS: test.sas:1" in result.python_code
+
+
+# ── _ProcSortHelper._parse_by_clause uncovered branches (lines 66, 76) ──────
+
+
+@pytest.mark.asyncio
+async def test_proc_sort_helper_no_by_clause_returns_empty() -> None:
+    """_parse_by_clause returns empty lists when no BY clause is present (line 66)."""
+    raw = "PROC SORT DATA=ds; RUN;"  # no BY clause
+    block = _make_block(BlockType.PROC_SORT, raw_sas=raw, input_datasets=["ds"])
+    ctx = JobContext(
+        source_files={},
+        resolved_macros=[],
+        dependency_order=[],
+        risk_flags=[],
+        blocks=[],
+        generated=[],
+    )
+    helper = _ProcSortHelper()
+    result = await helper.translate(block, ctx)
+    # With no BY clause, by=[] and ascending=[] — just assert no crash
+    assert result.is_untranslatable is False
+    assert "orderBy(" in result.python_code
+
+
+@pytest.mark.asyncio
+async def test_proc_sort_helper_ascending_keyword() -> None:
+    """_parse_by_clause handles ASCENDING keyword correctly (line 76)."""
+    raw = "PROC SORT DATA=work; BY ASCENDING var1 DESCENDING var2 var3; RUN;"
+    block = _make_block(BlockType.PROC_SORT, raw_sas=raw, input_datasets=["work"])
+    ctx = JobContext(
+        source_files={},
+        resolved_macros=[],
+        dependency_order=[],
+        risk_flags=[],
+        blocks=[],
+        generated=[],
+    )
+    helper = _ProcSortHelper()
+    result = await helper.translate(block, ctx)
+    assert 'F.col("var1").asc()' in result.python_code
+    assert 'F.col("var2").desc()' in result.python_code
+    assert 'F.col("var3").asc()' in result.python_code
+
+
+# ── _StrategyStubAdapter (init + translate) ──────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_strategy_stub_adapter_init_and_translate() -> None:
+    """_StrategyStubAdapter stores stub_generator and delegates to generate() (lines 66, 76)."""
+    from src.worker.engine.router import _StrategyStubAdapter
+
+    stub = StubGenerator()
+    adapter = _StrategyStubAdapter(stub, strategy="manual")
+
+    assert adapter._stub is stub
+    assert adapter._strategy == "manual"
+
+    block = _make_block(BlockType.UNTRANSLATABLE, untranslatable_reason="no equivalent")
+    ctx = JobContext(
+        source_files={},
+        resolved_macros=[],
+        dependency_order=[],
+        risk_flags=[],
+        blocks=[],
+        generated=[],
+    )
+    result = await adapter.translate(block, ctx)
+    assert result.is_untranslatable is True
+
+
+# ── _SimpleCopyHelper.translate() branches (lines 173-197) ──────────────────
+
+
+@pytest.mark.asyncio
+async def test_simple_copy_helper_keep_branch() -> None:
+    """_SimpleCopyHelper emits .copy() with column filter when KEEP is present (lines 183-186)."""
+    from src.worker.engine.router import _SimpleCopyHelper
+
+    raw = "DATA out; SET in; KEEP col1 col2; RUN;"
+    block = _make_block(BlockType.DATA_STEP, raw_sas=raw, input_datasets=["in"])
+    ctx = JobContext(
+        source_files={},
+        resolved_macros=[],
+        dependency_order=[],
+        risk_flags=[],
+        blocks=[],
+        generated=[],
+    )
+    result = await _SimpleCopyHelper().translate(block, ctx)
+    assert "['col1', 'col2']" in result.python_code
+    assert ".copy()" in result.python_code
+
+
+@pytest.mark.asyncio
+async def test_simple_copy_helper_drop_branch() -> None:
+    """_SimpleCopyHelper emits .drop() when DROP is present (lines 188-192)."""
+    from src.worker.engine.router import _SimpleCopyHelper
+
+    raw = "DATA out; SET in; DROP col3; RUN;"
+    block = _make_block(BlockType.DATA_STEP, raw_sas=raw, input_datasets=["in"])
+    ctx = JobContext(
+        source_files={},
+        resolved_macros=[],
+        dependency_order=[],
+        risk_flags=[],
+        blocks=[],
+        generated=[],
+    )
+    result = await _SimpleCopyHelper().translate(block, ctx)
+    assert ".drop(" in result.python_code
+    assert "col3" in result.python_code
+
+
+@pytest.mark.asyncio
+async def test_simple_copy_helper_plain_copy() -> None:
+    """_SimpleCopyHelper emits plain .copy() when no KEEP or DROP (lines 194-195)."""
+    from src.worker.engine.router import _SimpleCopyHelper
+
+    raw = "DATA out; SET in; RUN;"
+    block = _make_block(BlockType.DATA_STEP, raw_sas=raw, input_datasets=["in"])
+    ctx = JobContext(
+        source_files={},
+        resolved_macros=[],
+        dependency_order=[],
+        risk_flags=[],
+        blocks=[],
+        generated=[],
+    )
+    result = await _SimpleCopyHelper().translate(block, ctx)
+    assert "out = in.copy()" in result.python_code
+
+
+# ── router.route() simple DATA step returns _simple_copy (line 289) ─────────
+
+
+def test_routes_simple_data_step_to_simple_copy_helper() -> None:
+    """A simple SET+copy DATA step routes to _SimpleCopyHelper, not data_step_agent (line 289)."""
+    from src.worker.engine.router import _SimpleCopyHelper
+
+    router, data_step_agent, _, _ = _make_router()
+    block = _make_block(BlockType.DATA_STEP, raw_sas="DATA out; SET in; RUN;")
+    result = router.route(block)
+    assert isinstance(result, _SimpleCopyHelper)
+    assert result is not data_step_agent
+
+
+# ── router.route() with non-MANUAL block_plan falls through (lines 283-284) ──
+
+
+def test_route_translated_strategy_with_block_plan_falls_through_to_block_type() -> None:
+    """Non-MANUAL block_plan falls through to block_type dispatch (lines 283-284)."""
+    router, _, proc_agent, _ = _make_router()
+    block = _make_block(BlockType.PROC_SQL)
+    block_plan = BlockPlan(
+        block_id="test.sas:1",
+        source_file="test.sas",
+        start_line=1,
+        block_type="PROC_SQL",
+        strategy=TranslationStrategy.TRANSLATED,
+        risk=BlockRisk.LOW,
+        rationale="simple select",
+        estimated_effort="low",
+        detected_features=[],
+    )
+    result = router.route(block, block_plan=block_plan)
+    assert result is proc_agent
+
+
+# ── router.route() with MANUAL strategy (lines 283-284) ─────────────────────
+
+
+def test_route_manual_strategy_returns_stub_generator() -> None:
+    """route() with MANUAL block_plan returns stub_generator (lines 283-284)."""
+    router, _, _, stub_generator = _make_router()
+    block = _make_block(BlockType.DATA_STEP, raw_sas="DATA out; SET in; IF x=1; RUN;")
+    block_plan = BlockPlan(
+        block_id="test.sas:1",
+        source_file="test.sas",
+        start_line=1,
+        block_type="DATA_STEP",
+        strategy=TranslationStrategy.MANUAL,
+        risk=BlockRisk.HIGH,
+        rationale="manual",
+        estimated_effort="high",
+        detected_features=["no_py_equiv"],
+    )
+    result = router.route(block, block_plan=block_plan)
+    assert result is stub_generator
+
+
+# ── Generic PROC routing with and without agent (lines 289, 301, 305) ────────
+
+
+def test_routes_generic_proc_with_agent_injected() -> None:
+    """Generic PROC types route to generic_proc_agent when it is injected (line 299)."""
+    data_step_agent = MagicMock()
+    proc_agent = MagicMock()
+    stub_generator = StubGenerator()
+    generic_proc_agent = MagicMock()
+    router = TranslationRouter(
+        data_step_agent=data_step_agent,
+        proc_agent=proc_agent,
+        stub_generator=stub_generator,
+        generic_proc_agent=generic_proc_agent,
+    )
+    block = _make_block(BlockType.PROC_IML, raw_sas="PROC IML; RUN;")
+    assert router.route(block) is generic_proc_agent
+
+
+def test_routes_generic_proc_without_agent_falls_back_to_stub() -> None:
+    """Generic PROC types route to stub_generator when no agent injected (line 301)."""
+    router, _, _, stub_generator = _make_router()
+    block = _make_block(BlockType.PROC_IML, raw_sas="PROC IML; RUN;")
+    assert router.route(block) is stub_generator
+
+
+def test_routes_unknown_block_type_with_agent() -> None:
+    """Truly unknown block_type routes to generic_proc_agent when injected (line 305)."""
+    data_step_agent = MagicMock()
+    proc_agent = MagicMock()
+    stub_generator = StubGenerator()
+    generic_proc_agent = MagicMock()
+    router = TranslationRouter(
+        data_step_agent=data_step_agent,
+        proc_agent=proc_agent,
+        stub_generator=stub_generator,
+        generic_proc_agent=generic_proc_agent,
+    )
+    block = _make_block(BlockType.DATA_STEP)
+    invalid_block = block.model_copy(update={"block_type": "TOTALLY_UNKNOWN_TYPE"})
+    result = router.route(invalid_block)
+    assert result is generic_proc_agent

@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any
 
 import sqlalchemy as sa
-from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -47,6 +47,9 @@ class Job(Base):
     skip_llm: Mapped[bool] = mapped_column(
         sa.Boolean, nullable=False, default=False, server_default=sa.text("false")
     )
+    cancellation_requested: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa.text("false"), nullable=False
+    )
     parent_job_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     trigger: Mapped[str] = mapped_column(
         String(32), nullable=False, default="agent", server_default=sa.text("'agent'")
@@ -65,6 +68,9 @@ class Job(Base):
     )
     block_revisions: Mapped[list["BlockRevision"]] = relationship(
         "BlockRevision", back_populates="job", cascade="all, delete-orphan"
+    )
+    traces: Mapped[list["JobTrace"]] = relationship(
+        "JobTrace", back_populates="job", cascade="all, delete-orphan"
     )
 
 
@@ -103,6 +109,7 @@ class BlockRevision(Base):
     confidence: Mapped[str] = mapped_column(String(16), nullable=False, default="high")
     uncertainty_notes: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     reconciliation_status: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    recon_checks: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
     trigger: Mapped[str] = mapped_column(String(32), nullable=False, default="agent")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)  # verbatim user instructions
     hint: Mapped[str | None] = mapped_column(Text, nullable=True)  # auto-generated structured hint
@@ -112,3 +119,44 @@ class BlockRevision(Base):
     )
 
     job: Mapped["Job"] = relationship("Job", back_populates="block_revisions")
+
+
+class JobTrace(Base):
+    """An immutable audit event emitted during job execution."""
+
+    __tablename__ = "job_traces"
+    __table_args__ = (Index("ix_job_traces_job_id_id", "job_id", "id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # block_start | block_done | recon_result | job_done | error
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    payload: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    job: Mapped["Job"] = relationship("Job", back_populates="traces")
+
+
+class ExplainSession(Base):
+    """A persisted chat session on the Explain page."""
+
+    __tablename__ = "explain_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    mode: Mapped[str] = mapped_column(Text, nullable=False)
+    job_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    audience: Mapped[str] = mapped_column(Text, nullable=False, default="tech")
+    messages: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
+    context_files: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    file_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )

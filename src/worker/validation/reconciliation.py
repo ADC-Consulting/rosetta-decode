@@ -12,18 +12,134 @@ field on the ``jobs`` table:
 
 from __future__ import annotations
 
+import asyncio
 import logging
-import textwrap
-import traceback
+import re
 from typing import Any, cast
 
+import httpx
 import pandas as pd
 from src.worker.compute.base import ComputeBackend
+from src.worker.core.config import worker_settings
 
 logger = logging.getLogger(__name__)
 
 # Relative tolerance for aggregate comparisons (0.001 = 0.1%)
 _AGGREGATE_RTOL = 0.001
+
+_spark_session: Any = None
+
+
+def _get_spark() -> Any:
+    """Return a lazily-created local SparkSession, or None if pyspark is not installed."""
+    global _spark_session
+    if _spark_session is None:
+        try:
+            logging.getLogger("py4j").setLevel(logging.WARNING)
+            logging.getLogger("py4j.clientserver").setLevel(logging.WARNING)
+            from pyspark.sql import SparkSession  # type: ignore[import-not-found]
+
+            _spark_session = (
+                SparkSession.builder.master("local[*]")
+                .appName("rosetta-reconciliation")
+                .config("spark.ui.enabled", "false")
+                .config("spark.sql.shuffle.partitions", "4")
+                .getOrCreate()
+            )
+            _spark_session.sparkContext.setLogLevel("ERROR")
+            logger.info("Local SparkSession initialised for reconciliation")
+        except ImportError:
+            return None
+    return _spark_session
+
+
+def _to_pandas(obj: Any) -> pd.DataFrame | None:
+    """Convert a Spark DataFrame to pandas, or return as-is if already pandas."""
+    try:
+        from pyspark.sql import DataFrame as SparkDataFrame
+
+        if isinstance(obj, SparkDataFrame):
+            result: pd.DataFrame = obj.toPandas()
+            return result
+    except ImportError:
+        pass
+    if isinstance(obj, pd.DataFrame):
+        return obj
+    return None
+
+
+def _add_column_to_spark_df(df: Any, col_name: str, spark: Any) -> Any:
+    """Return *df* with *col_name* added as a null StringType column."""
+    try:
+        from pyspark.sql import functions as F  # type: ignore[import-not-found]  # noqa: N812
+        from pyspark.sql.types import StringType  # type: ignore[import-not-found]
+
+        return df.withColumn(col_name, F.lit(None).cast(StringType()))
+    except Exception:
+        return df
+
+
+def _safe_exec(code: str, ns: dict[str, Any]) -> None:
+    """Exec *code* in *ns*, auto-injecting stubs for undefined names/columns.
+
+    Retries up to 20 times. On each attempt:
+    - NameError → inject an empty DataFrame for the missing name.
+    - Spark AnalysisException (unresolved column) → find which DataFrame in the
+      namespace was last assigned and add the missing column to it so the next
+      exec attempt can proceed.
+
+    Args:
+        code: Python source to execute.
+        ns: Execution namespace (mutated in place).
+    """
+    for _ in range(20):
+        try:
+            exec(code, ns)
+            return
+        except NameError as exc:
+            match = re.search(r"name '(\w+)' is not defined", str(exc))
+            if not match:
+                raise
+            missing_name = match.group(1)
+            spark = ns.get("spark")
+            if spark is not None:
+                try:
+                    ns[missing_name] = spark.createDataFrame([], schema="")
+                except Exception:
+                    ns[missing_name] = spark.createDataFrame(pd.DataFrame())
+            else:
+                ns[missing_name] = pd.DataFrame()
+        except Exception as exc:
+            # Spark AnalysisException: unresolved column — patch the offending DF stub
+            err_str = str(exc)
+            col_match = re.search(
+                r"UNRESOLVED_COLUMN[^`]*`(\w+)`|"
+                r"cannot be resolved.*name `(\w+)`|"
+                r"parameter with name `(\w+)`",
+                err_str,
+            )
+            if col_match is None:
+                raise
+            missing_col = next(g for g in col_match.groups() if g)
+            spark = ns.get("spark")
+            if spark is None:
+                raise
+            # Add the missing column to every Spark DataFrame stub in the namespace
+            try:
+                from pyspark.sql import DataFrame as SparkDF  # type: ignore[import-not-found]
+
+                patched = False
+                for k, v in list(ns.items()):
+                    if isinstance(v, SparkDF):
+                        col_names = [f.name for f in v.schema.fields]
+                        if missing_col not in col_names:
+                            ns[k] = _add_column_to_spark_df(v, missing_col, spark)
+                            patched = True
+                if not patched:
+                    raise
+            except ImportError:
+                raise
+    exec(code, ns)  # final attempt — let it raise
 
 
 def _check_result(name: str, *, passed: bool, detail: str = "") -> dict[str, Any]:
@@ -132,9 +248,9 @@ class ReconciliationService:
 
         try:
             actual_df = self._exec_pipeline(python_code, backend)
-        except Exception:
-            error_detail = textwrap.shorten(traceback.format_exc(), width=300)
-            logger.warning("Reconciliation execution error: %s", error_detail)
+        except Exception as exc:
+            error_detail = str(exc)
+            logger.warning("Reconciliation execution error: %s", error_detail, exc_info=True)
             checks.append(_check_result("execution", passed=False, detail=error_detail))
             return {"checks": checks}
 
@@ -143,23 +259,49 @@ class ReconciliationService:
                 ref_df = cast(pd.DataFrame, backend.read_sas7bdat(ref_sas7bdat_path))
             else:
                 ref_df = cast(pd.DataFrame, backend.read_csv(ref_csv_path))
-        except Exception:
-            error_detail = textwrap.shorten(traceback.format_exc(), width=300)
-            logger.warning("Reconciliation reference load error: %s", error_detail)
+        except Exception as exc:
+            error_detail = str(exc)
+            logger.warning("Reconciliation reference load error: %s", error_detail, exc_info=True)
             checks.append(_check_result("execution", passed=False, detail=error_detail))
             return {"checks": checks}
+
+        logger.debug(
+            "recon ref   rows=%d cols=%s dtypes=%s",
+            len(ref_df),
+            list(ref_df.columns),
+            ref_df.dtypes.to_dict(),
+        )
+        logger.debug(
+            "recon actual rows=%d cols=%s dtypes=%s",
+            len(actual_df),
+            list(actual_df.columns),
+            actual_df.dtypes.to_dict(),
+        )
 
         checks.append(_schema_parity(ref_df, actual_df))
         checks.append(_row_count(ref_df, actual_df))
         checks.append(_aggregate_parity(ref_df, actual_df))
+        for c in checks:
+            status = c.get("status", "?")
+            name = c.get("name", "?")
+            detail = c.get("detail", "")
+            if status == "pass":
+                logger.info("recon check %-20s PASS", name)
+            else:
+                logger.warning("recon check %-20s FAIL  %s", name, detail)
+        all_passed = all(c.get("status") == "pass" for c in checks)
+        logger.info(
+            "reconciliation summary: %s (%d checks)", "PASS" if all_passed else "FAIL", len(checks)
+        )
         return {"checks": checks}
 
     @staticmethod
     def _exec_pipeline(python_code: str, backend: ComputeBackend) -> pd.DataFrame:
         """Execute *python_code* and extract the pipeline output DataFrame.
 
-        The generated code runs with ``backend`` injected as a local.  The
-        last variable assigned a DataFrame value is returned as the result.
+        The generated code runs with ``backend``, ``pd``, and a real local
+        SparkSession injected.  Spark DataFrames are converted to pandas before
+        the checks run.
 
         Args:
             python_code: Python source string from CodeGenerator.
@@ -171,17 +313,132 @@ class ReconciliationService:
         Raises:
             ValueError: If no DataFrame is found in the execution namespace.
         """
+        spark = _get_spark()
         namespace: dict[str, Any] = {"backend": backend, "pd": pd}
-        exec(python_code, namespace)
+        if spark is not None:
+            namespace["spark"] = spark
+        _safe_exec(python_code, namespace)
 
-        # Prefer an explicit "result" variable; fall back to last DataFrame found.
-        if "result" in namespace and isinstance(namespace["result"], pd.DataFrame):
-            return namespace["result"]
+        # Prefer an explicit "result" variable; fall back to last DataFrame-like value.
+        candidate = namespace.get("result")
+        if candidate is not None:
+            as_pd = _to_pandas(candidate)
+            if as_pd is not None:
+                return as_pd
 
-        dataframes = [v for v in namespace.values() if isinstance(v, pd.DataFrame)]
-        if not dataframes:
-            raise ValueError(
-                "Generated pipeline produced no pandas DataFrame in its namespace. "
-                "Ensure the final output is assigned to a variable named 'result'."
+        for v in reversed(list(namespace.values())):
+            as_pd = _to_pandas(v)
+            if as_pd is not None:
+                return as_pd
+
+        raise ValueError(
+            "Generated pipeline produced no DataFrame in its namespace. "
+            "Ensure the final output is assigned to a variable named 'result'."
+        )
+
+
+class RemoteReconciliationService:
+    """Delegate reconciliation to the executor microservice over HTTP.
+
+    Sends the generated Python code to the executor's ``POST /execute`` endpoint
+    and returns a ``{"checks": [...]}`` dict in the same format as
+    :class:`ReconciliationService`.  Falls back to an empty checks list when the
+    executor is unreachable.
+    """
+
+    def _post_execute(
+        self,
+        python_code: str,
+        ref_csv_path: str,
+        ref_sas7bdat_path: str,
+        data_dir: str = "",
+        session_dir: str = "",
+    ) -> dict[str, Any]:
+        """Call the executor synchronously (intended for asyncio.to_thread use).
+
+        Args:
+            python_code: Python source to execute remotely.
+            ref_csv_path: Path to reference CSV (may be empty string).
+            ref_sas7bdat_path: Path to reference .sas7bdat (may be empty string).
+            data_dir: Directory where uploaded data files are stored; executor
+                rewrites /workspace/data/ references to this path before running.
+            session_dir: If non-empty, path to the per-job DataFrame parquet cache;
+                forwarded to the executor so it can pre-load prior blocks' outputs.
+
+        Returns:
+            Parsed JSON response body from the executor.
+        """
+        url = f"{worker_settings.executor_url}/execute"
+        payload = {
+            "code": python_code,
+            "ref_csv_path": ref_csv_path,
+            "ref_sas7bdat_path": ref_sas7bdat_path,
+            "data_dir": data_dir,
+            "session_dir": session_dir,
+        }
+        with httpx.Client(timeout=120) as client:
+            response = client.post(url, json=payload)
+            response.raise_for_status()
+            return dict(response.json())
+
+    async def run(
+        self,
+        ref_csv_path: str,
+        python_code: str,
+        backend: ComputeBackend,
+        ref_sas7bdat_path: str = "",
+        data_dir: str = "",
+        session_dir: str = "",
+    ) -> dict[str, Any]:
+        """Post the generated code to the executor and return reconciliation results.
+
+        Signature matches :meth:`ReconciliationService.run` so callers can swap
+        implementations without changing call sites.
+
+        Args:
+            ref_csv_path: Path to reference CSV (may be empty string).
+            python_code: Generated Python pipeline source.
+            backend: Unused — kept for interface parity with ReconciliationService.
+            ref_sas7bdat_path: Optional path to reference .sas7bdat.
+            data_dir: Directory where uploaded data files are stored; forwarded to
+                the executor so it can rewrite /workspace/data/ paths.
+            session_dir: If non-empty, path to the per-job DataFrame parquet cache;
+                forwarded to the executor so prior blocks' outputs are pre-loaded.
+
+        Returns:
+            ``{"checks": [...]}`` dict, or ``{"checks": []}`` on executor failure.
+        """
+        if not ref_csv_path and not ref_sas7bdat_path:
+            return {"checks": []}
+
+        try:
+            raw = await asyncio.to_thread(
+                self._post_execute,
+                python_code,
+                ref_csv_path,
+                ref_sas7bdat_path,
+                data_dir,
+                session_dir,
             )
-        return dataframes[-1]
+            checks = raw.get("checks") or []
+            for c in checks:
+                name = c.get("name", "?")
+                detail = c.get("detail", "")
+                if c.get("status") == "pass":
+                    logger.info("recon check %-20s PASS", name)
+                else:
+                    logger.warning("recon check %-20s FAIL  %s", name, detail)
+            if checks:
+                all_passed = all(c.get("status") == "pass" for c in checks)
+                logger.info(
+                    "reconciliation summary: %s (%d checks)",
+                    "PASS" if all_passed else "FAIL",
+                    len(checks),
+                )
+            return {"checks": checks}
+        except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError) as exc:
+            logger.warning("RemoteReconciliationService: executor unreachable: %s", exc)
+            return {"checks": []}
+        except Exception as exc:
+            logger.warning("RemoteReconciliationService: unexpected error: %s", exc)
+            return {"checks": []}

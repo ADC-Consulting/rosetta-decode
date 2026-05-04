@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from src.worker.engine.models import (
     BlockPlan,
@@ -14,6 +14,7 @@ from src.worker.engine.models import (
     SASBlock,
     TranslationStrategy,
 )
+from src.worker.engine.stub_generator import StubGenerator
 
 # Block types that the GenericProcAgent handles (everything that isn't DATA/SQL/SORT)
 _GENERIC_PROC_TYPES: frozenset[BlockType] = frozenset(
@@ -32,9 +33,6 @@ _GENERIC_PROC_TYPES: frozenset[BlockType] = frozenset(
         BlockType.PROC_UNKNOWN,
     }
 )
-
-if TYPE_CHECKING:
-    from src.worker.engine.stub_generator import StubGenerator
 
 logger = logging.getLogger("src.worker.engine.router")
 
@@ -93,10 +91,12 @@ class _ProcSortHelper:
         Returns:
             A 2-tuple of (out_dataset, in_dataset).
         """
-        out_match = re.search(r"\bOUT\s*=\s*(\w+)", raw_sas, re.IGNORECASE)
-        in_dataset = input_datasets[0] if input_datasets else "df"
+        out_match = re.search(r"\bOUT\s*=\s*([\w.]+)", raw_sas, re.IGNORECASE)
+        raw_in = input_datasets[0] if input_datasets else "df"
+        in_dataset = raw_in.lower().split(".")[-1]
 
-        out_dataset = out_match.group(1) if out_match else in_dataset
+        raw_out = out_match.group(1) if out_match else raw_in
+        out_dataset = raw_out.lower().split(".")[-1]
 
         return out_dataset, in_dataset
 
@@ -113,13 +113,15 @@ class _ProcSortHelper:
         vars_, ascending = self._parse_by_clause(block.raw_sas)
         out_dataset, in_dataset = self._parse_out_dataset(block.raw_sas, block.input_datasets)
 
-        vars_repr = ", ".join(f'"{v}"' for v in vars_)
-        ascending_repr = ", ".join(str(a) for a in ascending)
+        order_cols = ", ".join(
+            f'F.col("{v}").asc()' if asc else f'F.col("{v}").desc()'
+            for v, asc in zip(vars_, ascending, strict=True)
+        )
 
         python_code = (
             f"# SAS: {block.source_file}:{block.start_line}\n"
-            f"{out_dataset} = {in_dataset}.sort_values("
-            f"by=[{vars_repr}], ascending=[{ascending_repr}])"
+            f"from pyspark.sql import functions as F\n"
+            f"{out_dataset} = {in_dataset}.orderBy({order_cols})"
         )
 
         return GeneratedBlock(
@@ -202,6 +204,34 @@ class _SimpleCopyHelper:
 # ── Router ────────────────────────────────────────────────────────────────────
 
 
+class _StrategyStubAdapter:
+    """Wraps StubGenerator to forward a fixed strategy string into generate().
+
+    Args:
+        stub_generator: The shared StubGenerator instance.
+        strategy: The strategy string to pass when generating the stub.
+    """
+
+    def __init__(self, stub_generator: StubGenerator, strategy: str) -> None:
+        """Initialise with a StubGenerator and a fixed strategy."""
+        self._stub = stub_generator
+        self._strategy = strategy
+
+    async def translate(self, block: SASBlock, context: JobContext) -> GeneratedBlock:
+        """Delegate to StubGenerator.generate() with the bound strategy.
+
+        Args:
+            block: The SAS block to translate.
+            context: The current job context; ``data_files`` is forwarded to the stub.
+
+        Returns:
+            A GeneratedBlock produced by the StubGenerator.
+        """
+        return self._stub.generate(
+            block, strategy=self._strategy, data_files=context.data_files or None
+        )
+
+
 class TranslationRouter:
     """Routes a SASBlock to the appropriate translator.
 
@@ -236,8 +266,7 @@ class TranslationRouter:
 
         When a *block_plan* is provided, strategy-based overrides are applied
         before falling through to the block_type dispatch:
-        - ``manual`` / ``manual_ingestion`` → stub generator (human must write code)
-        - ``skip`` → stub generator (block is intentionally omitted)
+        - ``manual`` → stub generator (block has no Python equivalent)
         - all other strategies → normal block_type routing
 
         Args:
@@ -253,12 +282,10 @@ class TranslationRouter:
         """
         if block_plan is not None:
             match block_plan.strategy:
-                case TranslationStrategy.MANUAL | TranslationStrategy.MANUAL_INGESTION:
-                    return self._stub_generator
-                case TranslationStrategy.SKIP:
+                case TranslationStrategy.MANUAL:
                     return self._stub_generator
                 case _:
-                    pass  # translate / translate_with_review / translate_best_effort fall through
+                    pass  # translated / translated_with_review / translate_best_effort fall through
 
         match block.block_type:
             case BlockType.DATA_STEP:

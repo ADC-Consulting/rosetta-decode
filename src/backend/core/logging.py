@@ -13,3 +13,4 @@ def configure_logging() -> None:
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
         stream=sys.stdout,
     )
+    logging.getLogger("python_multipart").setLevel(logging.WARNING)

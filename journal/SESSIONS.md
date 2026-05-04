@@ -6,6 +6,1133 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-05-04 — cumulative block execution, risk post-run enrichment design, block_type planner fix
+
+**Duration:** ~1h | **Focus:** cross-block NameError root cause fix, migration planner correctness
+
+### Done
+- **fix(worker):** `_translate_blocks` now sends cumulative code (all prior blocks + current block) to executor — eliminates `revenue_sorted`/`tx_fx_cat` NameErrors from cross-block variable references in isolated subprocesses; removed unreliable Parquet session cache
+- **fix(worker):** appends `result = <output_var>` to cumulative exec code so recon capture picks the correct block's DataFrame
+- **fix(prompt):** added rule to `SHARED_TRANSLATION_RULES` — never introspect `.schema[col]` on a prior-block DataFrame; assume it exists and use directly
+- **fix(planner):** `block_type` prompt now lists all known types with concrete example; `_build_migration_plan` overrides LLM's `block_type` with authoritative value from parser — PROC_IML can no longer show as UNTRANSLATABLE
+- **design:** agreed post-run risk+rationale enrichment — risk recalculated from recon results + confidence after translation; rationale rewritten with actual findings; no extra LLM call (rule-based)
+
+### Decisions
+- **Cumulative code over session cache:** cumulative exec is crash-proof; Parquet cache silently left gaps when upstream blocks crashed mid-execution · revisit never
+- **Parser `block_type` is authoritative:** `_build_migration_plan` ignores LLM's `block_type`, reads it from parsed `SASBlock` — LLM was given a short enum missing PROC_IML etc. · revisit never
+- **Post-run risk+rationale:** recomputed after `_translate_blocks` using recon results + confidence; pre-run planner values are initial estimates only; rule table: recon pass + high conf → low; recon fail → high; no recon + low conf → high · revisit never
+
+### Open Questions
+- Post-run risk+rationale enrichment not yet implemented — agreed design only
+
+### Next Session — Start Here
+1. Implement `_enrich_block_plan_post_run` in `src/worker/main.py` — called after `_persist_initial_revisions`; updates `context.migration_plan.block_plans` risk+rationale in-place, then re-persists `job.migration_plan`
+2. Rebuild Docker: `docker compose build worker executor && docker compose up -d worker executor`
+3. Run a job → confirm no NameErrors; confirm risk reflects recon outcome in Plan tab
+4. Continue F20 Stream B → `docs/plans/latest/F20-live-trace-popup.md`
+
+### Files Touched
+- `src/worker/main.py`
+- `src/worker/engine/agents/shared.py`
+- `src/worker/engine/agents/migration_planner.py`
+
+---
+
+## 2026-05-03 (session 3) — recon grouping, retry loop, session cache, parser enhancements
+
+**Duration:** ~2h | **Focus:** fixing per-block recon correctness, retry loop, Spark session cache, SAS parser spec
+
+### Done
+- **fix(frontend):** no-recon blocks green (not amber); every completed block has chevron + expandable panel
+- **fix(recon):** `_build_recon_groups` strips libname prefix before stem match (`outdir.revenue_summary` → `revenue_summary`)
+- **fix(block_executor):** empty checks + ref present → synthetic `execution: fail` so retry loop fires on crash
+- **fix(worker):** translation exception now injects error as risk_flag and retries (was `break` on attempt 1); emits `block_done status=error`
+- **fix(worker):** `_reconcile_initial_blocks` (step 11) disabled — was reconciling intermediate blocks against final output ref
+- **fix(executor):** session cache switched to PySpark `spark.read/write.parquet`; Spark init always present when session_dir set; load snippet runs after init
+- **fix(executor):** session cache path → `/tmp/rosetta_cache/...` (`/workspace/data` is read-only mount)
+- **fix(frontend):** Plan tab recon column — CheckCircle2/XCircle icons; manual/skip/manual_ingestion always `—`
+- **feat(parser):** MacroDef, filename_map, PROC IML/FORMAT extractors, DROP/KEEP/WHERE/OUTPUT/ARRAY on SASBlock
+- **feat(prompt):** "always PySpark, never pandas" + "never cast to match ref schema" rules in SHARED_TRANSLATION_RULES
+- **feat(recon):** DEBUG logs — ref/actual rows, columns, dtypes before every check
+
+### Decisions
+- Direct-match only in `_build_recon_groups`; step-11 post-pass disabled; session cache in `/tmp`; retry loop continues on exception
+
+### Open Questions
+- `tx_fx_cat` NameError on attempt 1: LLM generates `_customer_id_type = tx_fx_cat.schema[...]` introspection code that runs before session cache can load the variable. Session cache fix in `/tmp` is deployed but the introspection line itself is a bad LLM pattern — needs a prompt rule to suppress schema introspection via `.schema[col]` before the DataFrame is confirmed available.
+
+### Next Session — Start Here
+1. Rebuild: `docker compose build worker executor && docker compose up -d worker executor`
+2. Run a job → confirm `tx_fx_cat` NameError is gone (session cache now in `/tmp`)
+3. If still failing, add prompt rule: "never access `.schema[col]` on a DataFrame that comes from a prior block — trust that it exists and use it directly"
+4. Continue F20 Stream B: `ExecutionOutputPanel` improvements + Trust tab in `EditorTab` → `docs/plans/latest/F20-live-trace-popup.md`
+
+### Files Touched
+- `src/frontend/src/components/LiveTraceDialog.tsx`
+- `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
+- `src/worker/main.py`
+- `src/worker/engine/block_executor.py`
+- `src/worker/engine/agents/shared.py`
+- `src/worker/engine/models.py`
+- `src/worker/engine/parser.py`
+- `src/worker/validation/reconciliation.py`
+- `src/executor/runner.py`
+- `src/executor/recon.py`
+- `tests/test_worker_main_comprehensive.py`
+- `tests/test_parser_proc_types.py` (existing test updated for new IML terminator)
+- `journal/BACKLOG.md`, `journal/DECISIONS.md`, `journal/SESSIONS.md`, `docs/plans/latest/F20-live-trace-popup.md`
+
+---
+
+## 2026-05-03 (session 2) — per-block recon cache, pipeline:full, popup UX overhaul, column casing
+
+**Duration:** ~3h | **Focus:** F20 per-block recon with DataFrame session cache, LiveTraceDialog colour states + pipeline:full banner, column lowercase fix
+
+### Done
+- **fix(worker):** `BlockExecutor.run()` crash diagnosed — stale `.pyc` in Docker image layer overriding bind-mounted source; fix: `docker compose build worker executor`
+- **feat(executor):** `session_dir` param on `run_code()` + `ExecuteRequest` — Parquet load snippet prepended, save snippet appended, `_ROSETTA_SESSION_DIR` env var; prior block DataFrames available to subsequent blocks without re-running
+- **feat(worker):** `session_dir` threaded `RemoteReconciliationService` → `BlockExecutor` → `_translate_blocks`; session cache computed once per job, cleaned up after loop
+- **fix(recon):** `_build_recon_groups` fallback removed — per-block recon only fires for blocks with a specifically-matched uploaded data file; job-level ref reserved for `pipeline:full` only
+- **feat(worker):** `pipeline:full` final recon run after translation loop — emits `block_start` / `recon_result` / `block_done` SSE trace events; no session cache (runs fresh)
+- **feat(frontend):** LiveTraceDialog block colour states — `running`=grey+spinner, `error`=red, `no-recon`=amber+CircleAlert, `pass`=green, `fail`=red
+- **feat(frontend):** `PipelineSummaryBanner` component for `pipeline:full` group — full-width card, coloured `border-l-4`, collapsible recon checks
+- **feat(frontend):** human-friendly check labels (Schema Parity, Row Count, Aggregate Parity); detail shown in `<pre>` when non-empty
+- **fix(frontend):** block header button — removed coloured `border-l-2`; removed inner rail `border-l-2` from collapsible section
+- **fix(frontend):** toggle UX — `userToggled: boolean | null` state; `null` = follow data (auto-expand on recon), non-null = user override; click always toggles freely
+- **fix(frontend):** stale `eslint-disable react-hooks/set-state-in-effect` comments removed
+- **fix(recon):** `recon.py` — both ref and actual DataFrames normalized to lowercase columns before all three checks (guards against SAS UPPERCASE ref CSV headers)
+- **fix(prompt):** `SHARED_TRANSLATION_RULES` Rule 2 — mandatory `toDF(*[c.lower() for c in df.columns])` after every file read; removes SAS/Python column casing mismatch at source
+
+### Decisions
+- Executor DataFrame session cache uses Parquet in `session_dir`; cache scoped per orchestrator instance (`id(self)`); cleaned up by `shutil.rmtree` after loop
+- `_build_recon_groups` fallback removed — intermediate blocks are not reconciled against the final output reference; only specifically-matched data files trigger per-block recon
+- Column normalization: two-layer defence (LLM prompt rule + recon.py defensive normalization)
+- LiveTraceDialog toggle: `userToggled: boolean | null` pattern — null defers to data, non-null is explicit user choice
+
+### Open Questions
+- Toggle fix confirmed working? User reported toggle disappeared mid-session; fix applied (null→userToggled pattern) but not verified in browser
+- `make docker-build` still needed to pick up executor + worker changes from this session
+
+### Next Session — Start Here
+1. `docker compose build worker executor && docker compose up -d worker executor`
+2. Run a migration job with a reference CSV that has a specific per-block match → confirm per-block recon fires in popup with amber/green/red states
+3. Run `pipeline:full` banner appears after all blocks complete
+4. Verify toggle open/close works in popup
+5. Continue F20 Stream B (ExecutionOutputPanel + Trust tab in EditorTab)
+
+### Files Touched
+- `src/executor/runner.py`
+- `src/executor/main.py`
+- `src/executor/recon.py`
+- `src/worker/validation/reconciliation.py`
+- `src/worker/engine/block_executor.py`
+- `src/worker/engine/agents/shared.py`
+- `src/worker/main.py`
+- `src/frontend/src/components/LiveTraceDialog.tsx`
+- `src/frontend/src/index.css`
+- `tests/test_worker_main.py`
+- `tests/test_worker_main_comprehensive.py`
+- `docs/plans/latest/F20-live-trace-popup.md`
+
+---
+
+## 2026-05-03 — recon popup fixes, UNRECOGNIZED rename, per-block recon wiring
+
+**Duration:** ~2h | **Focus:** live trace popup correctness, UNTRANSLATABLE→UNRECOGNIZED, per-block reconciliation routing
+
+### Done
+- **feat(ui):** removed amber attention strip from PlanTab; strategy badge now colored per pass/fail/manual/pending
+- **feat(ui):** pass/fail text badges → CheckCircle2/XCircle icons in TrustReportTab and EditorTab
+- **feat(ui):** UNTRANSLATABLE → UNRECOGNIZED across frontend types, LineageGraph, FileNodeCard, BlockPlanTable
+- **feat(ui):** shimmer pulse on recon column in BlockPlanTable while job is running
+- **feat(ui):** LiveTraceDialog — chevron only shown when recon content exists; block id strips directory prefix; smaller text
+- **feat(worker):** UNTRANSLATABLE → UNRECOGNIZED in models, codegen, stub_generator, llm_client, parser, schemas
+- **feat(worker):** `_reconcile_initial_blocks` now emits `recon_result` + corrective `block_done` trace events via `self._tracer`
+- **feat(worker):** per-check INFO/WARNING logging added to `RemoteReconciliationService.run()`
+- **feat(worker):** `BlockExecutor.run()` signature extended with `ref_csv_path`/`ref_sas7bdat_path`; `_build_recon_groups` wired into `_translate_blocks` for per-block ref routing
+- **fix(worker):** `mypy` name error — `_execute()` uses `self._tracer` not local `tracer`
+- **fix(worker):** `_build_recon_groups` was defined but never called — now called at start of `_translate_blocks`
+
+### Decisions
+- Per-block recon must use `_build_recon_groups` — single final-output ref must NOT be applied to intermediate blocks
+- `docker-compose.override.yml` bind-mounts `src/worker` — restart not rebuild needed for code changes
+- UNRECOGNIZED replaces UNTRANSLATABLE everywhere as the canonical term
+
+### Open Questions
+- **BlockExecutor fix not confirmed working** — `block_executor.py` signature replacement failed silently in one pass; final fix applied but not yet tested in docker (user ended session). Verify `docker compose restart worker` and re-run a job next session.
+
+### Next Session — Start Here
+1. `docker compose restart worker` (bind-mount, no rebuild needed)
+2. Run a migration job and confirm per-block recon checks appear in the live popup
+3. If still failing, check `docker compose logs worker --tail=50` for the exact error
+4. Continue F20 Stream B (ExecutionOutputPanel + Trust tab)
+
+### Files Touched
+- `src/worker/engine/block_executor.py`
+- `src/worker/engine/trace.py` (tracer param)
+- `src/worker/main.py` (_reconcile_initial_blocks tracer, _translate_blocks recon_groups)
+- `src/worker/validation/reconciliation.py` (per-check logging)
+- `src/worker/engine/models.py` (UNRECOGNIZED)
+- `src/worker/engine/codegen.py` (UNRECOGNIZED)
+- `src/worker/engine/stub_generator.py` (UNRECOGNIZED)
+- `src/worker/engine/llm_client.py` (UNRECOGNIZED)
+- `src/worker/engine/parser.py` (UNRECOGNIZED)
+- `src/backend/api/schemas.py` (UNRECOGNIZED)
+- `src/frontend/src/api/types.ts` (UNRECOGNIZED)
+- `src/frontend/src/components/JobDetail/PlanTab.tsx`
+- `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
+- `src/frontend/src/components/JobDetail/TrustReportTab.tsx`
+- `src/frontend/src/components/JobDetail/EditorTab.tsx`
+- `src/frontend/src/components/LiveTraceDialog.tsx`
+- `src/frontend/src/components/LineageGraph.tsx`
+- `src/frontend/src/components/FileNodeCard.tsx`
+- `src/frontend/src/components/LineageDetailPanel.tsx`
+- `docs/plans/latest/F20-live-trace-popup.md`
+
+---
+
+## 2026-05-03 — join fixes, recon coverage, confidence/status overhaul, SAS highlight
+
+**Duration:** ~3h | **Focus:** PySpark join correctness, recon column completeness, status/confidence semantics, SAS highlight bug
+
+### Done
+- **fix(prompt):** unified join key normalisation — save original type, regexp_replace+cast both sides, restore type after join; removes two conflicting sections; scoped to identifier/key columns only
+- **fix(prompt):** generic per-column schema-mismatch cast hint in retry logic (`"column X: output is Y but ref expects Z — cast to match"`)
+- **fix(prompt):** near-zero aggregate parity advisory — when `ref_sum < 1e-3`, hint tells LLM this is IEEE 754 drift and to add a comment, not a logic fix
+- **fix(worker):** job status written immediately after recon (step 10a/10b split) — UI no longer waits for doc/lineage LLM calls before showing proposed/under_review
+- **fix(worker):** `exec_ok` on `GeneratedBlock`; `_persist_initial_revisions` writes baseline `reconciliation_status="pass"/"fail"` for every translated block — eliminates `—` in Plan table
+- **fix(worker):** `_reconcile_initial_blocks` skip guard changed to `status=="pass" AND recon_checks non-empty` — execution-only passes get upgraded to full recon when ref available
+- **feat(planner):** MigrationPlannerAgent now asked for `confidence_score` (0.0–1.0); `BlockPlan` defaults changed from 1.0/"high" to 0.5/"unknown" — fixes confidence always showing 100%
+- **feat(backend):** `effective_confidence_band` computed post-recon (`pass`→upgrade, `fail`→downgrade) and added to `TrustReportBlock`
+- **feat(backend):** `end_line` threaded from `SASBlock` → `BlockPlan` → API
+- **feat(frontend):** Strategy badge derived from `(strategy, reconciliation_status)` — green Translated on pass, blue on no-recon, amber Review Needed on fail, red Manual always
+- **feat(frontend):** SAS highlight in View Code dialog uses actual `end_line` instead of `startLine + 20`
+- **feat(frontend):** Activity button in jobs table pulses when job is running/queued
+- **fix(tests):** deleted stale `tests/test_reconciliation_coerce.py`
+
+### Decisions
+- Join key type-save/restore pattern: `_type = df.schema[col].dataType` before cast, `.cast(_type)` after join — generic, works for all Spark types, no hardcoding
+- `effective_confidence_band` lives in trust report (read layer), not in `BlockPlan` (write layer) — keeps planner's estimate as audit trail, adjusts display post-recon
+- Job status written in two DB commits: step 10a (status + code) immediately after recon, step 10b (doc + lineage) after best-effort enrichment
+
+### Open Questions
+- LiveTraceDialog UX overhaul (frozen elapsed, FinalStatusChip, timing pill, expandable blocks) was lost — prior sessions marked it done in backlog but it was never committed; needs re-implementation
+- F20 Stream B (ExecutionOutputPanel + Trust tab) still pending
+
+### Next Session — Start Here
+1. Re-implement LiveTraceDialog UX overhaul (see backlog item + F20 plan Stream B section)
+2. F20 Stream B — ExecutionOutputPanel improvements + Trust tab in EditorTab
+
+### Files Touched
+- `src/worker/engine/agents/shared.py` — join key prompt unified
+- `src/worker/engine/agents/migration_planner.py` — confidence_score in prompt + _build_migration_plan; end_line threaded
+- `src/worker/engine/models.py` — `exec_ok` on GeneratedBlock; BlockPlan defaults + end_line field
+- `src/worker/main.py` — step 10a/10b split; exec_ok set in _translate_blocks; _persist_initial_revisions baseline recon; skip guard fix; schema-mismatch + near-zero hints
+- `src/backend/api/schemas.py` — `effective_confidence_band` on TrustReportBlock
+- `src/backend/api/routes/jobs.py` — `_effective_confidence()` helper + trust report loop
+- `src/frontend/src/api/types.ts` — `end_line` on BlockPlan; `effective_confidence_band` on TrustReportBlock
+- `src/frontend/src/components/JobDetail/BlockPlanTable.tsx` — derived strategy badge; end_line SAS highlight
+- `src/frontend/src/pages/JobsPage.tsx` — Activity shimmer for running/queued
+- `tests/test_reconciliation_coerce.py` — deleted (stale import)
+
+---
+
+## 2026-05-01 — F20 Stream A: live trace popup + session cancel
+
+**Duration:** ~2h | **Focus:** F20 Stream A — per-block trace events, cancellation, SSE endpoint, LiveTraceDialog
+
+### Done
+- **F20 A1:** `JobTrace` model + `cancellation_requested` on `Job` + Alembic migration 016
+- **F20 A2:** `TraceEmitter` (independent sessions, never raises) + `JobCancelledError` + per-block `block_start`/`block_done`/`recon_result`/`job_done` emit in `_translate_blocks` + cancel check between blocks
+- **F20 A3:** `POST /jobs/{id}/cancel` — queued jobs cancelled immediately, running jobs set `cancellation_requested=True`
+- **F20 A4:** `GET /jobs/{id}/trace/stream` SSE endpoint — polls `job_traces` at 0.5s, closes on `job_done` or terminal status
+- **F20 A5:** `TraceEvent` union type + `openTraceStream` / `cancelJob` API client functions
+- **F20 A6:** `LiveTraceDialog` — redesigned with left vertical timeline rail, shadcn color tokens, per-event-type dot + row styling, auto-scroll, elapsed timer, Stop button
+- **F20 A7:** Activity button in `JobsPage` for queued/running/done jobs; `LiveTraceDialog` mounted at page root
+- **fix(worker):** cancel check crash — `session.refresh(job)` replaced with fresh-session `get()` via `session_factory`; fixes "not persistent within this Session" error
+- **make test green:** all 7 gates pass after ruff/mypy/eslint/build fixes
+
+### Decisions
+- `JobTrace` append-only via `TraceEmitter` with independent sessions; SSE polls DB (no WebSocket) · revisit never
+- Cancel check uses fresh session — outer session's Job object detaches after LLM calls · revisit never
+- Agent thinking stream: model-agnostic structured events chosen over Claude-only extended thinking; deferred · revisit never
+
+### Open Questions
+- F19 retry loop still not implemented — only 1 attempt fires even when recon fails; quick fix is ~30 min
+- F20 Stream B (ExecutionOutputPanel + Trust tab) not started
+- `make docker-build` needed to deploy Alembic 016 + new endpoints
+
+### Next Session — Start Here
+1. `make docker-build && docker compose up` — apply migration 016, verify LiveTraceDialog works end-to-end
+2. Implement F19 quick retry loop: per-block `for attempt in range(1, 4)` in `_translate_blocks`, inject recon error into `risk_flags` on fail
+3. Then F20 Stream B: ExecutionOutputPanel improvements + Trust tab in EditorTab
+
+### Files Touched
+- `src/backend/db/models.py` — `JobTrace` model, `cancellation_requested` on `Job`
+- `alembic/versions/016_add_job_traces_cancel.py` — new migration
+- `src/backend/api/routes/jobs.py` — `POST /cancel`, `GET /trace/stream`
+- `src/worker/engine/trace.py` — new: `TraceEmitter`, `JobCancelledError`
+- `src/worker/main.py` — TraceEmitter wired, cancel check fixed (fresh session)
+- `src/frontend/src/api/types.ts` — `TraceEvent` union types
+- `src/frontend/src/api/jobs.ts` — `openTraceStream`, `cancelJob`
+- `src/frontend/src/components/LiveTraceDialog.tsx` — new component (timeline rail design)
+- `src/frontend/src/pages/JobsPage.tsx` — Activity button + dialog mount
+
+---
+
+## 2026-04-28 — rawdir_customers root-cause fix + F19 S2+S3 plan
+
+**Duration:** ~2h | **Focus:** Tracing `rawdir_customers` NameError to its true root cause; planning the F19 per-block execute-and-refine loop
+
+### Done
+- **Root cause identified:** `windowed_context()` sets `blocks=[block]` (only the current block), so `block_output_stems` in all three agent `_build_prompt` functions was built without any upstream block outputs. Downstream prompts fell back to `rawdir_customers` instead of `customers` for PROC IMPORT outputs.
+- **Fix applied:** Added `all_blocks: list[SASBlock]` parameter to `_build_prompt` in all three agents (`data_step.py`, `proc.py`, `generic_proc.py`); call sites updated to pass `context.blocks` (the full job block list). Both dot form (`rawdir.customers`) and underscore form (`rawdir_customers`) now registered in `block_output_stems`.
+- **Prompt hardening:** `generic_proc.py` system prompt updated with explicit `OUT=` stem-only naming rule, wrong/correct examples, and corrected output variable examples throughout.
+- **Debug logging added:** `generic_proc.py` logs prompt input hints, raw LLM output, and post-normalise state at DEBUG; `codegen.py` warns at WARNING if `rawdir_customers` survives into assembled code.
+- **Confirmed all previous bug-fix changes necessary:** Audit via fullstack-planner confirmed all changes from previous session (shared.py, `_file_io_types` exclusion removal, etc.) are correct and non-redundant.
+- **F19 S2+S3 planned:** Full implementation plan written at `.claude/plans/first-plan-properly-with-tidy-bubble.md` covering `BlockExecutor` remote recon swap, `_translate_blocks` per-block retry loop, `data_dir` threading, and tests.
+- **Post-fix result:** Executor now fails on `AnalysisException` (PySpark column resolution) rather than `NameError` — a genuine LLM translation error, not a pipeline bug, which F19 is designed to fix.
+
+### Decisions
+- **`block_output_stems` must use full `context.blocks`:** `windowed_context` is intentionally narrow (single block) for LLM prompt scoping, but the variable name resolution map needs global visibility of all upstream outputs — the two concerns are now separated. · revisit never
+- **Debugging approach:** when tracing a persistent bug, add surgical DEBUG logging at each stage of the pipeline (prompt construction → LLM output → post-processing → assembly) before changing any logic. Confirmed root cause via logs, not guesswork.
+
+### Open Questions
+- F19 S2+S3 not yet implemented — the per-block execute→refine loop is planned but not coded.
+- `auto_verified` counter and `needs_attention` threshold still not fixed (deferred again).
+
+### Next Session — Start Here
+1. Implement F19 S2+S3: update `BlockExecutor` to use `RemoteReconciliationService`, add per-block retry loop to `_translate_blocks`, forward `data_dir` — see `.claude/plans/first-plan-properly-with-tidy-bubble.md`
+2. Run `make test` after implementation
+3. `docker compose restart worker` and resubmit to verify loop fires
+
+### Files Touched
+- `src/worker/engine/agents/data_step.py` — `all_blocks` param in `_build_prompt`, call site fix
+- `src/worker/engine/agents/proc.py` — same
+- `src/worker/engine/agents/generic_proc.py` — same + system prompt hardening + debug logging
+- `src/worker/engine/codegen.py` — warning log if `rawdir_customers` in assembled code
+
+---
+
+## 2026-04-27 — Executor runtime fixes: data_dir routing, xlsx, output_var normalisation, file_count
+
+**Duration:** ~2.5h | **Focus:** Unblocking executor execution — uploaded files not found, xlsx crash, rawdir NameError, file count off-by-one
+
+### Done
+- **`data_dir` routing:** uploaded non-SAS files now saved to `/uploads/<job_id>/<basename>` (per-job subdir, no `<job_id>_` prefix); `data_dir` param added to `ExecuteRequest`, `run_code`, `RemoteReconciliationService.run`, and all call sites in worker; executor rewrites `/workspace/data/` → `data_dir/` before running code
+- **xlsx fix (two layers):** (1) GenericProcAgent system prompt updated with `pd.read_excel + spark.createDataFrame` pattern; (2) `_fix_excel_spark_reads()` post-gen guard rewrites `spark.read.*load(*.xlsx)` calls automatically; (3) `openpyxl` added to executor Dockerfile
+- **Nested workspace path guard:** `_fix_workspace_paths()` normalises `/workspace/data/working/data/raw/foo.csv` → `/workspace/data/foo.csv` (basename only); prompt listing also fixed to show basename only
+- **PROC IMPORT output_var naming:** removed `_file_io_types` exclusion from `all_block_outputs` in all three agents — PROC IMPORT outputs now correctly shown as stem-only in downstream prompts (root cause of `rawdir_customers` NameError in downstream blocks)
+- **`normalise_output_var` + `normalise_output_var_in_code`:** shared utilities extracted to `src/worker/engine/agents/shared.py`; all three agents delegate both the code-body rename and the `output_var` field correction to these — handles both dot form and underscore form; local `_fix_output_var_naming` removed from all three agents
+- **`file_count` fix:** now counts SAS source files + per-path `__ref_<ext>_<path>__` sentinels; excludes bare canonical aliases (`__ref_csv__`, `__ref_sas7bdat__`) and `__refine_context__` — was showing 20 instead of 19
+- **`upload_dir` added to `WorkerSettings`:** default `/uploads`; used to derive `data_dir` per job
+
+### Decisions
+- **Per-job upload subdir:** non-SAS files saved to `/uploads/<job_id>/<basename>` (was `/uploads/<job_id>_<basename>`); enables `data_dir` param to point executor at correct directory without any per-job volume magic · revisit never
+- **`data_dir` param in executor:** executor rewrites `/workspace/data/` at execution time rather than relying on static volume mount path matching; keeps generated code portable (always `/workspace/data/<basename>`) · revisit never
+- **`normalise_output_var` in shared.py:** single source of truth for stem-only normalisation of both `output_var` field and code body — handles dot form and underscore form; agents no longer duplicate this logic · revisit never
+
+### Open Questions
+- `auto_verified` counter and `needs_attention` threshold still not fixed (deferred again)
+- F19 retry loop (per-block execute→refine) still not implemented — pre-conditions now unblocked
+- `make docker-build` still needed to deploy all changes
+
+### Next Session — Start Here
+1. Run `make docker-build` and resubmit — verify executor finds files, xlsx loads, no NameError
+2. Fix `auto_verified` trust report counter and `needs_attention` threshold
+3. Implement F19 S1: `BlockExecutor.run()` helper in `src/worker/engine/block_executor.py`
+
+### Files Touched
+- `src/backend/api/routes/migrate.py` — per-job subdir for uploaded files
+- `src/backend/api/routes/jobs.py` — file_count sentinel filter fix
+- `src/executor/Dockerfile` — openpyxl added
+- `src/executor/pyproject.toml` — openpyxl added
+- `src/executor/main.py` — data_dir field in ExecuteRequest
+- `src/executor/runner.py` — data_dir param, workspace path rewrite
+- `src/worker/core/config.py` — upload_dir setting
+- `src/worker/engine/agents/shared.py` — new: normalise_output_var, normalise_output_var_in_code
+- `src/worker/engine/agents/data_step.py` — delegates to shared, removed _fix_output_var_naming, removed _file_io_types exclusion
+- `src/worker/engine/agents/proc.py` — same as data_step
+- `src/worker/engine/agents/generic_proc.py` — same + _fix_workspace_paths + _fix_excel_spark_reads + prompt fixes
+- `src/worker/main.py` — data_dir derived and threaded through all recon call sites
+- `src/worker/validation/reconciliation.py` — data_dir param in _post_execute + run
+
+---
+
+## 2026-04-27 — Executor NameError root-cause fix: block ordering + variable naming
+
+**Duration:** ~2h | **Focus:** Eliminating `NameError: name 'outdir_customer_revenue_daily' is not defined` in executor; correct PROC IMPORT path generation
+
+### Done
+- **Cumulative recon slices:** `_reconcile_initial_blocks` now passes `generated_blocks` and sends `assemble_flat(blocks[:i+1])` per block — prior block outputs are available in scope
+- **Editor Run cumulative code:** `execute_job` (backend) assembles cumulative code from `migration_plan.block_plans` order when `block_id` is provided
+- **Output var renamer:** `_fix_output_var_naming()` added to all three agents (`DataStepAgent`, `ProcAgent`, `GenericProcAgent`) — detects when LLM uses `outdir_foo` form in code body and renames to stem `foo`; also corrects `output_var` field if wrong
+- **Input variable naming in prompts:** all three `_build_prompt()` functions now show `→ variable name: <name>` for each input, distinguishing inter-block datasets (stem-only) from external source files (`libname_table` form); `PROC_IMPORT`/`PROC_EXPORT` outputs excluded from the inter-block set
+- **Block ordering fix (root cause):** `_topological_sort` in `parser.py` replaced `nx.topological_sort` with Kahn's algorithm + `(source_file, start_line)` min-heap — unconnected blocks (e.g. `PROC_IML` with no `DATA=`/`OUT=`) now retain natural SAS file order instead of floating to front
+- **`GenericProcAgent` prompt hardened:** system prompt + `_build_prompt` aligned with `DataStepAgent`/`ProcAgent` naming rules; `data_files` injected into prompt as `## Uploaded data files` section
+- **PROC IMPORT path rule:** system prompt now says derive path from `DATAFILE=` basename only → `/workspace/data/<basename>`; ignore SAS macro-expanded paths; example updated from `<infile_path>` placeholder to concrete `/workspace/data/customers.csv`
+- **Executor debug logging removed:** temporary `logger.info("Code to execute:\n%s", ...)` removed from `src/executor/main.py`
+- **codegen guard:** `assemble_flat` skips `result = <output_var>` if variable not found as assignment in rendered code (prevents crash when LLM naming mismatch survives)
+
+### Decisions
+- **Inter-block vs external-source variable naming:** datasets produced by transform blocks (DATA_STEP, PROC_SQL, etc.) are listed in prompts as stem-only; datasets produced by PROC_IMPORT/PROC_EXPORT keep `libname_table` form — this is the stable convention for all agents · revisit never
+- **Topo sort tiebreaker:** Kahn's with `(source_file, start_line)` min-heap chosen over `nx.lexicographic_topological_sort` (not available in networkx 3.6.1) · revisit if networkx upgraded
+
+### Open Questions
+- PROC IMPORT blocks still crash executor when real source files aren't uploaded — graceful skip needed (executor returns error, recon marks `no_data`, job continues)
+- `make docker-build` still needed to deploy all worker + executor changes
+- `auto_verified` counter and `needs_attention` threshold fixes still pending
+
+### Next Session — Start Here
+1. Run `make docker-build` and resubmit the failing job — verify no NameError and PROC IMPORT uses `/workspace/data/` paths
+2. Fix `auto_verified` trust report counter (always 0) and `needs_attention` threshold
+3. Begin F19 (agentic per-block execute-and-refine loop) — S1: `BlockExecutor.run()` helper
+
+### Files Touched
+- `src/worker/engine/parser.py` — Kahn's topo sort with file/line tiebreaker
+- `src/worker/engine/codegen.py` — guard on `result =` append
+- `src/worker/engine/agents/data_step.py` — `_fix_output_var_naming`, input naming, PROC_IMPORT exclusion
+- `src/worker/engine/agents/proc.py` — same as data_step
+- `src/worker/engine/agents/generic_proc.py` — all of the above + data_files in prompt + PROC IMPORT path rule
+- `src/worker/main.py` — `_reconcile_initial_blocks` cumulative slices
+- `src/backend/api/routes/jobs.py` — `execute_job` cumulative code for block_id
+- `src/executor/main.py` — removed debug logging
+- `tests/test_worker_main_comprehensive.py` — updated call sites for new signature
+
+---
+
+## 2026-04-27 — Test coverage 86% → 95%
+
+**Duration:** ~1.5h | **Focus:** Coverage uplift — agent factories, router, worker/main, API routes
+
+### Done
+- **Coverage 86% → 90%:** Added tests for Azure/TensorZero `_make_agent()` branches across `llm_client`, `generic_proc`, `migration_planner`; `_StrategyStubAdapter`, `_SimpleCopyHelper` (keep/drop/copy), MANUAL block_plan routing; `_safe_exec` NameError re-raise; `_get_spark` ImportError path
+- **Coverage 90% → 92%:** Added tests for TensorZero/Azure branches across `analysis`, `data_step`, `proc`, `failure_interpreter`, `macro_resolver`, `documentation`, `plain_english`, `lineage_enricher`, `explain_agent`; parser cycle detection + `extract_lineage`; executor runner empty JSON + exception paths
+- **Coverage 92% → 93%:** Added tests for `jobs.py` versions/refine/restore routes; `worker/main.py` sentinel key parsing, migration planner failure, refine context, doc/lineage failure swallowing; `migrate.py` zip skip paths
+- **Coverage 93% → 95%:** Added tests for `worker/main.py` stale job recovery, `_reconcile_initial_blocks` branches, `_process_job`; `explain.py` all three POST routes; `proc.py`/`data_step.py` Azure branch; `macro_expander.py` unresolved var; `codegen.py` result append
+- **pyproject.toml:** `--cov-fail-under` threshold raised to 90 (already passing at 95%)
+- **New test file:** `tests/test_llm_client_text_agent.py`
+
+### Decisions
+- PySpark-dependent branches in `reconciliation.py` (Spark init, AnalysisException) left uncovered — require a real PySpark install, not feasible in unit test environment; documented as known gap
+
+### Open Questions
+- `worker/main.py` lines 259-260, 768-769 — `_claim_job` skip_llm branch and a deep translate-loop branch; partially reachable but fragile to mock; left for future session
+
+### Next Session — Start Here
+1. Debug output variable NameError (`outdir_customer_revenue_daily`) — add prompt logging in `data_step.py` `_build_prompt()`, re-submit failing job, inspect worker stdout
+2. Run `make docker-build` — picks up executor log4j2, volume mount, agent router changes
+3. Fix `auto_verified` trust report counter (always 0) and `needs_attention` threshold
+
+### Files Touched
+- `tests/test_llm_client.py`, `tests/test_llm_client_text_agent.py` (new)
+- `tests/test_generic_proc_agent.py`, `tests/test_translation_router.py`
+- `tests/reconciliation/test_reconciliation_service.py`
+- `tests/test_migration_planner_agent.py`, `tests/test_analysis_agent.py`
+- `tests/test_data_step_agent.py`, `tests/test_proc_agent.py`
+- `tests/test_failure_interpreter_agent.py`, `tests/test_macro_resolver_agent.py`
+- `tests/test_documentation_agent.py` (via `test_doc_generator.py`)
+- `tests/test_lineage_enricher_agent.py`, `tests/test_explain_agent.py`
+- `tests/test_parser.py`, `tests/test_executor_runner.py`, `tests/test_executor_recon.py`
+- `tests/test_block_refine_routes.py`, `tests/test_job_versions.py`
+- `tests/test_changelog_trust_report.py`, `tests/test_execute_route.py`
+- `tests/test_jobs_routes_comprehensive.py`, `tests/test_explain_routes.py`
+- `tests/test_migrate_route.py`, `tests/test_macro_expander.py`, `tests/test_codegen.py`
+- `tests/test_worker_main_comprehensive.py`
+- `journal/BACKLOG.md`, `pyproject.toml`
+
+---
+
+## 2026-04-26 — Codegen/executor fixes, agent prompt hardening, output variable naming (incomplete)
+
+**Duration:** ~2h | **Focus:** Executor recon failures, generated code correctness, Spark warning suppression
+
+### Done
+- **Codegen:** removed unconditional `import pandas as pd` from `_MODULE_TEMPLATE` and `_FLAT_TEMPLATE`; each block now self-imports what it needs
+- **Codegen:** `assemble_flat()` appends `result = <output_var>` using the last block's `output_var` field
+- **Executor result-capture:** updated `_RESULT_CAPTURE_SNIPPET` to check `globals().get('result')` first before scanning all globals
+- **Executor Spark warnings:** added log4j2 properties file written at runtime; passed via `spark.driver.extraJavaOptions` to suppress `NativeCodeLoader` and `incubator modules` JVM warnings (requires `make docker-build`)
+- **Agent prompts — import rule:** all three translation agents (`data_step`, `proc`, `generic_proc`) now instruct: always import needed libraries at top of block; do not assume `pd` is pre-imported
+- **Agent prompts — `result =` convention:** all three agents instructed to set `result = <output_var>` as final line and populate `output_var` in JSON response
+- **Agent prompts — input vs output datasets:** `data_step._build_prompt()` now explicitly lists input datasets (libname_table form, already loaded) and output datasets (stem-only, must be created) as separate sections, replacing the ambiguous `dependency_order` list
+- **Migration planner prompt:** added rule to assign `strategy: manual` to blocks in `macros/` files that reference macro parameters as dataset names (e.g. `assert_rowcount`)
+- **Dead code removed:** `shared_context.py` `build_context_section()` deleted (was never called)
+- **`output_var` field:** added to `GeneratedBlock` and to Pydantic output models for all three translation agents
+
+### Decisions
+- Output dataset variable naming: use TABLE STEM ONLY (no libname prefix) for output variables. `DATA outdir.foo` → Python var `foo`. Input datasets keep full `libname_table` form since they are pre-loaded and must be unambiguous.
+
+### Open Questions
+- **`outdir_customer_revenue_daily` NameError still occurs** even after prompt fixes and worker restart — root cause not yet confirmed. Suspect the LLM is still seeing the full dotted name somewhere (possibly in the SAS source block itself or in macro expansion) and generating `outdir_customer_revenue_daily` as an output var. Need to log the actual user prompt sent to the agent to confirm.
+- Spark JVM warnings (`NativeCodeLoader`, `incubator`) still showing — log4j2 fix requires `make docker-build` which hasn't been run yet.
+- Coverage at 86%, below 88% threshold.
+- `make docker-build` still pending.
+
+### Next Session — Start Here
+1. **Debug the output variable NameError:** add temporary logging in `data_step.py` `_build_prompt()` to print the full user prompt (input/output dataset lists + raw SAS) to worker stdout, then re-submit the failing job and inspect. The LLM must be seeing `outdir_customer_revenue_daily` as the output variable name from somewhere.
+2. Once root cause confirmed, fix and re-test.
+3. Run `make docker-build` after code fixes to pick up executor log4j2 change and all other pending infra changes.
+4. Fix coverage to reach 88% (add tests for `_BestEffortAgentAdapter` or `build_context_section` removal).
+
+### Files Touched
+- `src/worker/engine/codegen.py`
+- `src/worker/engine/models.py`
+- `src/executor/runner.py`
+- `src/worker/engine/agents/data_step.py`
+- `src/worker/engine/agents/proc.py`
+- `src/worker/engine/agents/generic_proc.py`
+- `src/worker/engine/agents/migration_planner.py`
+- `src/worker/engine/agents/shared_context.py` (deleted)
+
+---
+
+## 2026-04-25 — History ordering, table UX, test fixes, upload redirect
+
+**Duration:** ~1.5h | **Focus:** Plan tab UX polish, test suite repair, upload page simplification
+
+### Done
+
+- **History pane ordering:** `VersionHistoryRail` and `EditorTab` history pane now show v1 at the top (oldest first), descending to the latest at the bottom. "Latest" badge and primary-border highlight both moved to the last (newest) entry.
+- **Collapsible block table:** `BlockPlanTable` in `PlanTab` is collapsed by default; a chevron + "Blocks" heading toggles it open.
+- **Rationale + Actions merged:** Rationale column removed; `Info` icon added as first action button in the Actions column, with tooltip "View rationale" and same Popover behaviour as before. `FileText` import removed.
+- **Version cache invalidation:** `saveBlockPython` now also invalidates `["job", jobId, "versions"]` so new saves appear in the history rail immediately.
+- **Upload redirect:** after a successful migration submission, `UploadPage` navigates directly to `/jobs` instead of showing the Phase 2 result card. All dead code (job polling, `StatusBadge`, `manifest`/`phase`/`jobStatus` state, `copyText`, result card JSX) removed.
+- **Test suite repair:** fixed 9 failing tests caused by uncommitted router and stub-generator changes from the previous session:
+  - `test_routes_manual_strategy_to_stub` / `test_routes_manual_ingestion_strategy_to_stub` → updated to assert `_BestEffortAgentAdapter` (intended new behaviour).
+  - `test_routes_skip_strategy_to_stub` → fixed accidental `SKIP` routing to `_BestEffortAgentAdapter` in `router.py`; reverted to `self._stub_generator`.
+  - `test_stub_generator_manual_ingestion_*` and `test_strategy_stub_adapter_*` → updated placeholder path assertions from `"path/to/input.csv"` to `"/workspace/data/"` prefix.
+  - `test_stub_generator_manual_ingestion_with_output_dataset` / `test_strategy_stub_adapter_translate` → updated `is_untranslatable` assertions from `True` to `False` (matches `4cd894c` behaviour change).
+- **Ruff fixes:** two `E501` line-length violations in `jobs.py` `save_block_python` (long `select(Job)` + `update(Job)` chains wrapped).
+
+### Decisions
+
+- Upload flow simplified: no intermediate result card — navigate directly to Jobs list on success. Cleaner UX, less state to maintain.
+
+### Open Questions
+
+- Coverage still at 86%, below the 88% threshold — needs dedicated test additions for `_BestEffortAgentAdapter`, new `stub_generator` path, or `build_context_section`.
+- `make docker-build` still pending to pick up executor volume, backend trigger fix, generated_files sync, and router changes.
+
+### Next Session — Start Here
+
+1. Run `make test` to verify suite is green (coverage fix needed: add tests for `_BestEffortAgentAdapter` and/or `build_context_section` to reach 88%).
+2. Commit remaining dirty files (backend, worker, frontend pages, docker-compose) as separate atomic commits.
+3. Run `make docker-build` once all code commits are done.
+
+### Files Touched
+
+- `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
+- `src/frontend/src/components/JobDetail/PlanTab.tsx`
+- `src/frontend/src/components/VersionHistoryRail.tsx`
+- `src/frontend/src/components/JobDetail/EditorTab.tsx`
+- `src/frontend/src/pages/UploadPage.tsx`
+- `src/worker/engine/router.py`
+- `src/backend/api/routes/jobs.py`
+- `tests/test_translation_router.py`
+- `tests/test_context_improvements.py`
+
+---
+
+## 2026-04-25 — Editor & Plan tab UX overhaul + agent confidence fixes
+
+**Duration:** ~3h | **Focus:** Plan/Editor tab bugs, history pane, block-scoped View Code, inline/side-by-side diff toggle, summary card layout, agent always-translate, file path conventions
+
+### Done
+
+- **History pane:** entries now show `v{revision_number}` instead of filename; clicking loads that block's Python revision into the Python editor imperatively (via `model.setValue()`); clicking no longer switches the selected SAS file; `onSelectBlock` removed from `BottomPanel` to prevent file navigation side-effect.
+- **Block View Code modal — SAS highlighting:** after mount, delta decorations highlight `start_line..start_line+20` with `monaco-block-highlight` CSS class; full file remains visible for context.
+- **Plan→Editor sync:** after `saveBlockPython` resolves, `queryClient.invalidateQueries(["job", jobId])` refreshes `job.generated_files` so `EditorTab` picks up the new code.
+- **Block refine trigger:** `POST /blocks/{block_id}/refine` now stores `trigger="agent"` (was `"human-refine"`); history pane `isHuman` check updated to `trigger === "human" || trigger === "restore"`.
+- **`generated_files` sync on PATCH:** `PATCH /blocks/{block_id}/python` now updates `job.generated_files[py_key]` after saving the `BlockRevision` so the per-file editor view stays current.
+- **Agents always attempt translation:** `router.py` routes `manual`/`manual_ingestion` strategies through agents with `_BestEffortAgentAdapter`; `StubGenerator` is fallback only on exception; `very_low` confidence prepends warning comment.
+- **Stub file path:** `StubGenerator` fallback changed from `"path/to/input.csv"` → `/workspace/data/{dataset_name}.csv`.
+- **Agent prompt file path convention:** `data_step.py` and `generic_proc.py` system prompts instruct agents to use `/workspace/data/<dataset_name>.csv` instead of placeholder paths.
+- **Executor workspace volume:** `docker-compose.yml` mounts `uploads:/workspace/data:ro` and sets `WORKSPACE_DATA_DIR=/workspace/data` env var on executor service.
+- **Full-page editor:** new `EditorFullPage.tsx` page at `/jobs/:id/editor`; toolbar shows `Minimize2` when in full-page mode, `Maximize2` when embedded; back navigates to `/jobs/:id?tab=editor`; header-bar back arrow removed from full-page mode.
+- **Language icons:** `mr-1.5` gap added between SVG icon and text in SAS/Python/Explorer pane headers.
+- **Pane header text:** explicit `color: "#374151"` for light-mode headers so text is readable when editor theme is dark but app theme is light.
+- **Bottom pane tab bar:** active tab uses explicit dark-mode colors (`text-white border-blue-400 bg-[#1e1e1e]`) instead of CSS vars that resolve incorrectly in dark-editor + light-app combo.
+- **History entry highlight:** theme-aware `border-l-2` highlight (`border-blue-400 bg-blue-400/10` in dark, `border-primary bg-primary/10` in light).
+- **Save/Edit buttons:** `EditorTab` now accepts `onSave`/`isSaving` props; toolbar shows `Save` + `Read-only` when editing, `Edit` when locked; styled to match Report tab.
+- **Copyable errors:** `ExecutionOutputPanel` stderr/fetchError wrapped in `relative` container with `Copy` icon button; `select-all` class on `<pre>`.
+- **Hash guard on save:** `lastSavedHashRef` + `pendingHashRef` in `JobDetailPage` skip `saveVersionMutation` if content hash unchanged.
+- **URL tab routing:** `JobDetailPage` reads `?tab=` search param on mount; `onExpand` navigates with `?tab=editor` to restore tab on return.
+- **Top-bar declutter:** "Save Changes" and "Refine" buttons removed from global top bar; save is now per-tab inline; refine stays per-block in Plan table.
+- **Inline/side-by-side diff toggle:** `BlockRevisionModal` has a segmented toggle (Inline default, Side by side); wired through `sideBySide` prop to `RevisionRow` → `MonacoDiffViewer`.
+- **`MonacoDiffViewer`:** `renderSideBySide` prop added (default `false`).
+- **Plan summary card:** horizontal split (`flex-row`) — summary text fills left, vertical divider, stats cluster on right; then reverted to vertical stack (`flex-col divide-y`) per user; text full-width on top, stats centered below; padding tightened to `py-2`.
+- **Block table groupBy default:** changed from dynamic folder/none logic to fixed `"file"`.
+- **`ChangelogEntry.trigger` type:** widened to explicit union including `"agent"`.
+
+### Decisions
+
+- History pane clicking should NOT change the selected SAS file — navigation and code loading are independent actions.
+- `trigger="agent"` is the correct label for LLM-generated revisions (whether initial or refine-triggered); `"human-refine"` was misleading.
+- Inline diff is the better default for revision history (less horizontal space required).
+- Block table defaults to file grouping (most intuitive for multi-file migrations).
+
+### Open Questions
+
+- `make docker-build` still needed to pick up executor volume mount + backend changes.
+- Coverage gate (87% < 88%) still unresolved from prior session.
+- `auto_verified` and `needs_attention` trust report counters still incorrect (tracked in backlog).
+- `overrideRevisionCode` pushed via `model.setValue()` — confirm this doesn't break undo history in the Monaco editor.
+
+### Next Session — Start Here
+
+1. Run `make docker-build` to pick up executor volume, backend trigger fix, and `generated_files` sync.
+2. Verify history pane click loads correct Python code into editor for a job with multiple block revisions.
+3. Fix coverage gate: add tests for `_BestEffortAgentAdapter` or `stub_generator` path change.
+4. Fix `auto_verified` / `needs_attention` trust report counters (tracked in backlog).
+5. Confirm copyable errors and hash-guard save work end-to-end in browser.
+
+### Files Touched
+
+- `src/frontend/src/components/JobDetail/EditorTab.tsx`
+- `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
+- `src/frontend/src/components/JobDetail/BlockRevisionDrawer.tsx`
+- `src/frontend/src/components/JobDetail/PlanTab.tsx`
+- `src/frontend/src/components/MonacoDiffViewer.tsx`
+- `src/frontend/src/pages/JobDetailPage.tsx`
+- `src/frontend/src/pages/EditorFullPage.tsx` (new)
+- `src/frontend/src/App.tsx`
+- `src/frontend/src/api/types.ts`
+- `src/backend/api/routes/jobs.py`
+- `src/worker/engine/router.py`
+- `src/worker/engine/stub_generator.py`
+- `src/worker/engine/agents/data_step.py`
+- `src/worker/engine/agents/generic_proc.py`
+- `docker-compose.yml`
+
+---
+
+## 2026-04-25 — Agentic pipeline context + Editor UX polish
+
+**Duration:** ~4h | **Focus:** Folder-aware agent context, PROC IMPORT untranslatable root-cause fix, manual_ingestion stub rework, Lineage data-file nodes, Report tab version rail + header, TipTap table fix, EditorTab history UX
+
+### Done
+
+- **Critical bug fixed:** `_translate_blocks()` was never passing `block_plan` to `router.route()` — migration planner strategy was completely ignored; all blocks defaulted to `translate`; PROC IMPORT blocks stayed UNTRANSLATABLE. Fixed by building `block_plan_map` and passing the matching `BlockPlan` per block.
+- **`manual_ingestion` stub reworked:** `StubGenerator` now emits `pd.read_csv(disk_path)` scaffold with `is_untranslatable=False`, `confidence_score=0.7`, `confidence_band="medium"`, and a `# TODO: verify delimiter and encoding` comment instead of `# SAS-UNTRANSLATABLE`.
+- **Data-file context injected into agents:** `DataFileInfo` model + `data_files` dict + `libname_map` added to `JobContext`; populated in `main.py` from sentinel keys + SAS source grep; shared `build_context_section()` utility in `src/worker/engine/agents/shared_context.py`; prepended to all agent prompts.
+- **Macro file context in windowed prompts:** `windowed_context()` now includes `macros/` and `autoexec.sas` source files so translation agents see macro definitions.
+- **Always-attempt instruction:** Added to all four agents — agents must emit best-effort code; never return empty for `translate`/`translate_with_review` strategies.
+- **Lineage data-file nodes:** `_inject_data_file_nodes()` appends DATA_FILE nodes + edges (inferred) to the lineage graph connecting blocks to real CSV/XLSX/log files.
+- **`LineageNode`/`LineageEdge` schema loosened:** `source_file`, `block_type`, `status` now have defaults; `inferred` has default `False`; accommodates new DATA_FILE node shape.
+- **Frontend `LineageGraph`:** renders DATA_FILE nodes with blue dashed border, extension badge, filename, column preview.
+- **Report tab:** restored `VersionHistoryRail`; always-visible header with Technical/Plain English toggle; Edit/Save buttons inline in header (Edit button only in readonly, Save + Read-only in edit mode); "Save Changes" button hidden in top bar when `activeTab === "report"`.
+- **TipTap:** named imports for `{ Table }`, `{ TableCell }`, `{ TableHeader }`, `{ TableRow }` (fixed SyntaxError); Toolbar always rendered with disabled/dimmed state in readonly; table CSS styles added.
+- **EditorTab explorer panel:** max resizable width raised from 30% to 50%.
+- **EditorTab history tab:** Latest badge on newest entry; "User modified" badge removed; filename-only label; clicking an entry calls `onSelectBlock` → navigates Monaco SAS editor to the block's start line via `revealLineInCenter`.
+- **View Code dialog scroll-to-line:** SAS editor `onMount` uses `revealLineInCenter` + `setPosition` for the block's `start_line`.
+
+### Decisions
+
+- `manual_ingestion` blocks are NOT untranslatable — they have translatable I/O patterns but require real file paths; medium confidence (0.7) is appropriate.
+- DATA_FILE lineage nodes use `inferred: True` edges (same convention as cross-file inferred edges).
+- `build_context_section()` is a shared utility; all agents call it uniformly so the project context section is consistent across prompts.
+- Absolute disk path used in `manual_ingestion` stub for local runability; relative path can be substituted post-migration.
+
+### Open Questions
+
+- Log/Output tabs in bottom panel: were not loading after lineage 500 fix — likely transient; user should verify after Docker rebuild.
+- `make docker-build` still needed to pick up all backend + worker changes.
+- Coverage 87% < 88% threshold — `make test` still fails on coverage gate; needs a small test addition.
+
+### Next Session — Start Here
+
+1. Run `make docker-build` to pick up all changes (migration 013, executor, new worker context code, frontend).
+2. Verify Log/Output tabs load in EditorTab bottom panel after rebuild.
+3. Fix coverage gap: add tests covering new `_sniff_file`, `_inject_data_file_nodes`, or `build_context_section` to restore ≥88%.
+4. Fix `auto_verified` counter: derive from `reconciliation_status == "pass" AND confidence in (high, medium)` in trust report.
+5. Fix `needs_attention`: widen condition to include low confidence, not just recon failure.
+6. Decide: add `translate_best_effort` to planner prompt or remove enum.
+
+### Files Touched
+
+- `src/worker/engine/models.py`
+- `src/worker/main.py`
+- `src/worker/engine/agents/shared_context.py` (new)
+- `src/worker/engine/agents/analysis.py`
+- `src/worker/engine/agents/migration_planner.py`
+- `src/worker/engine/agents/data_step.py`
+- `src/worker/engine/agents/generic_proc.py`
+- `src/worker/engine/stub_generator.py`
+- `src/worker/engine/router.py`
+- `src/backend/api/schemas.py`
+- `src/frontend/src/api/types.ts`
+- `src/frontend/src/components/TiptapEditor.tsx`
+- `src/frontend/src/components/LineageGraph.tsx`
+- `src/frontend/src/components/JobDetail/EditorTab.tsx`
+- `src/frontend/src/components/JobDetail/ReportTab.tsx`
+- `src/frontend/src/pages/JobDetailPage.tsx`
+
+---
+
+## 2026-04-24 — SAS EG editor UX + Python executor microservice
+
+**Duration:** ~4h | **Focus:** SAS Enterprise Guide–style editor layout, Python execution sandbox, trust report bugs analysis
+
+### Done
+
+- **SAS EG–style editor:** Code|Log|Output sub-tab bar (top), LogView (NOTE/WARNING/ERROR line coloring), OutputView (CSV data grid, 500-row cap), block tree sidebar (expandable DATA/PROC nodes under each .sas file, click-to-scroll Monaco)
+- **Attachment endpoints:** `GET /jobs/{id}/attachments` + `GET /jobs/{id}/attachments/{path_key}` — lists/streams non-SAS uploaded files categorised as log/output/other
+- **Python executor microservice:** `src/executor/` (FastAPI, port 8001) — subprocess sandbox with unique temp file per run, result DataFrame capture via env var, self-contained 3-check reconciliation (schema/row/aggregate)
+- **`POST /jobs/{id}/execute`:** backend proxy to executor; supports optional `block_id`; 404/503/502 error handling
+- **`RemoteReconciliationService`:** worker delegates recon to executor over HTTP; graceful fallback on unreachable; `_reconcile_initial_blocks()` sets per-block `reconciliation_status` after initial migration run
+- **Run ▶ button in editor:** in Code sub-tab toolbar; populates bottom panel with stdout/result/recon after run
+- **SAS Studio layout refactor:** persistent vertical split — editors top, always-visible bottom panel (Code|Log|Output|History tabs with resize handle); Run ▶ moved to first/left in toolbar
+- **Bug fixes:** stdout now shown even on error; result JSON temp file collision fixed (unique path per run)
+- **Trust report analysis:** `auto_verified` always 0 (verified_confidence never written); `needs_attention` too strict; `translate_best_effort` dead; `manual_ingestion` stub identical to `manual`
+
+### Decisions
+
+- `executor` microservice: subprocess sandbox in separate Docker container, shared `uploads` volume, HTTP API
+- Bottom panel always-visible split matches SAS Studio — not slide-in
+- `translate_best_effort`, `manual_ingestion` stub, `auto_verified`, `needs_attention` bugs logged for next session
+
+### Open Questions
+
+- None blocking
+
+### Next Session — Start Here
+
+1. Fix `auto_verified` counter: derive from `reconciliation_status == "pass" AND confidence in (high, medium)` in `jobs.py` trust report
+2. Fix `needs_attention`: widen condition to include low confidence, not just recon failure
+3. Fix `manual_ingestion` stub: `StubGenerator` should emit `pd.read_csv()` scaffold when strategy is `manual_ingestion`
+4. Decide: add `translate_best_effort` to planner prompt or remove enum
+5. Run `make docker-build` to pick up migration 013, executor service, and frontend changes
+
+### Files Touched
+
+- `src/executor/main.py`, `src/executor/runner.py`, `src/executor/recon.py`, `src/executor/Dockerfile`, `src/executor/pyproject.toml`
+- `docker-compose.yml`
+- `src/backend/api/routes/jobs.py`
+- `src/backend/api/schemas.py`
+- `src/backend/core/config.py`
+- `src/worker/core/config.py`
+- `src/worker/validation/reconciliation.py`
+- `src/worker/main.py`
+- `src/frontend/src/components/JobDetail/EditorTab.tsx`
+- `src/frontend/src/components/JobDetail/LogView.tsx` (new)
+- `src/frontend/src/components/JobDetail/OutputView.tsx` (new)
+- `src/frontend/src/api/jobs.ts`
+- `src/frontend/src/api/types.ts`
+- `src/frontend/src/pages/JobDetailPage.tsx`
+- `tests/test_job_attachments.py` (new)
+- `tests/test_execute_route.py` (new)
+- `tests/test_executor_runner.py` (new)
+- `tests/test_executor_recon.py` (new)
+- `tests/test_remote_reconciliation.py` (new)
+- `pyproject.toml`
+
+---
+
+## 2026-04-24 — Explain page polish: suggestion chips, sidebar, send fix, syntax highlighting
+
+**Duration:** ~1h | **Focus:** Explain UX polish — mode+audience chip sets, SAS General sidebar, send button bug, Monaco syntax highlighting
+
+### Done
+
+- **Suggestion chips per mode × audience (4 sets):** `EmptyState` now takes both `mode` and `audience` props; chips differ across migration/tech, migration/non-tech, sas_general/tech, sas_general/non-tech; heading and subtitle also update per mode
+- **SAS General sidebar:** migration list hidden in `sas_general` mode; sidebar title changes to "Chats"; `RightSidebar` gains a `header` slot (renders above items) so session list always appears at top in both modes
+- **Chat input lifted from bottom:** wrapped in `pb-6 pt-2 px-4` so input floats with breathing room above page edge
+- **SAS General always open:** `inputDisabled` and `hasContext` updated — SAS General chat is always enabled regardless of file attachment; file is optional context not a prerequisite
+- **Send button bug fixed:** `handleSend` had a stale local `hasContext` re-declaration that still required files in `sas_general` mode, causing early return; replaced with a single `mode === "migration" && !selectedJobId` guard
+- **Session title bug fixed:** `state.inputValue` was read after being cleared to `""`; now uses the captured `question` variable
+- **Monaco syntax highlighting:** switched from `defaultLanguage` to `language` (reactive); added `LANG_MAP` for `python/py/pyspark`, `sas`, `sql`, `bash/sh/shell`, `ts`, `js`, `json`, `yaml`, `r`; auto-sized height (lines × 19px, 60–400px); `onMount` layout fix; parse error fix (`??` + `||` mixed operators wrapped in parens)
+
+### Decisions
+
+- none
+
+### Open Questions
+
+- `make docker-build` still needed for migration 013 + react-markdown in Docker volume
+
+### Next Session — Start Here
+
+1. Run `make docker-build` — installs react-markdown in Docker frontend volume, picks up migration 013
+2. Smoke-test Explain page end-to-end: both modes, both audience toggles, send message, session restore
+3. Verify Monaco code blocks show colours for python/sas/sql responses
+
+### Files Touched
+
+- `src/frontend/src/components/Explain/EmptyState.tsx`
+- `src/frontend/src/components/Explain/MessageList.tsx`
+- `src/frontend/src/components/Explain/MarkdownRenderer.tsx`
+- `src/frontend/src/components/RightSidebar.tsx`
+- `src/frontend/src/pages/ExplainPage.tsx`
+
+---
+
+## 2026-04-24 — Explain page overhaul: two chat modes, react-markdown, session persistence fix
+
+**Duration:** ~3h | **Focus:** Explain feature — SAS General + Migration Chat modes, 3-layer LLM prompts, react-markdown renderer with Monaco copy button, reliable session restore
+
+### Done
+
+- **Backend schema (migration 013):** added `title` + `file_name` columns to `explain_sessions`; backfill `mode='upload'` → `'sas_general'`
+- **ExplainAgent 3-layer prompt composition:** replaced two hard-coded system prompts with `_BASE_SYSTEM_PROMPT` + `_MODE_PROMPTS[mode]` + `_AUDIENCE_PROMPTS[audience]`; 4-agent cache keyed on `(mode, audience)` — migration/sas_general × tech/non_tech
+- **`_persist_messages` session bug fixed:** background task previously reused the request-scoped `AsyncSession` (closed before task ran); now opens its own `AsyncSessionLocal()` — eliminates silent message-loss on persistence
+- **`/explain` form handler:** new `mode` field (default `"sas_general"`) passed through to `answer_stream`
+- **API schemas:** `CreateExplainSessionRequest` → `"sas_general"` mode + `title`/`file_name`; `ExplainSessionResponse` exposes `title`, `file_name`, `job_id`
+- **Frontend types + API client:** `types.ts` and `explain.ts` updated; `explainFilesStream` passes `mode` in FormData
+- **MarkdownRenderer rewrite:** `react-markdown` + `remark-gfm` replaces hand-rolled parser; full GFM support (headers, lists, tables, links); Monaco code blocks preserved with copy button overlay (Copy/Copied toggle)
+- **ExplainPage mode tabs:** "Migration Chat" / "SAS General" tabs above message list; existing confirm-switch dialog reused
+- **Session restore fix:** `handleRestoreSession` now dispatches `SET_MODE`, `SET_AUDIENCE`, `SELECT_JOB`, `SET_ATTACHED_FILE_NAME` — full context restored on resume
+- **Session sidebar:** shows M/S mode badge + `session.title` (auto-set from first question) + relative date; "+ New Chat" button clears context
+- **ChatInput:** `sas_general` mode enforces single `.sas`-only file attachment
+- **EmptyState:** mode-aware suggestion chips (migration vs SAS general sets)
+- **Tests:** `tests/test_explain_agent.py` (9 tests, 100% pass); `test_explain_routes.py` updated + 3 new persistence/session tests; all 29 explain tests green
+
+### Decisions
+
+- **3-layer prompt composition over per-audience singleton agents:** base + mode + audience layers let us add new modes/audiences without combinatorial duplication; 4-agent cache built at construction time to avoid per-request init cost — revisit never
+- **`_persist_messages` owns its own DB session:** request-scoped sessions are not safe for fire-and-forget background tasks in FastAPI SSE routes; the fix is authoritative and should be applied to any future background persistence task — revisit never
+- **Mode stored as `"sas_general"` (not `"upload"`):** "upload" was an implementation detail that leaked into the DB; "sas_general" names the intent — migration 013 backfills all existing rows — revisit never
+
+### Open Questions
+
+- `make docker-build` still needed to pick up all backend changes (migration 013 + new explain routes) and to install `react-markdown` in the Docker frontend volume
+- Coverage sits at 87% (below 90% threshold) — the 3% gap is entirely in pre-existing uncovered code (`worker/main.py`, `llm_client.py`, `router.py`), not new code from this session
+
+### Next Session — Start Here
+
+1. Run `make docker-build` — picks up migration 013, new backend routes, and installs `react-markdown` in the Docker `frontend_node_modules` volume
+2. Smoke-test Explain page: both tabs visible, SAS General enforces single `.sas` file, session sidebar shows M/S badge + title + date
+3. Send a message in each mode, reload the page, restore the session — verify mode/audience/job are all restored correctly
+4. Verify Markdown responses render properly (headers, lists, tables, code blocks with copy button)
+5. Address pre-existing coverage gap (87% → 90%) as a separate chore if CI is blocking
+
+### Files Touched
+
+- `alembic/versions/013_explain_session_metadata.py` (new)
+- `src/backend/db/models.py`
+- `src/backend/api/schemas.py`
+- `src/backend/api/routes/explain.py`
+- `src/worker/engine/chatbot/explain_agent.py`
+- `src/frontend/src/api/types.ts`
+- `src/frontend/src/api/explain.ts`
+- `src/frontend/src/components/Explain/MarkdownRenderer.tsx`
+- `src/frontend/src/components/Explain/EmptyState.tsx`
+- `src/frontend/src/components/Explain/ChatInput.tsx`
+- `src/frontend/src/components/Explain/MessageList.tsx`
+- `src/frontend/src/pages/ExplainPage.tsx`
+- `src/frontend/package.json` (react-markdown, remark-gfm added)
+- `tests/test_explain_agent.py` (new)
+- `tests/test_explain_routes.py`
+
+---
+
+## 2026-04-23 — Plan tab full UX overhaul + confidence bug fix
+
+**Duration:** ~2h | **Focus:** Plan tab visual redesign, View Code dialog alignment, confidence 100% bug fix, stat pill tooltips
+
+### Done
+
+- **Plan tab redesign:** replaced three competing visual regions (summary box + twin progress bars + 4-card stat grid) with a single `<Card>` containing an inline metrics ribbon (confidence Progress bar + risk Progress bar + vertical Separator + 4 StatPill dots); installed shadcn badge/card/progress/separator/popover/skeleton
+- **Attention strip:** conditional amber banner below the card, only shown when `needs_review > 0` or `failed_reconciliation > 0`
+- **Table: 11 → 8 columns:** removed Line column (now inline `:N` suffix on Block cell), merged confidence band badge into coloured % text, collapsed Code/Refine/History into single Actions column
+- **Rationale cell:** replaced truncated text with `FileText` icon + Popover on click for full text
+- **Recon cell:** replaced ✓/✗ Unicode with "Pass"/"Fail" Badge (accessible)
+- **Group headers:** Lucide chevrons, shadcn Badge count, `aria-expanded`; Glossary trigger now has visible "Glossary" label
+- **View Code dialog alignment fix:** restructured dialog into three horizontal bands (title+toolbar / panel headers / editors) so both Monaco editors start at identical vertical positions; `border-border` separators throughout; `padding: { top: 12 }` on both editors
+- **Confidence 100% bug fix (backend):** `StubGenerator` now emits `confidence_score=0.0, confidence_band="very_low"` for untranslatable stubs; `migration_planner._build_migration_plan` sets `confidence_score=0.0` for `manual`/`manual_ingestion`/`skip` blocks at plan time
+- **Stat pill tooltips:** hovering Auto-verified / Needs review / Manual TODO / Failed recon shows a plain-English explanation of how each number is computed
+
+### Decisions
+
+- View Code dialog: unified full-width toolbar (title + theme/edit/save) above per-panel headers of identical height — eliminates SAS/Python vertical misalignment without any JS measurement
+- Confidence default: fix applied at the two sources (StubGenerator + migration_planner) rather than at the API serialisation layer — values are now correct in the DB for new jobs
+
+### Open Questions
+
+- `make docker-build` still needed to pick up `PATCH /blocks/{block_id}/python` in production (carried over from last session)
+
+### Next Session — Start Here
+
+1. Run `make docker-build` to pick up `PATCH /blocks/{block_id}/python` backend route in the Docker image
+2. Smoke-test Plan tab: new single-card layout, 8-col table, rationale popover, actions column, stat pill tooltips
+3. Smoke-test View Code dialog: both panels start at same height, separators visible in both light and dark mode
+4. Run a new job and verify manual/skip blocks show `0%` confidence instead of `100%`
+
+### Files Touched
+
+- `src/frontend/src/components/JobDetail/PlanTab.tsx`
+- `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
+- `src/frontend/src/components/ui/badge.tsx` (new)
+- `src/frontend/src/components/ui/card.tsx` (new)
+- `src/frontend/src/components/ui/progress.tsx` (new)
+- `src/frontend/src/components/ui/separator.tsx` (new)
+- `src/frontend/src/components/ui/popover.tsx` (new)
+- `src/frontend/src/components/ui/skeleton.tsx` (new)
+- `src/worker/engine/stub_generator.py`
+- `src/worker/engine/agents/migration_planner.py`
+
+---
+
+## 2026-04-23 — Plan tab UX overhaul, BlockRevisionDrawer Monaco diff, PlainEnglishAgent restructure
+
+**Duration:** ~3h | **Focus:** Plan tab bug fixes, history revision diff, right sidebar UX, plain-English doc quality
+
+### Done
+
+- **Fix block_id encoding 404:** all four block API calls (`refine`, `revisions`, `restore`, `python`) now use `blockId.replace(/:/g, '%3A')` — preserves `/` so FastAPI `block_id:path` routes match correctly
+- **View Code dialog — SAS syntax highlighting restored:** `language="sas"` + `beforeMount={registerSasLanguage}`; was `"plaintext"` causing no colouring
+- **View Code dialog — Python panel scoped to block:** falls back to `generatedFiles[*.py]` derived from `bp.source_file`, then `jobPythonCode`; `generatedFiles` prop wired all the way from `JobDetailPage`
+- **View Code dialog — logos + button order:** SAS/Python SVG logos in panel headers; button order theme → edit/lock → save
+- **History button highlights on human edit:** `humanEditedBlocks` set updated after save; button gets primary ring
+- **BlockRevisionDrawer replaced with Monaco DiffEditor:** `MonacoDiffViewer` with `previousCode = sorted[idx+1].python_code`; latest auto-expanded, older collapsed; removed all custom diff parsing
+- **RightSidebar upgrade:** `subtitle` prop (per-item secondary text), `sidebarKey` prop (independent collapse state per page)
+- **GlobalLineagePage sidebar:** status·date subtitle, Connect(N) button, disabled+helper when empty, `sidebarKey`
+- **ExplainPage sidebar:** status subtitle, `sidebarKey`
+- **PlainEnglishAgent fix:** output field corrected from `"markdown"` to `"non_technical_doc"` (Pydantic model mismatch that silently produced empty docs)
+- **PlainEnglishAgent restructure:** 5 sections (Purpose prose, Source Data bullets, How It Works numbered, Outputs bold bullets, Migration Status); "no bullet points" rule removed; token limit 1800
+
+### Decisions
+
+- `block_id` URL encoding: `.replace(/:/g, '%3A')` not `encodeURIComponent` — FastAPI `:path` needs literal slashes
+- BlockRevisionDrawer: use `previousCode` prop + MonacoDiffViewer instead of parsing unified diff strings
+- PlainEnglishAgent: 5-section structured prompt with explicit list formatting per section
+
+### Open Questions
+
+- PATCH /blocks/python still 404s in production — Docker image predates the route; `make docker-build` needed
+
+### Next Session — Start Here
+
+1. Run `make docker-build` to pick up last session's `PATCH /blocks/{block_id}/python` backend route
+2. Smoke-test: Plan tab → Code icon → verify SAS highlighted, Python scoped to block, Save works, History shows Monaco diff
+3. Smoke-test: DocsPage Plain English tab — re-run a job and verify the new 5-section structure appears
+
+### Files Touched
+
+- `src/frontend/src/api/jobs.ts`
+- `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
+- `src/frontend/src/components/JobDetail/BlockRevisionDrawer.tsx`
+- `src/frontend/src/components/JobDetail/PlanTab.tsx`
+- `src/frontend/src/components/RightSidebar.tsx`
+- `src/frontend/src/pages/ExplainPage.tsx`
+- `src/frontend/src/pages/GlobalLineagePage.tsx`
+- `src/frontend/src/pages/JobDetailPage.tsx`
+- `src/worker/engine/agents/plain_english.py`
+
+---
+
+## 2026-04-23 — UI polish: layout fixes, Upload dialog, Plan table improvements, View Code dialog
+
+**Duration:** ~3h | **Focus:** Frontend UX improvements across ExplainPage layout, Plan tab, and View Code dialog
+
+### Done
+
+- **Layout fix (ExplainPage full-height):** removed `max-w-500 mx-auto px-4 py-8` wrapper from App.tsx; moved it into individual pages; ExplainPage gets `flex flex-1 min-h-0`; other pages get `overflow-y-auto flex-1 h-full`; `<main>` is now `overflow-hidden flex flex-col`; `max-w-500` was an invalid Tailwind class (no effect) — replaced with `max-w-[800px]` then removed entirely for full-width pages
+- **Upload page → Dialog:** removed "Upload" from AppSidebar nav and `/upload` route; "New Migration" button on JobsPage now opens a `Dialog` (`max-w-3xl, 90vw × 85vh`) containing the full upload form; on success invalidates `["jobs"]` query
+- **BlockPlanTable UI improvements:** default groupBy changed to `"folder"`; chevron moved to leftmost position in group header rows; `Clock` icon replaced with `History` (counter-clockwise clock); "Filter by" label added before strategy chips with `ml-3` spacing; file basenames stripped in body rows (`.split("/").pop()`)
+- **View Code column added to Plan table:** `Code2` icon button per row opens a wide `Dialog` (`max-w-6xl, 95vw × 80vh`) with SAS source (left, read-only, orange dot header) + Python code (right, editable with Edit/Lock toggle, blue dot header, Sun/Moon theme toggle)
+- **View Code dialog data loading:** fetches `getBlockRevisions` + `getJobSources` in parallel; falls back to `job.python_code` when no revisions exist; `revisions[0]` fix (backend returns newest-first); `codeLoading` spinner while fetching
+- **Backend: `PATCH /jobs/{job_id}/blocks/{block_id:path}/python`:** new endpoint creates a `BlockRevision` with `trigger="human"`, unified diff vs previous; when no prior revision exists, creates revision 1 with defaults instead of 404
+- **LLM guardrails improved:** both `_TECH_SYSTEM_PROMPT` and `_NON_TECH_SYSTEM_PROMPT` in `explain_agent.py` expanded with scope boundary, accuracy guardrails (no hallucination), citation rules, structured fallback
+- **VersionHistoryRail hidden on Plan tab:** only shown for `editor` and `report` tabs
+
+### Decisions
+
+- **Upload page promoted to Dialog on JobsPage:** fewer nav items, inline workflow — upload no longer deserves top-level navigation once migrations become the default landing page · revisit never
+- **`PATCH /python` creates revision 1 on first human edit (no prior revision):** instead of 404, uses sensible defaults (`strategy="translate"`, `confidence="medium"`) so any block can be edited from the View Code dialog regardless of prior agent activity · revisit never
+- **SAS source shown in View Code dialog via `getJobSources`:** reuses existing endpoint, no new DB columns; matches by `source_file` field on `BlockPlan` · revisit never
+
+### Open Questions
+
+- none
+
+### Next Session — Start Here
+
+1. Smoke-test View Code dialog: click Code2 on a block, confirm SAS (left) and Python (right) load, toggle Edit, modify code, Save — verify new `BlockRevision` created with `trigger="human"`
+2. Smoke-test Upload dialog: click "New Migration" on Jobs page, confirm upload form opens in dialog, submit, confirm dialog closes and job appears in list
+3. Unresolved UI bugs from previous sessions still pending: TipTap cursor jump, version card highlight race condition, Editor tab restore shows original code
+
+### Files Touched
+
+- `src/frontend/src/App.tsx`
+- `src/frontend/src/components/AppSidebar.tsx`
+- `src/frontend/src/pages/JobsPage.tsx`
+- `src/frontend/src/pages/JobDetailPage.tsx`
+- `src/frontend/src/pages/JobDetailPage.tsx`
+- `src/frontend/src/pages/DocsPage.tsx`
+- `src/frontend/src/pages/GlobalLineagePage.tsx`
+- `src/frontend/src/pages/UploadPage.tsx`
+- `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
+- `src/frontend/src/components/JobDetail/PlanTab.tsx`
+- `src/frontend/src/components/RightSidebar.tsx`
+- `src/backend/api/routes/jobs.py`
+- `src/backend/api/schemas.py`
+- `src/frontend/src/api/jobs.ts`
+- `src/worker/engine/chatbot/explain_agent.py`
+
+---
+
+## 2026-04-22 — GlobalLineagePage Pipeline tab
+
+**Duration:** ~1h | **Focus:** FE7 Global Lineage — migration selector + merged ReactFlow pipeline graph
+
+### Done
+
+- **`GlobalLineagePage` — full rewrite:** replaced CSS placeholder with a functional page featuring a **Pipeline tab**, a left-side migration checklist (filtered to `proposed`/`accepted`/`done` jobs), and a **Connect** button that fetches lineage for all selected migrations in parallel and renders a merged `LineageGraph`
+- **`src/frontend/src/lib/lineage-merge.ts` (new):** pure `mergePipelineLineages()` utility — prefixes all node/edge/step IDs with `{jobId}_` to prevent collisions, concatenates all arrays, and infers synthetic cross-migration `LineageEdge` entries where a step's `outputs` match another step's `inputs` across migrations
+- **Reused `<LineageGraph>` without modification:** the component's existing pipeline view mode renders the merged `JobLineageResponse` unchanged; no `initialView` prop was needed
+
+### Decisions
+
+- **ID namespacing via `{jobId}_` prefix:** simplest collision-free strategy for merging multiple jobs' lineage graphs into one ReactFlow canvas; no UUID generation needed · revisit never
+- **Synthetic cross-migration edges inferred from `inputs`/`outputs` overlap:** enables dataset-level cross-job dependency visibility without backend changes · revisit if explicit cross-job edges should be computed server-side
+
+### Open Questions
+
+- none
+
+### Next Session — Start Here
+
+1. Smoke-test GlobalLineagePage: navigate to Global Lineage, select ≥1 migration, click Connect, verify graph renders in pipeline view
+2. Next backlog items: Datasets + Columns tabs on GlobalLineagePage (FE7 remainder), or pick from Phase 2 backend extensions
+
+### Files Touched
+
+- `src/frontend/src/pages/GlobalLineagePage.tsx` (full rewrite)
+- `src/frontend/src/lib/lineage-merge.ts` (new)
+- `journal/BACKLOG.md`
+- `journal/SESSIONS.md`
+
+---
+
+## 2026-04-22 — Reconciliation coverage fix + DocsPage UX polish
+
+**Duration:** ~30m | **Focus:** test coverage gate + two UI tweaks on DocsPage / ReportTab
+
+### Done
+
+- **Reconciliation coverage** — added `tests/reconciliation/test_reconciliation_service.py` (10 new tests) to cover previously untested branches in `ReconciliationService` and its helpers; coverage lifted from 79% → 100%, all 26 reconciliation tests pass
+- **BlockPlanTable: Rationale column** — removed `Tooltip` popup; text now renders inline with `line-clamp-2`, no hover tooltip
+- **ReportTab: Report editor header** — grey header bar is now always visible for both Technical and Plain English views; Modify/Lock button is always present for both modes; when Modify is clicked (`readOnly=false`), TiptapEditor renders its writing toolbar; Plain English doc also respects `readOnly` state (was always locked before)
+
+### Decisions
+
+- none
+
+### Open Questions
+
+- none
+
+### Next Session — Start Here
+
+1. Smoke-test ReportTab: open a completed job, confirm grey header visible for both tabs before and after clicking Modify; confirm toolbar buttons appear only after Modify click
+2. Next backlog item: `F-UI-postmvp S-FE7: GlobalLineagePage`
+
+### Files Touched
+
+- `tests/reconciliation/test_reconciliation_service.py` (new)
+- `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
+- `src/frontend/src/components/JobDetail/ReportTab.tsx`
+- `journal/BACKLOG.md`
+- `journal/SESSIONS.md`
+
+---
+
+## 2026-04-22 — FE8: DocsPage — migration documentation cards + popup
+
+**Duration:** ~1h | **Focus:** DocsPage full implementation (`feat/FE8-docs-page` branch from main)
+
+### Done
+
+- **Pulled main** (7 commits merged in from remote) and created `feat/FE8-docs-page` branch
+- **DocsPage** (`src/frontend/src/pages/DocsPage.tsx`) — full replacement of stub:
+  - Responsive card grid (`grid-cols-1 md:grid-cols-2 xl:grid-cols-3`) — only `proposed` / `accepted` jobs shown
+  - Card: status chip (amber shimmer "Under Review" / emerald "Accepted"), risk badge (green/amber/red), job name, plan summary snippet, lucide `FolderOpen` file count, confidence badge, auto-verified/needs-review/failed counts
+  - Per-card footer buttons: "Plain English" + "Technical" (pre-select popup tab before opening)
+  - Dialog popup (`85vh`, `max-w-5xl`) with header tab toggle (Plain English first, then Technical), TiptapEditor `readOnly` for both views (`marked.parse` + `extractMarkdown` — matches `ReportTab` pattern), read-only collapsible file tree (lazy-loaded via `getJobSources`, closed by default), footer with block summary counts + Close
+  - Fixed `DialogContent` base `grid gap-4` override using `flex! flex-col! gap-0! p-0!` Tailwind important modifiers
+- **Fixed ruff E501** (pre-existing, came in from main): wrapped long prompt lines in `data_step.py`, `generic_proc.py`, `proc.py`
+- **All 7 gates GREEN** after fixes
+
+### Decisions
+
+- none
+
+### Open Questions
+
+- none
+
+### Next Session — Start Here
+
+1. `make docker-build` — verify worker container starts cleanly (possible `ModuleNotFoundError: No module named 'src.worker'` flagged in earlier session, not yet confirmed fixed)
+2. Smoke-test DocsPage end-to-end: navigate to `/docs`, confirm cards appear for proposed/accepted jobs, open popup, toggle tabs, expand file tree
+3. Next backlog item: `F-UI-postmvp S-FE7: GlobalLineagePage`
+
+### Files Touched
+
+- `src/frontend/src/pages/DocsPage.tsx`
+- `src/worker/engine/agents/data_step.py`
+- `src/worker/engine/agents/generic_proc.py`
+- `src/worker/engine/agents/proc.py`
+- `journal/BACKLOG.md`
+- `journal/SESSIONS.md`
+
+---
+
+## 2026-04-22 — FE9: ExplainPage full implementation
+
+**Duration:** ~2h | **Focus:** ExplainPage — chat UI with file upload mode + migration context mode
+
+### Done
+
+- **Plan**: Designed ExplainPage with fullstack-planner + Plan agents; approved two-mode chat layout (file upload / migration selector)
+- **Backend**: `POST /explain` (multipart file Q&A, stateless, pydantic-ai inline) and `POST /explain/job` (job context Q&A using stored plan/doc/python_code); new `ExplainMessage`, `ExplainJobRequest`, `ExplainResponse` schemas in `schemas.py`
+- **Backend**: `GET /jobs` gains optional `?status=` comma-separated filter (e.g. `?status=proposed,accepted,done`)
+- **Backend**: `src/backend/api/routes/explain.py` new route file registered in `main.py`
+- **Frontend**: `src/frontend/src/api/explain.ts` — `explainFiles()` + `explainJob()` API functions
+- **Frontend**: 9 new components under `src/frontend/src/components/Explain/` — `shared.tsx`, `utils.ts`, `MarkdownRenderer.tsx` (Monaco for code blocks), `EmptyState.tsx`, `ContextBanner.tsx`, `MigrationCard.tsx`, `MigrationPanel.tsx`, `MessageList.tsx`, `ChatInput.tsx`
+- **Frontend**: `ExplainPage.tsx` full replacement — `useReducer` state, desktop right panel (280px) + mobile drawer overlay, mode-switch confirmation dialog, auto-scroll, file attachment chips, suggested prompts
+- **Tests**: 11 new tests in `tests/test_explain_routes.py`; coverage held at 90%
+- **Pre-existing fixes**: `BlockPlanTable.tsx` unused Tooltip imports removed; `monacoConfig.ts` `import type` for `OnMount`; `scroll-area.tsx` + `checkbox.tsx` shadcn components added (required by `GlobalLineagePage`)
+- **F4 plan**: marked `Status: complete`, S12 ticked off
+- **All 7 gates GREEN**
+
+### Decisions
+
+- **ExplainPage is stateless on the backend**: frontend owns conversation history array and sends accumulated `messages` on each request — avoids session storage for an ephemeral chat feature
+- **LLM called inline in backend process** (not via worker queue): explain questions need to feel fast; worker queue would add polling overhead inappropriate for chat; backend already imports from `src.worker.engine.agents`
+- **Code blocks in chat rendered as read-only Monaco editors**: user preference; `MarkdownRenderer` detects triple-backtick fences and renders `<MonacoEditor readOnly height="160px" />`
+
+### Open Questions
+
+- Docker build not re-verified this session — `make docker-build` should be run before deploying if Dockerfile was not changed (it wasn't this session)
+
+### Next Session — Start Here
+
+1. Implement `S-FE8: DocsPage` (branch `feat/FE8-docs-page` already exists, `DocsPage.tsx` has uncommitted changes)
+2. Then `S-FE7: GlobalLineagePage`
+3. Several unresolved UI bugs from earlier sessions remain in backlog (TipTap cursor, version card highlight, Editor tab restore, tab heights)
+
+### Files Touched
+
+- `src/backend/api/schemas.py`
+- `src/backend/api/routes/explain.py` (new)
+- `src/backend/api/routes/jobs.py`
+- `src/backend/main.py`
+- `src/frontend/src/api/types.ts`
+- `src/frontend/src/api/explain.ts` (new)
+- `src/frontend/src/components/Explain/` (9 new files)
+- `src/frontend/src/pages/ExplainPage.tsx`
+- `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
+- `src/frontend/src/config/monacoConfig.ts`
+- `src/frontend/src/components/ui/scroll-area.tsx` (new)
+- `src/frontend/src/components/ui/checkbox.tsx` (new)
+- `tests/test_explain_routes.py` (new)
+- `tests/reconciliation/test_reconciliation_service.py`
+- `docs/plans/latest/F4-confidence-refine-history.md`
+- `journal/SESSIONS.md`, `journal/BACKLOG.md`, `journal/DECISIONS.md`
+
+---
+
 ## 2026-04-22 — Fix overall confidence metric + bar width (UX polish)
 
 **Duration:** ~1h | **Focus:** Confidence accuracy — align overall % with per-block LLM scores

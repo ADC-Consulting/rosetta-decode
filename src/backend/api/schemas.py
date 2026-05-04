@@ -80,9 +80,9 @@ class LineageNode(BaseModel):
 
     id: str
     label: str
-    source_file: str
-    block_type: str
-    status: Literal["migrated", "manual_review", "untranslatable"]
+    source_file: str = ""
+    block_type: str = ""
+    status: Literal["migrated", "manual_review", "unrecognized"] = "migrated"
 
 
 class LineageEdge(BaseModel):
@@ -91,7 +91,7 @@ class LineageEdge(BaseModel):
     source: str
     target: str
     dataset: str
-    inferred: bool
+    inferred: bool = False
 
 
 class ColumnFlowResponse(BaseModel):
@@ -153,7 +153,7 @@ class FileNodeResponse(BaseModel):
     filename: str
     file_type: Literal["PROGRAM", "MACRO", "AUTOEXEC", "LOG", "OTHER"]
     blocks: list[str] = []
-    status: Literal["OK", "UNTRANSLATABLE", "ERROR_PRONE"] | None = None
+    status: Literal["OK", "UNRECOGNIZED", "ERROR_PRONE"] | None = None
     status_reason: str | None = None
 
 
@@ -182,7 +182,7 @@ class BlockStatusResponse(BaseModel):
     """Per-block translation/health status."""
 
     block_id: str
-    status: Literal["OK", "UNTRANSLATABLE", "ERROR_PRONE"]
+    status: Literal["OK", "UNRECOGNIZED", "ERROR_PRONE"]
     reason: str | None = None
 
 
@@ -254,12 +254,10 @@ class AcceptJobRequest(BaseModel):
 
 
 StrategyLiteral = Literal[
-    "translate",
-    "translate_with_review",
+    "translated",
+    "translated_with_review",
     "translate_best_effort",
-    "manual_ingestion",
     "manual",
-    "skip",
 ]
 
 
@@ -362,6 +360,20 @@ class BlockRevisionListResponse(BaseModel):
     revisions: list[BlockRevisionResponse]
 
 
+class BlockPythonEditRequest(BaseModel):
+    """Request body for PATCH /jobs/{id}/blocks/{block_id}/python."""
+
+    python_code: str
+    notes: str | None = None
+
+
+class BlockPythonEditResponse(BaseModel):
+    """Response body for PATCH /jobs/{id}/blocks/{block_id}/python."""
+
+    revision_number: int
+    block_id: str
+
+
 # S6 — Job-level changelog schemas
 
 
@@ -401,9 +413,11 @@ class TrustReportBlock(BaseModel):
     strategy: str
     self_confidence: str
     verified_confidence: str | None
+    confidence_band: str | None = None
     reconciliation_status: str | None
     needs_attention: bool
     blast_radius: int | None  # null if lineage unavailable
+    effective_confidence_band: str = "unknown"
 
 
 class TrustReportFile(BaseModel):
@@ -432,3 +446,92 @@ class TrustReportResponse(BaseModel):
     files: list[TrustReportFile]
     blocks: list[TrustReportBlock]  # sorted by needs_attention DESC, then blast_radius DESC
     review_queue: list[TrustReportBlock]  # only needs_attention=True blocks
+
+
+# Attachment schemas
+
+
+class AttachmentInfo(BaseModel):
+    """Metadata for a single non-SAS attachment stored with a job."""
+
+    filename: str
+    path_key: str
+    category: str  # "log" | "output" | "other"
+    size_bytes: int
+    extension: str
+
+
+class JobAttachmentsResponse(BaseModel):
+    """Response body for GET /jobs/{id}/attachments."""
+
+    job_id: str
+    attachments: list[AttachmentInfo]
+
+
+# FE8 — ExplainPage schemas
+
+
+class ExplainMessage(BaseModel):
+    """A single turn in an explain conversation."""
+
+    role: Literal["user", "assistant"]
+    content: str
+
+
+class ExplainJobRequest(BaseModel):
+    """Request body for POST /explain/job."""
+
+    job_id: uuid.UUID
+    question: str
+    messages: list[ExplainMessage] = []
+    context_fields: list[Literal["plan", "doc", "python_code"]] = ["plan", "doc"]
+
+
+class ExplainResponse(BaseModel):
+    """Response body for POST /explain and POST /explain/job."""
+
+    answer: str
+    context_files: list[str] = []
+    tokens_used: int | None = None
+    job_id: uuid.UUID | None = None
+
+
+class CreateExplainSessionRequest(BaseModel):
+    """Request body for POST /explain/sessions."""
+
+    mode: Literal["migration", "sas_general"]
+    job_id: str | None = None
+    audience: Literal["tech", "non_tech"] = "tech"
+    title: str | None = None
+    file_name: str | None = None
+
+
+class ExplainSessionResponse(BaseModel):
+    """Response for explain session endpoints."""
+
+    session_id: str
+    messages: list[ExplainMessage]
+    mode: str
+    audience: str
+    created_at: datetime
+    title: str | None = None
+    file_name: str | None = None
+    job_id: str | None = None
+
+
+class ExecuteRequest(BaseModel):
+    """Request body for POST /jobs/{job_id}/execute."""
+
+    block_id: str | None = None
+
+
+class ExecuteResponse(BaseModel):
+    """Response body for POST /jobs/{job_id}/execute — proxied from executor service."""
+
+    stdout: str
+    stderr: str
+    result_json: list[dict[str, Any]] | None = None
+    result_columns: list[str] | None = None
+    checks: list[dict[str, Any]] | None = None
+    error: str | None = None
+    elapsed_ms: int

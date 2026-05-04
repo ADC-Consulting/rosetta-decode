@@ -155,7 +155,7 @@ async def test_proc_sort_routes_to_inline_helper() -> None:
     translator = router.route(sort_block)
     gb = await translator.translate(sort_block, context)
 
-    assert "sort_values" in gb.python_code
+    assert "orderBy(" in gb.python_code
     assert not gb.is_untranslatable
 
 
@@ -177,7 +177,7 @@ async def test_untranslatable_block_produces_stub() -> None:
     translator = router.route(stub_block)
     gb = await translator.translate(stub_block, context)
 
-    assert "# SAS-UNTRANSLATABLE" in gb.python_code
+    assert "# SAS-UNRECOGNIZED" in gb.python_code
     assert "# TODO: manual review required" in gb.python_code
     assert gb.is_untranslatable
 

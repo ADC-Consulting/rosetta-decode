@@ -3911,10 +3911,12 @@ dependencies = [
 
 [package.optional-dependencies]
 cloud = [
-    { name = "databricks-connect", version = "16.1.7", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.14' and sys_platform != 'win32') or (python_full_version < '3.12' and sys_platform == 'win32')" },
-    { name = "databricks-connect", version = "18.1.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.14' and sys_platform != 'win32') or (python_full_version >= '3.12' and sys_platform == 'win32')" },
     { name = "databricks-sdk" },
     { name = "pyspark" },
+]
+databricks = [
+    { name = "databricks-connect", version = "16.1.7", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.14' and sys_platform != 'win32') or (python_full_version < '3.12' and sys_platform == 'win32')" },
+    { name = "databricks-connect", version = "18.1.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.14' and sys_platform != 'win32') or (python_full_version >= '3.12' and sys_platform == 'win32')" },
 ]
 dev = [
     { name = "aiosqlite" },
@@ -3942,7 +3944,7 @@ requires-dist = [
     { name = "anthropic", specifier = ">=0.25" },
     { name = "antlr4-python3-runtime", marker = "extra == 'parsers'", specifier = ">=4.13" },
     { name = "asyncpg", specifier = ">=0.29" },
-    { name = "databricks-connect", marker = "extra == 'cloud'", specifier = ">=15.0" },
+    { name = "databricks-connect", marker = "extra == 'databricks'", specifier = ">=15.0" },
     { name = "databricks-sdk", marker = "extra == 'cloud'", specifier = ">=0.24" },
     { name = "fastapi", specifier = ">=0.110" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
@@ -3976,7 +3978,7 @@ requires-dist = [
     { name = "types-pyyaml", marker = "extra == 'dev'" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.29" },
 ]
-provides-extras = ["parsers", "cloud", "dev"]
+provides-extras = ["parsers", "cloud", "databricks", "dev"]
 
 [[package]]
 name = "secretstorage"

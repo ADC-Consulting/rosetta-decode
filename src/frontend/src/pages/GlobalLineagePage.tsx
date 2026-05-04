@@ -1,52 +1,157 @@
+import { getJobLineage, listJobs } from "@/api/jobs";
+import type { JobLineageResponse, JobStatusValue } from "@/api/types";
+import LineageGraph from "@/components/LineageGraph";
+import RightSidebar from "@/components/RightSidebar";
+import { Button } from "@/components/ui/button";
+import { mergePipelineLineages } from "@/lib/lineage-merge";
+import { cn } from "@/lib/utils";
+import { useQuery } from "@tanstack/react-query";
+import React, { useState } from "react";
+
+const VISIBLE_STATUSES: JobStatusValue[] = ["proposed", "accepted", "done"];
+
+type TabValue = "pipeline" | "datasets" | "columns";
+
 export default function GlobalLineagePage(): React.ReactElement {
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [mergedLineage, setMergedLineage] = useState<JobLineageResponse | null>(
+    null,
+  );
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<TabValue>("pipeline");
+
+  const { data: jobs } = useQuery({
+    queryKey: ["jobs"],
+    queryFn: listJobs,
+  });
+
+  const filteredJobs = (jobs ?? []).filter((j) =>
+    VISIBLE_STATUSES.includes(j.status),
+  );
+
+  function toggleJob(jobId: string): void {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(jobId)) {
+        next.delete(jobId);
+      } else {
+        next.add(jobId);
+      }
+      return next;
+    });
+  }
+
+  async function handleConnect(): Promise<void> {
+    if (selected.size === 0) return;
+    setIsConnecting(true);
+    setConnectError(null);
+    try {
+      const results = await Promise.all(
+        Array.from(selected).map(async (jobId) => ({
+          jobId,
+          lineage: await getJobLineage(jobId),
+        })),
+      );
+      setMergedLineage(mergePipelineLineages(results));
+    } catch (err) {
+      setConnectError(
+        err instanceof Error ? err.message : "Failed to load lineage data.",
+      );
+    } finally {
+      setIsConnecting(false);
+    }
+  }
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-foreground">Global Lineage</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Cross-job dependency graph — coming soon.
-        </p>
-      </div>
-
-      {/* Simple CSS node illustration */}
+    <div className="px-6 py-2 overflow-y-auto flex-1 h-full">
       <div
-        className="rounded-md border border-border bg-muted/30 flex items-center justify-center py-16"
-        aria-hidden="true"
+        className="flex -mx-4 -mb-8"
+        style={{ height: "calc(100vh - 64px)" }}
       >
-        <div className="flex items-center gap-0">
-          {/* Node A */}
-          <div className="flex flex-col items-center gap-1.5">
-            <div className="w-20 h-10 rounded-md border border-border bg-muted flex items-center justify-center">
-              <span className="text-xs font-mono text-muted-foreground">raw.sas</span>
-            </div>
+        {/* Main area — tabs + graph */}
+        <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+          <div className="flex border-b border-border shrink-0">
+            {(["pipeline", "datasets", "columns"] as TabValue[]).map((tab) => {
+              const disabled = tab !== "pipeline";
+              return (
+                <button
+                  key={tab}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => !disabled && setActiveTab(tab)}
+                  className={cn(
+                    "h-10 px-4 text-sm capitalize transition-colors",
+                    disabled && "opacity-40 cursor-not-allowed",
+                    !disabled && activeTab === tab
+                      ? "border-b-2 border-foreground font-medium text-foreground"
+                      : !disabled
+                        ? "text-muted-foreground hover:text-foreground"
+                        : "",
+                  )}
+                >
+                  {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                </button>
+              );
+            })}
           </div>
 
-          {/* Edge A → B */}
-          <div className="flex items-center mx-1">
-            <div className="w-12 border-t border-dashed border-border" />
-            <div className="w-0 h-0 border-y-4 border-y-transparent border-l-[6px] border-l-border" />
-          </div>
-
-          {/* Node B — transform */}
-          <div className="flex flex-col items-center gap-1.5">
-            <div className="w-10 h-10 rounded-full border border-border bg-muted flex items-center justify-center">
-              <span className="text-xs font-mono text-muted-foreground">T</span>
-            </div>
-          </div>
-
-          {/* Edge B → C */}
-          <div className="flex items-center mx-1">
-            <div className="w-12 border-t border-dashed border-border" />
-            <div className="w-0 h-0 border-y-4 border-y-transparent border-l-[6px] border-l-border" />
-          </div>
-
-          {/* Node C */}
-          <div className="flex flex-col items-center gap-1.5">
-            <div className="w-20 h-10 rounded-md border border-border bg-muted flex items-center justify-center">
-              <span className="text-xs font-mono text-muted-foreground">out.py</span>
-            </div>
+          <div className="flex-1 min-h-0 overflow-hidden">
+            {activeTab === "pipeline" && (
+              <>
+                {isConnecting && (
+                  <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+                    Loading lineage data…
+                  </div>
+                )}
+                {!isConnecting && mergedLineage && (
+                  <LineageGraph lineage={mergedLineage} />
+                )}
+                {!isConnecting && !mergedLineage && (
+                  <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+                    Select migrations and click Connect to visualise the
+                    pipeline.
+                  </div>
+                )}
+              </>
+            )}
           </div>
         </div>
+
+        {/* Right panel — same RightSidebar as Explain page */}
+        <RightSidebar
+          title="Migrations"
+          sidebarKey="lineage-sidebar-collapsed"
+          items={filteredJobs.map((job) => ({
+            id: job.job_id,
+            label: job.name ?? job.job_id,
+            subtitle: `${job.status} · ${new Date(job.created_at).toLocaleDateString()}`,
+            isSelected: selected.has(job.job_id),
+            onClick: () => toggleJob(job.job_id),
+          }))}
+          footer={
+            <div className="p-3">
+              {selected.size === 0 && (
+                <p className="text-xs text-muted-foreground px-3 pb-1">
+                  Select migrations above
+                </p>
+              )}
+              <Button
+                onClick={() => void handleConnect()}
+                disabled={selected.size === 0 || isConnecting}
+                className="w-full"
+                size="sm"
+              >
+                {isConnecting
+                  ? "Connecting…"
+                  : `Connect${selected.size > 0 ? ` (${selected.size})` : ""}`}
+              </Button>
+              {connectError && (
+                <p className="text-xs text-destructive mt-2">{connectError}</p>
+              )}
+            </div>
+          }
+        />
       </div>
     </div>
   );

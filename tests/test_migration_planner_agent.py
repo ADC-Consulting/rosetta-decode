@@ -67,7 +67,7 @@ _PLANNER_RESULT = PlannerResult(
             "source_file": "etl.sas",
             "start_line": 2,
             "block_type": "DATA_STEP",
-            "strategy": "translate",
+            "strategy": "translated",
             "risk": "low",
             "rationale": "Simple SET/filter step with no complex constructs.",
             "estimated_effort": "low",
@@ -77,7 +77,7 @@ _PLANNER_RESULT = PlannerResult(
             "source_file": "etl.sas",
             "start_line": 7,
             "block_type": "PROC_SQL",
-            "strategy": "translate",
+            "strategy": "translated",
             "risk": "medium",
             "rationale": "Straightforward SELECT but references cross-file dataset.",
             "estimated_effort": "medium",
@@ -137,7 +137,7 @@ async def test_plan_block_strategy_and_risk(
     plan = await agent.plan(_CONTEXT)
     first = plan.block_plans[0]
     assert first.block_id == "etl.sas:2"
-    assert first.strategy == TranslationStrategy.TRANSLATE
+    assert first.strategy == TranslationStrategy.TRANSLATED
     assert first.risk == BlockRisk.LOW
 
 
@@ -176,3 +176,125 @@ async def test_plan_passes_max_tokens_6000(
     await agent.plan(_CONTEXT)
     _, kwargs = mock_run.call_args
     assert kwargs.get("model_settings", {}).get("max_tokens") == 6000
+
+
+# ── _build_prompt with non-empty optional fields (lines 169-179) ─────────────
+
+
+def test_build_prompt_includes_resolved_macros() -> None:
+    """_build_prompt includes resolved macros section when present (lines 241-247)."""
+    from src.worker.engine.agents.migration_planner import _build_prompt
+
+    prompt = _build_prompt(_CONTEXT)
+
+    assert "DEPT" in prompt
+    assert "SALES" in prompt
+    assert "etl.sas" in prompt
+
+
+def test_build_prompt_includes_log_contents() -> None:
+    """_build_prompt includes SAS log section when log_contents is non-empty (lines 265-274)."""
+    from src.worker.engine.agents.migration_planner import _build_prompt
+
+    context_with_logs = _CONTEXT.model_copy(
+        update={
+            "log_contents": {
+                "etl.log": "NOTE: 200 observations read.\nNOTE: Dataset WORK.OUT has 200 obs."
+            }
+        }
+    )
+    prompt = _build_prompt(context_with_logs)
+
+    assert "SAS execution logs" in prompt
+    assert "NOTE: 200 observations read" in prompt
+    assert "etl.log" in prompt
+
+
+def test_build_prompt_no_macros_emits_none_placeholder() -> None:
+    """_build_prompt emits (none) for macros when resolved_macros is empty (line 247)."""
+    from src.worker.engine.agents.migration_planner import _build_prompt
+
+    context_no_macros = _CONTEXT.model_copy(update={"resolved_macros": []})
+    prompt = _build_prompt(context_no_macros)
+
+    assert "(none)" in prompt
+
+
+# ── _make_agent TensorZero branch (line 247) and Azure branch (lines 266-274) ─
+
+
+def test_migration_planner_make_agent_tensorzero_branch() -> None:
+    """_make_agent uses TensorZero provider when tensorzero_gateway_url is set (line 247)."""
+    from unittest.mock import MagicMock, patch
+
+    mock_provider = MagicMock()
+    mock_model = MagicMock()
+    mock_agent = MagicMock()
+
+    with (
+        patch("src.worker.engine.agents.migration_planner.worker_settings") as mock_settings,
+        patch(
+            "src.worker.engine.agents.migration_planner.OpenAIProvider",
+            return_value=mock_provider,
+        ) as mock_oi,
+        patch(
+            "src.worker.engine.agents.migration_planner.OpenAIChatModel",
+            return_value=mock_model,
+        ) as mock_oai,
+        patch("src.worker.engine.agents.migration_planner.Agent", return_value=mock_agent),
+    ):
+        mock_settings.tensorzero_gateway_url = "http://tensorzero:3000"
+        mock_settings.azure_openai_endpoint = None
+        mock_settings.llm_model = "openai:gpt-4o"
+
+        from src.worker.engine.agents.migration_planner import _make_agent
+
+        result = _make_agent()
+
+    mock_oi.assert_called_once_with(
+        base_url="http://tensorzero:3000",
+        api_key="tensorzero",
+    )
+    mock_oai.assert_called_once_with(
+        model_name="tensorzero::model_name::gpt-4o", provider=mock_provider
+    )
+    assert result is mock_agent
+
+
+def test_migration_planner_make_agent_azure_branch() -> None:
+    """_make_agent uses AzureProvider when azure_openai_endpoint is set (lines 266-274)."""
+    from unittest.mock import MagicMock, patch
+
+    mock_provider = MagicMock()
+    mock_model = MagicMock()
+    mock_agent = MagicMock()
+
+    with (
+        patch("src.worker.engine.agents.migration_planner.worker_settings") as mock_settings,
+        patch(
+            "src.worker.engine.agents.migration_planner.AzureProvider",
+            return_value=mock_provider,
+        ) as mock_az,
+        patch(
+            "src.worker.engine.agents.migration_planner.OpenAIChatModel",
+            return_value=mock_model,
+        ) as mock_oai,
+        patch("src.worker.engine.agents.migration_planner.Agent", return_value=mock_agent),
+    ):
+        mock_settings.tensorzero_gateway_url = None
+        mock_settings.azure_openai_endpoint = "https://az.openai.azure.com/"
+        mock_settings.azure_openai_api_key = "az-key"
+        mock_settings.openai_api_version = "2024-06-01"
+        mock_settings.llm_model = "openai:gpt-4o"
+
+        from src.worker.engine.agents.migration_planner import _make_agent
+
+        result = _make_agent()
+
+    mock_az.assert_called_once_with(
+        azure_endpoint="https://az.openai.azure.com/",
+        api_key="az-key",
+        api_version="2024-06-01",
+    )
+    mock_oai.assert_called_once_with(model_name="gpt-4o", provider=mock_provider)
+    assert result is mock_agent

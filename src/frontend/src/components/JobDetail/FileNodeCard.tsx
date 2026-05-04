@@ -23,7 +23,7 @@ export type FileNodeData = {
 
 const STATUS_COLOR: Record<NonNullable<FileNode["status"]>, string> = {
   OK: "#22c55e",
-  UNTRANSLATABLE: "#ef4444",
+  UNRECOGNIZED: "#ef4444",
   ERROR_PRONE: "#f59e0b",
 };
 
@@ -136,7 +136,7 @@ export function FileNodeCard({ data }: FileNodeCardProps): React.ReactElement {
               {data.status === "ERROR_PRONE" && (
                 <AlertTriangle size={14} color="#f59e0b" />
               )}
-              {data.status === "UNTRANSLATABLE" && (
+              {data.status === "UNRECOGNIZED" && (
                 <XCircle size={14} color="#ef4444" />
               )}
             </span>

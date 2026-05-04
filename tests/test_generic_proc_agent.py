@@ -185,3 +185,161 @@ async def test_proc_unknown_returns_best_effort_code(
     result = await agent.translate(block, _make_context())
     assert result.python_code.strip() != ""
     assert result.is_untranslatable is False
+
+
+# ── GenericProcError with cause (lines 57-58) ────────────────────────────────
+
+
+def test_generic_proc_error_stores_cause() -> None:
+    """GenericProcError.__init__ stores the cause exception (lines 57-58)."""
+    from src.worker.engine.agents.generic_proc import GenericProcError
+
+    underlying = ValueError("underlying failure")
+    err = GenericProcError("wrapper message", cause=underlying)
+
+    assert str(err) == "wrapper message"
+    assert err.cause is underlying
+    assert isinstance(err.cause, ValueError)
+
+
+# ── _build_prompt branches (lines 261-288) ───────────────────────────────────
+
+
+def test_build_prompt_with_all_context_fields() -> None:
+    """_build_prompt includes macros, deps, risk_flags and log_contents when populated."""
+    from src.worker.engine.agents.generic_proc import _build_prompt
+    from src.worker.engine.models import MacroVar
+
+    block = SASBlock(
+        block_type=BlockType.PROC_MEANS,
+        source_file="test.sas",
+        start_line=1,
+        end_line=4,
+        raw_sas="PROC MEANS DATA=work; VAR salary; RUN;",
+        input_datasets=["work.salary_data"],
+        output_datasets=["work.out"],
+    )
+
+    context = JobContext(
+        source_files={"test.sas": "PROC MEANS DATA=work; VAR salary; RUN;"},
+        resolved_macros=[MacroVar(name="DEPT", raw_value="SALES", source_file="test.sas", line=1)],
+        dependency_order=["work.salary_data", "work.out"],
+        risk_flags=["BY-group processing", "RETAIN in loop"],
+        blocks=[block],
+        generated=[],
+        log_contents={"test.log": "NOTE: 100 observations read.\nWARNING: numeric overflow"},
+    )
+    windowed = context.windowed_context(block)
+    prompt = _build_prompt(block, windowed, context.blocks)
+
+    assert "DEPT" in prompt
+    assert "SALES" in prompt
+    assert "work.out" in prompt
+    assert "BY-group processing" in prompt
+    assert "NOTE: 100 observations read" in prompt
+
+
+def test_build_prompt_empty_context() -> None:
+    """_build_prompt emits (none) placeholders when all context lists are empty."""
+    from src.worker.engine.agents.generic_proc import _build_prompt
+
+    block = _make_block(BlockType.PROC_FREQ)
+    context = _make_context()
+    windowed = context.windowed_context(block)
+    prompt = _build_prompt(block, windowed, [])
+
+    assert "(none)" in prompt
+
+
+# ── _make_agent TensorZero and Azure branches (lines 324-334) ────────────────
+
+
+def test_generic_proc_make_agent_tensorzero_branch() -> None:
+    """_make_agent routes through OpenAIProvider when tensorzero_gateway_url is set."""
+    from unittest.mock import patch
+
+    mock_provider = MagicMock()
+    mock_model = MagicMock()
+    mock_agent = MagicMock()
+
+    with (
+        patch("src.worker.engine.agents.generic_proc.worker_settings") as mock_settings,
+        patch(
+            "src.worker.engine.agents.generic_proc.OpenAIProvider", return_value=mock_provider
+        ) as mock_oi,
+        patch(
+            "src.worker.engine.agents.generic_proc.OpenAIChatModel", return_value=mock_model
+        ) as mock_oai,
+        patch("src.worker.engine.agents.generic_proc.Agent", return_value=mock_agent),
+    ):
+        mock_settings.tensorzero_gateway_url = "http://tensorzero:3000"
+        mock_settings.azure_openai_endpoint = None
+        mock_settings.llm_model = "openai:gpt-4o"
+
+        from src.worker.engine.agents.generic_proc import _make_agent
+
+        result = _make_agent()
+
+    mock_oi.assert_called_once_with(
+        base_url="http://tensorzero:3000",
+        api_key="tensorzero",
+    )
+    mock_oai.assert_called_once_with(
+        model_name="tensorzero::model_name::gpt-4o", provider=mock_provider
+    )
+    assert result is mock_agent
+
+
+def test_generic_proc_make_agent_azure_branch() -> None:
+    """_make_agent routes through AzureProvider when azure_openai_endpoint is set."""
+    from unittest.mock import patch
+
+    mock_provider = MagicMock()
+    mock_model = MagicMock()
+    mock_agent = MagicMock()
+
+    with (
+        patch("src.worker.engine.agents.generic_proc.worker_settings") as mock_settings,
+        patch(
+            "src.worker.engine.agents.generic_proc.AzureProvider", return_value=mock_provider
+        ) as mock_az,
+        patch(
+            "src.worker.engine.agents.generic_proc.OpenAIChatModel", return_value=mock_model
+        ) as mock_oai,
+        patch("src.worker.engine.agents.generic_proc.Agent", return_value=mock_agent),
+    ):
+        mock_settings.tensorzero_gateway_url = None
+        mock_settings.azure_openai_endpoint = "https://az.openai.azure.com/"
+        mock_settings.azure_openai_api_key = "az-key"
+        mock_settings.openai_api_version = "2024-06-01"
+        mock_settings.llm_model = "openai:gpt-4o"
+
+        from src.worker.engine.agents.generic_proc import _make_agent
+
+        result = _make_agent()
+
+    mock_az.assert_called_once_with(
+        azure_endpoint="https://az.openai.azure.com/",
+        api_key="az-key",
+        api_version="2024-06-01",
+    )
+    mock_oai.assert_called_once_with(model_name="gpt-4o", provider=mock_provider)
+    assert result is mock_agent
+
+
+# ── Exception path in GenericProcAgent.translate() (lines 379-381) ──────────
+
+
+async def test_translate_raises_generic_proc_error_on_llm_failure() -> None:
+    """translate() wraps LLM exceptions in GenericProcError (lines 379-381)."""
+    from src.worker.engine.agents.generic_proc import GenericProcError
+
+    agent = GenericProcAgent()
+    agent._agent.run = AsyncMock(side_effect=RuntimeError("LLM call failed"))  # type: ignore[method-assign]
+
+    block = _make_block(BlockType.PROC_MEANS)
+    with pytest.raises(GenericProcError) as exc_info:
+        await agent.translate(block, _make_context())
+
+    assert "GenericProcAgent failed" in str(exc_info.value)
+    assert isinstance(exc_info.value.cause, RuntimeError)

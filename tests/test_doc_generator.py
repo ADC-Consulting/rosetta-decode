@@ -1,8 +1,9 @@
 """Unit tests for src/worker/engine/doc_generator.py."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import src.worker.engine.agents.plain_english as pe_module
 from src.worker.engine.doc_generator import DocGenerator, _build_doc_prompt
 
 
@@ -320,3 +321,186 @@ def test_build_prompt_includes_all_sections() -> None:
     assert "out = inp.copy()" in prompt
     assert "3/3 checks passed." in prompt
     assert "in, out" in prompt
+
+
+def test_documentation_make_agent_tensorzero_path() -> None:
+    """_make_agent() in documentation.py uses TensorZero when tensorzero_gateway_url is set."""
+    from unittest.mock import MagicMock, patch
+
+    mock_settings = MagicMock()
+    mock_settings.tensorzero_gateway_url = "http://tz:7000"
+    mock_settings.azure_openai_endpoint = ""
+    mock_settings.llm_model = "anthropic:claude-sonnet-4-6"
+
+    mock_tz_provider = MagicMock()
+    mock_model = MagicMock()
+    mock_agent = MagicMock()
+
+    with (
+        patch("src.worker.engine.agents.documentation.worker_settings", mock_settings),
+        patch(
+            "src.worker.engine.agents.documentation.OpenAIProvider",
+            return_value=mock_tz_provider,
+        ),
+        patch(
+            "src.worker.engine.agents.documentation.OpenAIChatModel", return_value=mock_model
+        ) as mock_oai_model,
+        patch("src.worker.engine.agents.documentation.Agent", return_value=mock_agent),
+    ):
+        from src.worker.engine.agents.documentation import _make_agent
+
+        result = _make_agent()
+
+    call_kwargs = mock_oai_model.call_args
+    first_arg = call_kwargs.args[0] if call_kwargs.args else ""
+    model_name_arg = call_kwargs.kwargs.get("model_name", first_arg)
+    assert "tensorzero::" in model_name_arg
+    assert result is mock_agent
+
+
+def test_documentation_make_agent_azure_path() -> None:
+    """_make_agent() in documentation.py uses AzureProvider when azure_openai_endpoint is set."""
+    from unittest.mock import MagicMock, patch
+
+    mock_settings = MagicMock()
+    mock_settings.tensorzero_gateway_url = ""
+    mock_settings.azure_openai_endpoint = "https://my.azure.openai.com"
+    mock_settings.azure_openai_api_key = "fake-key"
+    mock_settings.openai_api_version = "2024-02-01"
+    mock_settings.llm_model = "azure:gpt-4o"
+
+    mock_azure_provider = MagicMock()
+    mock_model = MagicMock()
+    mock_agent = MagicMock()
+
+    with (
+        patch("src.worker.engine.agents.documentation.worker_settings", mock_settings),
+        patch(
+            "src.worker.engine.agents.documentation.AzureProvider", return_value=mock_azure_provider
+        ) as mock_az,
+        patch("src.worker.engine.agents.documentation.OpenAIChatModel", return_value=mock_model),
+        patch("src.worker.engine.agents.documentation.Agent", return_value=mock_agent),
+    ):
+        from src.worker.engine.agents.documentation import _make_agent
+
+        result = _make_agent()
+
+    mock_az.assert_called_once()
+    assert result is mock_agent
+
+
+def test_plain_english_make_agent_tensorzero_path() -> None:
+    """_make_agent() in plain_english.py uses TensorZero when tensorzero_gateway_url is set."""
+    from unittest.mock import MagicMock, patch
+
+    mock_settings = MagicMock()
+    mock_settings.tensorzero_gateway_url = "http://tz:7000"
+    mock_settings.azure_openai_endpoint = ""
+    mock_settings.llm_model = "anthropic:claude-sonnet-4-6"
+
+    mock_tz_provider = MagicMock()
+    mock_model = MagicMock()
+    mock_agent = MagicMock()
+
+    with (
+        patch("src.worker.engine.agents.plain_english.worker_settings", mock_settings),
+        patch(
+            "src.worker.engine.agents.plain_english.OpenAIProvider",
+            return_value=mock_tz_provider,
+        ),
+        patch(
+            "src.worker.engine.agents.plain_english.OpenAIChatModel", return_value=mock_model
+        ) as mock_oai_model,
+        patch("src.worker.engine.agents.plain_english.Agent", return_value=mock_agent),
+    ):
+        from src.worker.engine.agents.plain_english import _make_agent
+
+        result = _make_agent()
+
+    call_kwargs = mock_oai_model.call_args
+    first_arg = call_kwargs.args[0] if call_kwargs.args else ""
+    model_name_arg = call_kwargs.kwargs.get("model_name", first_arg)
+    assert "tensorzero::" in model_name_arg
+    assert result is mock_agent
+
+
+def test_plain_english_make_agent_azure_path() -> None:
+    """_make_agent() in plain_english.py uses AzureProvider when azure_openai_endpoint is set."""
+    from unittest.mock import MagicMock, patch
+
+    mock_settings = MagicMock()
+    mock_settings.tensorzero_gateway_url = ""
+    mock_settings.azure_openai_endpoint = "https://my.azure.openai.com"
+    mock_settings.azure_openai_api_key = "fake-key"
+    mock_settings.openai_api_version = "2024-02-01"
+    mock_settings.llm_model = "azure:gpt-4o"
+
+    mock_azure_provider = MagicMock()
+    mock_model = MagicMock()
+    mock_agent = MagicMock()
+
+    with (
+        patch("src.worker.engine.agents.plain_english.worker_settings", mock_settings),
+        patch(
+            "src.worker.engine.agents.plain_english.AzureProvider", return_value=mock_azure_provider
+        ) as mock_az,
+        patch("src.worker.engine.agents.plain_english.OpenAIChatModel", return_value=mock_model),
+        patch("src.worker.engine.agents.plain_english.Agent", return_value=mock_agent),
+    ):
+        from src.worker.engine.agents.plain_english import _make_agent
+
+        result = _make_agent()
+
+    mock_az.assert_called_once()
+    assert result is mock_agent
+
+
+# ── NEW COVERAGE: plain_english.py Azure branch (lines 141-168) ──────────────
+
+
+def test_plain_english_make_agent_azure_branch() -> None:
+    """Lines 141-168: _make_agent uses AzureProvider when azure_openai_endpoint is set."""
+    from unittest.mock import MagicMock, patch
+
+    with (
+        patch(
+            "src.worker.engine.agents.plain_english.worker_settings",
+            tensorzero_gateway_url="",
+            azure_openai_endpoint="https://my.azure.openai.com",
+            azure_openai_api_key="fake-key",
+            openai_api_version="2024-05-01",
+            llm_model="azure:gpt-4o",
+        ),
+        patch("src.worker.engine.agents.plain_english.AzureProvider") as mock_azure,
+        patch("src.worker.engine.agents.plain_english.OpenAIChatModel") as mock_model,
+        patch("src.worker.engine.agents.plain_english.Agent") as mock_agent_cls,
+    ):
+        mock_azure.return_value = MagicMock()
+        mock_model.return_value = MagicMock()
+        mock_agent_cls.return_value = MagicMock()
+
+        from src.worker.engine.agents.plain_english import _make_agent
+
+        _make_agent()
+
+        mock_azure.assert_called_once()
+        call_kwargs = mock_azure.call_args[1]
+        assert call_kwargs["azure_endpoint"] == "https://my.azure.openai.com"
+
+
+def test_plain_english_get_agent_singleton() -> None:
+    """Lines 160-168: _get_agent returns the same instance on repeated calls."""
+    # Reset singleton
+    original = pe_module._AGENT
+    pe_module._AGENT = None
+
+    try:
+        mock_agent_instance = MagicMock()
+        target = "src.worker.engine.agents.plain_english._make_agent"
+        with patch(target, return_value=mock_agent_instance):
+            a1 = pe_module._get_agent()
+            a2 = pe_module._get_agent()
+            assert a1 is a2
+            assert a1 is mock_agent_instance
+    finally:
+        pe_module._AGENT = original

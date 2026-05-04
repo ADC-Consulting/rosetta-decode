@@ -1,4 +1,4 @@
-export type JobStatusValue = "queued" | "running" | "proposed" | "accepted" | "failed" | "done";
+export type JobStatusValue = "queued" | "running" | "proposed" | "accepted" | "under_review" | "failed" | "done";
 
 export interface JobStatus {
   job_id: string;
@@ -58,7 +58,7 @@ export interface LineageNode {
   label: string;
   source_file: string;
   block_type: string;
-  status: "migrated" | "manual_review" | "untranslatable";
+  status: "migrated" | "manual_review" | "unrecognized";
 }
 
 export interface LineageEdge {
@@ -83,18 +83,13 @@ export interface JobLineageResponse {
   log_links?: LogLink[];
 }
 
-export type TranslationStrategy =
-  | "translate"
-  | "translate_with_review"
-  | "translate_best_effort"
-  | "manual_ingestion"
-  | "manual"
-  | "skip";
+export type TranslationStrategy = "translated" | "translated_with_review" | "manual";
 
 export interface BlockPlan {
   block_id: string;
   source_file: string;
   start_line: number;
+  end_line: number;
   block_type: string;
   strategy: TranslationStrategy;
   risk: "low" | "medium" | "high";
@@ -132,7 +127,7 @@ export interface FileNode {
   filename: string;
   file_type: "PROGRAM" | "MACRO" | "AUTOEXEC" | "LOG" | "OTHER";
   blocks: string[];
-  status: "OK" | "UNTRANSLATABLE" | "ERROR_PRONE" | null;
+  status: "OK" | "UNRECOGNIZED" | "ERROR_PRONE" | null;
   status_reason: string | null;
 }
 
@@ -155,7 +150,7 @@ export interface PipelineStep {
 
 export interface BlockStatus {
   block_id: string;
-  status: "OK" | "UNTRANSLATABLE" | "ERROR_PRONE";
+  status: "OK" | "UNRECOGNIZED" | "ERROR_PRONE";
   reason: string | null;
 }
 
@@ -279,6 +274,7 @@ export interface TrustReportBlock {
   reconciliation_status: "pass" | "fail" | null;
   needs_attention: boolean;
   blast_radius: number | null;
+  effective_confidence_band?: string;
 }
 
 export interface TrustReportFile {
@@ -304,3 +300,56 @@ export interface TrustReportResponse {
   blocks: TrustReportBlock[];
   review_queue: TrustReportBlock[];
 }
+
+// ── F20 — Live Trace types ────────────────────────────────────────────────────
+
+export interface TraceEventBase {
+  event_type: string;
+  ts: string; // ISO 8601
+}
+
+export interface BlockStartEvent extends TraceEventBase {
+  event_type: "block_start";
+  block_id: string;
+  agent: string;
+  attempt: number;
+}
+
+export interface BlockDoneEvent extends TraceEventBase {
+  event_type: "block_done";
+  block_id: string;
+  attempt: number;
+  status: "pass" | "fail" | "error";
+  elapsed_ms: number;
+}
+
+export interface ReconCheck {
+  name: string;
+  status: string;
+  detail: string;
+}
+
+export interface ReconResultEvent extends TraceEventBase {
+  event_type: "recon_result";
+  block_id: string;
+  checks: ReconCheck[];
+  all_passed: boolean;
+}
+
+export interface JobDoneEvent extends TraceEventBase {
+  event_type: "job_done";
+  job_id: string;
+  final_status: string;
+}
+
+export interface TraceErrorEvent extends TraceEventBase {
+  event_type: "error";
+  message: string;
+}
+
+export type TraceEvent =
+  | BlockStartEvent
+  | BlockDoneEvent
+  | ReconResultEvent
+  | JobDoneEvent
+  | TraceErrorEvent;

@@ -1,0 +1,9 @@
+# docker-compose.override.yml
+# Development overrides — enables live code reload without rebuilds.
+# Docker Compose merges this automatically with docker-compose.yml.
+
+services:
+  worker:
+    volumes:
+      - ./src/worker:/app/src/worker
+      - uploads:/uploads

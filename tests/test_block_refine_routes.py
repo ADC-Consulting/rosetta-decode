@@ -294,3 +294,165 @@ async def test_restore_block_revision_404_if_revision_missing(
         f"/jobs/{job.id}/blocks/test.sas%3A1/revisions/00000000-0000-0000-0000-000000000001/restore"
     )
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_restore_block_revision_happy_path(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """POST restore with a valid revision creates a new restore revision."""
+    import uuid as _uuid
+
+    job = await _insert_proposed_job(db_session)
+    rev_id = str(_uuid.uuid4())
+    rev = BlockRevision(
+        id=rev_id,
+        job_id=job.id,
+        block_id="test.sas:1",
+        revision_number=1,
+        python_code="out = in_.copy()  # original",
+        strategy="translate",
+        confidence="high",
+        trigger="agent",
+    )
+    db_session.add(rev)
+    await db_session.commit()
+
+    response = await client.post(f"/jobs/{job.id}/blocks/test.sas%3A1/revisions/{rev_id}/restore")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["block_id"] == "test.sas:1"
+    assert data["revision_number"] == 2
+
+
+# ─── PATCH /jobs/{job_id}/blocks/{block_id}/python — no existing revision ────
+
+
+@pytest.mark.asyncio
+async def test_save_block_python_no_prior_revision_creates_rev1(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """PATCH python with no prior revision creates revision_number=1."""
+    job = await _insert_proposed_job(db_session)
+
+    response = await client.patch(
+        f"/jobs/{job.id}/blocks/test.sas%3A1/python",
+        json={"python_code": "out = in_.copy()  # human edit", "notes": "My fix"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["revision_number"] == 1
+    assert data["block_id"] == "test.sas:1"
+
+
+# ─── POST /jobs/{job_id}/blocks/{block_id}/refine — 404 invalid block_id ─────
+
+
+@pytest.mark.asyncio
+async def test_refine_block_404_no_colon_in_block_id(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """POST refine returns 404 when block_id has no colon separator."""
+    job = await _insert_proposed_job(db_session)
+
+    # block_id without colon
+    response = await client.post(
+        f"/jobs/{job.id}/blocks/nocolon/refine",
+        json={},
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_refine_block_404_source_file_missing(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """POST refine returns 404 when source_file is not in job.files."""
+    job = await _insert_proposed_job(db_session)
+
+    # block_id references a file not in job.files
+    response = await client.post(
+        f"/jobs/{job.id}/blocks/nonexistent_file.sas%3A1/refine",
+        json={},
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_refine_block_404_block_not_in_parse_result(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """POST refine returns 404 when block start_line is not found in parse result."""
+    job = await _insert_proposed_job(db_session)
+
+    mock_parse_result = MagicMock()
+    mock_parse_result.blocks = []  # no blocks at all
+
+    with patch("src.backend.api.routes.jobs.SASParser") as mock_parser_cls:
+        mock_parser_cls.return_value.parse.return_value = mock_parse_result
+        response = await client.post(
+            f"/jobs/{job.id}/blocks/test.sas%3A999/refine",
+            json={},
+        )
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_refine_block_second_refine_increments_revision(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """POST refine on a block that already has revisions increments revision_number."""
+    import uuid as _uuid
+
+    job = await _insert_proposed_job(db_session)
+    fake_gb = _make_fake_generated_block()
+
+    # Pre-insert two revisions to simulate previous refines
+    for rn in (1, 2):
+        rev = BlockRevision(
+            id=str(_uuid.uuid4()),
+            job_id=job.id,
+            block_id="test.sas:1",
+            revision_number=rn,
+            python_code=f"out = in_.copy()  # rev {rn}",
+            strategy="translate",
+            confidence="high",
+            trigger="human-refine",
+        )
+        db_session.add(rev)
+    await db_session.commit()
+
+    mock_parse_result = MagicMock()
+    mock_parse_result.blocks = [fake_gb.source_block]
+
+    with (
+        patch("src.backend.api.routes.jobs._build_translation_router") as mock_build_router,
+        patch("src.backend.api.routes.jobs.SASParser") as mock_parser_cls,
+        patch(
+            "src.backend.api.routes.jobs.asyncio.to_thread",
+            new=AsyncMock(return_value={"checks": [{"status": "pass"}]}),
+        ),
+    ):
+        mock_parser_cls.return_value.parse.return_value = mock_parse_result
+        mock_router = MagicMock()
+        mock_translator = MagicMock()
+        mock_translator.translate = AsyncMock(return_value=fake_gb)
+        mock_router.route.return_value = mock_translator
+        mock_build_router.return_value = mock_router
+
+        response = await client.post(
+            f"/jobs/{job.id}/blocks/test.sas%3A1/refine",
+            json={},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    # With 2 existing revisions, max is rev 2, so next should be 3
+    assert data["revision_number"] == 3

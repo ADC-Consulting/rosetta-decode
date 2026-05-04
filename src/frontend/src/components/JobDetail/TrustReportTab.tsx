@@ -1,6 +1,7 @@
 import { getJobTrustReport } from "@/api/jobs";
 import type { TrustReportBlock, TrustReportFile } from "@/api/types";
 import { useQuery } from "@tanstack/react-query";
+import { CheckCircle2, XCircle } from "lucide-react";
 import { useState } from "react";
 
 interface TrustReportTabProps {
@@ -28,23 +29,31 @@ function ConfidenceBadge({ value }: { value: string | null }): React.ReactElemen
 function ReconciliationBadge({ value }: { value: "pass" | "fail" | null }): React.ReactElement {
   if (!value) return <span className="text-muted-foreground">—</span>;
   if (value === "pass") {
-    return (
-      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium text-green-700 bg-green-50 border border-green-200">
-        pass ✓
-      </span>
-    );
+    return <CheckCircle2 size={14} className="text-green-600" aria-label="pass" />;
   }
-  return (
-    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium text-red-700 bg-red-50 border border-red-200">
-      fail ✗
-    </span>
-  );
+  return <XCircle size={14} className="text-red-600" aria-label="fail" />;
 }
 
+const STRATEGY_COLOR = {
+  translated: "bg-green-100 text-green-800",
+  translated_with_review: "bg-amber-100 text-amber-800",
+  manual: "bg-red-100 text-red-800",
+} as const;
+
+const STRATEGY_LABELS = {
+  translated: "Translated",
+  translated_with_review: "Review needed",
+  manual: "Manual",
+} as const;
+
 function StrategyBadge({ value }: { value: string }): React.ReactElement {
+  const colorClass =
+    STRATEGY_COLOR[value as keyof typeof STRATEGY_COLOR] ??
+    "bg-muted text-muted-foreground";
+  const label = STRATEGY_LABELS[value as keyof typeof STRATEGY_LABELS] ?? value;
   return (
-    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200">
-      {value}
+    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${colorClass}`}>
+      {label}
     </span>
   );
 }

@@ -23,8 +23,11 @@ class BlockType(StrEnum):
     PROC_CONTENTS = "PROC_CONTENTS"
     PROC_DATASETS = "PROC_DATASETS"
     PROC_OPTMODEL = "PROC_OPTMODEL"
+    PROC_APPEND = "PROC_APPEND"
+    PROC_RANK = "PROC_RANK"
+    PROC_FORMAT = "PROC_FORMAT"
     PROC_UNKNOWN = "PROC_UNKNOWN"  # parseable body but unfamiliar PROC name
-    UNTRANSLATABLE = "UNTRANSLATABLE"  # genuinely unparsable SAS only
+    UNTRANSLATABLE = "UNRECOGNIZED"  # genuinely unparsable SAS only
 
 
 class MacroVar(BaseModel):
@@ -59,6 +62,21 @@ class SASBlock(BaseModel):
         untranslatable_reason: Human-readable reason when block_type is UNTRANSLATABLE.
         input_datasets: Dataset names read by this block (used for dependency ordering).
         output_datasets: Dataset names written by this block.
+
+    Optional construct-specific hints (set by dedicated extractors so the LLM
+    prompt builder knows which columns must exist on the input DataFrame):
+
+        renames: {old_name: new_name} from RENAME statements in DATA steps.
+        class_vars: CLASS columns from PROC MEANS / SUMMARY.
+        var_cols: VAR columns from PROC MEANS, TRANSPOSE, or RANK.
+        by_vars: BY columns from PROC MEANS or TRANSPOSE.
+        table_vars: Columns referenced in TABLES from PROC FREQ.
+        id_cols: ID columns from PROC TRANSPOSE.
+        rank_cols: RANKS columns from PROC RANK (rank-output names).
+        groups: GROUPS= value from PROC RANK (e.g. 4 for quartiles).
+        file_path: DATAFILE= path from PROC IMPORT.
+        dbms: DBMS= value from PROC IMPORT (CSV / XLSX / DLM / …).
+        sheet: SHEET= value from PROC IMPORT (Excel sheet name).
     """
 
     block_type: BlockType
@@ -70,17 +88,61 @@ class SASBlock(BaseModel):
     input_datasets: list[str] = Field(default_factory=list)
     output_datasets: list[str] = Field(default_factory=list)
 
+    # Construct-specific hints (all optional, default to empty / None)
+    renames: dict[str, str] = Field(default_factory=dict)
+    class_vars: list[str] = Field(default_factory=list)
+    var_cols: list[str] = Field(default_factory=list)
+    by_vars: list[str] = Field(default_factory=list)
+    table_vars: list[str] = Field(default_factory=list)
+    id_cols: list[str] = Field(default_factory=list)
+    rank_cols: list[str] = Field(default_factory=list)
+    groups: int | None = None
+    file_path: str | None = None
+    dbms: str | None = None
+    sheet: str | None = None
 
-class ParseResult(BaseModel):
-    """Aggregated output of the SAS parser for a single file.
+    # Extended DATA step / PROC hints
+    drop_cols: list[str] = Field(default_factory=list)
+    keep_cols: list[str] = Field(default_factory=list)
+    where_clause: str | None = None
+    output_targets: list[str] = Field(default_factory=list)
+    arrays: list[dict[str, object]] = Field(default_factory=list)
+
+
+class MacroDef(BaseModel):
+    """A SAS macro definition (%MACRO ... %MEND).
 
     Attributes:
-        blocks: Ordered list of SAS construct blocks extracted from the file.
-        macro_vars: Macro variables declared via %LET in the file.
+        name: Macro name, stored uppercase.
+        params: Positional parameter names, in declaration order.
+        body: Raw SAS text between %MACRO header and %MEND.
+        source_file: Name of the `.sas` file containing the definition.
+        line: 1-based line number of the %MACRO statement.
+    """
+
+    name: str
+    params: list[str] = Field(default_factory=list)
+    body: str
+    source_file: str
+    line: int = Field(ge=1)
+
+
+class ParseResult(BaseModel):
+    """Aggregated output of the SAS parser for a single file or file set.
+
+    Attributes:
+        blocks: Ordered list of SAS construct blocks extracted from the files.
+        macro_vars: Macro variables declared via %LET in the files.
+        libname_map: {libref: path} for all LIBNAME statements found.
+        includes: List of paths referenced by %INCLUDE statements.
     """
 
     blocks: list[SASBlock] = Field(default_factory=list)
     macro_vars: list[MacroVar] = Field(default_factory=list)
+    libname_map: dict[str, str] = Field(default_factory=dict)
+    includes: list[str] = Field(default_factory=list)
+    macro_defs: list[MacroDef] = Field(default_factory=list)
+    filename_map: dict[str, str] = Field(default_factory=dict)
 
 
 class GeneratedBlock(BaseModel):
@@ -109,8 +171,10 @@ class GeneratedBlock(BaseModel):
     confidence_band: str = "high"
     uncertainty_notes: list[str] = []
     assumptions: list[str] = []
-    strategy_used: str = "translate"
+    strategy_used: str = "translated"
     verified_confidence: str | None = None
+    output_var: str | None = None
+    exec_ok: bool = True
 
 
 class ReconciliationReport(BaseModel):
@@ -126,12 +190,10 @@ class ReconciliationReport(BaseModel):
 class TranslationStrategy(StrEnum):
     """Strategy to apply when migrating a SAS block."""
 
-    TRANSLATE = "translate"
-    TRANSLATE_WITH_REVIEW = "translate_with_review"
+    TRANSLATED = "translated"
+    TRANSLATED_WITH_REVIEW = "translated_with_review"
     TRANSLATE_BEST_EFFORT = "translate_best_effort"
-    MANUAL_INGESTION = "manual_ingestion"
     MANUAL = "manual"
-    SKIP = "skip"
 
 
 class BlockRisk(StrEnum):
@@ -162,13 +224,14 @@ class BlockPlan(BaseModel):
     block_id: str
     source_file: str
     start_line: int
+    end_line: int | None = None
     block_type: str
     strategy: TranslationStrategy
     risk: BlockRisk
     rationale: str
     estimated_effort: str
-    confidence_score: float = 1.0
-    confidence_band: str = "high"
+    confidence_score: float = 0.5
+    confidence_band: str = "unknown"
     detected_features: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -238,7 +301,7 @@ class FileNode(BaseModel):
     filename: str
     file_type: Literal["PROGRAM", "MACRO", "AUTOEXEC", "LOG", "OTHER"]
     blocks: list[str] = Field(default_factory=list)
-    status: Literal["OK", "UNTRANSLATABLE", "ERROR_PRONE"] | None = None
+    status: Literal["OK", "UNRECOGNIZED", "ERROR_PRONE"] | None = None
     status_reason: str | None = None
 
 
@@ -267,7 +330,7 @@ class BlockStatus(BaseModel):
     """Per-block translation/health status."""
 
     block_id: str
-    status: Literal["OK", "UNTRANSLATABLE", "ERROR_PRONE"]
+    status: Literal["OK", "UNRECOGNIZED", "ERROR_PRONE"]
     reason: str | None = None
 
 
@@ -294,6 +357,24 @@ class EnrichedLineage(BaseModel):
     log_links: list[LogLink] = Field(default_factory=list)
 
 
+class DataFileInfo(BaseModel):
+    """Metadata for a single data file discovered in the uploaded job.
+
+    Attributes:
+        path: Relative path within the project (e.g. ``data/raw/customers.csv``).
+        disk_path: Absolute path on disk (from the job sentinel value).
+        extension: File extension including the dot (e.g. ``".csv"``).
+        columns: Column headers sniffed from the file; empty list if unreadable.
+        row_count: Number of data rows, or ``None`` if not sniffable.
+    """
+
+    path: str
+    disk_path: str
+    extension: str
+    columns: list[str] = Field(default_factory=list)
+    row_count: int | None = None
+
+
 class JobContext(BaseModel):
     """Shared context object passed between all agentic pipeline stages."""
 
@@ -308,22 +389,31 @@ class JobContext(BaseModel):
     llm_call_count: int = 0
     migration_plan: MigrationPlan | None = None
     enriched_lineage: EnrichedLineage | None = None
+    data_files: dict[str, "DataFileInfo"] = Field(default_factory=dict)
+    libname_map: dict[str, str] = Field(default_factory=dict)
+    log_contents: dict[str, str] = Field(default_factory=dict)
 
     def windowed_context(self, block: SASBlock) -> "JobContext":
         """Return a windowed view of this context scoped to a single block.
 
         Translation agents receive only:
-        - source_files: empty (full source only for AnalysisAgent/DocumentationAgent)
+        - source_files: macro and autoexec files (so agents understand macro definitions)
         - resolved_macros: full list (needed for macro substitution in any block)
         - dependency_order: only entries relevant to block's input/output datasets
         - risk_flags: full list
         - blocks: only this block
         - generated: empty (not needed during per-block translation)
         - reconciliation, retry_count, llm_call_count: preserved as-is
+        - data_files, libname_map: passed through so agents see folder structure
         """
         relevant_datasets = set(block.input_datasets) | set(block.output_datasets)
+        macro_source_files = {
+            k: v
+            for k, v in self.source_files.items()
+            if k.startswith("macros/") or k.endswith("autoexec.sas")
+        }
         return JobContext(
-            source_files={},
+            source_files=macro_source_files,
             resolved_macros=self.resolved_macros,
             dependency_order=[d for d in self.dependency_order if d in relevant_datasets],
             risk_flags=self.risk_flags,
@@ -333,4 +423,7 @@ class JobContext(BaseModel):
             retry_count=self.retry_count,
             llm_call_count=self.llm_call_count,
             migration_plan=self.migration_plan,
+            data_files=self.data_files,
+            libname_map=self.libname_map,
+            log_contents=self.log_contents,
         )

@@ -11,6 +11,8 @@ detected_features is non-empty and the features have no Python equivalent.
 # SAS: src/worker/engine/agents/generic_proc.py:1
 
 import logging
+import os as _os
+import re as _re
 import textwrap
 
 from pydantic import BaseModel, Field
@@ -20,9 +22,62 @@ from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.azure import AzureProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 from src.worker.core.config import worker_settings
+from src.worker.engine.agents.shared import (
+    SHARED_TRANSLATION_RULES,
+    normalise_output_var,
+    normalise_output_var_in_code,
+)
 from src.worker.engine.models import GeneratedBlock, JobContext, SASBlock
 
 logger = logging.getLogger("src.worker.engine.agents.generic_proc")
+
+
+def _fix_excel_spark_reads(python_code: str) -> str:
+    """Replace spark.read...load(path.xlsx) with pandas read_excel + createDataFrame.
+
+    Spark has no native xlsx/xls reader.  The LLM sometimes emits
+    spark.read.format("xlsx").load(path) or spark.read.load(path) for Excel files,
+    which always crashes.  This guard rewrites those calls to the pandas bridge pattern.
+    """
+
+    def _rewrite(m: _re.Match[str]) -> str:
+        var_name = m.group(1).strip()
+        path = m.group(2)
+        logger.warning(
+            "GenericProcAgent: rewriting Spark Excel read for '%s' → pandas bridge",
+            path,
+        )
+        return f"import pandas as _pd\n{var_name} = spark.createDataFrame(_pd.read_excel({path}))"
+
+    # Matches: <var> = spark.read.<anything>.load("<path.xlsx|xls>")
+    #       or <var> = spark.read.load("<path.xlsx|xls>")
+    return _re.sub(
+        r"([A-Za-z_]\w*)\s*=\s*spark\.read(?:\.\w+)*\.load\((['\"][^'\"]+\.xlsx?['\"])\)",
+        _rewrite,
+        python_code,
+    )
+
+
+def _fix_workspace_paths(python_code: str) -> str:
+    """Replace /workspace/data/<nested/path/file.ext> with /workspace/data/<file.ext>.
+
+    LLMs sometimes copy the full relative path from the SAS DATAFILE= value instead of
+    using the basename.  This guard normalises any nested path back to a flat basename.
+    """
+
+    def _basename_only(m: _re.Match[str]) -> str:
+        full_path = m.group(1)
+        basename = _os.path.basename(full_path)
+        if basename == full_path:
+            return m.group(0)
+        logger.warning(
+            "GenericProcAgent: correcting nested workspace path '%s' → '/workspace/data/%s'",
+            full_path,
+            basename,
+        )
+        return f"/workspace/data/{basename}"
+
+    return _re.sub(r"/workspace/data/([^\s\"']+)", _basename_only, python_code)
 
 
 # ── Output model ──────────────────────────────────────────────────────────────
@@ -32,7 +87,8 @@ class GenericProcResult(BaseModel):
     """Structured output from the GenericProcAgent LLM call."""
 
     python_code: str
-    strategy_used: str = "translate"
+    output_var: str | None = None
+    strategy_used: str = "translated"
     confidence_score: float = 0.8
     confidence_band: str = "high"
     uncertainty_notes: list[str] = Field(default_factory=list)
@@ -59,15 +115,18 @@ class GenericProcError(Exception):
 
 # ── System prompt ─────────────────────────────────────────────────────────────
 
-_SYSTEM_PROMPT = textwrap.dedent("""\
+_SYSTEM_PROMPT = textwrap.dedent(
+    """\
     # agent: GenericProcAgent
 
     You are a SAS-to-Python migration engineer targeting a modern Python 3.12 data platform.
     The target environment has: PySpark, pandas, numpy, pyarrow, scipy, scikit-learn, statsmodels,
     sqlalchemy, duckdb, matplotlib.
-    PREFER PySpark for all data transformations. Fall back to pandas/numpy only when PySpark
-    cannot handle the specific construct. The code must run in a Databricks notebook (PySpark
-    native) or plain Python 3.12 environment without SAS.
+    DEFAULT: use PySpark for ALL data transformations. pandas is a LAST RESORT — only when the
+    specific construct is impossible in PySpark. When falling back, add a comment:
+      # pandas fallback: <reason PySpark cannot do this>
+    scipy/statsmodels for complex statistics → wrap in @pandas_udf to keep Spark execution.
+    The code must run in Databricks (PySpark native) or a local SparkSession (CLOUD=false).
 
     Your job is to translate ANY SAS PROC block into idiomatic Python.
     DEFAULT ASSUMPTION: translation is POSSIBLE. Only choose strategy="manual" when the
@@ -76,11 +135,11 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
 
     ## Strategy selection (in priority order)
 
-    1. "translate"
+    1. "translated"
        Fully automated, high confidence expected. Use for PROC MEANS, PROC FREQ,
        PROC TRANSPOSE, PROC SORT (simple), straightforward PROC IML matrix arithmetic.
 
-    2. "translate_with_review"
+    2. "translated_with_review"
        Translated but a human should verify. Use when:
        - SAS date/time semantics differ (INTNX, INTCK, SAS date literals from 1 Jan 1960)
        - SAS STD = sample std (ddof=1) — differs from numpy default (ddof=0)
@@ -90,53 +149,80 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
          (SAS column-major vs NumPy row-major)
        - PROC FCMP function definitions
        - Complex PROC OPTMODEL that maps to scipy.optimize
+       - PROC IMPORT / PROC EXPORT: emit a runnable spark.read / df.write call.
+         CRITICAL path rule: ALWAYS use "/workspace/data/<basename>" where <basename> is the
+         filename (with extension) from the SAS DATAFILE= value — strip any directory prefix or
+         macro variable path. NEVER use the SAS macro-expanded path (e.g. &ROOT./foo.csv).
+         Example: DATAFILE="&ROOT./data/customers.csv" → "/workspace/data/customers.csv"
+         If uploaded data files are listed in the prompt, use the exact path shown there.
+         CRITICAL output variable naming for PROC IMPORT: the OUT= option is `libname.table` or
+         `libname_table` — ALWAYS use the TABLE STEM ONLY as the Python variable name.
+         CORRECT: OUT=rawdir.customers → variable name `customers`
+         WRONG:   OUT=rawdir.customers → variable name `rawdir_customers` or `rawdir.customers`
+         The `output_var` JSON field MUST be the stem only (e.g. "customers", not "rawdir_customers").
+         Example:
+           # TODO: verify file format and schema
+           customers = spark.read.csv("/workspace/data/customers.csv", header=True, inferSchema=True)  # SAS: <file>:<line>
+           # pandas fallback: customers = pd.read_csv("/workspace/data/customers.csv")
+           result = customers
+         CRITICAL: spark.read.csv() / spark.read.parquet() / spark.read.json() MUST receive
+         a string literal path, NEVER a DataFrame variable.
+         If the input is already a DataFrame in scope, use it directly — do not pass it to spark.read.
+         For .xlsx / .xls files Spark has no native reader — use pandas then convert:
+           import pandas as _pd
+           df_output = spark.createDataFrame(_pd.read_excel("/workspace/data/products.xlsx"))  # SAS: <file>:<line>
+         NEVER call spark.read.format("xlsx").load() or spark.read.load() for Excel files.
+       - PROC PRINT / PROC CONTENTS / PROC DATASETS: translate to Python display/inspection
+         equivalent (e.g. df.head(), df.dtypes, df.describe(), print(df.columns)).
 
-    3. "manual_ingestion"
-       PROC IMPORT / PROC EXPORT file I/O only. Emit a PySpark read/write shell with TODO comments.
-       Example:
-         # TODO: verify file path, format, and schema
-          df_output = spark.read.csv(
-              "<infile_path>", header=True, inferSchema=True
-          )  # SAS: <file>:<line>
-         # pandas fallback: df_output = pd.read_csv("<infile_path>")
-
-    4. "manual"
+    3. "manual"
        ONLY when detected_features is non-empty AND features have no reasonable Python equivalent.
        Example: PROC OPTMODEL LP/NLP with a model structure so complex no scaffold is meaningful.
-       NEVER emit manual for PROC IML, PROC FCMP, PROC MEANS, PROC FREQ, or PROC TRANSPOSE.
+       NEVER emit manual for PROC IML, PROC FCMP, PROC MEANS, PROC FREQ, PROC TRANSPOSE,
+       PROC IMPORT, PROC EXPORT, PROC PRINT, PROC CONTENTS, or PROC DATASETS.
        When using manual, ALWAYS provide: a suggested Python library, a short explanation, and
        at minimum a scaffold comment pointing the reviewer to the right tool.
-
-    5. "skip"
-       PROC PRINT, PROC CONTENTS, PROC DATASETS, standalone title/footnote statements.
-       Emit an empty string for python_code.
+    - Always include any imports your code needs at the top of your block (e.g. `from pyspark.sql import functions as F`). Do NOT assume pandas or any other library is pre-imported.
+    - After computing your primary output DataFrame, set `result = <output_var>` as the final line of your code block. Example:
+        result = transactions_clean
+    - Set the `output_var` field in your JSON response to the STEM-ONLY name (no libname prefix, no dots, no underscored libname). Example: "output_var": "transactions_clean"
+      WRONG: "output_var": "rawdir_transactions_clean", "output_var": "outdir_customers"
+      CORRECT: "output_var": "transactions_clean", "output_var": "customers"
 
     ## PROC-specific translation guidance
 
     ### PROC MEANS / PROC SUMMARY
-    Use pandas .groupby().agg() or .describe().
-    - CLASS → groupby columns
+    Use PySpark df.groupBy().agg().
+    - CLASS → groupBy columns
     - VAR → columns to aggregate
-    - N → "count", MEAN → "mean", STD → "std" (pandas ddof=1 by default — correct)
-    - MIN/MAX/MEDIAN → "min"/"max"/"median"
-    - OUTPUT OUT= → assign result to the OUT= variable name (lowercased)
+    - N → F.count(), MEAN → F.mean(), STD → F.stddev_samp() (sample std, matches SAS)
+    - MIN/MAX/MEDIAN → F.min()/F.max()/F.percentile_approx(col, 0.5)
+    - OUTPUT OUT= → assign result to the TABLE STEM of the OUT= name (strip libname prefix)
     Example:
-      result = df.groupby(["dept"]).agg({"salary": ["count", "mean", "std"]})
-      result.columns = ["n", "mean_salary", "std_salary"]
-      result = result.reset_index()
+      import pyspark.sql.functions as F
+      result = df.groupBy("dept").agg(
+          F.count("salary").alias("n"),
+          F.mean("salary").alias("mean_salary"),
+          F.stddev_samp("salary").alias("std_salary"),
+      )
 
     ### PROC FREQ
-    - TABLES a → pd.Series.value_counts() or pd.crosstab(df.a, "All")
-    - TABLES a*b → pd.crosstab(df.a, df.b)
-    - TABLES a*b / CHISQ → from scipy import stats; stats.chi2_contingency(pd.crosstab(df.a, df.b))
-    - OUT= → assign to the OUT= variable name (lowercased)
+    - TABLES a → df.groupBy("a").count()
+    - TABLES a*b → df.groupBy("a", "b").count()
+    - TABLES a*b / CHISQ → collect contingency table to pandas, then scipy:
+        from pyspark.sql.functions import pandas_udf
+        import scipy.stats as stats
+        ct = df.groupBy("a", "b").count().toPandas().pivot("a", "b", "count").fillna(0)
+        chi2, p, dof, _ = stats.chi2_contingency(ct.values)
+    - OUT= → assign to the TABLE STEM of the OUT= name (strip libname prefix)
 
     ### PROC TRANSPOSE
-    - ID → becomes the new column names after pivoting
+    - ID → becomes new column names after pivoting
     - VAR → columns to transpose
     - BY → group-by columns (pivot within group)
-    - OUT= → assign result to OUT= variable name
-    Use df.pivot() for wide→long or df.melt() for long→wide as appropriate.
+    - OUT= → assign result to the TABLE STEM of the OUT= name (strip libname prefix)
+    Use df.groupBy(BY).pivot(ID).agg(F.first(VAR)) for wide pivots.
+    For unpivoting (wide→long): use df.select(BY_cols + F.explode/stack or melt via pandas_udf).
 
     ### PROC IML
     Use NumPy for matrix arithmetic.
@@ -179,14 +265,23 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
     ## SAS semantic preservation rules
 
     - SAS date origin = 1 January 1960.
-      Convert: pd.Timestamp('1960-01-01') + pd.to_timedelta(sas_date_value, unit='D')
-    - SAS std() = sample std (ddof=1). NumPy default is ddof=0 — always specify ddof=1.
-    - SAS missing numeric = . (propagates as NaN in pandas — correct by default).
+      PySpark: F.date_add(F.lit("1960-01-01").cast("date"), F.col(sas_date_col).cast("int"))
+      pandas last resort: pd.Timestamp('1960-01-01') + pd.to_timedelta(sas_date_value, unit='D')
+    - SAS std() = sample std (ddof=1). PySpark: F.stddev_samp(). NumPy: specify ddof=1.
+    - SAS missing numeric = . → null in PySpark (F.isNull / F.when(...).otherwise(None)).
     - SAS special missings .A-.Z are not representable in float64.
       Note in uncertainty_notes when present.
     - Preserve SAS column names exactly, lowercased.
-    - Treat SAS dataset names as already-loaded pd.DataFrame variables (lowercased,
-      dots replaced with underscores).
+    - INPUT datasets are already-loaded Spark/pandas DataFrame variables. The exact variable name
+      for each input is shown in the prompt as `→  variable name: <name>`. Use EXACTLY that name —
+      do not derive it yourself. External source files use `libname_table` form (e.g. `rawdir_transactions`);
+      inter-block datasets use stem-only (e.g. `customer_revenue_daily`).
+      OUTPUT datasets must be CREATED by your code — do not reference them as if they already exist.
+    - NEVER use libname-qualified names (e.g. `outdir.revenue_summary`, `work.tmp`) anywhere in the
+      Python code body. SAS libnames do not exist in Python. Always use the TABLE STEM ONLY as the
+      Python variable name for both inputs and outputs (e.g. `revenue_summary`, not `outdir.revenue_summary`).
+    - NEVER pass a DataFrame variable to spark.read.csv/parquet/json — these accept only string
+      paths. If data is already in a DataFrame, use it directly without re-reading.
     - Macro variables are pre-resolved; use their literal values directly.
     - Do NOT invent datasets or columns not present in the SAS source.
     - When uncertain, prefer translate_with_review with explicit assumptions
@@ -203,7 +298,7 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
 
     {
       "python_code": "<translated Python — never empty for translate/translate_with_review>",
-      "strategy_used": "translate|translate_with_review|manual_ingestion|manual|skip",
+      "strategy_used": "translated|translated_with_review|manual",
       "confidence_score": <float 0.0-1.0>,
       "confidence_band": "high|medium|low|very_low",
       "uncertainty_notes": ["<one sentence per uncertain construct>"],
@@ -216,21 +311,23 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
     - Add # SAS: <source_file>:<line_number> after each logical section.
     - For low/medium confidence constructs, insert before relevant lines:
         # UNCERTAIN: <reason> — human review required
-    - python_code MUST be non-empty for translate and translate_with_review.
-    - For skip, python_code = "".
+    - python_code MUST be non-empty for translated and translated_with_review.
     - For manual, python_code contains a justified stub with suggested library.
-""")
+"""
+    + SHARED_TRANSLATION_RULES
+)
 
 
 # ── Prompt builder ────────────────────────────────────────────────────────────
 
 
-def _build_prompt(block: SASBlock, windowed: JobContext) -> str:
+def _build_prompt(block: SASBlock, windowed: JobContext, all_blocks: list[SASBlock]) -> str:
     """Build the user prompt for a generic PROC translation.
 
     Args:
         block: The SAS block to translate.
         windowed: A windowed JobContext scoped to this block.
+        all_blocks: All SAS blocks in the job (used to resolve inter-block variable names).
 
     Returns:
         A formatted prompt string for the LLM.
@@ -246,10 +343,22 @@ def _build_prompt(block: SASBlock, windowed: JobContext) -> str:
     if not windowed.resolved_macros:
         lines.append("  (none)")
 
+    block_output_stems: dict[str, str] = {}
+    for b in all_blocks:
+        for ds in b.output_datasets:
+            stem = ds.lower().split(".")[-1]
+            block_output_stems[ds.lower()] = stem
+            block_output_stems[ds.lower().replace(".", "_")] = stem
+
     lines.append("")
     lines.append("## Upstream datasets (dependency order)")
     for i, ds in enumerate(windowed.dependency_order):
-        lines.append(f"{i + 1}. {ds}")
+        ds_lower = ds.lower()
+        if ds_lower in block_output_stems:
+            var_name = block_output_stems[ds_lower]
+        else:
+            var_name = ds_lower.replace(".", "_")
+        lines.append(f"{i + 1}. {ds}  →  variable name: {var_name}")
     if not windowed.dependency_order:
         lines.append("  (none)")
 
@@ -260,7 +369,27 @@ def _build_prompt(block: SASBlock, windowed: JobContext) -> str:
     if not windowed.risk_flags:
         lines.append("  (none)")
 
+    if windowed.log_contents:
+        lines.append("")
+        lines.append(
+            "## SAS execution logs (use for actual row counts, NOTE lines,"
+            " WARNING/ERROR messages, and macro values)"
+        )
+        for log_path, content in windowed.log_contents.items():
+            lines.append(f"### {log_path}")
+            log_lines = content.splitlines()
+            lines.append("\n".join(log_lines[:200]))
+
     lines.append("")
+    if windowed.data_files:
+        lines.append("")
+        lines.append("## Uploaded data files (use these exact paths in spark.read calls)")
+        for norm_path, info in windowed.data_files.items():
+            basename = _os.path.basename(norm_path)
+            lines.append(
+                f"- /workspace/data/{basename}  ({info.extension}, {info.row_count or '?'} rows)"
+            )
+
     lines.append(f"## SAS {block.block_type} block to translate")
     lines.append(f"Source: {block.source_file}, lines {block.start_line}-{block.end_line}")
     lines.append("")
@@ -268,6 +397,10 @@ def _build_prompt(block: SASBlock, windowed: JobContext) -> str:
     lines.append(block.raw_sas)
     lines.append("```")
 
+    # Log the input variable hints being sent to the LLM
+    for line in lines:
+        if "variable name:" in line:
+            logger.debug("GenericProcAgent prompt input hint: %s", line.strip())
     return "\n".join(lines)
 
 
@@ -342,7 +475,7 @@ class GenericProcAgent:
             GenericProcError: If the LLM call fails.
         """
         windowed = context.windowed_context(block)
-        prompt = _build_prompt(block, windowed)
+        prompt = _build_prompt(block, windowed, context.blocks)
 
         try:
             result = await self._agent.run(
@@ -357,17 +490,40 @@ class GenericProcAgent:
 
         proc_result: GenericProcResult = result.output  # type: ignore[assignment]
 
-        is_untranslatable = proc_result.strategy_used in ("manual",)
-        # For skip strategy, emit a provenance comment rather than empty string
-        python_code = proc_result.python_code
-        if proc_result.strategy_used == "skip" and not python_code.strip():
-            python_code = (
-                f"# SAS: {block.source_file}:{block.start_line} - skipped ({block.block_type})"
+        logger.debug(
+            "GenericProcAgent raw LLM output_var=%r, output_datasets=%r",
+            proc_result.output_var,
+            block.output_datasets,
+        )
+        logger.debug(
+            "GenericProcAgent raw python_code (first 300 chars):\n%s", proc_result.python_code[:300]
+        )
+
+        is_untranslatable = proc_result.strategy_used == "manual"
+        python_code = normalise_output_var_in_code(
+            proc_result.python_code, block.output_datasets, "GenericProcAgent"
+        )
+        python_code = _fix_workspace_paths(python_code)
+        python_code = _fix_excel_spark_reads(python_code)
+        fixed_output_var = normalise_output_var(block.output_datasets, proc_result.output_var)
+        logger.debug(
+            "GenericProcAgent after normalise: output_var=%r, python_code has rawdir_customers=%s",
+            fixed_output_var,
+            "rawdir_customers" in python_code,
+        )
+        if fixed_output_var and not _re.search(
+            rf"\b{_re.escape(fixed_output_var)}\s*=", python_code
+        ):
+            logger.warning(
+                "GenericProcAgent: output_var '%s' not found as assignment in generated code"
+                " after rename — check LLM output",
+                fixed_output_var,
             )
 
         return GeneratedBlock(
             source_block=block,
             python_code=python_code,
+            output_var=fixed_output_var,
             is_untranslatable=is_untranslatable,
             confidence=proc_result.confidence_band,
             confidence_score=proc_result.confidence_score,

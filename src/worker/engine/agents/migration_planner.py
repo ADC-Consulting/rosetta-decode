@@ -21,6 +21,7 @@ from src.worker.engine.models import (
     BlockRisk,
     JobContext,
     MigrationPlan,
+    SASBlock,
     TranslationStrategy,
 )
 
@@ -79,17 +80,21 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
        - strategy: one of the values below (use exactly these strings).
 
     Translation strategy values (use exactly these strings):
-    - "translate"             Fully auto-translated. DATA steps, PROC SQL, PROC SORT,
-                              PROC MEANS — anything the agents handle reliably.
-    - "translate_with_review" Translated but flagged for human check. Use when date/time
-                              semantics differ (INTNX, INTCK, SAS date literals), format
-                              conversions (PICTURE, INFORMATs), or ambiguous merges.
-    - "manual_ingestion"      PROC IMPORT / PROC EXPORT / any file I/O. Emit a pandas
-                              read/write shell with TODOs only.
-    - "manual"                PROC IML, PROC OPTMODEL, PROC FCMP, no pandas equivalent.
-                              Emit a # TODO placeholder comment only.
-    - "skip"                  PROC PRINT, PROC CONTENTS, PROC DATASETS, standalone
-                              comments, title/footnote statements. Emit nothing.
+    - "translated"             Fully auto-translated. DATA steps, PROC SQL, PROC SORT,
+                               PROC MEANS, PROC FREQ, PROC TRANSPOSE — anything the agents
+                               handle reliably.
+    - "translated_with_review" Translated but flagged for human check. Use when:
+                               - Date/time semantics differ (INTNX, INTCK, SAS date literals)
+                               - Format conversions (PICTURE, INFORMATs) or ambiguous merges
+                               - PROC IMPORT / PROC EXPORT (GenericProcAgent emits runnable
+                                 pd.read_csv / to_csv with TODO path comments)
+                               - PROC PRINT / PROC CONTENTS / PROC DATASETS (translate to
+                                 Python display/inspection equivalent)
+                               - PROC IML / PROC FCMP / PROC OPTMODEL (translate with review)
+                               - Any unrecognised PROC (PROC_UNKNOWN)
+    - "manual"                 ONLY when the block relies on features with genuinely no
+                               Python equivalent. MUST list those features in detected_features.
+                               NEVER use "manual" if detected_features would be empty.
        - risk: "low", "medium", or "high" based on:
            HIGH  — CALL SYMPUT/SYMPUTX, dynamic dataset names, nested macros, %INCLUDE,
                    PROC types we don't handle, deeply nested DO loops with RETAIN
@@ -105,6 +110,16 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
     5. List cross_file_dependencies: plain-English notes for any dataset that flows
        between files.
 
+    Special rules for macro utility blocks:
+    - Blocks inside `macros/` files (e.g. `working/macros/assert_rowcount.sas`) that are
+      assertion or validation helpers — recognisable by macro parameter names like `&ds` or
+      `&lib` used as dataset names — have no Python equivalent. Assign strategy: `manual`
+      and risk: `high` for these. Do NOT attempt to translate them as runnable PySpark/pandas
+      code. Set detected_features to the macro parameter names that make translation impossible.
+    - More generally: if a block references SAS macro parameters (variables of the form
+      `&<name>`) as dataset or library names, assign strategy: `manual` because the macro
+      context is not available at translation time.
+
     Return ONLY a JSON object — no prose, no markdown fences:
     {
       "summary": "...",
@@ -114,17 +129,33 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
           "block_id": "source_file:start_line",
           "source_file": "...",
           "start_line": <int>,
-          "block_type": "DATA_STEP|PROC_SQL|PROC_SORT|UNTRANSLATABLE",
-          "strategy": "translate|translate_with_review|manual_ingestion|manual|skip",
+          "block_type": "<exact value from the parsed block list above, e.g. if the list says type=PROC_IML write PROC_IML>",
+          "strategy": "translated|translated_with_review|manual",
           "risk": "low|medium|high",
           "rationale": "...",
-          "estimated_effort": "low|medium|high"
+          "estimated_effort": "low|medium|high",
+          "confidence_score": "<float 0.0-1.0, how confident are you this block can be translated correctly? 0.0 = impossible, 1.0 = trivial>",
+          "detected_features": ["<required non-empty when strategy=manual>"]
         }
       ],
       "recommended_review_blocks": ["source_file:start_line", ...],
       "cross_file_dependencies": ["...", ...]
     }
 """)
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+
+def _score_to_band(score: float) -> str:
+    """Map a confidence score to a named band."""
+    if score >= 0.85:
+        return "high"
+    if score >= 0.65:
+        return "medium"
+    if score >= 0.40:
+        return "low"
+    return "very_low"
 
 
 # ── Agent factory ─────────────────────────────────────────────────────────────
@@ -205,7 +236,7 @@ class MigrationPlannerAgent:
             raise MigrationPlannerError(f"MigrationPlannerAgent failed: {exc}", cause=exc) from exc
 
         planner_result: PlannerResult = result.output  # type: ignore[assignment]
-        return _build_migration_plan(planner_result)
+        return _build_migration_plan(planner_result, context.blocks)
 
 
 # ── Prompt builder ────────────────────────────────────────────────────────────
@@ -247,33 +278,59 @@ def _build_prompt(context: JobContext) -> str:
     for filename, content in context.source_files.items():
         parts.append(f"\n### {filename}\n```sas\n{content}\n```")
 
+    if context.log_contents:
+        parts.append("## SAS execution logs")
+        parts.append(
+            "Use these logs to understand actual runtime behaviour, row counts,"
+            " NOTE: lines, and macro expansions."
+        )
+        for log_path, content in context.log_contents.items():
+            parts.append(f"### {log_path}")
+            log_lines = content.splitlines()
+            parts.append("\n".join(log_lines[:200]))
+
     return "\n".join(parts)
 
 
 # ── Plan assembler ────────────────────────────────────────────────────────────
 
 
-def _build_migration_plan(result: PlannerResult) -> MigrationPlan:
+def _build_migration_plan(result: PlannerResult, blocks: list[SASBlock]) -> MigrationPlan:
     """Convert a PlannerResult into a typed MigrationPlan.
 
     Args:
         result: Raw structured output from the LLM.
+        blocks: Parsed SASBlock objects used to resolve end_line by block_id.
 
     Returns:
         A fully-typed MigrationPlan instance.
     """
+    end_line_by_id: dict[str, int] = {f"{b.source_file}:{b.start_line}": b.end_line for b in blocks}
+    # Authoritative block_type from the parser — never trust the LLM's copy
+    parsed_type_by_id: dict[str, str] = {
+        f"{b.source_file}:{b.start_line}": b.block_type for b in blocks
+    }
     block_plans: list[BlockPlan] = []
     for bp in result.block_plans:
+        source_file = bp.get("source_file", "")
+        start_line = int(bp.get("start_line", 1))
+        block_id = bp.get("block_id", f"{source_file}:{start_line}")
+        confidence_score = float(bp.get("confidence_score", 0.5))
+        confidence_band = _score_to_band(confidence_score)
         block_plans.append(
             BlockPlan(
-                block_id=bp.get("block_id", ""),
-                source_file=bp.get("source_file", ""),
-                start_line=int(bp.get("start_line", 1)),
-                block_type=bp.get("block_type", ""),
-                strategy=TranslationStrategy(bp.get("strategy", "translate")),
+                block_id=block_id,
+                source_file=source_file,
+                start_line=start_line,
+                end_line=end_line_by_id.get(f"{source_file}:{start_line}", 0),
+                block_type=parsed_type_by_id.get(block_id, bp.get("block_type", "")),
+                strategy=TranslationStrategy(bp.get("strategy", "translated")),
                 risk=BlockRisk(bp.get("risk", "low")),
                 rationale=bp.get("rationale", ""),
                 estimated_effort=bp.get("estimated_effort", "low"),
+                confidence_score=confidence_score,
+                confidence_band=confidence_band,
+                detected_features=bp.get("detected_features", []),
             )
         )
 
