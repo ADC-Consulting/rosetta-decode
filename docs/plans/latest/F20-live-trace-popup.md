@@ -1,6 +1,33 @@
 # F20 — Live Trace Popup + Rich Execution Results
 
-**Status:** in-progress — Stream A complete, Stream B pending; LiveTraceDialog UX overhaul lost (never committed) — must re-implement
+**Status:** in-progress — Stream A complete; recon grouping + retry loop + session cache fixed (session 3); Stream B pending
+
+## Remaining Work (2026-05-03 session 3)
+
+### B — Stream B (ExecutionOutputPanel + Trust tab)
+As per original plan sections B1 and B2 below.
+
+### Open bug
+- `tx_fx_cat` NameError on attempt 1 still seen — session cache `/tmp` fix deployed but not yet confirmed working after docker rebuild; root cause: Spark save snippet crashes if the prior block's code itself raises before saving (the `_customer_id_type` line is LLM-generated introspection code that shouldn't be there — an LLM prompt artifact, not a cache issue)
+
+## Completed This Session (2026-05-03 session 2)
+
+### C — LiveTraceDialog UX Overhaul ✓
+- [x] Block colour states: grey=running, red=error, amber=no-recon, green=pass, red=fail
+- [x] `pipeline:full` summary banner with coloured border + collapsible recon checks
+- [x] Human-friendly check labels (Schema Parity, Row Count, Aggregate Parity)
+- [x] Auto-expand on recon arrival; user toggle preserved (null→hasRecon→userToggled)
+- [x] No coloured left border on block header button; no inner rail in collapsible
+- [x] Shimmer keyframe fixed (duplicate removed from index.css)
+
+### Per-block recon with DataFrame session cache ✓
+- [x] `src/executor/runner.py` — `session_dir` param: Parquet load snippet prepended, save snippet appended, `_ROSETTA_SESSION_DIR` env var
+- [x] `src/executor/main.py` — `session_dir` on `ExecuteRequest`
+- [x] `src/worker/validation/reconciliation.py` — `session_dir` threaded through `_post_execute` and `run`
+- [x] `src/worker/engine/block_executor.py` — `session_dir` param forwarded
+- [x] `src/worker/main.py` — per-block recon via session cache; `_build_recon_groups` fallback removed (per-block only for specifically-matched data files); `pipeline:full` final run with SSE trace events; cache cleanup
+- [x] `src/executor/recon.py` — both ref and actual DataFrames normalized to lowercase columns before all checks
+- [x] `src/worker/engine/agents/shared.py` — Rule 2 strengthened: mandatory lowercase after every file read, concrete `toDF` example
 
 ## Context
 

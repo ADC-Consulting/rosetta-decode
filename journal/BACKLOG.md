@@ -183,7 +183,12 @@
 - [x] fix(worker): cancel check in `_translate_blocks` — open fresh session via `session_factory` instead of `session.refresh()` on outer session (fixes "not persistent within this Session" crash)
 - [x] F20 Stream A: JobTrace model + Alembic 016, TraceEmitter, POST /cancel, GET /trace/stream SSE, LiveTraceDialog (timeline rail, shadcn tokens), trace button in JobsPage → see `docs/plans/latest/F20-live-trace-popup.md`
 - [ ] F20 Stream B: ExecutionOutputPanel improvements (elapsed label, stderr split, recon cards) + Trust tab in EditorTab → see `docs/plans/latest/F20-live-trace-popup.md`
-- [ ] LiveTraceDialog UX overhaul LOST — frozen elapsed, FinalStatusChip in header, timing pill, all-expandable blocks, pipeline:full always open + red on fail — must be re-implemented
+- [x] LiveTraceDialog UX overhaul — block colour states, pipeline:full banner, human-friendly check labels, user-toggleable expand, shimmer keyframe fixed → see `docs/plans/latest/F20-live-trace-popup.md`
+- [x] feat(executor): per-block DataFrame session cache (Parquet) — `session_dir` threaded executor→recon→block_executor→main; prior block outputs pre-loaded; cleanup after loop
+- [x] feat(worker): `pipeline:full` final recon run after all blocks — emits block_start/recon_result/block_done SSE events; displayed as summary banner in popup
+- [x] fix(recon): `_build_recon_groups` fallback removed — per-block recon only fires for specifically-matched data files; job-level ref used only in pipeline:full run
+- [x] fix(recon): column names normalized to lowercase in `recon.py` before all three checks (defensive; guards against SAS UPPERCASE ref headers)
+- [x] fix(prompt): Rule 2 in `SHARED_TRANSLATION_RULES` strengthened — mandatory `toDF(*[c.lower() for c in df.columns])` after every file read; removes SAS uppercase/Python lowercase mismatch at source
 - [x] fix(prompt): unified join key normalisation — save type before join, regexp_replace+cast, restore original type after join; single section replaces two conflicting ones
 - [x] fix(prompt): generic schema-mismatch cast hint — per-column "output is X but ref expects Y — cast to match" in retry hint
 - [x] fix(prompt): near-zero aggregate parity hint — floating point drift advisory injected when ref_sum < 1e-3
@@ -197,6 +202,23 @@
 - [x] feat(frontend): SAS highlight uses actual `end_line` instead of hardcoded `startLine + 20`
 - [x] feat(frontend): Activity button pulses (animate-pulse text-primary) when job is running/queued
 - [x] fix(tests): deleted stale `tests/test_reconciliation_coerce.py` (imported removed `_coerce_sas_dates`)
+- [x] fix(frontend): no-recon blocks now show green (not amber) in LiveTraceDialog — amber was misleading for execution-only pass
+- [x] fix(recon): `_build_recon_groups` — strip libname prefix from output_datasets before stem match (`outdir.revenue_summary` → `revenue_summary`)
+- [x] fix(block_executor): empty checks + ref present → synthetic `execution: fail` so retry loop fires on crash (was silently treating as pass)
+- [x] fix(worker): translation exception now injects error as risk_flag and `continue`s to next attempt (was `break` on attempt 1)
+- [x] fix(worker): `_reconcile_initial_blocks` (step 11) disabled — was running job-level ref against all intermediate blocks with wrong schema
+- [x] fix(executor): session cache uses PySpark `spark.read/write.parquet` (was pandas); Spark init always included when session_dir set; load snippet runs after Spark init
+- [x] fix(executor): session cache path changed to `/tmp/rosetta_cache/...` — `/workspace/data` is mounted read-only
+- [x] fix(frontend): LiveTraceDialog — every completed block has chevron + expandable panel; no-ref blocks show "Executed — no reference file matched"
+- [x] feat(frontend): Plan tab recon column — CheckCircle2/XCircle icons instead of Pass/Fail badges; manual strategy always shows `—`
+- [x] feat(parser): MacroDef model, filename_map, PROC IML/FORMAT extractors, DROP/KEEP/WHERE/OUTPUT/ARRAY fields on SASBlock
+- [x] feat(prompt): SHARED_TRANSLATION_RULES — explicit "always PySpark, never pandas" + "never cast to match ref schema" rules
+- [x] feat(recon): DEBUG logs showing ref/actual rows, columns, dtypes before each check run
+- [x] fix(worker): cumulative code execution — prior-block NameErrors fixed; Parquet session cache removed; `result = <output_var>` injected for correct recon capture
+- [x] fix(prompt): `.schema[col]` introspection on inter-block DataFrames suppressed via `SHARED_TRANSLATION_RULES`
+- [x] fix(planner): `block_type` authoritative from parser; PROC_IML no longer shows as UNTRANSLATABLE
+- [ ] feat(planner): post-run risk+rationale enrichment — `_enrich_block_plan_post_run` in `main.py`; rule-based, no LLM call; re-persists `job.migration_plan` after `_persist_initial_revisions`
+- [ ] F20 Stream B: ExecutionOutputPanel improvements + Trust tab in EditorTab → see `docs/plans/latest/F20-live-trace-popup.md`
 
 ---
 

@@ -6,6 +6,191 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-05-04 — cumulative block execution, risk post-run enrichment design, block_type planner fix
+
+**Duration:** ~1h | **Focus:** cross-block NameError root cause fix, migration planner correctness
+
+### Done
+- **fix(worker):** `_translate_blocks` now sends cumulative code (all prior blocks + current block) to executor — eliminates `revenue_sorted`/`tx_fx_cat` NameErrors from cross-block variable references in isolated subprocesses; removed unreliable Parquet session cache
+- **fix(worker):** appends `result = <output_var>` to cumulative exec code so recon capture picks the correct block's DataFrame
+- **fix(prompt):** added rule to `SHARED_TRANSLATION_RULES` — never introspect `.schema[col]` on a prior-block DataFrame; assume it exists and use directly
+- **fix(planner):** `block_type` prompt now lists all known types with concrete example; `_build_migration_plan` overrides LLM's `block_type` with authoritative value from parser — PROC_IML can no longer show as UNTRANSLATABLE
+- **design:** agreed post-run risk+rationale enrichment — risk recalculated from recon results + confidence after translation; rationale rewritten with actual findings; no extra LLM call (rule-based)
+
+### Decisions
+- **Cumulative code over session cache:** cumulative exec is crash-proof; Parquet cache silently left gaps when upstream blocks crashed mid-execution · revisit never
+- **Parser `block_type` is authoritative:** `_build_migration_plan` ignores LLM's `block_type`, reads it from parsed `SASBlock` — LLM was given a short enum missing PROC_IML etc. · revisit never
+- **Post-run risk+rationale:** recomputed after `_translate_blocks` using recon results + confidence; pre-run planner values are initial estimates only; rule table: recon pass + high conf → low; recon fail → high; no recon + low conf → high · revisit never
+
+### Open Questions
+- Post-run risk+rationale enrichment not yet implemented — agreed design only
+
+### Next Session — Start Here
+1. Implement `_enrich_block_plan_post_run` in `src/worker/main.py` — called after `_persist_initial_revisions`; updates `context.migration_plan.block_plans` risk+rationale in-place, then re-persists `job.migration_plan`
+2. Rebuild Docker: `docker compose build worker executor && docker compose up -d worker executor`
+3. Run a job → confirm no NameErrors; confirm risk reflects recon outcome in Plan tab
+4. Continue F20 Stream B → `docs/plans/latest/F20-live-trace-popup.md`
+
+### Files Touched
+- `src/worker/main.py`
+- `src/worker/engine/agents/shared.py`
+- `src/worker/engine/agents/migration_planner.py`
+
+---
+
+## 2026-05-03 (session 3) — recon grouping, retry loop, session cache, parser enhancements
+
+**Duration:** ~2h | **Focus:** fixing per-block recon correctness, retry loop, Spark session cache, SAS parser spec
+
+### Done
+- **fix(frontend):** no-recon blocks green (not amber); every completed block has chevron + expandable panel
+- **fix(recon):** `_build_recon_groups` strips libname prefix before stem match (`outdir.revenue_summary` → `revenue_summary`)
+- **fix(block_executor):** empty checks + ref present → synthetic `execution: fail` so retry loop fires on crash
+- **fix(worker):** translation exception now injects error as risk_flag and retries (was `break` on attempt 1); emits `block_done status=error`
+- **fix(worker):** `_reconcile_initial_blocks` (step 11) disabled — was reconciling intermediate blocks against final output ref
+- **fix(executor):** session cache switched to PySpark `spark.read/write.parquet`; Spark init always present when session_dir set; load snippet runs after init
+- **fix(executor):** session cache path → `/tmp/rosetta_cache/...` (`/workspace/data` is read-only mount)
+- **fix(frontend):** Plan tab recon column — CheckCircle2/XCircle icons; manual/skip/manual_ingestion always `—`
+- **feat(parser):** MacroDef, filename_map, PROC IML/FORMAT extractors, DROP/KEEP/WHERE/OUTPUT/ARRAY on SASBlock
+- **feat(prompt):** "always PySpark, never pandas" + "never cast to match ref schema" rules in SHARED_TRANSLATION_RULES
+- **feat(recon):** DEBUG logs — ref/actual rows, columns, dtypes before every check
+
+### Decisions
+- Direct-match only in `_build_recon_groups`; step-11 post-pass disabled; session cache in `/tmp`; retry loop continues on exception
+
+### Open Questions
+- `tx_fx_cat` NameError on attempt 1: LLM generates `_customer_id_type = tx_fx_cat.schema[...]` introspection code that runs before session cache can load the variable. Session cache fix in `/tmp` is deployed but the introspection line itself is a bad LLM pattern — needs a prompt rule to suppress schema introspection via `.schema[col]` before the DataFrame is confirmed available.
+
+### Next Session — Start Here
+1. Rebuild: `docker compose build worker executor && docker compose up -d worker executor`
+2. Run a job → confirm `tx_fx_cat` NameError is gone (session cache now in `/tmp`)
+3. If still failing, add prompt rule: "never access `.schema[col]` on a DataFrame that comes from a prior block — trust that it exists and use it directly"
+4. Continue F20 Stream B: `ExecutionOutputPanel` improvements + Trust tab in `EditorTab` → `docs/plans/latest/F20-live-trace-popup.md`
+
+### Files Touched
+- `src/frontend/src/components/LiveTraceDialog.tsx`
+- `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
+- `src/worker/main.py`
+- `src/worker/engine/block_executor.py`
+- `src/worker/engine/agents/shared.py`
+- `src/worker/engine/models.py`
+- `src/worker/engine/parser.py`
+- `src/worker/validation/reconciliation.py`
+- `src/executor/runner.py`
+- `src/executor/recon.py`
+- `tests/test_worker_main_comprehensive.py`
+- `tests/test_parser_proc_types.py` (existing test updated for new IML terminator)
+- `journal/BACKLOG.md`, `journal/DECISIONS.md`, `journal/SESSIONS.md`, `docs/plans/latest/F20-live-trace-popup.md`
+
+---
+
+## 2026-05-03 (session 2) — per-block recon cache, pipeline:full, popup UX overhaul, column casing
+
+**Duration:** ~3h | **Focus:** F20 per-block recon with DataFrame session cache, LiveTraceDialog colour states + pipeline:full banner, column lowercase fix
+
+### Done
+- **fix(worker):** `BlockExecutor.run()` crash diagnosed — stale `.pyc` in Docker image layer overriding bind-mounted source; fix: `docker compose build worker executor`
+- **feat(executor):** `session_dir` param on `run_code()` + `ExecuteRequest` — Parquet load snippet prepended, save snippet appended, `_ROSETTA_SESSION_DIR` env var; prior block DataFrames available to subsequent blocks without re-running
+- **feat(worker):** `session_dir` threaded `RemoteReconciliationService` → `BlockExecutor` → `_translate_blocks`; session cache computed once per job, cleaned up after loop
+- **fix(recon):** `_build_recon_groups` fallback removed — per-block recon only fires for blocks with a specifically-matched uploaded data file; job-level ref reserved for `pipeline:full` only
+- **feat(worker):** `pipeline:full` final recon run after translation loop — emits `block_start` / `recon_result` / `block_done` SSE trace events; no session cache (runs fresh)
+- **feat(frontend):** LiveTraceDialog block colour states — `running`=grey+spinner, `error`=red, `no-recon`=amber+CircleAlert, `pass`=green, `fail`=red
+- **feat(frontend):** `PipelineSummaryBanner` component for `pipeline:full` group — full-width card, coloured `border-l-4`, collapsible recon checks
+- **feat(frontend):** human-friendly check labels (Schema Parity, Row Count, Aggregate Parity); detail shown in `<pre>` when non-empty
+- **fix(frontend):** block header button — removed coloured `border-l-2`; removed inner rail `border-l-2` from collapsible section
+- **fix(frontend):** toggle UX — `userToggled: boolean | null` state; `null` = follow data (auto-expand on recon), non-null = user override; click always toggles freely
+- **fix(frontend):** stale `eslint-disable react-hooks/set-state-in-effect` comments removed
+- **fix(recon):** `recon.py` — both ref and actual DataFrames normalized to lowercase columns before all three checks (guards against SAS UPPERCASE ref CSV headers)
+- **fix(prompt):** `SHARED_TRANSLATION_RULES` Rule 2 — mandatory `toDF(*[c.lower() for c in df.columns])` after every file read; removes SAS/Python column casing mismatch at source
+
+### Decisions
+- Executor DataFrame session cache uses Parquet in `session_dir`; cache scoped per orchestrator instance (`id(self)`); cleaned up by `shutil.rmtree` after loop
+- `_build_recon_groups` fallback removed — intermediate blocks are not reconciled against the final output reference; only specifically-matched data files trigger per-block recon
+- Column normalization: two-layer defence (LLM prompt rule + recon.py defensive normalization)
+- LiveTraceDialog toggle: `userToggled: boolean | null` pattern — null defers to data, non-null is explicit user choice
+
+### Open Questions
+- Toggle fix confirmed working? User reported toggle disappeared mid-session; fix applied (null→userToggled pattern) but not verified in browser
+- `make docker-build` still needed to pick up executor + worker changes from this session
+
+### Next Session — Start Here
+1. `docker compose build worker executor && docker compose up -d worker executor`
+2. Run a migration job with a reference CSV that has a specific per-block match → confirm per-block recon fires in popup with amber/green/red states
+3. Run `pipeline:full` banner appears after all blocks complete
+4. Verify toggle open/close works in popup
+5. Continue F20 Stream B (ExecutionOutputPanel + Trust tab in EditorTab)
+
+### Files Touched
+- `src/executor/runner.py`
+- `src/executor/main.py`
+- `src/executor/recon.py`
+- `src/worker/validation/reconciliation.py`
+- `src/worker/engine/block_executor.py`
+- `src/worker/engine/agents/shared.py`
+- `src/worker/main.py`
+- `src/frontend/src/components/LiveTraceDialog.tsx`
+- `src/frontend/src/index.css`
+- `tests/test_worker_main.py`
+- `tests/test_worker_main_comprehensive.py`
+- `docs/plans/latest/F20-live-trace-popup.md`
+
+---
+
+## 2026-05-03 — recon popup fixes, UNRECOGNIZED rename, per-block recon wiring
+
+**Duration:** ~2h | **Focus:** live trace popup correctness, UNTRANSLATABLE→UNRECOGNIZED, per-block reconciliation routing
+
+### Done
+- **feat(ui):** removed amber attention strip from PlanTab; strategy badge now colored per pass/fail/manual/pending
+- **feat(ui):** pass/fail text badges → CheckCircle2/XCircle icons in TrustReportTab and EditorTab
+- **feat(ui):** UNTRANSLATABLE → UNRECOGNIZED across frontend types, LineageGraph, FileNodeCard, BlockPlanTable
+- **feat(ui):** shimmer pulse on recon column in BlockPlanTable while job is running
+- **feat(ui):** LiveTraceDialog — chevron only shown when recon content exists; block id strips directory prefix; smaller text
+- **feat(worker):** UNTRANSLATABLE → UNRECOGNIZED in models, codegen, stub_generator, llm_client, parser, schemas
+- **feat(worker):** `_reconcile_initial_blocks` now emits `recon_result` + corrective `block_done` trace events via `self._tracer`
+- **feat(worker):** per-check INFO/WARNING logging added to `RemoteReconciliationService.run()`
+- **feat(worker):** `BlockExecutor.run()` signature extended with `ref_csv_path`/`ref_sas7bdat_path`; `_build_recon_groups` wired into `_translate_blocks` for per-block ref routing
+- **fix(worker):** `mypy` name error — `_execute()` uses `self._tracer` not local `tracer`
+- **fix(worker):** `_build_recon_groups` was defined but never called — now called at start of `_translate_blocks`
+
+### Decisions
+- Per-block recon must use `_build_recon_groups` — single final-output ref must NOT be applied to intermediate blocks
+- `docker-compose.override.yml` bind-mounts `src/worker` — restart not rebuild needed for code changes
+- UNRECOGNIZED replaces UNTRANSLATABLE everywhere as the canonical term
+
+### Open Questions
+- **BlockExecutor fix not confirmed working** — `block_executor.py` signature replacement failed silently in one pass; final fix applied but not yet tested in docker (user ended session). Verify `docker compose restart worker` and re-run a job next session.
+
+### Next Session — Start Here
+1. `docker compose restart worker` (bind-mount, no rebuild needed)
+2. Run a migration job and confirm per-block recon checks appear in the live popup
+3. If still failing, check `docker compose logs worker --tail=50` for the exact error
+4. Continue F20 Stream B (ExecutionOutputPanel + Trust tab)
+
+### Files Touched
+- `src/worker/engine/block_executor.py`
+- `src/worker/engine/trace.py` (tracer param)
+- `src/worker/main.py` (_reconcile_initial_blocks tracer, _translate_blocks recon_groups)
+- `src/worker/validation/reconciliation.py` (per-check logging)
+- `src/worker/engine/models.py` (UNRECOGNIZED)
+- `src/worker/engine/codegen.py` (UNRECOGNIZED)
+- `src/worker/engine/stub_generator.py` (UNRECOGNIZED)
+- `src/worker/engine/llm_client.py` (UNRECOGNIZED)
+- `src/worker/engine/parser.py` (UNRECOGNIZED)
+- `src/backend/api/schemas.py` (UNRECOGNIZED)
+- `src/frontend/src/api/types.ts` (UNRECOGNIZED)
+- `src/frontend/src/components/JobDetail/PlanTab.tsx`
+- `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
+- `src/frontend/src/components/JobDetail/TrustReportTab.tsx`
+- `src/frontend/src/components/JobDetail/EditorTab.tsx`
+- `src/frontend/src/components/LiveTraceDialog.tsx`
+- `src/frontend/src/components/LineageGraph.tsx`
+- `src/frontend/src/components/FileNodeCard.tsx`
+- `src/frontend/src/components/LineageDetailPanel.tsx`
+- `docs/plans/latest/F20-live-trace-popup.md`
+
+---
+
 ## 2026-05-03 — join fixes, recon coverage, confidence/status overhaul, SAS highlight
 
 **Duration:** ~3h | **Focus:** PySpark join correctness, recon column completeness, status/confidence semantics, SAS highlight bug

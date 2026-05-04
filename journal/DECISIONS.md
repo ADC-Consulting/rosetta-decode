@@ -6,6 +6,39 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-05-04 — cumulative execution, planner correctness, post-run risk design
+
+- **Cumulative code over Parquet session cache:** each block is executed with all prior blocks' code prepended; Parquet cache silently left gaps when upstream blocks crashed mid-execution leaving no save; cumulative code is always correct regardless of upstream crash · revisit never
+- **Parser `block_type` is authoritative in `_build_migration_plan`:** LLM's returned `block_type` is overridden by the parsed `SASBlock.block_type` keyed by `block_id`; the prompt enum was incomplete (missing PROC_IML etc.) causing UNTRANSLATABLE misclassification · revisit never
+- **Post-run risk+rationale enrichment (design agreed, not yet implemented):** `risk` and `rationale` on `BlockPlan` to be recomputed after translation using recon results + confidence band; rule-based, no LLM call; re-persists `job.migration_plan`; pre-run planner values are initial estimates only — recon pass + high conf → low; recon fail → high; no recon + low conf → high · revisit never
+
+---
+
+## 2026-05-03 (session 3 — recon grouping fixes, retry loop, session cache, parser enhancements)
+
+- **`_build_recon_groups` direct-match only:** strip libname prefix from `output_datasets` before stem match; no BFS backward traversal — upstream blocks produce different shapes and must not be reconciled against the terminal output ref · revisit never
+- **`_reconcile_initial_blocks` (step 11) disabled:** was redundant and harmful — ran job-level ref against every intermediate block post-translation; per-block recon in `_translate_blocks` handles this correctly · revisit never
+- **Session cache uses `/tmp`:** `/workspace/data` is mounted read-only in executor; session Parquet cache lives at `/tmp/rosetta_cache/<id>/`; Spark init always included when session_dir set so `spark.read/write.parquet` available · revisit never
+- **Translation exception retries:** `except Exception` in retry loop now `continue`s (not `break`s) on attempts 1–2, injecting error as risk_flag; `block_done status=error` emitted so popup shows red immediately · revisit never
+- **PySpark-only prompt rule:** `SHARED_TRANSLATION_RULES` explicitly forbids pandas and casting columns to match ref schema — PySpark types are authoritative · revisit never
+- **SAS parser enhancements:** MacroDef, filename_map, PROC IML/FORMAT dedicated extractors, DROP/KEEP/WHERE/OUTPUT/ARRAY fields on SASBlock — provides richer context to translation agents · revisit never
+
+## 2026-05-03 (session 2 — per-block recon cache, popup UX overhaul, column casing)
+
+- **Executor DataFrame session cache via Parquet:** per-block recon passes `session_dir` to executor; after each successful run, all non-private DataFrames saved to `session_dir/<name>.parquet`; next block's code gets a load-snippet prepended — avoids re-running N-1 blocks for block N; cache cleaned up after translation loop · revisit when blocks produce large DataFrames (100k+ rows) or PySpark DataFrames (can't `.to_parquet` without `.toPandas()`)
+- **`_build_recon_groups` fallback removed:** per-block recon now ONLY fires when a block's output_dataset specifically matches an uploaded data file stem; job-level ref applies only to `pipeline:full` final run — prevents comparing intermediate blocks against the wrong (final output) reference · revisit never
+- **Column name normalization: two-layer defence:** (1) LLM prompt `SHARED_TRANSLATION_RULES` Rule 2 mandates `toDF(*[c.lower() for c in df.columns])` after every file read — fixes at source; (2) `recon.py` normalizes both ref and actual to lowercase before checks — defensive guard for user-uploaded uppercase ref CSVs · revisit never
+- **`pipeline:full` final recon run in `_translate_blocks`:** after all blocks complete, a fresh full-pipeline execution (no session cache) runs against the job-level ref and emits `block_start`/`recon_result`/`block_done` SSE events; displayed as `PipelineSummaryBanner` in LiveTraceDialog · revisit never
+- **LiveTraceDialog toggle UX:** `expanded` state uses `userToggled: boolean | null` — `null` means "follow data" (auto-expand when recon arrives), non-null means "user chose" (override); prevents auto-expand from permanently locking the row open · revisit never
+
+## 2026-05-03 (session — recon popup, UNRECOGNIZED rename, per-block recon wiring)
+
+- **Per-block recon uses `_build_recon_groups`:** single final-output ref file must NOT be used for intermediate blocks — each block maps to its own uploaded reference file via output_datasets → context.data_files stem match; fall back to job-level ref for terminal blocks; blocks with no outputs skipped · revisit never
+- **`_reconcile_initial_blocks` emits `recon_result` + corrective `block_done` trace events:** step 11 runs post-translation while SSE stream still open; second `block_done` overwrites first optimistic "pass" in frontend groupMap · revisit never
+- **UNTRANSLATABLE → UNRECOGNIZED everywhere:** enum value, frontend types, generated comments, test assertions — consistent signal that a block was not recognised, not that translation was attempted and failed · revisit never
+- **Amber attention strip removed from PlanTab:** replaced by per-block strategy badge coloring (pass=green, fail=amber, manual=red, pending=blue) · revisit never
+- **`docker-compose.override.yml` bind-mounts `src/worker`:** rebuilds are never needed for worker code changes; `docker compose restart worker` is sufficient · revisit never
+
 ## 2026-05-03 (session — join fixes, confidence/status overhaul, SAS highlight)
 
 - **Join key type-save/restore:** save `_type = df.schema[col].dataType` before normalising to string, restore with `.cast(_type)` after join — generic, works for all Spark types, no hardcoded `cast("long")`; scoped to identifier/key columns only · revisit never
