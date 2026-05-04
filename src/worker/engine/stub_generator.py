@@ -73,7 +73,7 @@ class StubGenerator:
 
         reason = block.untranslatable_reason or "unsupported construct"
         python_code = (
-            f"# SAS-UNTRANSLATABLE: {reason}\n"
+            f"# SAS-UNRECOGNIZED: {reason}\n"
             "# TODO: manual review required\n"
             f"# SAS: {block.source_file}:{block.start_line}"
         )

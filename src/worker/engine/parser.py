@@ -1,12 +1,20 @@
-"""SAS source parser — extracts DATA step and PROC SQL blocks, ordered by dependency.
+"""SAS source parser — extracts DATA step and PROC blocks, ordered by dependency.
 
-Uses regex-based extraction (not a full grammar) for the MVP construct set:
-- DATA step  (DATA … RUN;)
-- PROC SQL   (PROC SQL … QUIT;)
+Uses regex-based extraction (not a full grammar) for the supported construct set:
+- DATA step      (DATA … RUN;)
+- PROC SQL       (PROC SQL … QUIT;)
+- PROC SORT      (PROC SORT … RUN;)
+- PROC MEANS     (PROC MEANS/SUMMARY … RUN;)
+- PROC FREQ      (PROC FREQ … RUN;)
+- PROC TRANSPOSE (PROC TRANSPOSE … RUN;)
+- PROC IMPORT    (PROC IMPORT … RUN;)
+- PROC APPEND    (PROC APPEND … RUN;)
+- PROC RANK      (PROC RANK … RUN;)
 
-All other PROC types are flagged as UNTRANSLATABLE and preserved as comments.
-Multi-file input is dependency-ordered using networkx so that a block that
-reads a dataset produced by another block is always translated after it.
+All other PROC types are flagged as PROC_UNKNOWN/UNTRANSLATABLE and preserved
+as comments. Multi-file input is dependency-ordered using networkx so that a
+block that reads a dataset produced by another block is always translated
+after it.
 """
 
 import heapq
@@ -16,6 +24,7 @@ from collections.abc import Iterator
 import networkx as nx
 from src.worker.engine.models import (
     BlockType,
+    MacroDef,
     MacroVar,
     ParseResult,
     SASBlock,
@@ -23,7 +32,7 @@ from src.worker.engine.models import (
 
 # ── Regex patterns ────────────────────────────────────────────────────────────
 
-# DATA step: DATA <name(s)>; … SET <name>; … RUN;
+# DATA step: DATA <name(s)>; … RUN;
 _DATA_STEP_RE = re.compile(
     r"(?i)(DATA\s+\S[^;]*;.*?RUN\s*;)",
     re.DOTALL,
@@ -35,9 +44,85 @@ _PROC_SQL_RE = re.compile(
     re.DOTALL,
 )
 
-# Unsupported PROC types that are not PROC SQL
+# PROC SORT block: PROC SORT … RUN;
+_PROC_SORT_RE = re.compile(
+    r"(?i)(PROC\s+SORT\b.*?RUN\s*;)",
+    re.DOTALL,
+)
+
+# PROC MEANS / SUMMARY
+_PROC_MEANS_RE = re.compile(
+    r"(?i)(PROC\s+(?:MEANS|SUMMARY)\b.*?RUN\s*;)",
+    re.DOTALL,
+)
+
+# PROC FREQ
+_PROC_FREQ_RE = re.compile(
+    r"(?i)(PROC\s+FREQ\b.*?RUN\s*;)",
+    re.DOTALL,
+)
+
+# PROC TRANSPOSE
+_PROC_TRANSPOSE_RE = re.compile(
+    r"(?i)(PROC\s+TRANSPOSE\b.*?RUN\s*;)",
+    re.DOTALL,
+)
+
+# PROC IMPORT (CSV / Excel / delimited)
+_PROC_IMPORT_RE = re.compile(
+    r"(?i)(PROC\s+IMPORT\b.*?RUN\s*;)",
+    re.DOTALL,
+)
+
+# PROC APPEND
+_PROC_APPEND_RE = re.compile(
+    r"(?i)(PROC\s+APPEND\b.*?RUN\s*;)",
+    re.DOTALL,
+)
+
+# PROC RANK
+_PROC_RANK_RE = re.compile(
+    r"(?i)(PROC\s+RANK\b.*?RUN\s*;)",
+    re.DOTALL,
+)
+
+# Macro definitions: %MACRO name(params); … %MEND;
+_MACRO_DEF_RE = re.compile(
+    r"%MACRO\s+(\w+)\s*(?:\(([^)]*)\))?\s*;(.*?)%MEND\b[^;]*;",
+    re.IGNORECASE | re.DOTALL,
+)
+
+# FILENAME statements: FILENAME ref 'path';
+_FILENAME_RE = re.compile(
+    r"FILENAME\s+(\w+)\s+['\"]([^'\"]+)['\"];",
+    re.IGNORECASE,
+)
+
+# PROC IML block: PROC IML … QUIT;
+_PROC_IML_RE = re.compile(
+    r"PROC\s+IML\b.*?(?:QUIT|RUN)\s*;",
+    re.IGNORECASE | re.DOTALL,
+)
+
+# PROC FORMAT block: PROC FORMAT … RUN;
+_PROC_FORMAT_RE = re.compile(
+    r"PROC\s+FORMAT\b.*?RUN\s*;",
+    re.IGNORECASE | re.DOTALL,
+)
+
+# DROP / KEEP / WHERE / OUTPUT / ARRAY inside a DATA step
+_DROP_RE = re.compile(r"\bDROP\s+([\w\s]+);", re.IGNORECASE)
+_KEEP_RE = re.compile(r"\bKEEP\s+([\w\s]+);", re.IGNORECASE)
+_WHERE_RE = re.compile(r"\bWHERE\s+(.+?);", re.IGNORECASE | re.DOTALL)
+_OUTPUT_RE = re.compile(r"\bOUTPUT\s*(?:(\w+))?\s*;", re.IGNORECASE)
+_ARRAY_RE = re.compile(
+    r"\bARRAY\s+(\w+)\s*\{(\d+)\}\s*([\w\s]*);",
+    re.IGNORECASE,
+)
+
+# Unsupported PROC types that are not specifically handled above
 _UNSUPPORTED_PROC_RE = re.compile(
-    r"(?i)(PROC\s+(?!SQL\b)\w+\b.*?(?:RUN|QUIT)\s*;)",
+    r"(?i)(PROC\s+(?!SQL\b|SORT\b|MEANS\b|SUMMARY\b|FREQ\b|TRANSPOSE\b|IMPORT\b|APPEND\b|RANK\b|IML\b|FORMAT\b)\w+\b.*?(?:RUN|QUIT)\s*;)",
     re.DOTALL,
 )
 
@@ -57,6 +142,9 @@ _KNOWN_PROCS: dict[str, BlockType] = {
     "CONTENTS": BlockType.PROC_CONTENTS,
     "DATASETS": BlockType.PROC_DATASETS,
     "OPTMODEL": BlockType.PROC_OPTMODEL,
+    "APPEND": BlockType.PROC_APPEND,
+    "RANK": BlockType.PROC_RANK,
+    "FORMAT": BlockType.PROC_FORMAT,
 }
 
 # Extract DATA output name(s) from "DATA name1 name2;"
@@ -65,26 +153,60 @@ _DATA_OUTPUT_RE = re.compile(r"(?i)DATA\s+([\w\s.]+?)\s*;")
 # Extract SET input name(s) from "SET name1 name2;"
 _DATA_INPUT_RE = re.compile(r"(?i)\bSET\s+([\w\s.]+?)\s*;")
 
+# Extract MERGE input name(s) from "MERGE name1 name2;"
+_DATA_MERGE_RE = re.compile(r"(?i)\bMERGE\s+([\w\s.]+?)\s*;")
+
+# RENAME mappings inside a DATA step (RENAME old=new old2=new2;)
+_RENAME_RE = re.compile(r"(?i)\bRENAME\s+(.*?)\s*;")
+_RENAME_PAIR_RE = re.compile(r"(?i)(\w+)\s*=\s*(\w+)")
+
 # Extract FROM / JOIN table references in PROC SQL
 _SQL_FROM_RE = re.compile(r"(?i)\b(?:FROM|JOIN)\s+([\w.]+)")
 
 # Extract CREATE TABLE target in PROC SQL
 _SQL_CREATE_RE = re.compile(r"(?i)CREATE\s+TABLE\s+([\w.]+)\s+AS")
 
-# PROC SORT block: PROC SORT … RUN;
-_PROC_SORT_RE = re.compile(
-    r"(?i)(PROC\s+SORT\b.*?RUN\s*;)",
-    re.DOTALL,
-)
+# Extract DATA= dataset name (used by SORT, MEANS, FREQ, TRANSPOSE, RANK, …)
+_GENERIC_DATA_RE = re.compile(r"(?i)\bDATA\s*=\s*(\w[\w.]*)")
 
-# Extract DATA= dataset name from PROC SORT header
-_SORT_DATA_RE = re.compile(r"(?i)\bDATA\s*=\s*(\w[\w.]*)")
+# Extract OUT= dataset name (used by SORT, MEANS, FREQ, TRANSPOSE, IMPORT, RANK, …)
+_GENERIC_OUT_RE = re.compile(r"(?i)\bOUT\s*=\s*(\w[\w.]*)")
 
-# Extract OUT= dataset name from PROC SORT header (optional)
-_SORT_OUT_RE = re.compile(r"(?i)\bOUT\s*=\s*(\w[\w.]*)")
+# PROC MEANS / SUMMARY column-level statements
+_MEANS_CLASS_RE = re.compile(r"(?i)\bCLASS\s+([\w\s]+?)\s*;")
+_MEANS_VAR_RE = re.compile(r"(?i)\bVAR\s+([\w\s]+?)\s*;")
+_MEANS_BY_RE = re.compile(r"(?i)\bBY\s+([\w\s]+?)\s*;")
+
+# PROC FREQ TABLES statement
+_FREQ_TABLES_RE = re.compile(r"(?i)\bTABLES\s+(.+?)\s*[/;]")
+
+# PROC TRANSPOSE column-level statements
+_TRANS_VAR_RE = re.compile(r"(?i)\bVAR\s+([\w\s]+?)\s*;")
+_TRANS_ID_RE = re.compile(r"(?i)\bID\s+([\w\s]+?)\s*;")
+_TRANS_BY_RE = re.compile(r"(?i)\bBY\s+([\w\s]+?)\s*;")
+
+# PROC IMPORT statements
+_IMPORT_FILE_RE = re.compile(r"""(?i)\bDATAFILE\s*=\s*['"]?([^'";]+)['"]?""")
+_IMPORT_DBMS_RE = re.compile(r"(?i)\bDBMS\s*=\s*(\w+)")
+_IMPORT_SHEET_RE = re.compile(r"""(?i)\bSHEET\s*=\s*['"]?([^'";]+)['"]?""")
+
+# PROC APPEND statements
+_APPEND_BASE_RE = re.compile(r"(?i)\bBASE\s*=\s*(\w[\w.]*)")
+_APPEND_DATA_RE = re.compile(r"(?i)\bDATA\s*=\s*(\w[\w.]*)")
+
+# PROC RANK statements
+_RANK_VAR_RE = re.compile(r"(?i)\bVAR\s+([\w\s]+?)\s*;")
+_RANK_RANKS_RE = re.compile(r"(?i)\bRANKS\s+([\w\s]+?)\s*;")
+_RANK_GROUPS_RE = re.compile(r"(?i)\bGROUPS\s*=\s*(\d+)")
 
 # %LET macro variable declaration
 _LET_RE = re.compile(r"(?i)%LET\s+(\w+)\s*=\s*([^;]+?)\s*;")
+
+# LIBNAME declarations (libref → path)
+_LIBNAME_RE = re.compile(r"""(?i)LIBNAME\s+(\w+)\s+['"]([^'"]+)['"]\s*;""")
+
+# %INCLUDE references
+_INCLUDE_RE = re.compile(r"""(?i)%INCLUDE\s+['"]([^'"]+)['"]\s*;""")
 
 
 # ── Line-number helpers ───────────────────────────────────────────────────────
@@ -103,18 +225,41 @@ def _extract_names(pattern: re.Pattern[str], text: str) -> list[str]:
     return names
 
 
+def _extract_renames(raw: str) -> dict[str, str]:
+    """Return {old_name: new_name} for RENAME statements inside a DATA step."""
+    renames: dict[str, str] = {}
+    for match in _RENAME_RE.finditer(raw):
+        for pair in _RENAME_PAIR_RE.finditer(match.group(1)):
+            renames[pair.group(1).lower()] = pair.group(2).lower()
+    return renames
+
+
+def _extract_libnames(source: str) -> dict[str, str]:
+    """Return {libref: path} for all LIBNAME statements in *source*."""
+    return {m.group(1).lower(): m.group(2) for m in _LIBNAME_RE.finditer(source)}
+
+
+def _extract_includes(source: str) -> list[str]:
+    """Return list of %INCLUDE'd file paths in *source*."""
+    return [m.group(1) for m in _INCLUDE_RE.finditer(source)]
+
+
 # ── Block extractors ─────────────────────────────────────────────────────────
 
 
 def _extract_data_steps(source: str, filename: str) -> Iterator[SASBlock]:
-    """Yield SASBlock for every DATA step found in *source*."""
+    """Yield SASBlock for every DATA step found in *source*.
+
+    Captures both SET and MERGE inputs, plus RENAME mappings as a hint
+    attribute on the block.
+    """
     for match in _DATA_STEP_RE.finditer(source):
         raw = match.group(1)
         start = _line_of(source, match.start())
         end = _line_of(source, match.end() - 1)
         outputs = _extract_names(_DATA_OUTPUT_RE, raw)
-        inputs = _extract_names(_DATA_INPUT_RE, raw)
-        yield SASBlock(
+        inputs = _extract_names(_DATA_INPUT_RE, raw) + _extract_names(_DATA_MERGE_RE, raw)
+        block = SASBlock(
             block_type=BlockType.DATA_STEP,
             source_file=filename,
             start_line=start,
@@ -123,6 +268,23 @@ def _extract_data_steps(source: str, filename: str) -> Iterator[SASBlock]:
             input_datasets=inputs,
             output_datasets=outputs,
         )
+        block.renames = _extract_renames(raw)
+        # DROP / KEEP
+        drop_m = _DROP_RE.search(raw)
+        block.drop_cols = drop_m.group(1).split() if drop_m else []
+        keep_m = _KEEP_RE.search(raw)
+        block.keep_cols = keep_m.group(1).split() if keep_m else []
+        # WHERE
+        where_m = _WHERE_RE.search(raw)
+        block.where_clause = where_m.group(1).strip() if where_m else None
+        # OUTPUT targets
+        block.output_targets = [m.group(1) or "" for m in _OUTPUT_RE.finditer(raw)]
+        # ARRAYs
+        block.arrays = [
+            {"name": m.group(1), "size": int(m.group(2)), "columns": m.group(3).split()}
+            for m in _ARRAY_RE.finditer(raw)
+        ]
+        yield block
 
 
 def _extract_proc_sql(source: str, filename: str) -> Iterator[SASBlock]:
@@ -133,7 +295,7 @@ def _extract_proc_sql(source: str, filename: str) -> Iterator[SASBlock]:
         end = _line_of(source, match.end() - 1)
         inputs = _extract_names(_SQL_FROM_RE, raw)
         outputs = _extract_names(_SQL_CREATE_RE, raw)
-        yield SASBlock(
+        block = SASBlock(
             block_type=BlockType.PROC_SQL,
             source_file=filename,
             start_line=start,
@@ -142,6 +304,9 @@ def _extract_proc_sql(source: str, filename: str) -> Iterator[SASBlock]:
             input_datasets=inputs,
             output_datasets=outputs,
         )
+        where_m = _WHERE_RE.search(raw)
+        block.where_clause = where_m.group(1).strip() if where_m else None
+        yield block
 
 
 def _extract_proc_sort(source: str, filename: str) -> Iterator[SASBlock]:
@@ -150,11 +315,11 @@ def _extract_proc_sort(source: str, filename: str) -> Iterator[SASBlock]:
         raw = match.group(1)
         start = _line_of(source, match.start())
         end = _line_of(source, match.end() - 1)
-        data_match = _SORT_DATA_RE.search(raw)
-        out_match = _SORT_OUT_RE.search(raw)
+        data_match = _GENERIC_DATA_RE.search(raw)
+        out_match = _GENERIC_OUT_RE.search(raw)
         inputs = [data_match.group(1).lower()] if data_match else []
         outputs = [out_match.group(1).lower()] if out_match else inputs[:]
-        yield SASBlock(
+        block = SASBlock(
             block_type=BlockType.PROC_SORT,
             source_file=filename,
             start_line=start,
@@ -163,6 +328,197 @@ def _extract_proc_sort(source: str, filename: str) -> Iterator[SASBlock]:
             input_datasets=inputs,
             output_datasets=outputs,
         )
+        where_m = _WHERE_RE.search(raw)
+        block.where_clause = where_m.group(1).strip() if where_m else None
+        yield block
+
+
+def _extract_proc_means(source: str, filename: str) -> Iterator[SASBlock]:
+    """Yield SASBlock for every PROC MEANS / SUMMARY block.
+
+    Attaches CLASS, VAR, and BY column lists as block attributes so the
+    LLM prompt builder knows exactly which columns must exist on the
+    input DataFrame.
+    """
+    for match in _PROC_MEANS_RE.finditer(source):
+        raw = match.group(1)
+        start = _line_of(source, match.start())
+        end = _line_of(source, match.end() - 1)
+        data_match = _GENERIC_DATA_RE.search(raw)
+        out_match = _GENERIC_OUT_RE.search(raw)
+        inputs = [data_match.group(1).lower()] if data_match else []
+        outputs = [out_match.group(1).lower()] if out_match else []
+        block = SASBlock(
+            block_type=BlockType.PROC_MEANS,
+            source_file=filename,
+            start_line=start,
+            end_line=end,
+            raw_sas=raw,
+            input_datasets=inputs,
+            output_datasets=outputs,
+        )
+        block.class_vars = _extract_names(_MEANS_CLASS_RE, raw)
+        block.var_cols = _extract_names(_MEANS_VAR_RE, raw)
+        block.by_vars = _extract_names(_MEANS_BY_RE, raw)
+        where_m = _WHERE_RE.search(raw)
+        block.where_clause = where_m.group(1).strip() if where_m else None
+        yield block
+
+
+def _extract_proc_freq(source: str, filename: str) -> Iterator[SASBlock]:
+    """Yield SASBlock for every PROC FREQ block.
+
+    Attaches table_vars (the columns referenced in TABLES) as a hint.
+    """
+    for match in _PROC_FREQ_RE.finditer(source):
+        raw = match.group(1)
+        start = _line_of(source, match.start())
+        end = _line_of(source, match.end() - 1)
+        data_match = _GENERIC_DATA_RE.search(raw)
+        out_match = _GENERIC_OUT_RE.search(raw)
+        inputs = [data_match.group(1).lower()] if data_match else []
+        outputs = [out_match.group(1).lower()] if out_match else []
+        block = SASBlock(
+            block_type=BlockType.PROC_FREQ,
+            source_file=filename,
+            start_line=start,
+            end_line=end,
+            raw_sas=raw,
+            input_datasets=inputs,
+            output_datasets=outputs,
+        )
+        tables_match = _FREQ_TABLES_RE.search(raw)
+        if tables_match:
+            block.table_vars = [
+                v.strip().lower() for v in re.split(r"[\s*]+", tables_match.group(1)) if v.strip()
+            ]
+        else:
+            block.table_vars = []
+        where_m = _WHERE_RE.search(raw)
+        block.where_clause = where_m.group(1).strip() if where_m else None
+        yield block
+
+
+def _extract_proc_transpose(source: str, filename: str) -> Iterator[SASBlock]:
+    """Yield SASBlock for every PROC TRANSPOSE block.
+
+    Attaches VAR / ID / BY column lists as hints.
+    """
+    for match in _PROC_TRANSPOSE_RE.finditer(source):
+        raw = match.group(1)
+        start = _line_of(source, match.start())
+        end = _line_of(source, match.end() - 1)
+        data_match = _GENERIC_DATA_RE.search(raw)
+        out_match = _GENERIC_OUT_RE.search(raw)
+        inputs = [data_match.group(1).lower()] if data_match else []
+        outputs = [out_match.group(1).lower()] if out_match else []
+        block = SASBlock(
+            block_type=BlockType.PROC_TRANSPOSE,
+            source_file=filename,
+            start_line=start,
+            end_line=end,
+            raw_sas=raw,
+            input_datasets=inputs,
+            output_datasets=outputs,
+        )
+        block.var_cols = _extract_names(_TRANS_VAR_RE, raw)
+        block.id_cols = _extract_names(_TRANS_ID_RE, raw)
+        block.by_vars = _extract_names(_TRANS_BY_RE, raw)
+        where_m = _WHERE_RE.search(raw)
+        block.where_clause = where_m.group(1).strip() if where_m else None
+        yield block
+
+
+def _extract_proc_import(source: str, filename: str) -> Iterator[SASBlock]:
+    """Yield SASBlock for every PROC IMPORT block.
+
+    Attaches file path, DBMS (CSV/XLSX/DLM/…), and Excel sheet name as
+    hints so the LLM can pick the correct reader API.
+    """
+    for match in _PROC_IMPORT_RE.finditer(source):
+        raw = match.group(1)
+        start = _line_of(source, match.start())
+        end = _line_of(source, match.end() - 1)
+        out_match = _GENERIC_OUT_RE.search(raw)
+        file_match = _IMPORT_FILE_RE.search(raw)
+        dbms_match = _IMPORT_DBMS_RE.search(raw)
+        sheet_match = _IMPORT_SHEET_RE.search(raw)
+        outputs = [out_match.group(1).lower()] if out_match else []
+        block = SASBlock(
+            block_type=BlockType.PROC_IMPORT,
+            source_file=filename,
+            start_line=start,
+            end_line=end,
+            raw_sas=raw,
+            input_datasets=[],
+            output_datasets=outputs,
+        )
+        block.file_path = file_match.group(1) if file_match else None
+        block.dbms = dbms_match.group(1).upper() if dbms_match else None
+        block.sheet = sheet_match.group(1) if sheet_match else None
+        yield block
+
+
+def _extract_proc_append(source: str, filename: str) -> Iterator[SASBlock]:
+    """Yield SASBlock for every PROC APPEND block.
+
+    BASE= is both an input (read from) and an output (appended to).
+    DATA= is an additional input.
+    """
+    for match in _PROC_APPEND_RE.finditer(source):
+        raw = match.group(1)
+        start = _line_of(source, match.start())
+        end = _line_of(source, match.end() - 1)
+        base_match = _APPEND_BASE_RE.search(raw)
+        data_match = _APPEND_DATA_RE.search(raw)
+        inputs: list[str] = []
+        outputs: list[str] = []
+        if base_match:
+            inputs.append(base_match.group(1).lower())
+            outputs.append(base_match.group(1).lower())
+        if data_match:
+            inputs.append(data_match.group(1).lower())
+        yield SASBlock(
+            block_type=BlockType.PROC_APPEND,
+            source_file=filename,
+            start_line=start,
+            end_line=end,
+            raw_sas=raw,
+            input_datasets=inputs,
+            output_datasets=outputs,
+        )
+
+
+def _extract_proc_rank(source: str, filename: str) -> Iterator[SASBlock]:
+    """Yield SASBlock for every PROC RANK block.
+
+    Attaches VAR, RANKS, and GROUPS hints so the LLM can pick the right
+    PySpark Window / rank function.
+    """
+    for match in _PROC_RANK_RE.finditer(source):
+        raw = match.group(1)
+        start = _line_of(source, match.start())
+        end = _line_of(source, match.end() - 1)
+        data_match = _GENERIC_DATA_RE.search(raw)
+        out_match = _GENERIC_OUT_RE.search(raw)
+        groups_match = _RANK_GROUPS_RE.search(raw)
+        inputs = [data_match.group(1).lower()] if data_match else []
+        outputs = [out_match.group(1).lower()] if out_match else inputs[:]
+        block = SASBlock(
+            block_type=BlockType.PROC_RANK,
+            source_file=filename,
+            start_line=start,
+            end_line=end,
+            raw_sas=raw,
+            input_datasets=inputs,
+            output_datasets=outputs,
+        )
+        block.var_cols = _extract_names(_RANK_VAR_RE, raw)
+        block.rank_cols = _extract_names(_RANK_RANKS_RE, raw)
+        block.groups = int(groups_match.group(1)) if groups_match else None
+        where_m = _WHERE_RE.search(raw)
+        block.where_clause = where_m.group(1).strip() if where_m else None
+        yield block
 
 
 def _extract_macro_vars(source: str, filename: str) -> list[MacroVar]:
@@ -183,13 +539,13 @@ def _extract_macro_vars(source: str, filename: str) -> list[MacroVar]:
 def _extract_unsupported_procs(
     source: str, filename: str, covered_spans: list[tuple[int, int]]
 ) -> Iterator[SASBlock]:
-    """Yield typed PROC blocks for PROC types other than PROC SQL/SORT.
+    """Yield typed PROC blocks for PROC types not handled by dedicated extractors.
 
     Each matched PROC is assigned the most specific BlockType available from
-    ``_KNOWN_PROCS``.  Unfamiliar PROCs receive ``BlockType.PROC_UNKNOWN``.
+    ``_KNOWN_PROCS``. Unfamiliar PROCs receive ``BlockType.PROC_UNKNOWN``.
     ``BlockType.UNTRANSLATABLE`` is reserved for genuinely unparsable SAS only.
 
-    Skips any match whose span overlaps an already-covered (DATA/PROC SQL/SORT) span.
+    Skips any match whose span overlaps an already-covered span.
     """
     for match in _UNSUPPORTED_PROC_RE.finditer(source):
         span = (match.start(), match.end())
@@ -201,12 +557,11 @@ def _extract_unsupported_procs(
         block_type = _KNOWN_PROCS.get(proc_name, BlockType.PROC_UNKNOWN)
         start = _line_of(source, match.start())
         end = _line_of(source, match.end() - 1)
-        # Best-effort dataset extraction for known I/O-producing PROCs
-        data_match = re.search(r"(?i)\bDATA\s*=\s*(\w[\w.]*)", raw)
-        out_match = re.search(r"(?i)\bOUT\s*=\s*(\w[\w.]*)", raw)
+        data_match = _GENERIC_DATA_RE.search(raw)
+        out_match = _GENERIC_OUT_RE.search(raw)
         inputs = [data_match.group(1).lower()] if data_match else []
         outputs = [out_match.group(1).lower()] if out_match else []
-        yield SASBlock(
+        block = SASBlock(
             block_type=block_type,
             source_file=filename,
             start_line=start,
@@ -215,6 +570,9 @@ def _extract_unsupported_procs(
             input_datasets=inputs,
             output_datasets=outputs,
         )
+        where_m = _WHERE_RE.search(raw)
+        block.where_clause = where_m.group(1).strip() if where_m else None
+        yield block
 
 
 # ── Dependency ordering ───────────────────────────────────────────────────────
@@ -226,7 +584,6 @@ def _topological_sort(blocks: list[SASBlock]) -> list[SASBlock]:
     Blocks without inter-dependencies retain their original relative order.
     Cycles are broken by falling back to the original order (best-effort).
     """
-    # Map output dataset → index of the block that produces it
     producer: dict[str, int] = {}
     for idx, block in enumerate(blocks):
         for ds in block.output_datasets:
@@ -238,11 +595,9 @@ def _topological_sort(blocks: list[SASBlock]) -> list[SASBlock]:
     for idx, block in enumerate(blocks):
         for ds in block.input_datasets:
             if ds in producer and producer[ds] != idx:
-                graph.add_edge(producer[ds], idx)  # producer must come first
+                graph.add_edge(producer[ds], idx)
 
     try:
-        # Kahn's algorithm with a min-heap keyed on (source_file, start_line)
-        # so blocks with no dependency edge retain their natural SAS file order.
         in_degree = {n: graph.in_degree(n) for n in graph.nodes()}
         heap: list[tuple[str, int, int]] = []
         for n, deg in in_degree.items():
@@ -262,7 +617,6 @@ def _topological_sort(blocks: list[SASBlock]) -> list[SASBlock]:
         if len(order) != len(blocks):
             raise nx.NetworkXUnfeasible("cycle detected")
     except nx.NetworkXUnfeasible:
-        # Cycle detected — fall back to original order
         order = list(range(len(blocks)))
 
     return [blocks[i] for i in order]
@@ -275,7 +629,7 @@ def extract_lineage(blocks: list[SASBlock], job_id: str) -> dict:  # type: ignor
     """Build a JSON-serializable lineage graph from parsed SAS blocks.
 
     Creates one LineageNode per block and one LineageEdge per dataset flowing
-    from a producer block to a consumer block.  The returned dict matches the
+    from a producer block to a consumer block. The returned dict matches the
     ``JobLineageResponse`` schema used by the API.
 
     Args:
@@ -286,14 +640,13 @@ def extract_lineage(blocks: list[SASBlock], job_id: str) -> dict:  # type: ignor
         Plain dict with keys ``job_id``, ``nodes``, and ``edges``, all
         JSON-serializable.
     """
-    # Build node list and an index from output dataset name → node id.
     nodes: list[dict[str, str]] = []
-    producer_map: dict[str, str] = {}  # dataset name → node id
+    producer_map: dict[str, str] = {}
 
     for block in blocks:
         node_id = f"{block.source_file}::{block.start_line}"
         label = getattr(block, "name", None) or block.block_type.value
-        status = "untranslatable" if block.block_type == BlockType.UNTRANSLATABLE else "migrated"
+        status = "unrecognized" if block.block_type == BlockType.UNTRANSLATABLE else "migrated"
 
         nodes.append(
             {
@@ -307,7 +660,6 @@ def extract_lineage(blocks: list[SASBlock], job_id: str) -> dict:  # type: ignor
         for ds in block.output_datasets:
             producer_map[ds] = node_id
 
-    # Build edge list from input→output dataset flow.
     edges: list[dict[str, object]] = []
     for block in blocks:
         target_id = f"{block.source_file}::{block.start_line}"
@@ -332,6 +684,96 @@ def extract_lineage(blocks: list[SASBlock], job_id: str) -> dict:  # type: ignor
 class SASParser:
     """Extract and dependency-order SAS blocks from one or more source files."""
 
+    def _extract_macro_defs(self, source: str, filename: str) -> list[MacroDef]:
+        """Return a MacroDef for every %MACRO … %MEND definition in *source*.
+
+        Args:
+            source: Raw SAS source text.
+            filename: Source file name (stored on each MacroDef).
+
+        Returns:
+            List of MacroDef instances in source order.
+        """
+        defs: list[MacroDef] = []
+        for m in _MACRO_DEF_RE.finditer(source):
+            name = m.group(1).upper()
+            params_raw = m.group(2) or ""
+            params = [p.strip() for p in params_raw.split(",") if p.strip()]
+            body = m.group(3).strip()
+            line = source[: m.start()].count("\n") + 1
+            defs.append(
+                MacroDef(name=name, params=params, body=body, source_file=filename, line=line)
+            )
+        return defs
+
+    def _extract_filenames(self, source: str) -> dict[str, str]:
+        """Return {fileref: path} for all FILENAME statements in *source*.
+
+        Args:
+            source: Raw SAS source text.
+
+        Returns:
+            Mapping of lowercased fileref to path string.
+        """
+        return {m.group(1).lower(): m.group(2) for m in _FILENAME_RE.finditer(source)}
+
+    def _extract_proc_iml(self, source: str, filename: str) -> list[SASBlock]:
+        """Return a SASBlock for every PROC IML … QUIT; block in *source*.
+
+        Uses PROC_SQL as the block_type (generic proc container) so that the
+        translator treats IML blocks as opaque pass-through code.
+
+        Args:
+            source: Raw SAS source text.
+            filename: Source file name.
+
+        Returns:
+            List of SASBlock instances.
+        """
+        blocks: list[SASBlock] = []
+        for m in _PROC_IML_RE.finditer(source):
+            start_line = source[: m.start()].count("\n") + 1
+            end_line = source[: m.end()].count("\n") + 1
+            blocks.append(
+                SASBlock(
+                    block_type=BlockType.PROC_IML,
+                    raw_sas=m.group(0),
+                    source_file=filename,
+                    start_line=start_line,
+                    end_line=end_line,
+                    input_datasets=[],
+                    output_datasets=[],
+                )
+            )
+        return blocks
+
+    def _extract_proc_format(self, source: str, filename: str) -> list[SASBlock]:
+        """Return a SASBlock for every PROC FORMAT … RUN; block in *source*.
+
+        Args:
+            source: Raw SAS source text.
+            filename: Source file name.
+
+        Returns:
+            List of SASBlock instances with block_type PROC_FORMAT.
+        """
+        blocks: list[SASBlock] = []
+        for m in _PROC_FORMAT_RE.finditer(source):
+            start_line = source[: m.start()].count("\n") + 1
+            end_line = source[: m.end()].count("\n") + 1
+            blocks.append(
+                SASBlock(
+                    block_type=BlockType.PROC_FORMAT,
+                    raw_sas=m.group(0),
+                    source_file=filename,
+                    start_line=start_line,
+                    end_line=end_line,
+                    input_datasets=[],
+                    output_datasets=[],
+                )
+            )
+        return blocks
+
     def parse(self, files: dict[str, str]) -> ParseResult:
         """Parse SAS source files and return dependency-ordered blocks with macro vars.
 
@@ -339,26 +781,60 @@ class SASParser:
             files: Mapping of filename to SAS source text.
 
         Returns:
-            ParseResult containing SASBlock list in dependency order and all
-            MacroVar declarations found across all files.
+            ParseResult containing SASBlock list in dependency order, all
+            MacroVar declarations, and (as attached attributes) LIBNAME,
+            %INCLUDE, macro definitions, and FILENAME map found across all files.
         """
         all_blocks: list[SASBlock] = []
         all_macro_vars: list[MacroVar] = []
+        all_libnames: dict[str, str] = {}
+        all_includes: list[str] = []
+        all_macro_defs: list[MacroDef] = []
+        all_filename_map: dict[str, str] = {}
 
         for filename, source in files.items():
             covered: list[tuple[int, int]] = []
 
-            for match in _DATA_STEP_RE.finditer(source):
-                covered.append((match.start(), match.end()))
-            for match in _PROC_SQL_RE.finditer(source):
-                covered.append((match.start(), match.end()))
-            for match in _PROC_SORT_RE.finditer(source):
-                covered.append((match.start(), match.end()))
+            for pattern in (
+                _DATA_STEP_RE,
+                _PROC_SQL_RE,
+                _PROC_SORT_RE,
+                _PROC_MEANS_RE,
+                _PROC_FREQ_RE,
+                _PROC_TRANSPOSE_RE,
+                _PROC_IMPORT_RE,
+                _PROC_APPEND_RE,
+                _PROC_RANK_RE,
+                _PROC_IML_RE,
+                _PROC_FORMAT_RE,
+            ):
+                for match in pattern.finditer(source):
+                    covered.append((match.start(), match.end()))
 
             all_blocks.extend(_extract_data_steps(source, filename))
             all_blocks.extend(_extract_proc_sql(source, filename))
             all_blocks.extend(_extract_proc_sort(source, filename))
+            all_blocks.extend(_extract_proc_means(source, filename))
+            all_blocks.extend(_extract_proc_freq(source, filename))
+            all_blocks.extend(_extract_proc_transpose(source, filename))
+            all_blocks.extend(_extract_proc_import(source, filename))
+            all_blocks.extend(_extract_proc_append(source, filename))
+            all_blocks.extend(_extract_proc_rank(source, filename))
+            all_blocks.extend(self._extract_proc_iml(source, filename))
+            all_blocks.extend(self._extract_proc_format(source, filename))
             all_blocks.extend(_extract_unsupported_procs(source, filename, covered))
             all_macro_vars.extend(_extract_macro_vars(source, filename))
+            all_libnames.update(_extract_libnames(source))
+            all_includes.extend(_extract_includes(source))
+            all_macro_defs.extend(self._extract_macro_defs(source, filename))
+            all_filename_map.update(self._extract_filenames(source))
 
-        return ParseResult(blocks=_topological_sort(all_blocks), macro_vars=all_macro_vars)
+        result = ParseResult(
+            blocks=_topological_sort(all_blocks),
+            macro_vars=all_macro_vars,
+            libname_map=all_libnames,
+            includes=all_includes,
+            macro_defs=all_macro_defs,
+            filename_map=all_filename_map,
+        )
+        return result
