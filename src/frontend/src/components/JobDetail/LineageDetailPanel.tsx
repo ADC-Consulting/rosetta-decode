@@ -35,7 +35,7 @@ const FILE_STATUS_STYLE: Record<
   { bg: string; text: string; label: string }
 > = {
   OK: { bg: "bg-green-100", text: "text-green-700", label: "OK" },
-  UNTRANSLATABLE: { bg: "bg-red-100", text: "text-red-700", label: "Untranslatable" },
+  UNRECOGNIZED: { bg: "bg-red-100", text: "text-red-700", label: "Unrecognized" },
   ERROR_PRONE: { bg: "bg-amber-100", text: "text-amber-700", label: "Error Prone" },
 };
 
@@ -48,7 +48,7 @@ const SEVERITY_STYLE: Record<LogLink["severity"], { bg: string; text: string }> 
 function BlockStatusIcon({ status }: { status: BlockStatus["status"] }): React.ReactElement | null {
   if (status === "OK") return <CheckCircle2 size={12} className="text-green-500 shrink-0" />;
   if (status === "ERROR_PRONE") return <AlertTriangle size={12} className="text-amber-500 shrink-0" />;
-  if (status === "UNTRANSLATABLE") return <XCircle size={12} className="text-red-500 shrink-0" />;
+  if (status === "UNRECOGNIZED") return <XCircle size={12} className="text-red-500 shrink-0" />;
   return null;
 }
 

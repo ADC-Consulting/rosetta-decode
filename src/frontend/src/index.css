@@ -36,6 +36,14 @@
 
   --font-sans: 'Geist Variable', sans-serif;
   --font-heading: var(--font-sans);
+
+  --animate-shimmer: shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0%   { opacity: 0.15; }
+  50%  { opacity: 0.4; }
+  100% { opacity: 0.15; }
 }
 
 :root {

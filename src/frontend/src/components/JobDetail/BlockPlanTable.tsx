@@ -32,6 +32,7 @@ import { Editor, type OnMount } from "@monaco-editor/react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
   Code2,
@@ -42,6 +43,7 @@ import {
   Pencil,
   Sun,
   Wrench,
+  XCircle,
 } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -58,6 +60,7 @@ interface BlockPlanTableProps {
   isProposed: boolean;
   trustBlocks?: Record<string, TrustReportBlock>;
   jobId: string;
+  jobStatus?: string;
   isAccepted?: boolean;
   onBlockRefineSuccess?: () => void;
   jobPythonCode?: string;
@@ -91,7 +94,6 @@ function groupBlocks(
     ),
   ).map(([key, items]) => ({ key, items }));
 }
-
 
 const STRATEGY_LABELS: Record<string, string> = {
   translated: "Translated",
@@ -200,19 +202,27 @@ function GlossaryDialog({
             <p className="font-semibold mb-1">Strategies</p>
             <ul className="space-y-1 text-muted-foreground text-xs">
               <li>
-                <span className="font-medium text-blue-700">Translated</span> —
-                Fully auto-converted to Python/PySpark with high confidence.
+                <span className="font-medium text-green-700">Translated</span> —
+                Auto-converted to Python/PySpark. Reconciliation passed — output
+                matches SAS reference data.
               </li>
               <li>
                 <span className="font-medium text-amber-700">
                   Review needed
                 </span>{" "}
-                — Converted but flagged for human check (date semantics, format
-                conversions, low confidence output).
+                — Code was generated but reconciliation failed or flagged
+                differences. Human check required.
               </li>
               <li>
                 <span className="font-medium text-red-700">Manual</span> — No
-                Python equivalent found; requires human implementation.
+                Python equivalent found by the LLM. Requires human
+                implementation; reconciliation does not run.
+              </li>
+              <li>
+                <span className="font-medium text-blue-700">
+                  Translated (pending)
+                </span>{" "}
+                — Code generated; reconciliation has not run yet.
               </li>
             </ul>
           </div>
@@ -277,12 +287,14 @@ export default function BlockPlanTable({
   blockPlans,
   trustBlocks = {},
   jobId,
+  jobStatus,
   isAccepted,
   onBlockRefineSuccess,
   jobPythonCode,
   generatedFiles,
 }: BlockPlanTableProps): React.ReactElement {
   const queryClient = useQueryClient();
+  const isLive = jobStatus === "running" || jobStatus === "queued";
   const [humanEditedBlocks, setHumanEditedBlocks] = useState<Set<string>>(
     new Set(),
   );
@@ -312,7 +324,8 @@ export default function BlockPlanTable({
         setCodeDialogPython(
           latest?.python_code ??
             (() => {
-              if (!generatedFiles) return extractBlockSection(jobPythonCode ?? "", codeBlockId);
+              if (!generatedFiles)
+                return extractBlockSection(jobPythonCode ?? "", codeBlockId);
               const pyFile = codeSasFile.replace(/\.sas$/i, ".py");
               return (
                 generatedFiles[pyFile] ??
@@ -581,21 +594,25 @@ export default function BlockPlanTable({
                           {(() => {
                             const recon = trust?.reconciliation_status;
                             const isManual = bp.strategy === "manual";
-                            const derivedLabel = isManual ? "Manual"
-                              : recon === "fail" ? "Review Needed"
-                              : "Translated";
-                            const derivedColor = isManual
-                              ? "text-red-700 bg-red-50 border border-red-200"
-                              : recon === "fail"
-                              ? "text-amber-700 bg-amber-50 border border-amber-200"
+                            const label = isManual
+                              ? "Manual"
                               : recon === "pass"
-                              ? "text-green-700 bg-green-50 border border-green-200"
-                              : "text-blue-700 bg-blue-50 border border-blue-200";
+                                ? "Translated"
+                                : recon === "fail"
+                                  ? "Review Needed"
+                                  : "Translated";
+                            const colorCls = isManual
+                              ? "text-red-700 bg-red-50 border border-red-200"
+                              : recon === "pass"
+                                ? "text-green-700 bg-green-50 border border-green-200"
+                                : recon === "fail"
+                                  ? "text-amber-700 bg-amber-50 border border-amber-200"
+                                  : "text-blue-700 bg-blue-50 border border-blue-200";
                             return (
                               <span
-                                className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${derivedColor}`}
+                                className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${colorCls}`}
                               >
-                                {derivedLabel}
+                                {label}
                               </span>
                             );
                           })()}
@@ -638,7 +655,9 @@ export default function BlockPlanTable({
                                   >
                                     <Info size={13} />
                                   </TooltipTrigger>
-                                  <TooltipContent>View rationale</TooltipContent>
+                                  <TooltipContent>
+                                    View rationale
+                                  </TooltipContent>
                                 </Tooltip>
                                 <PopoverContent
                                   side="top"
@@ -648,7 +667,9 @@ export default function BlockPlanTable({
                                 </PopoverContent>
                               </Popover>
                             ) : (
-                              <span className="inline-flex items-center justify-center h-6 w-6 text-muted-foreground/30 text-xs">—</span>
+                              <span className="inline-flex items-center justify-center h-6 w-6 text-muted-foreground/30 text-xs">
+                                —
+                              </span>
                             )}
                             <Tooltip>
                               <TooltipTrigger
@@ -696,18 +717,29 @@ export default function BlockPlanTable({
 
                         {/* Recon */}
                         <td className="px-3 py-2 text-center w-14">
-                          {trust?.reconciliation_status === "pass" ? (
-                            <Badge className="bg-green-100 text-green-700 border-green-200 text-[10px] px-1.5 py-0">
-                              Pass
-                            </Badge>
+                          {bp.strategy === "manual" ||
+                          bp.strategy === "manual_ingestion" ||
+                          bp.strategy === "skip" ? (
+                            <span className="text-muted-foreground text-xs">—</span>
+                          ) : trust?.reconciliation_status === "pass" ? (
+                            <CheckCircle2
+                              size={14}
+                              className="text-green-500 mx-auto"
+                              aria-label="Pass"
+                            />
                           ) : trust?.reconciliation_status === "fail" ? (
-                            <Badge className="bg-red-100 text-red-700 border-red-200 text-[10px] px-1.5 py-0">
-                              Fail
-                            </Badge>
+                            <XCircle
+                              size={14}
+                              className="text-red-500 mx-auto"
+                              aria-label="Fail"
+                            />
+                          ) : isLive ? (
+                            <span
+                              className="inline-block w-6 h-3 rounded bg-muted animate-pulse"
+                              aria-label="checking"
+                            />
                           ) : (
-                            <span className="text-muted-foreground text-xs">
-                              —
-                            </span>
+                            <span className="text-muted-foreground text-xs">—</span>
                           )}
                         </td>
                       </tr>
@@ -898,11 +930,14 @@ export default function BlockPlanTable({
                         editor.revealLineInCenter(line);
                         editor.setPosition({ lineNumber: line, column: 1 });
                       }
-                      const openBp = blockPlans.find((b) => b.block_id === codeBlockId);
+                      const openBp = blockPlans.find(
+                        (b) => b.block_id === codeBlockId,
+                      );
                       const startLine = line > 0 ? line : 1;
-                      const endLine = openBp?.end_line && openBp.end_line > startLine
-                        ? openBp.end_line
-                        : startLine + 20;
+                      const endLine =
+                        openBp?.end_line && openBp.end_line > startLine
+                          ? openBp.end_line
+                          : startLine + 20;
                       decorationsRef.current = editor.deltaDecorations(
                         decorationsRef.current,
                         [

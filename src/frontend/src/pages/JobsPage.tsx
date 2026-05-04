@@ -894,11 +894,11 @@ export default function JobsPage(): React.ReactElement {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <span className="inline-flex items-center gap-1 justify-end">
-                          {(job.status === "queued" || job.status === "running" || job.status === "done") && (
+                          {(job.status === "queued" || job.status === "running" || job.status === "done" || job.status === "under_review" || job.status === "proposed") && (
                             <Button
                               size="icon"
                               variant="ghost"
-                              className="h-7 w-7"
+                              className="h-7 w-7 relative"
                               title="Live trace"
                               aria-label={`Live trace for job ${job.job_id.slice(0, 8)}`}
                               onClick={(e) => {
@@ -906,7 +906,10 @@ export default function JobsPage(): React.ReactElement {
                                 setTraceJobId(job.job_id);
                               }}
                             >
-                              <Activity className={`h-4 w-4 ${["running", "queued"].includes(job.status) ? "animate-pulse text-primary" : ""}`} />
+                              {["running", "queued"].includes(job.status) && (
+                                <span className="absolute inset-0 rounded-md bg-primary/10 animate-[shimmer_1.5s_ease-in-out_infinite]" aria-hidden />
+                              )}
+                              <Activity className={`h-4 w-4 relative ${["running", "queued"].includes(job.status) ? "text-primary" : "text-muted-foreground"}`} />
                             </Button>
                           )}
                           {job.status === "accepted" && (

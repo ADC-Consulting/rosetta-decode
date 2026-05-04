@@ -11,6 +11,7 @@ import type {
   ChangelogEntry,
   ExecuteCheckResult,
   ExecuteResponse,
+  TrustReportResponse,
 } from "@/api/types";
 import FileTree, { buildTree } from "@/components/FileTree";
 import {
@@ -37,6 +38,7 @@ import { Editor } from "@monaco-editor/react";
 import { useQuery } from "@tanstack/react-query";
 import {
   BracesIcon,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
   Copy,
@@ -51,9 +53,17 @@ import {
   Play,
   Save,
   Sun,
+  XCircle,
 } from "lucide-react";
 import type { editor } from "monaco-editor";
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 import LogView from "./LogView";
 import OutputView from "./OutputView";
@@ -471,6 +481,37 @@ function SasAwareFileTree({
 }
 
 // ---------------------------------------------------------------------------
+// StderrView — colorized stderr display
+// ---------------------------------------------------------------------------
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function StderrView({ stderr }: { stderr: string }): React.ReactElement {
+  const lines = stderr.split("\n");
+  return (
+    <div className="font-mono text-xs space-y-0.5">
+      {lines.map((line, i) => {
+        const isError = /error|traceback|exception/i.test(line);
+        const isWarning = /warning/i.test(line);
+        return (
+          <div
+            key={i}
+            className={
+              isError
+                ? "text-destructive"
+                : isWarning
+                  ? "text-yellow-600 dark:text-yellow-400"
+                  : "text-muted-foreground"
+            }
+          >
+            {line || "\u00A0"}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // ExecutionOutputPanel — embedded in bottom panel (no close button)
 // ---------------------------------------------------------------------------
 
@@ -500,7 +541,12 @@ function ExecutionOutputPanel({
     result?.checks?.every((c) => c.status === "pass") ?? false;
 
   const tabs: { key: ExecOutputTab; label: string }[] = [
-    { key: "output", label: "Output" },
+    {
+      key: "output",
+      label: result
+        ? `Output (${(result.elapsed_ms / 1000).toFixed(1)}s)`
+        : "Output",
+    },
     ...(hasResult
       ? [
           {
@@ -540,8 +586,16 @@ function ExecutionOutputPanel({
             style={
               activeTab === t.key
                 ? dk
-                  ? { background: "#1e1e1e", color: "#60a5fa", border: "1px solid #3e3e3e" }
-                  : { background: "var(--background)", color: "var(--foreground)", border: "1px solid var(--border)" }
+                  ? {
+                      background: "#1e1e1e",
+                      color: "#60a5fa",
+                      border: "1px solid #3e3e3e",
+                    }
+                  : {
+                      background: "var(--background)",
+                      color: "var(--foreground)",
+                      border: "1px solid var(--border)",
+                    }
                 : dk
                   ? { color: "#858585" }
                   : { color: "var(--muted-foreground)" }
@@ -562,7 +616,10 @@ function ExecutionOutputPanel({
       </div>
 
       {/* Panel body */}
-      <div className="flex-1 overflow-auto" style={{ background: dk ? "#1e1e1e" : "#ffffff" }}>
+      <div
+        className="flex-1 overflow-auto"
+        style={{ background: dk ? "#1e1e1e" : "#ffffff" }}
+      >
         {/* Output tab */}
         {activeTab === "output" && (
           <div className="p-3">
@@ -661,28 +718,44 @@ function ExecutionOutputPanel({
 
         {/* Recon tab */}
         {activeTab === "recon" && hasRecon && (
-          <div className="divide-y divide-border">
-            {result!.checks!.map((check: ExecuteCheckResult) => (
-              <div
-                key={check.name}
-                className="flex items-start gap-3 px-3 py-2"
-              >
-                <span
-                  className={cn(
-                    "shrink-0 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold",
-                    check.status === "pass"
-                      ? "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-400"
-                      : "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400",
-                  )}
+          <div className="p-3 space-y-2">
+            {result!.checks!.map((check: ExecuteCheckResult) => {
+              const ok = check.status === "pass";
+              return (
+                <div
+                  key={check.name}
+                  className={`rounded-md border-l-4 p-3 ${ok ? "border-green-500 bg-green-500/5" : "border-destructive bg-destructive/5"}`}
                 >
-                  {check.status === "pass" ? "Pass" : "Fail"}
-                </span>
-                <span className="text-xs font-mono text-muted-foreground shrink-0 w-36 truncate">
-                  {check.name}
-                </span>
-                <span className="text-xs text-foreground">{check.detail}</span>
-              </div>
-            ))}
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`font-semibold text-sm ${ok ? "text-green-700 dark:text-green-400" : "text-destructive"}`}
+                    >
+                      {check.name}
+                    </span>
+                    <span className="ml-auto">
+                      {ok ? (
+                        <CheckCircle2
+                          size={11}
+                          className="text-green-600"
+                          aria-label="pass"
+                        />
+                      ) : (
+                        <XCircle
+                          size={11}
+                          className="text-red-600"
+                          aria-label="fail"
+                        />
+                      )}
+                    </span>
+                  </div>
+                  {check.detail && (
+                    <pre className="text-xs mt-1 whitespace-pre-wrap text-muted-foreground font-mono">
+                      {check.detail}
+                    </pre>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -694,7 +767,7 @@ function ExecutionOutputPanel({
 // BottomPanel — persistent bottom section with tab bar
 // ---------------------------------------------------------------------------
 
-type BottomTab = "code" | "log" | "output" | "history";
+type BottomTab = "code" | "log" | "output" | "history" | "trust";
 
 interface BottomPanelProps {
   bottomTab: BottomTab;
@@ -709,6 +782,8 @@ interface BottomPanelProps {
   changelog: { entries: ChangelogEntry[] } | undefined;
   onLoadRevisionCode?: (code: string) => void;
   theme?: "dark" | "light";
+  trustReport?: TrustReportResponse;
+  effectiveSasKey?: string;
 }
 
 function BottomPanel({
@@ -724,6 +799,8 @@ function BottomPanel({
   changelog,
   onLoadRevisionCode,
   theme = "light",
+  trustReport,
+  effectiveSasKey,
 }: BottomPanelProps): React.ReactElement {
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(
     null,
@@ -733,6 +810,7 @@ function BottomPanel({
     { key: "log", label: "Log", count: logAttachments.length },
     { key: "output", label: "Output", count: outputAttachments.length },
     { key: "history", label: "History" },
+    { key: "trust", label: "Trust" },
   ];
 
   return (
@@ -785,7 +863,13 @@ function BottomPanel({
         {bottomTab === "code" && (
           <>
             {executeResult === null && executeError === null ? (
-              <p className="text-xs italic p-3" style={{ color: theme === "dark" ? "#858585" : "var(--muted-foreground)" }}>
+              <p
+                className="text-xs italic p-3"
+                style={{
+                  color:
+                    theme === "dark" ? "#858585" : "var(--muted-foreground)",
+                }}
+              >
                 Run Python ▶ to see output here.
               </p>
             ) : (
@@ -901,6 +985,74 @@ function BottomPanel({
                 })}
           </div>
         )}
+
+        {/* Trust tab */}
+        {bottomTab === "trust" && (
+          <div className="overflow-auto h-full p-3 space-y-2">
+            {!trustReport ? (
+              <p className="text-xs text-muted-foreground">
+                No trust report available.
+              </p>
+            ) : !effectiveSasKey ? (
+              <p className="text-xs text-muted-foreground">
+                Select a SAS file to see block trust details.
+              </p>
+            ) : (
+              (() => {
+                const blocks = trustReport.blocks.filter(
+                  (b) => b.source_file === effectiveSasKey,
+                );
+                if (blocks.length === 0)
+                  return (
+                    <p className="text-xs text-muted-foreground">
+                      No blocks for this file.
+                    </p>
+                  );
+                return blocks.map((block) => (
+                  <div
+                    key={block.block_id}
+                    className="rounded-md border p-3 text-xs space-y-1"
+                  >
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono font-semibold text-foreground">
+                        {block.block_type}
+                      </span>
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] px-1.5 py-0"
+                      >
+                        {block.strategy}
+                      </Badge>
+                      <Badge
+                        variant={
+                          block.reconciliation_status === "pass"
+                            ? "secondary"
+                            : "destructive"
+                        }
+                        className="text-[10px] px-1.5 py-0"
+                      >
+                        recon: {block.reconciliation_status ?? "—"}
+                      </Badge>
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          "text-[10px] px-1.5 py-0 ml-auto",
+                          block.effective_confidence_band === "high"
+                            ? "text-green-600 border-green-500/40"
+                            : block.effective_confidence_band === "medium"
+                              ? "text-yellow-600 border-yellow-500/40"
+                              : "text-destructive border-destructive/30",
+                        )}
+                      >
+                        {block.effective_confidence_band ?? "unknown"}
+                      </Badge>
+                    </div>
+                  </div>
+                ));
+              })()
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -921,6 +1073,7 @@ export default function EditorTab({
   isSaving,
   onExpand,
   isFullPage = false,
+  trustReport,
 }: {
   jobId: string;
   generatedFiles: Record<string, string> | null;
@@ -932,6 +1085,7 @@ export default function EditorTab({
   isSaving?: boolean;
   onExpand?: () => void;
   isFullPage?: boolean;
+  trustReport?: TrustReportResponse;
 }): React.ReactElement {
   const [bottomTab, setBottomTab] = useState<BottomTab>("code");
   const [editorDark, setEditorDark] = useState(false);
@@ -956,7 +1110,9 @@ export default function EditorTab({
     try {
       if (r) sessionStorage.setItem(_execKey, JSON.stringify(r));
       else sessionStorage.removeItem(_execKey);
-    } catch { /* sessionStorage unavailable */ }
+    } catch {
+      /* sessionStorage unavailable */
+    }
   };
   const [execOutputTab, setExecOutputTab] = useState<ExecOutputTab>("output");
   const pythonEditorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
@@ -1021,10 +1177,10 @@ export default function EditorTab({
   useEffect(() => {
     if (pythonEditorRef.current) {
       const model = pythonEditorRef.current.getModel();
-      if (model && model.getValue() !== rightCode) model.setValue(rightCode ?? "");
+      if (model && model.getValue() !== rightCode)
+        model.setValue(rightCode ?? "");
     }
   }, [rightCode]);
-
 
   const hasPythonCode = !!(rightCode && rightCode.trim().length > 0);
 
@@ -1156,9 +1312,15 @@ export default function EditorTab({
             orientation="horizontal"
             className="rounded-md overflow-hidden h-full"
             style={{
-              borderTop: editorDark ? "1px solid #3e3e3e" : "1px solid var(--border)",
-              borderLeft: editorDark ? "1px solid #3e3e3e" : "1px solid var(--border)",
-              borderRight: editorDark ? "1px solid #3e3e3e" : "1px solid var(--border)",
+              borderTop: editorDark
+                ? "1px solid #3e3e3e"
+                : "1px solid var(--border)",
+              borderLeft: editorDark
+                ? "1px solid #3e3e3e"
+                : "1px solid var(--border)",
+              borderRight: editorDark
+                ? "1px solid #3e3e3e"
+                : "1px solid var(--border)",
               borderBottom: "none",
             }}
           >
@@ -1361,7 +1523,10 @@ export default function EditorTab({
           </ResizablePanelGroup>
         </ResizablePanel>
 
-        <ResizableHandle withHandle className="w-full flex items-center justify-center [&>div]:h-2 [&>div]:w-6" />
+        <ResizableHandle
+          withHandle
+          className="w-full flex items-center justify-center [&>div]:h-2 [&>div]:w-6"
+        />
 
         {/* BOTTOM panel — tabbed output area */}
         <ResizablePanel defaultSize={25} minSize={10}>
@@ -1389,6 +1554,8 @@ export default function EditorTab({
               changelog={changelog}
               theme={editorDark ? "dark" : "light"}
               onLoadRevisionCode={(code) => setOverrideRevisionCode(code)}
+              trustReport={trustReport}
+              effectiveSasKey={effectiveSasKey}
             />
           </div>
         </ResizablePanel>

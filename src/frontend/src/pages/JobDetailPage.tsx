@@ -3,6 +3,7 @@ import {
   getJob,
   getJobDoc,
   getJobPlan,
+  getJobTrustReport,
   refineJob,
   saveVersion,
 } from "@/api/jobs";
@@ -166,6 +167,12 @@ export default function JobDetailPage(): React.ReactElement {
     enabled: !!id && isReviewable,
   });
 
+  const { data: trustReportData } = useQuery({
+    queryKey: ["job", id, "trust-report"],
+    queryFn: () => getJobTrustReport(id),
+    enabled: !!id && isReviewable,
+  });
+
   return (
     <div className="px-6 py-2 overflow-y-auto flex-1 h-full">
       <Tabs
@@ -279,6 +286,7 @@ export default function JobDetailPage(): React.ReactElement {
                   isSaving={saveVersionMutation.isPending}
                   isFullPage={isEditorFullScreen}
                   onExpand={() => setIsEditorFullScreen((v) => !v)}
+                  trustReport={trustReportData}
                 />
               </div>
             </TabsContent>

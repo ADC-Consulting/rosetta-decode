@@ -18,7 +18,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import BlockPlanTable from "./BlockPlanTable";
 
@@ -76,10 +76,15 @@ function StatPill({
         }
       >
         <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotClass}`} />
-        <span className={`text-xs font-semibold tabular-nums ${colorClass}`}>{count}</span>
+        <span className={`text-xs font-semibold tabular-nums ${colorClass}`}>
+          {count}
+        </span>
         <span className="text-xs text-muted-foreground">{label}</span>
       </TooltipTrigger>
-      <TooltipContent side="bottom" className="max-w-65 text-xs leading-relaxed whitespace-normal text-center">
+      <TooltipContent
+        side="bottom"
+        className="max-w-65 text-xs leading-relaxed whitespace-normal text-center"
+      >
         {tooltip}
       </TooltipContent>
     </Tooltip>
@@ -103,14 +108,18 @@ export default function PlanTab({
   jobStatus: JobStatusValue;
   report?: Record<string, unknown> | null;
   overrides: Record<string, BlockOverride>;
-  setOverrides: React.Dispatch<React.SetStateAction<Record<string, BlockOverride>>>;
+  setOverrides: React.Dispatch<
+    React.SetStateAction<Record<string, BlockOverride>>
+  >;
   onBlockRefineSuccess?: () => void;
   jobPythonCode?: string;
   generatedFiles?: Record<string, string>;
 }): React.ReactElement {
   const trustReportEnabled =
     !!jobId &&
-    (jobStatus === "proposed" || jobStatus === "accepted" || jobStatus === "done");
+    (jobStatus === "proposed" ||
+      jobStatus === "accepted" ||
+      jobStatus === "done");
 
   const { data: planData, isLoading } = useQuery<JobPlanResponse | null>({
     queryKey: ["job", jobId, "plan"],
@@ -162,10 +171,12 @@ export default function PlanTab({
   }
 
   const overallConfidence = trustReport?.overall_confidence ?? "unknown";
-  const confidenceColor = CONFIDENCE_COLOR[overallConfidence] ?? CONFIDENCE_COLOR["unknown"];
+  const confidenceColor =
+    CONFIDENCE_COLOR[overallConfidence] ?? CONFIDENCE_COLOR["unknown"];
   const confidencePct = trustReport
     ? Math.round(
-        (trustReport.overall_confidence_score ?? CONFIDENCE_PCT[overallConfidence] / 100) * 100,
+        (trustReport.overall_confidence_score ??
+          CONFIDENCE_PCT[overallConfidence] / 100) * 100,
       )
     : CONFIDENCE_PCT[overallConfidence];
 
@@ -176,150 +187,140 @@ export default function PlanTab({
 
   return (
     <TooltipProvider>
-    <div className="h-full min-h-0 overflow-y-auto space-y-4 pb-6">
-      {/* Single summary card */}
-      <Card className="border-border bg-muted/30">
-        <CardContent className="p-0 flex flex-col divide-y divide-border">
-          {/* Top — summary text, full width */}
-          <div className="flex items-center px-5 py-2">
-            <p className="text-sm text-foreground leading-relaxed w-full">
-              {planData.summary ?? (
-                <span className="italic text-muted-foreground">No summary available.</span>
+      <div className="h-full min-h-0 overflow-y-auto space-y-4 pb-6">
+        {/* Single summary card */}
+        <Card className="border-border bg-muted/30">
+          <CardContent className="p-0 flex flex-col divide-y divide-border">
+            {/* Top — summary text, full width */}
+            <div className="flex items-center px-5 py-2">
+              <p className="text-sm text-foreground leading-relaxed w-full">
+                {planData.summary ?? (
+                  <span className="italic text-muted-foreground">
+                    No summary available.
+                  </span>
+                )}
+              </p>
+            </div>
+
+            {/* Bottom — stats centered */}
+            <div className="flex items-center justify-center gap-4 px-5 py-2 flex-wrap">
+              {/* Confidence bar */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground shrink-0">
+                  Confidence
+                </span>
+                <Progress
+                  value={confidencePct}
+                  className="h-1.5 w-20 **:data-[slot=progress-indicator]:bg-(--bar-fill)"
+                  style={
+                    { "--bar-fill": confidenceColor } as React.CSSProperties
+                  }
+                />
+                <span
+                  className="text-xs font-semibold tabular-nums"
+                  style={{ color: confidenceColor }}
+                >
+                  {confidencePct}%
+                </span>
+              </div>
+
+              <Separator
+                orientation="vertical"
+                className="h-4 hidden sm:block"
+              />
+
+              {/* Risk bar */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground shrink-0">
+                  Risk
+                </span>
+                <Progress
+                  value={riskPctMap[planData.overall_risk] ?? 0}
+                  className="h-1.5 w-20 **:data-[slot=progress-indicator]:bg-(--bar-fill)"
+                  style={{ "--bar-fill": riskBar.color } as React.CSSProperties}
+                />
+                <span
+                  className="text-xs font-semibold capitalize"
+                  style={{ color: riskBar.color }}
+                >
+                  {riskBar.label}
+                </span>
+              </div>
+
+              {/* Stat pills */}
+              {trustReport && (
+                <>
+                  <Separator
+                    orientation="vertical"
+                    className="h-4 hidden sm:block"
+                  />
+                  <StatPill
+                    count={trustReport.auto_verified}
+                    label="Auto-verified"
+                    colorClass="text-green-700"
+                    dotClass="bg-green-500"
+                    tooltip="The generated Python was executed against the same input data as the SAS and the outputs matched — schema, row count, and aggregates all pass. Safe to accept without manual review."
+                  />
+                  <StatPill
+                    count={trustReport.needs_review}
+                    label="Needs review"
+                    colorClass="text-amber-700"
+                    dotClass="bg-amber-500"
+                    tooltip="Translation ran but reconciliation flagged differences, and the LLM's own confidence was low. A human should inspect these blocks before accepting the migration."
+                  />
+                  <StatPill
+                    count={trustReport.manual_todo}
+                    label="Manual TODO"
+                    colorClass="text-muted-foreground"
+                    dotClass="bg-border"
+                    tooltip="Blocks the migration planner marked as manual, manual_ingestion, or skip — constructs that cannot be auto-translated. A developer must write the Python equivalent by hand."
+                  />
+                </>
               )}
-            </p>
-          </div>
-
-          {/* Bottom — stats centered */}
-          <div className="flex items-center justify-center gap-4 px-5 py-2 flex-wrap">
-            {/* Confidence bar */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground shrink-0">Confidence</span>
-              <Progress
-                value={confidencePct}
-                className="h-1.5 w-20 **:data-[slot=progress-indicator]:bg-(--bar-fill)"
-                style={{ "--bar-fill": confidenceColor } as React.CSSProperties}
-              />
-              <span
-                className="text-xs font-semibold tabular-nums"
-                style={{ color: confidenceColor }}
-              >
-                {confidencePct}%
-              </span>
             </div>
+          </CardContent>
+        </Card>
 
-            <Separator orientation="vertical" className="h-4 hidden sm:block" />
-
-            {/* Risk bar */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground shrink-0">Risk</span>
-              <Progress
-                value={riskPctMap[planData.overall_risk] ?? 0}
-                className="h-1.5 w-20 **:data-[slot=progress-indicator]:bg-(--bar-fill)"
-                style={{ "--bar-fill": riskBar.color } as React.CSSProperties}
+        {/* Block plan section */}
+        {planData?.block_plans && planData.block_plans.length > 0 && (
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => setBlocksCollapsed((v) => !v)}
+              className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+            >
+              {blocksCollapsed ? (
+                <ChevronRight
+                  size={14}
+                  className="text-muted-foreground shrink-0"
+                />
+              ) : (
+                <ChevronDown
+                  size={14}
+                  className="text-muted-foreground shrink-0"
+                />
+              )}
+              <h2 className="text-sm font-semibold text-foreground">Blocks</h2>
+              <Badge variant="secondary" className="text-xs font-mono">
+                {planData.block_plans.length}
+              </Badge>
+            </button>
+            {!blocksCollapsed && (
+              <BlockPlanTable
+                blockPlans={planData.block_plans}
+                isProposed={isProposed}
+                trustBlocks={trustBlocks}
+                jobId={jobId}
+                jobStatus={jobStatus}
+                isAccepted={jobStatus === "accepted"}
+                onBlockRefineSuccess={onBlockRefineSuccess}
+                jobPythonCode={jobPythonCode}
+                generatedFiles={generatedFiles}
               />
-              <span
-                className="text-xs font-semibold capitalize"
-                style={{ color: riskBar.color }}
-              >
-                {riskBar.label}
-              </span>
-            </div>
-
-            {/* Stat pills */}
-            {trustReport && (
-              <>
-                <Separator orientation="vertical" className="h-4 hidden sm:block" />
-                <StatPill
-                  count={trustReport.auto_verified}
-                  label="Auto-verified"
-                  colorClass="text-green-700"
-                  dotClass="bg-green-500"
-                  tooltip="The generated Python was executed against the same input data as the SAS and the outputs matched — schema, row count, and aggregates all pass. Safe to accept without manual review."
-                />
-                <StatPill
-                  count={trustReport.needs_review}
-                  label="Needs review"
-                  colorClass="text-amber-700"
-                  dotClass="bg-amber-500"
-                  tooltip="Translation ran but reconciliation flagged differences, and the LLM's own confidence was low. A human should inspect these blocks before accepting the migration."
-                />
-                <StatPill
-                  count={trustReport.manual_todo}
-                  label="Manual TODO"
-                  colorClass="text-muted-foreground"
-                  dotClass="bg-border"
-                  tooltip="Blocks the migration planner marked as manual, manual_ingestion, or skip — constructs that cannot be auto-translated. A developer must write the Python equivalent by hand."
-                />
-                <StatPill
-                  count={trustReport.failed_reconciliation}
-                  label="Failed recon"
-                  colorClass="text-red-700"
-                  dotClass="bg-red-500"
-                  tooltip="The generated Python executed successfully but produced output that did not match the SAS reference data. These blocks need refinement or manual correction."
-                />
-              </>
             )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Attention strip */}
-      {trustReport &&
-        (trustReport.needs_review > 0 || trustReport.failed_reconciliation > 0) && (
-          <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50/60 px-4 py-2.5 text-sm text-amber-800">
-            <AlertTriangle size={14} className="shrink-0 mt-0.5 text-amber-500" aria-hidden />
-            <span className="text-xs leading-relaxed">
-              {trustReport.needs_review > 0 && (
-                <>
-                  <strong>{trustReport.needs_review}</strong> block
-                  {trustReport.needs_review !== 1 ? "s" : ""} need review
-                </>
-              )}
-              {trustReport.needs_review > 0 && trustReport.failed_reconciliation > 0 && " · "}
-              {trustReport.failed_reconciliation > 0 && (
-                <>
-                  <strong>{trustReport.failed_reconciliation}</strong> reconciliation
-                  {trustReport.failed_reconciliation !== 1 ? "s" : ""} failed
-                </>
-              )}
-              {" — use the strategy filters below to locate them."}
-            </span>
           </div>
         )}
-
-      {/* Block plan section */}
-      {planData?.block_plans && planData.block_plans.length > 0 && (
-        <div className="space-y-2">
-          <button
-            type="button"
-            onClick={() => setBlocksCollapsed((v) => !v)}
-            className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
-          >
-            {blocksCollapsed ? (
-              <ChevronRight size={14} className="text-muted-foreground shrink-0" />
-            ) : (
-              <ChevronDown size={14} className="text-muted-foreground shrink-0" />
-            )}
-            <h2 className="text-sm font-semibold text-foreground">Blocks</h2>
-            <Badge variant="secondary" className="text-xs font-mono">
-              {planData.block_plans.length}
-            </Badge>
-          </button>
-          {!blocksCollapsed && (
-            <BlockPlanTable
-              blockPlans={planData.block_plans}
-              isProposed={isProposed}
-              trustBlocks={trustBlocks}
-              jobId={jobId}
-              isAccepted={jobStatus === "accepted"}
-              onBlockRefineSuccess={onBlockRefineSuccess}
-              jobPythonCode={jobPythonCode}
-              generatedFiles={generatedFiles}
-            />
-          )}
-        </div>
-      )}
-    </div>
+      </div>
     </TooltipProvider>
   );
 }

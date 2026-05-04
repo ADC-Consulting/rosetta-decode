@@ -58,7 +58,7 @@ export interface LineageNode {
   label: string;
   source_file: string;
   block_type: string;
-  status: "migrated" | "manual_review" | "untranslatable";
+  status: "migrated" | "manual_review" | "unrecognized";
 }
 
 export interface LineageEdge {
@@ -127,7 +127,7 @@ export interface FileNode {
   filename: string;
   file_type: "PROGRAM" | "MACRO" | "AUTOEXEC" | "LOG" | "OTHER";
   blocks: string[];
-  status: "OK" | "UNTRANSLATABLE" | "ERROR_PRONE" | null;
+  status: "OK" | "UNRECOGNIZED" | "ERROR_PRONE" | null;
   status_reason: string | null;
 }
 
@@ -150,7 +150,7 @@ export interface PipelineStep {
 
 export interface BlockStatus {
   block_id: string;
-  status: "OK" | "UNTRANSLATABLE" | "ERROR_PRONE";
+  status: "OK" | "UNRECOGNIZED" | "ERROR_PRONE";
   reason: string | null;
 }
 

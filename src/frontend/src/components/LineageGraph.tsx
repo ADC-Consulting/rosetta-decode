@@ -72,7 +72,7 @@ const STATUS_STYLE: Record<
 const STATUS_LABEL: Record<LineageNode["status"], string> = {
   migrated: "Migrated",
   manual_review: "Manual review",
-  untranslatable: "Untranslatable",
+  unrecognized: "Unrecognized",
 };
 
 const STATUS_SYMBOL: Record<
@@ -81,7 +81,7 @@ const STATUS_SYMBOL: Record<
 > = {
   migrated: { symbol: "✓", color: "#22c55e" },
   manual_review: { symbol: "⚠", color: "#f59e0b" },
-  untranslatable: { symbol: "✗", color: "#ef4444" },
+  unrecognized: { symbol: "✗", color: "#ef4444" },
 };
 
 function abbrevBlockType(bt: string): string {
