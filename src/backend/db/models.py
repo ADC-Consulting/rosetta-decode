@@ -109,6 +109,7 @@ class BlockRevision(Base):
     confidence: Mapped[str] = mapped_column(String(16), nullable=False, default="high")
     uncertainty_notes: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     reconciliation_status: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    recon_checks: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
     trigger: Mapped[str] = mapped_column(String(32), nullable=False, default="agent")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)  # verbatim user instructions
     hint: Mapped[str | None] = mapped_column(Text, nullable=True)  # auto-generated structured hint
