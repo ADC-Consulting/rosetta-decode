@@ -107,49 +107,29 @@ function TypeBadge({ ext }: { ext: string }) {
 }
 
 function UploadStatusBadge({ status }: { status: string }) {
-  if (status === "queued")
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
-        Queued
-      </span>
-    );
-  if (status === "running")
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400">
-        <span
-          className="h-2 w-2 rounded-full bg-blue-500 animate-pulse"
-          aria-hidden="true"
-        />
-        Running…
-      </span>
-    );
-  if (status === "proposed" || status === "done")
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">
-        Under Review
-      </span>
-    );
-  if (status === "under_review")
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400">
-        ⚠ Recon Failed
-      </span>
-    );
-  if (status === "accepted")
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">
-        Accepted
-      </span>
-    );
-  if (status === "failed")
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-destructive/10 text-destructive">
-        Failed
-      </span>
-    );
+  const colorClass: Record<string, string> = {
+    queued:       "bg-muted text-muted-foreground",
+    running:      "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400",
+    proposed:     "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400",
+    under_review: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400",
+    accepted:     "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400",
+    done:         "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400",
+    failed:       "bg-destructive/10 text-destructive",
+  };
+  const label: Record<string, string> = {
+    queued:       "Queued",
+    running:      "Processing",
+    proposed:     "Needs Review",
+    under_review: "Needs Review",
+    accepted:     "Accepted",
+    done:         "Done",
+    failed:       "Failed",
+  };
+  const pulse = ["queued", "running"].includes(status);
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
-      {status}
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${colorClass[status] ?? "bg-muted text-muted-foreground"}`}>
+      {pulse && <span className="h-2 w-2 rounded-full bg-current animate-pulse" aria-hidden />}
+      {label[status] ?? status}
     </span>
   );
 }
@@ -489,52 +469,24 @@ function ZipCard({
 
 const POLLING_STATUSES: JobStatusValue[] = ["queued", "running", "proposed"];
 
-function TableStatus({
-  status,
-}: {
-  status: JobStatusValue;
-}): React.ReactElement {
-  if (status === "accepted") {
-    return (
-      <span className="text-sm font-medium text-emerald-500">
-        {STATUS_LABEL.accepted}
-      </span>
-    );
+function TableStatus({ status }: { status: JobStatusValue }): React.ReactElement {
+  const GRADIENT: Partial<Record<JobStatusValue, string>> = {
+    queued:       "linear-gradient(90deg, #94a3b8 20%, #e2e8f0 50%, #94a3b8 80%)",
+    running:      "linear-gradient(90deg, #93c5fd 20%, #eff6ff 50%, #93c5fd 80%)",
+    proposed:     "linear-gradient(90deg, #f59e0b 20%, #fef3c7 50%, #f59e0b 80%)",
+    under_review: "linear-gradient(90deg, #f59e0b 20%, #fef3c7 50%, #f59e0b 80%)",
+  };
+  const SOLID: Partial<Record<JobStatusValue, string>> = {
+    accepted: "text-emerald-500",
+    done:     "text-emerald-500",
+    failed:   "text-red-500",
+  };
+
+  if (SOLID[status]) {
+    return <span className={`text-sm font-medium ${SOLID[status]}`}>{STATUS_LABEL[status]}</span>;
   }
-  if (status === "proposed") {
-    const gradient =
-      "linear-gradient(90deg, #f59e0b 20%, #fef3c7 50%, #f59e0b 80%)";
-    return (
-      <>
-        <style>{`@keyframes table-shimmer { from { background-position: 200% center; } to { background-position: -200% center; } }`}</style>
-        <span
-          className="text-sm font-medium"
-          style={{
-            display: "inline-block",
-            backgroundImage: gradient,
-            backgroundSize: "200% 100%",
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
-            backgroundClip: "text",
-            animation: "table-shimmer 4s linear infinite",
-          }}
-        >
-          Under Review
-        </span>
-      </>
-    );
-  }
-  if (status === "failed") {
-    return (
-      <span className="text-sm font-medium text-red-500">
-        {STATUS_LABEL.failed}
-      </span>
-    );
-  }
-  const gradient =
-    status === "running"
-      ? "linear-gradient(90deg, #93c5fd 20%, #eff6ff 50%, #93c5fd 80%)"
-      : "linear-gradient(90deg, #94a3b8 20%, #e2e8f0 50%, #94a3b8 80%)";
+
+  const gradient = GRADIENT[status] ?? "linear-gradient(90deg, #94a3b8 20%, #e2e8f0 50%, #94a3b8 80%)";
   return (
     <>
       <style>{`@keyframes table-shimmer { from { background-position: 200% center; } to { background-position: -200% center; } }`}</style>
@@ -898,7 +850,7 @@ export default function JobsPage(): React.ReactElement {
                             <Button
                               size="icon"
                               variant="ghost"
-                              className="h-7 w-7 relative"
+                              className="h-7 w-7"
                               title="Live trace"
                               aria-label={`Live trace for job ${job.job_id.slice(0, 8)}`}
                               onClick={(e) => {
@@ -906,10 +858,7 @@ export default function JobsPage(): React.ReactElement {
                                 setTraceJobId(job.job_id);
                               }}
                             >
-                              {["running", "queued"].includes(job.status) && (
-                                <span className="absolute inset-0 rounded-md bg-primary/10 animate-[shimmer_1.5s_ease-in-out_infinite]" aria-hidden />
-                              )}
-                              <Activity className={`h-4 w-4 relative ${["running", "queued"].includes(job.status) ? "text-primary" : "text-muted-foreground"}`} />
+                              <Activity className={`h-4 w-4 ${["running", "queued"].includes(job.status) ? "text-primary animate-pulse" : "text-muted-foreground"}`} />
                             </Button>
                           )}
                           {job.status === "accepted" && (

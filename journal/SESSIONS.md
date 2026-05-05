@@ -6,6 +6,50 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-05-05 — LiveTraceDialog multi-phase rail + README + status UX
+
+**Duration:** ~2h | **Focus:** F20 phase rail, README rewrite, job status display cleanup
+
+### Done
+- **feat(F20):** LiveTraceDialog restructured into 5-phase collapsible rail (Parsing & Analysis / Migration Planning / Code Translation / Assembly & Validation / Lineage & Documentation) — phases appear only when `phase_start` arrives, not all upfront
+- **feat(worker):** 6 new trace event types emitted from `_execute()`: `phase_start`, `phase_done`, `parse_result`, `plan_result`, `enrichment_item_done`; `_active_phase` tracking in exception handlers emits `phase_done { status: error }` on cancel/crash
+- **feat(frontend):** `PhaseRow` component with shadcn `Collapsible`; `ParseDetailPanel`, `PlanDetailPanel`, `EnrichmentDetailPanel`; `phaseMap` memo derived from events; auto-expand active phase, auto-collapse completed phases (1.2s delay, translation stays open)
+- **fix(frontend):** LiveTraceDialog elapsed timer now anchored to `events[0].ts` (real job start), frozen at `job_done.ts` — survives close/reopen, stops when job finishes
+- **fix(frontend):** phase-specific icons (ScanText/ClipboardList/Code2/GitMerge/BookOpen) now render correctly — `icon` prop was missing from `PhaseRow` destructure
+- **fix(frontend):** Activity button ping moved outside shadcn `Button` (was clipped by overflow-hidden); switched to `animate-pulse` on icon
+- **fix(frontend):** `proposed` and `under_review` both map to "Needs Review" (amber); `running` maps to "Processing" — consistent across `TableStatus`, `UploadStatusBadge`, `StatusBadge`, `STATUS_LABEL`; `STATUS_LABEL` is now single source of truth
+- **chore:** removed stale data-dependent reconciliation tests (`test_agentic_pipeline`, `test_data_step`, `test_proc_sort`, `test_parses_sample_file`) — sample data was already removed
+- **docs:** README fully rewritten — expanded introduction (business problem, what tool does, current capabilities), updated architecture diagram to 5 services, full PostgreSQL schema, complete project structure tree
+- **backlog:** added TODO for future backend status consolidation (`proposed`/`under_review` are internal concepts leaking into UI)
+
+### Decisions
+- **`proposed` = "Needs Review" in UI:** both `proposed` (recon pass) and `under_review` (recon fail) mean "pipeline done, human must act" — the distinction lives in the Plan tab, not the status label · revisit when backend statuses are consolidated
+
+### Open Questions
+- none
+
+### Next Session — Start Here
+1. Implement `_enrich_block_plan_post_run` in `src/worker/main.py` — called after `_persist_initial_revisions`; updates `context.migration_plan.block_plans` risk+rationale in-place using recon results + confidence (rule-based, no LLM), then re-persists `job.migration_plan`
+2. `make docker-build` — picks up new phase trace emit calls in worker
+3. Run a job → confirm all 5 phases appear in LiveTraceDialog in order; confirm elapsed timer freezes correctly at job completion
+
+### Files Touched
+- `src/worker/main.py`
+- `src/worker/engine/trace.py`
+- `src/frontend/src/api/types.ts`
+- `src/frontend/src/components/LiveTraceDialog.tsx`
+- `src/frontend/src/components/ui/collapsible.tsx`
+- `src/frontend/src/components/JobDetail/constants.ts`
+- `src/frontend/src/pages/JobsPage.tsx`
+- `tests/reconciliation/test_agentic_pipeline.py` (deleted)
+- `tests/reconciliation/test_data_step.py` (deleted)
+- `tests/reconciliation/test_proc_sort.py` (deleted)
+- `tests/test_parser.py`
+- `README.md`
+- `journal/BACKLOG.md`
+
+---
+
 ## 2026-05-04 (session 2) — F20 Stream B audit + log usage investigation
 
 **Duration:** ~30m | **Focus:** F20 Stream B verification, codebase Q&A

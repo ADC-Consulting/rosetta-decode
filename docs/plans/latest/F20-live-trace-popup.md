@@ -1,6 +1,6 @@
 # F20 — Live Trace Popup + Rich Execution Results
 
-**Status:** in-progress — Stream A complete; recon grouping + retry loop + session cache fixed (session 3); Stream B pending
+**Status:** in-progress — Stream A complete; multi-phase rail complete (2026-05-05); Stream B pending
 
 ## Remaining Work (2026-05-03 session 3)
 
