@@ -234,7 +234,10 @@ def test_build_prompt_with_all_context_fields() -> None:
 
     assert "DEPT" in prompt
     assert "SALES" in prompt
-    assert "work.out" in prompt
+    # work.salary_data is an upstream input — must appear
+    assert "work.salary_data" in prompt
+    # work.out is the block's own output — must NOT appear in "Upstream datasets"
+    assert "work.out" not in prompt.split("## Upstream datasets")[1].split("## Risk flags")[0]
     assert "BY-group processing" in prompt
     assert "NOTE: 100 observations read" in prompt
 

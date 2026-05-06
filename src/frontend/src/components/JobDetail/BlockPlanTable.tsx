@@ -603,11 +603,9 @@ export default function BlockPlanTable({
                                   : "Translated";
                             const colorCls = isManual
                               ? "text-red-700 bg-red-50 border border-red-200"
-                              : recon === "pass"
-                                ? "text-green-700 bg-green-50 border border-green-200"
-                                : recon === "fail"
-                                  ? "text-amber-700 bg-amber-50 border border-amber-200"
-                                  : "text-blue-700 bg-blue-50 border border-blue-200";
+                              : recon === "fail"
+                                ? "text-amber-700 bg-amber-50 border border-amber-200"
+                                : "text-blue-700 bg-blue-50 border border-blue-200";
                             return (
                               <span
                                 className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${colorCls}`}

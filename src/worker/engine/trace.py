@@ -53,7 +53,9 @@ class TraceEmitter:
 
         Args:
             event_type: One of ``block_start``, ``block_done``, ``recon_result``,
-                ``job_done``, ``error``, or any custom event name.
+                ``job_done``, ``error``, ``phase_start``, ``phase_done``,
+                ``parse_result``, ``plan_result``, ``enrichment_item_done``,
+                or any custom event name.
             payload: Arbitrary JSON-serialisable dict of event data.
         """
         enriched: dict[str, Any] = {

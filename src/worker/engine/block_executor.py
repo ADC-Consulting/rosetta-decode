@@ -20,6 +20,22 @@ logger = logging.getLogger(__name__)
 ReconResult = dict[str, Any]
 
 
+def _build_crash_detail(runtime_error: str, stderr: str) -> str:
+    """Build a human-readable crash detail string for the execution check.
+
+    Prefers the executor's `error` field (contains the last exception line).
+    Falls back to the tail of stderr when error is empty.
+    The result is trimmed to 500 chars so it fits comfortably in a risk_flag.
+    """
+    if runtime_error:
+        return f"runtime crash: {runtime_error}"[:500]
+    if stderr:
+        # Take the last non-empty lines of stderr — usually the traceback tail
+        tail = "\n".join(line for line in stderr.splitlines() if line.strip())[-400:]
+        return f"runtime crash (stderr): {tail}"
+    return "runtime crash: no output produced (code may have crashed before writing result)"
+
+
 class BlockExecutor:
     """Execute a single translated block via the remote executor and reconcile.
 
@@ -95,17 +111,27 @@ class BlockExecutor:
             return None
 
         checks: list[dict[str, Any]] = result.get("checks", [])
+        runtime_error: str = result.get("runtime_error", "")
+        stderr: str = result.get("stderr", "")
+
         if not checks:
             if ref_csv_path or ref_sas7bdat_path:
                 # Ref provided but no checks returned — code likely crashed.
                 # Synthetic failure so the retry loop fires.
+                # Include the actual traceback so the LLM retry prompt is informative.
+                crash_detail = _build_crash_detail(runtime_error, stderr)
                 crash_check = {
                     "name": "execution",
                     "status": "fail",
-                    "detail": "no checks returned (runtime crash)",
+                    "detail": crash_detail,
                 }
-                return {"checks": [crash_check]}
+                return {"checks": [crash_check], "runtime_error": runtime_error, "stderr": stderr}
             # No ref data at all — genuine no-op, treat as pass
             return None
 
+        # Attach runtime context even when checks are present (e.g. partial crash after some output)
+        if runtime_error or stderr:
+            result = dict(result)
+            result["runtime_error"] = runtime_error
+            result["stderr"] = stderr
         return result

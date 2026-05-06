@@ -347,9 +347,65 @@ export interface TraceErrorEvent extends TraceEventBase {
   message: string;
 }
 
+export type PhaseName =
+  | "parse_analysis"
+  | "migration_planning"
+  | "translation"
+  | "assembly_recon"
+  | "enrichment";
+
+export type PhaseStatus = "pending" | "running" | "done" | "error";
+
+export interface PhaseStartEvent extends TraceEventBase {
+  event_type: "phase_start";
+  phase: PhaseName;
+}
+
+export interface PhaseDoneEvent extends TraceEventBase {
+  event_type: "phase_done";
+  phase: PhaseName;
+  status: "done" | "error";
+  elapsed_ms: number;
+}
+
+export interface ParseResultEvent extends TraceEventBase {
+  event_type: "parse_result";
+  block_count: number;
+  file_count: number;
+  macro_var_count: number;
+  block_type_counts?: Record<string, number>;
+}
+
+export interface PlanResultEvent extends TraceEventBase {
+  event_type: "plan_result";
+  overall_risk: "low" | "medium" | "high";
+  summary: string;
+  block_count: number;
+  review_block_count: number;
+  cross_file_dependencies?: string[];
+  block_plans?: Array<{
+    block_id: string;
+    block_type: string;
+    strategy: string;
+    risk: string;
+    rationale: string;
+  }>;
+}
+
+export interface EnrichmentItemDoneEvent extends TraceEventBase {
+  event_type: "enrichment_item_done";
+  item: "lineage" | "documentation" | "plain_english";
+  status: "done" | "skipped" | "error";
+}
+
 export type TraceEvent =
   | BlockStartEvent
   | BlockDoneEvent
   | ReconResultEvent
   | JobDoneEvent
-  | TraceErrorEvent;
+  | TraceErrorEvent
+  | PhaseStartEvent
+  | PhaseDoneEvent
+  | ParseResultEvent
+  | PlanResultEvent
+  | EnrichmentItemDoneEvent;

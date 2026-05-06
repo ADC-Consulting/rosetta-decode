@@ -335,6 +335,20 @@ def _build_prompt(block: SASBlock, windowed: JobContext, all_blocks: list[SASBlo
     lines: list[str] = []
 
     lines.append(f"## PROC type: {block.block_type}")
+    # Warn when the SAS source contains a different PROC than the classified type
+    # (parser heuristics can misclassify — trust the raw SAS, not the label)
+    import re as _re_detect
+
+    first_proc_match = _re_detect.search(r"\bPROC\s+(\w+)", block.raw_sas, _re_detect.IGNORECASE)
+    if first_proc_match:
+        detected_proc = first_proc_match.group(1).upper()
+        classified = block.block_type.name.replace("PROC_", "")
+        if detected_proc != classified:
+            lines.append(
+                f"**NOTE: Block is classified as {block.block_type} but the SAS source contains"
+                f" PROC {detected_proc}. Translate based on the ACTUAL SAS content below, not"
+                f" the classification label.**"
+            )
     lines.append("")
 
     lines.append("## Macro variable context")
@@ -350,16 +364,21 @@ def _build_prompt(block: SASBlock, windowed: JobContext, all_blocks: list[SASBlo
             block_output_stems[ds.lower()] = stem
             block_output_stems[ds.lower().replace(".", "_")] = stem
 
+    # Datasets this block itself produces — must NOT appear in "Upstream datasets"
+    this_block_outputs: set[str] = {ds.lower() for ds in block.output_datasets}
+    this_block_outputs |= {ds.lower().replace(".", "_") for ds in block.output_datasets}
+
     lines.append("")
     lines.append("## Upstream datasets (dependency order)")
-    for i, ds in enumerate(windowed.dependency_order):
+    upstream = [ds for ds in windowed.dependency_order if ds.lower() not in this_block_outputs]
+    for i, ds in enumerate(upstream):
         ds_lower = ds.lower()
         if ds_lower in block_output_stems:
             var_name = block_output_stems[ds_lower]
         else:
             var_name = ds_lower.replace(".", "_")
         lines.append(f"{i + 1}. {ds}  →  variable name: {var_name}")
-    if not windowed.dependency_order:
+    if not upstream:
         lines.append("  (none)")
 
     lines.append("")

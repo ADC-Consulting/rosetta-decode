@@ -170,9 +170,14 @@ def _build_prompt(block: SASBlock, windowed: JobContext, all_blocks: list[SASBlo
             block_output_stems[ds.lower()] = stem
             block_output_stems[ds.lower().replace(".", "_")] = stem
 
+    # Datasets this block itself produces — must NOT appear in "Upstream datasets"
+    this_block_outputs: set[str] = {ds.lower() for ds in block.output_datasets}
+    this_block_outputs |= {ds.lower().replace(".", "_") for ds in block.output_datasets}
+
     lines.append("")
     lines.append("## Upstream datasets (dependency order)")
-    for i, ds in enumerate(windowed.dependency_order):
+    upstream = [ds for ds in windowed.dependency_order if ds.lower() not in this_block_outputs]
+    for i, ds in enumerate(upstream):
         ds_lower = ds.lower()
         if ds_lower in block_output_stems:
             var_name = block_output_stems[ds_lower]

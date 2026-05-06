@@ -277,6 +277,7 @@ class JobOrchestrator:
                 instantiate JobOrchestrator without a real DB).
         """
         self._session_factory = session_factory
+        self._active_phase: str | None = None
         self._analysis_agent = AnalysisAgent()
         stub = StubGenerator()
         self._router = TranslationRouter(
@@ -318,6 +319,16 @@ class JobOrchestrator:
             logger.info("Job %s cancelled: %s", job.id, exc)
             await session.execute(update(Job).where(Job.id == job.id).values(status="cancelled"))
             await session.commit()
+            if tracer is not None and self._active_phase:
+                await tracer.emit(
+                    "phase_done",
+                    {
+                        "phase": self._active_phase,
+                        "status": "error",
+                        "elapsed_ms": 0,
+                    },
+                )
+                self._active_phase = None
             if tracer is not None:
                 await tracer.emit("job_done", {"job_id": str(job.id), "final_status": "cancelled"})
         except httpx.HTTPStatusError as exc:
@@ -342,6 +353,16 @@ class JobOrchestrator:
                 update(Job).where(Job.id == job.id).values(status="failed", error=str(exc)[:500])
             )
             await session.commit()
+            if tracer is not None and self._active_phase:
+                await tracer.emit(
+                    "phase_done",
+                    {
+                        "phase": self._active_phase,
+                        "status": "error",
+                        "elapsed_ms": 0,
+                    },
+                )
+                self._active_phase = None
 
     async def _execute(self, session: AsyncSession, job: Job) -> None:
         """Inner pipeline — raises on unhandled errors."""
@@ -401,6 +422,14 @@ class JobOrchestrator:
             await self._execute_rereconcile(job, session, ref_csv_path, ref_sas7bdat_path)
             return
 
+        tracer: TraceEmitter | None = getattr(self, "_tracer", None)
+
+        # Phase 1: parse_analysis — parse + macro expand + analyse + libname map
+        _t0 = time.monotonic()
+        if tracer:
+            await tracer.emit("phase_start", {"phase": "parse_analysis"})
+            self._active_phase = "parse_analysis"
+
         # Step 1: Parse
         parse_result = SASParser().parse(files)
         blocks = parse_result.blocks
@@ -416,6 +445,20 @@ class JobOrchestrator:
                 logger.warning("Job %s: macro expansion skipped for block: %s", job.id, exc)
                 expansion_warnings.append(str(exc))
                 expanded_blocks.append(block)
+
+        if tracer:
+            from collections import Counter
+
+            type_counts = Counter(b.block_type.value for b in blocks)
+            await tracer.emit(
+                "parse_result",
+                {
+                    "block_count": len(blocks),
+                    "file_count": len({b.source_file for b in blocks}),
+                    "macro_var_count": len(parse_result.macro_vars),
+                    "block_type_counts": dict(type_counts),
+                },
+            )
 
         # Build libname/filename alias map by grepping all SAS source file contents
         libname_map: dict[str, str] = {}
@@ -442,6 +485,23 @@ class JobOrchestrator:
                 update={"risk_flags": context.risk_flags + expansion_warnings}
             )
 
+        if tracer:
+            await tracer.emit(
+                "phase_done",
+                {
+                    "phase": "parse_analysis",
+                    "status": "done",
+                    "elapsed_ms": int((time.monotonic() - _t0) * 1000),
+                },
+            )
+            self._active_phase = None
+
+        # Phase 2: migration_planning
+        _t0 = time.monotonic()
+        if tracer:
+            await tracer.emit("phase_start", {"phase": "migration_planning"})
+            self._active_phase = "migration_planning"
+
         # Step 3.5: Migration planning (best-effort with fallback)
         try:
             plan = await self._migration_planner.plan(context)
@@ -450,12 +510,49 @@ class JobOrchestrator:
             logger.error("Job %s: migration planning failed: %s", job.id, exc)
             raise RuntimeError(f"Migration planning failed: {exc}") from exc
 
+        if tracer:
+            await tracer.emit(
+                "plan_result",
+                {
+                    "overall_risk": plan.overall_risk,
+                    "summary": (plan.summary or "")[:500],
+                    "block_count": len(blocks),
+                    "review_block_count": len(plan.recommended_review_blocks or []),
+                    "cross_file_dependencies": plan.cross_file_dependencies[:10],
+                    "block_plans": [
+                        {
+                            "block_id": bp.block_id,
+                            "block_type": bp.block_type,
+                            "strategy": bp.strategy.value,
+                            "risk": bp.risk.value,
+                            "rationale": bp.rationale[:200],
+                        }
+                        for bp in plan.block_plans
+                    ],
+                },
+            )
+            await tracer.emit(
+                "phase_done",
+                {
+                    "phase": "migration_planning",
+                    "status": "done",
+                    "elapsed_ms": int((time.monotonic() - _t0) * 1000),
+                },
+            )
+            self._active_phase = None
+
         # Steps 4-7: Translate + two-phase refinement
         prior_python_code: str | None = None
         hint: str | None = None
         if refine_context:
             prior_python_code = refine_context.get("prior_python_code") or None
             hint = refine_context.get("hint") or None
+
+        # Phase 3: translation
+        _t0 = time.monotonic()
+        if tracer:
+            await tracer.emit("phase_start", {"phase": "translation"})
+            self._active_phase = "translation"
 
         generated, recon_failed = await self._translate_two_phase(
             expanded_blocks,
@@ -467,6 +564,23 @@ class JobOrchestrator:
             data_dir=data_dir,
             session=session,
         )
+
+        if tracer:
+            await tracer.emit(
+                "phase_done",
+                {
+                    "phase": "translation",
+                    "status": "done",
+                    "elapsed_ms": int((time.monotonic() - _t0) * 1000),
+                },
+            )
+            self._active_phase = None
+
+        # Phase 4: assembly_recon
+        _t0 = time.monotonic()
+        if tracer:
+            await tracer.emit("phase_start", {"phase": "assembly_recon"})
+            self._active_phase = "assembly_recon"
 
         # Step 5: Assemble — dict form for generated_files, flat str for python_code column
         generated_files: dict[str, str] = self._codegen.assemble(
@@ -486,12 +600,33 @@ class JobOrchestrator:
             data_dir=data_dir,
         )
 
+        if tracer:
+            await tracer.emit(
+                "phase_done",
+                {
+                    "phase": "assembly_recon",
+                    "status": "done",
+                    "elapsed_ms": int((time.monotonic() - _t0) * 1000),
+                },
+            )
+            self._active_phase = None
+
+        # Phase 5: enrichment
+        _t0 = time.monotonic()
+        if tracer:
+            await tracer.emit("phase_start", {"phase": "enrichment"})
+            self._active_phase = "enrichment"
+
         # Step 7.5: Lineage enrichment (best-effort)
         try:
             enriched = await self._lineage_enricher.enrich(context)
             context = context.model_copy(update={"enriched_lineage": enriched})
+            if tracer:
+                await tracer.emit("enrichment_item_done", {"item": "lineage", "status": "done"})
         except Exception as exc:
             logger.warning("Job %s: lineage enrichment failed, continuing: %s", job.id, exc)
+            if tracer:
+                await tracer.emit("enrichment_item_done", {"item": "lineage", "status": "skipped"})
 
         # Step 8: Documentation
         recon_summary = _recon_summary(report)
@@ -505,6 +640,9 @@ class JobOrchestrator:
             doc = doc_result
         else:
             logger.warning("Job %s: doc generation failed: %s", job.id, doc_result)
+        if tracer:
+            await tracer.emit("enrichment_item_done", {"item": "documentation", "status": "done"})
+
         plain_english_text: str | None = (
             plain_english
             if isinstance(plain_english, str)
@@ -512,8 +650,22 @@ class JobOrchestrator:
         )
         if not isinstance(plain_english, str):
             logger.warning("Job %s: plain-English generation failed: %s", job.id, plain_english)
+        if tracer:
+            await tracer.emit("enrichment_item_done", {"item": "plain_english", "status": "done"})
+
         if plain_english_text:
             report = {**(report or {}), "non_technical_doc": plain_english_text}
+
+        if tracer:
+            await tracer.emit(
+                "phase_done",
+                {
+                    "phase": "enrichment",
+                    "status": "done",
+                    "elapsed_ms": int((time.monotonic() - _t0) * 1000),
+                },
+            )
+            self._active_phase = None
 
         # Step 9: Lineage extraction + merge enriched fields (best-effort)
         lineage_data = None
@@ -1028,6 +1180,8 @@ class JobOrchestrator:
                     break
 
                 checks: list[dict[str, Any]] = recon_result.get("checks", [])
+                _runtime_error: str = recon_result.get("runtime_error", "")
+                _stderr: str = recon_result.get("stderr", "")
                 all_passed = all(c.get("status") == "pass" for c in checks)
                 recon_passed = all_passed
                 exec_ok = all_passed
@@ -1129,8 +1283,23 @@ class JobOrchestrator:
                     error_summary = "; ".join(failed_details + extra_hints)
                     error_summary = error_summary.replace("\n", " ")[:500]
                     flag = f"recon_failure_attempt_{attempt}: {error_summary}"
+                    retry_flags: list[str] = [flag]
+                    # Surface the actual Python traceback so the LLM can fix the root cause
+                    if _runtime_error:
+                        rt_flag = (
+                            f"runtime_error_attempt_{attempt}: "
+                            + _runtime_error.replace("\n", " ")[:400]
+                        )
+                        retry_flags.append(rt_flag)
+                    elif _stderr:
+                        # Extract the last meaningful line from stderr (usually the exception)
+                        _err_tail = " | ".join(
+                            line for line in _stderr.splitlines() if line.strip()
+                        )[-400:]
+                        stderr_flag = f"stderr_attempt_{attempt}: {_err_tail}"
+                        retry_flags.append(stderr_flag)
                     attempt_context = attempt_context.model_copy(
-                        update={"risk_flags": [*attempt_context.risk_flags, flag]}
+                        update={"risk_flags": [*attempt_context.risk_flags, *retry_flags]}
                     )
                 # On attempt 3 fall through — use last generated code as-is
 

@@ -86,6 +86,7 @@ packages = ["src/backend", "src/worker"]
 line-length = 100
 target-version = "py311"
 src = ["src", "tests"]
+exclude = ["data/"]
 
 [tool.ruff.lint]
 select = [
@@ -122,6 +123,7 @@ convention = "google"
 python_version = "3.11"
 strict = true
 mypy_path = "."
+exclude = "^data/"
 explicit_package_bases = true
 warn_return_any = true
 warn_unused_configs = true

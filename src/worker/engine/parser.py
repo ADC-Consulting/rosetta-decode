@@ -32,6 +32,23 @@ from src.worker.engine.models import (
 
 # ── Regex patterns ────────────────────────────────────────────────────────────
 
+_BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
+
+
+def _strip_block_comments(source: str) -> str:
+    """Replace /* ... */ comments with whitespace, preserving newlines.
+
+    Line numbers in the stripped string match the original so that
+    start_line / end_line calculations remain accurate.
+    """
+
+    def _replace(m: re.Match[str]) -> str:
+        text = m.group(0)
+        return re.sub(r"[^\n]", " ", text)
+
+    return _BLOCK_COMMENT_RE.sub(_replace, source)
+
+
 # DATA step: DATA <name(s)>; … RUN;
 _DATA_STEP_RE = re.compile(
     r"(?i)(DATA\s+\S[^;]*;.*?RUN\s*;)",
@@ -793,6 +810,10 @@ class SASParser:
         all_filename_map: dict[str, str] = {}
 
         for filename, source in files.items():
+            # Strip block comments before regex matching so that PROC keywords
+            # inside /* ... */ comments don't produce phantom blocks.
+            # The original source is kept for raw_sas capture inside each extractor.
+            source_stripped = _strip_block_comments(source)
             covered: list[tuple[int, int]] = []
 
             for pattern in (
@@ -808,21 +829,21 @@ class SASParser:
                 _PROC_IML_RE,
                 _PROC_FORMAT_RE,
             ):
-                for match in pattern.finditer(source):
+                for match in pattern.finditer(source_stripped):
                     covered.append((match.start(), match.end()))
 
-            all_blocks.extend(_extract_data_steps(source, filename))
-            all_blocks.extend(_extract_proc_sql(source, filename))
-            all_blocks.extend(_extract_proc_sort(source, filename))
-            all_blocks.extend(_extract_proc_means(source, filename))
-            all_blocks.extend(_extract_proc_freq(source, filename))
-            all_blocks.extend(_extract_proc_transpose(source, filename))
-            all_blocks.extend(_extract_proc_import(source, filename))
-            all_blocks.extend(_extract_proc_append(source, filename))
-            all_blocks.extend(_extract_proc_rank(source, filename))
-            all_blocks.extend(self._extract_proc_iml(source, filename))
-            all_blocks.extend(self._extract_proc_format(source, filename))
-            all_blocks.extend(_extract_unsupported_procs(source, filename, covered))
+            all_blocks.extend(_extract_data_steps(source_stripped, filename))
+            all_blocks.extend(_extract_proc_sql(source_stripped, filename))
+            all_blocks.extend(_extract_proc_sort(source_stripped, filename))
+            all_blocks.extend(_extract_proc_means(source_stripped, filename))
+            all_blocks.extend(_extract_proc_freq(source_stripped, filename))
+            all_blocks.extend(_extract_proc_transpose(source_stripped, filename))
+            all_blocks.extend(_extract_proc_import(source_stripped, filename))
+            all_blocks.extend(_extract_proc_append(source_stripped, filename))
+            all_blocks.extend(_extract_proc_rank(source_stripped, filename))
+            all_blocks.extend(self._extract_proc_iml(source_stripped, filename))
+            all_blocks.extend(self._extract_proc_format(source_stripped, filename))
+            all_blocks.extend(_extract_unsupported_procs(source_stripped, filename, covered))
             all_macro_vars.extend(_extract_macro_vars(source, filename))
             all_libnames.update(_extract_libnames(source))
             all_includes.extend(_extract_includes(source))

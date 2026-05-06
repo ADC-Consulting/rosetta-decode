@@ -1,0 +1,10 @@
+%macro assert_rowcount(ds, min_rows);
+    %local nobs;
+    proc sql noprint;
+        select count(*) into :nobs from &ds.;
+    quit;
+    %if &nobs. < &min_rows. %then %do;
+        %put ERROR: Dataset &ds. has only &nobs. rows, expected at least &min_rows.;
+        %abort cancel;
+    %end;
+%mend;

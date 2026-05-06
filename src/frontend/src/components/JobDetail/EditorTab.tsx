@@ -19,6 +19,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
+import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,

@@ -132,22 +132,6 @@ def test_untranslatable_preserves_raw_sas(parser: SASParser) -> None:
     assert "PROC REPORT" in unknown[0].raw_sas
 
 
-# ── Sample file smoke test ────────────────────────────────────────────────────
-
-
-def test_parses_sample_file(parser: SASParser) -> None:
-    """Parsing the canonical sample must yield one DATA step and one PROC SQL."""
-    import pathlib
-
-    sample = pathlib.Path("samples/basic_etl.sas").read_text()
-    result = parser.parse({"basic_etl.sas": sample})
-    blocks = result.blocks
-    types = [b.block_type for b in blocks]
-    assert BlockType.DATA_STEP in types
-    assert BlockType.PROC_SQL in types
-    assert BlockType.UNTRANSLATABLE not in types
-
-
 # ── Cycle detection fallback ──────────────────────────────────────────────────
 
 

@@ -37,10 +37,11 @@ When the user asks to implement a new feature or you identify one from the backl
 
 1. Invoke the `plan-feature` skill — you own this, do not delegate it
 2. Read all context docs before writing anything: `docs/features.md`, `docs/architecture.md`, `docs/mvp-scope.md`, `docs/coding-standards.md`, `journal/BACKLOG.md`, `journal/DECISIONS.md`
-3. Break the feature into ordered subtasks (one artefact per subtask)
-4. Write `docs/plans/F<N>-<slug>.md` and update `journal/BACKLOG.md`
-5. Present the plan; wait for explicit user approval before delegating any implementation
-6. Once the user approves, invoke the `git-branch-setup` skill **before delegating any implementation** — ensure the correct feature branch (`feat/F<N>-<slug>`) exists and is checked out
+3. **Always invoke `fullstack-planner` at this stage** — pass it the feature description and ask it to identify: which files are affected on each side, the API contract boundary, any schema/type alignment concerns, and the recommended implementation order. Use its output to inform subtask sequencing.
+4. Break the feature into ordered subtasks (one artefact per subtask), incorporating `fullstack-planner`'s dependency analysis
+5. Write `docs/plans/F<N>-<slug>.md` and update `journal/BACKLOG.md`
+6. Present the plan; wait for explicit user approval before delegating any implementation
+7. Once the user approves, invoke the `git-branch-setup` skill **before delegating any implementation** — ensure the correct feature branch (`feat/F<N>-<slug>`) exists and is checked out
 
 ## Delegation rules
 
