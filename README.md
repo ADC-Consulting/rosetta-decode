@@ -121,9 +121,85 @@ make dev-logs   # tail logs from all containers
 
 ## How to contribute
 
-⚠️ **Never close Claude Code without running `/session-end`.** The journal is how the next contributor picks up exactly where you left off. Skipping it means lost context, duplicated work, and broken continuity.
+> ⚠️ **Never close Claude Code without running `/session-end`.** The journal is how the next contributor picks up exactly where you left off. Skipping it means lost context, duplicated work, and broken continuity.
 
 This project is built with [Claude Code](https://claude.ai/code) using a multi-agent setup. **All work must go through the orchestrator agent** — type `@orchestrator` in Claude Code to invoke it. It owns session context, feature planning, and commit gating. Never write code, plan features, or commit without going through it first.
+
+---
+
+## Claude agentic workflow
+
+### Agents
+
+Five specialist agents collaborate via the Claude Code Agent SDK. Each agent owns a specific domain and delegates work it does not own.
+
+| Agent | Role | When Claude invokes it |
+|---|---|---|
+| `orchestrator` | Default entry point. Runs `/session-start`, delegates to specialists, gates commits. Never writes code directly. | Every session — always start here via `@orchestrator` |
+| `backend-builder` | Implements Python: FastAPI routes, worker engine, Pydantic AI agents, Alembic migrations, validation | When the task touches `src/backend/` or `src/worker/` |
+| `frontend-builder` | Implements React/TS: components, pages, API client calls, Tailwind, shadcn/ui | When the task touches `src/frontend/` |
+| `fullstack-planner` | Read-only cross-cutting analysis — API contracts, type alignment, sequencing across layers | When a feature spans both backend and frontend and the interface contract needs clarifying |
+| `tester` | Runs `make test`, interprets coverage, reports pass/fail back to the orchestrator | After any implementation is complete |
+
+**Rule:** the orchestrator delegates via the Agent tool. It never writes implementation code itself. Agents never commit — only the orchestrator gates commits via `/git-committer`.
+
+---
+
+### Skills (slash commands)
+
+Skills are reusable routines invoked in the Claude Code conversation. Type `/skill-name` to run one.
+
+#### User-invoked skills
+
+These are run explicitly by the developer at the right moment in the workflow.
+
+| Skill | When to use |
+|---|---|
+| `/session-start` | **First thing every session.** Reads `journal/SESSIONS.md`, `journal/BACKLOG.md`, `docs/plans/` for any in-progress plan, then confirms context before proposing work. |
+| `/session-end` | **Before closing Claude Code.** Updates the active feature plan, appends to `journal/SESSIONS.md`, updates `journal/BACKLOG.md` and `journal/DECISIONS.md`, then calls `/git-committer`. |
+| `/plan-feature` | **Before implementing any new feature.** Reads docs, breaks the feature into ordered subtasks, writes `docs/plans/F<N>-<slug>.md`, enters plan mode. No code is written until you approve the plan. |
+| `/test-runner` | **When you want to run the test suite.** Wraps `make test`, interprets results and coverage, and reports back. Never call `pytest` or `uv run pytest` directly. |
+| `/git-pr-summary` | **When opening a pull request.** Generates a copy-paste ready PR description in standard Markdown format from the commit history. |
+
+#### Claude-invoked skills
+
+These are triggered automatically by context — the orchestrator calls them without prompting.
+
+| Skill | Triggered when |
+|---|---|
+| `feature-planner` | You say "build feature X" or "implement F<N>" — reads the feature definition, breaks into subtasks, writes the plan file, enters plan mode |
+| `backend-builder` | Implementation task touches Python backend code |
+| `frontend-builder` | Implementation task touches React/TS frontend code |
+| `git-committer` | Before any `git commit` — enforces conventional commit format (`feat:`, `fix:`, `chore:`, etc.), stages specific files by name (never `git add -A`), shows the message before committing |
+| `git-branch-setup` | After plan approval, before implementation starts — ensures the correct `feat/F<N>-<slug>` branch exists and is checked out |
+| `test-runner` | You say "run tests", "check tests", "are tests passing", or ask about coverage |
+
+---
+
+### Typical session flow
+
+```
+1. Open Claude Code → @orchestrator → /session-start
+   Orchestrator reads journal + active plan, confirms what's next.
+
+2. /plan-feature  (for new features only)
+   Orchestrator writes docs/plans/F<N>-<slug>.md, enters plan mode.
+   You review and approve — no code written until this step.
+
+3. Implementation
+   Orchestrator delegates to backend-builder / frontend-builder agents.
+   They write code; orchestrator stays in the loop.
+
+4. /test-runner
+   Tester agent runs make test, reports coverage and failures.
+   Backend-builder fixes failures if any.
+
+5. /git-committer  (when everything passes)
+   Stages specific files, drafts conventional commit, runs pre-commit hooks.
+
+6. /session-end  ← NEVER SKIP THIS
+   Updates plan, journal, backlog, decisions. Commits journal entry.
+```
 
 ### Starting a session
 
