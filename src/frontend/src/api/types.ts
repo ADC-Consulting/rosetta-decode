@@ -373,6 +373,7 @@ export interface ParseResultEvent extends TraceEventBase {
   block_count: number;
   file_count: number;
   macro_var_count: number;
+  block_type_counts?: Record<string, number>;
 }
 
 export interface PlanResultEvent extends TraceEventBase {
@@ -381,6 +382,14 @@ export interface PlanResultEvent extends TraceEventBase {
   summary: string;
   block_count: number;
   review_block_count: number;
+  cross_file_dependencies?: string[];
+  block_plans?: Array<{
+    block_id: string;
+    block_type: string;
+    strategy: string;
+    risk: string;
+    rationale: string;
+  }>;
 }
 
 export interface EnrichmentItemDoneEvent extends TraceEventBase {

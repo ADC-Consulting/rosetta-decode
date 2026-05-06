@@ -450,9 +450,25 @@ function ParseDetailPanel({
   data: ParseResultEvent;
 }): React.ReactElement {
   return (
-    <p className="text-xs text-muted-foreground">
-      {data.block_count} blocks · {data.file_count} files · {data.macro_var_count} macros
-    </p>
+    <div className="flex flex-col gap-1.5">
+      <p className="text-xs text-muted-foreground">
+        {data.block_count} blocks · {data.file_count} files · {data.macro_var_count} macros
+      </p>
+      {data.block_type_counts && Object.keys(data.block_type_counts).length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {Object.entries(data.block_type_counts)
+            .sort((a, b) => b[1] - a[1])
+            .map(([type, count]) => (
+              <span
+                key={type}
+                className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] bg-muted text-muted-foreground font-mono"
+              >
+                {type.replace("_", " ")} &times;{count}
+              </span>
+            ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -462,11 +478,31 @@ function PlanDetailPanel({
   data: PlanResultEvent;
 }): React.ReactElement {
   const [showSummary, setShowSummary] = useState(false);
+  const [showDeps, setShowDeps] = useState(false);
+  const [showBlocks, setShowBlocks] = useState(false);
   const riskVariant = {
     low: "default",
     medium: "outline",
     high: "destructive",
   }[data.overall_risk] as "default" | "outline" | "destructive";
+
+  const riskColor = (r: string) =>
+    r === "high"
+      ? "text-destructive"
+      : r === "medium"
+        ? "text-yellow-600 dark:text-yellow-400"
+        : "text-green-600 dark:text-green-400";
+
+  const strategyLabel = (s: string) =>
+    (
+      {
+        translated: "Auto",
+        translated_with_review: "Review",
+        manual: "Manual",
+        translate_best_effort: "Best-effort",
+      } as Record<string, string>
+    )[s] ?? s;
+
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -477,6 +513,7 @@ function PlanDetailPanel({
           <span>{data.review_block_count} blocks flagged for review</span>
         )}
       </div>
+
       {data.summary && (
         <>
           <button
@@ -492,6 +529,97 @@ function PlanDetailPanel({
           )}
         </>
       )}
+
+      {data.cross_file_dependencies && data.cross_file_dependencies.length > 0 && (
+        <>
+          <button
+            onClick={() => setShowDeps((v) => !v)}
+            className="text-xs text-muted-foreground hover:text-foreground text-left"
+          >
+            {showDeps
+              ? "Hide cross-file dependencies ▴"
+              : `Show cross-file dependencies (${data.cross_file_dependencies.length}) ▾`}
+          </button>
+          {showDeps && (
+            <div className="flex flex-col gap-1">
+              {data.cross_file_dependencies.map((dep, i) => {
+                const match = dep.match(/^(Dataset\s+[\w.]+)/i);
+                const label = match ? match[1].replace(/^Dataset\s+/i, "") : null;
+                const body = label
+                  ? dep.slice(match![1].length).replace(/^\s*[—–-]\s*|^,\s*|^\s+is\s+/, "is ").trim()
+                  : dep;
+                // Wrap .sas filenames in <code>
+                const renderWithCode = (text: string) =>
+                  text.split(/(\S+\.sas\b)/gi).map((part, j) =>
+                    /\.sas$/i.test(part) ? (
+                      <code key={j} className="font-mono bg-muted px-0.5 rounded text-[9px]">
+                        {part}
+                      </code>
+                    ) : (
+                      part
+                    )
+                  );
+                return (
+                  <div key={i} className="rounded bg-muted/40 px-2 py-1.5 text-[10px] leading-relaxed">
+                    {label && (
+                      <code className="font-mono font-semibold text-foreground bg-muted px-0.5 rounded text-[9px]">
+                        {label}
+                      </code>
+                    )}{" "}
+                    <span className="text-muted-foreground">{renderWithCode(label ? body : dep)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+
+      {data.block_plans && data.block_plans.length > 0 && (
+        <>
+          <button
+            onClick={() => setShowBlocks((v) => !v)}
+            className="text-xs text-muted-foreground hover:text-foreground text-left"
+          >
+            {showBlocks
+              ? "Hide block plan ▴"
+              : `Show block plan (${data.block_plans.length} blocks) ▾`}
+          </button>
+          {showBlocks && (
+            <div className="rounded border border-border overflow-hidden">
+              <table className="w-full text-[10px]">
+                <thead>
+                  <tr className="bg-muted/50 text-muted-foreground">
+                    <th className="text-left px-2 py-1 font-medium">Block</th>
+                    <th className="text-left px-2 py-1 font-medium">Type</th>
+                    <th className="text-left px-2 py-1 font-medium">Strategy</th>
+                    <th className="text-left px-2 py-1 font-medium">Risk</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.block_plans.map((bp) => (
+                    <tr key={bp.block_id} className="border-t border-border/50">
+                      <td
+                        className="px-2 py-1 font-mono truncate max-w-30"
+                        title={bp.block_id}
+                      >
+                        {bp.block_id.split(":").pop()}
+                      </td>
+                      <td className="px-2 py-1 text-muted-foreground font-mono">
+                        {bp.block_type.replace("_", " ")}
+                      </td>
+                      <td className="px-2 py-1">{strategyLabel(bp.strategy)}</td>
+                      <td className={cn("px-2 py-1 font-medium", riskColor(bp.risk))}>
+                        {bp.risk}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -501,6 +629,66 @@ const ENRICHMENT_LABELS = {
   documentation: "Technical docs",
   plain_english: "Plain-English summary",
 } as const;
+
+function PipelineSummaryBanner({
+  group,
+}: {
+  group: GroupedBlock;
+}): React.ReactElement {
+  const [userToggled, setExpanded] = useState<boolean | null>(null);
+  const blockState = deriveBlockState(group);
+  const hasRecon = !!group.reconEvent;
+  const expanded = userToggled !== null ? userToggled : hasRecon;
+  const textClass = blockStateTextClass(blockState);
+  const borderClass =
+    blockState === "pass"
+      ? "border-l-green-500"
+      : blockState === "fail" || blockState === "error"
+        ? "border-l-destructive"
+        : blockState === "running"
+          ? "border-l-blue-500"
+          : "border-l-muted-foreground";
+  return (
+    <div
+      className={`mt-3 rounded-md border border-border border-l-4 ${borderClass} bg-card px-4 py-3`}
+    >
+      <div className="flex items-center gap-3">
+        <BlockStateIcon state={blockState} size={14} />
+        <span className={`font-semibold text-sm flex-1 ${textClass}`}>
+          Full Pipeline Reconciliation
+        </span>
+        {group.doneEvent?.elapsed_ms !== undefined && (
+          <Badge
+            variant="secondary"
+            className="text-[10px] px-1.5 py-0 tabular-nums shrink-0"
+          >
+            {(group.doneEvent.elapsed_ms / 1000).toFixed(1)}s
+          </Badge>
+        )}
+        {hasRecon && (
+          <button
+            type="button"
+            onClick={() => setExpanded(!expanded)}
+            aria-expanded={expanded}
+            aria-label="Toggle pipeline reconciliation details"
+            className="shrink-0 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded"
+          >
+            <ChevronDown
+              size={14}
+              className={`text-muted-foreground transition-transform duration-150 ${expanded ? "rotate-180" : ""}`}
+              aria-hidden
+            />
+          </button>
+        )}
+      </div>
+      {hasRecon && expanded && group.reconEvent && (
+        <div className="mt-2 pl-5">
+          <ReconCheckList reconEvent={group.reconEvent} />
+        </div>
+      )}
+    </div>
+  );
+}
 
 function EnrichmentDetailPanel({
   items,
@@ -792,11 +980,13 @@ export default function LiveTraceDialog({
     );
   }, [activePhase]);
 
-  // Auto-collapse completed non-translation phases after 1.2s
+  // Auto-collapse completed non-translation phases after 1.2s — fires once per phase transition
+  const collapsedDoneRef = useRef<Set<PhaseName>>(new Set());
   useEffect(() => {
     const timers: ReturnType<typeof setTimeout>[] = [];
     PHASE_ORDER.filter((p) => p !== "translation").forEach((p) => {
-      if (phaseMap[p].status === "done") {
+      if (phaseMap[p].status === "done" && !collapsedDoneRef.current.has(p)) {
+        collapsedDoneRef.current.add(p);
         timers.push(
           setTimeout(() => {
             setExpandedPhases((prev) => {
@@ -893,20 +1083,26 @@ export default function LiveTraceDialog({
                   {phase === "migration_planning" && data.planResult && (
                     <PlanDetailPanel data={data.planResult} />
                   )}
-                  {phase === "translation" &&
-                    blockGroups
-                      .filter((g) => g.blockId !== "pipeline:full")
-                      .map((group, idx, arr) => (
-                        <BlockGroup
-                          key={group.blockId}
-                          group={group}
-                          isFirst={idx === 0}
-                          isLast={idx === arr.length - 1}
-                          lastRef={lastItemRef}
-                        />
-                      ))}
-                  {phase === "assembly_recon" && pipelineGroup?.reconEvent && (
-                    <ReconCheckList reconEvent={pipelineGroup.reconEvent} />
+                  {phase === "translation" && (
+                    <>
+                      {blockGroups
+                        .filter((g) => g.blockId !== "pipeline:full")
+                        .map((group, idx, arr) => (
+                          <BlockGroup
+                            key={group.blockId}
+                            group={group}
+                            isFirst={idx === 0}
+                            isLast={idx === arr.length - 1}
+                            lastRef={lastItemRef}
+                          />
+                        ))}
+                      {pipelineGroup && (
+                        <PipelineSummaryBanner group={pipelineGroup} />
+                      )}
+                    </>
+                  )}
+                  {phase === "assembly_recon" && !pipelineGroup && (
+                    <p className="text-xs text-muted-foreground">No reference data — skipped</p>
                   )}
                   {phase === "enrichment" && (
                     <EnrichmentDetailPanel items={data.enrichmentItems} />
