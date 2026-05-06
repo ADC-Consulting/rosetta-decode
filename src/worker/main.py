@@ -447,12 +447,16 @@ class JobOrchestrator:
                 expanded_blocks.append(block)
 
         if tracer:
+            from collections import Counter
+
+            type_counts = Counter(b.block_type.value for b in blocks)
             await tracer.emit(
                 "parse_result",
                 {
                     "block_count": len(blocks),
                     "file_count": len({b.source_file for b in blocks}),
                     "macro_var_count": len(parse_result.macro_vars),
+                    "block_type_counts": dict(type_counts),
                 },
             )
 
@@ -514,6 +518,17 @@ class JobOrchestrator:
                     "summary": (plan.summary or "")[:500],
                     "block_count": len(blocks),
                     "review_block_count": len(plan.recommended_review_blocks or []),
+                    "cross_file_dependencies": plan.cross_file_dependencies[:10],
+                    "block_plans": [
+                        {
+                            "block_id": bp.block_id,
+                            "block_type": bp.block_type,
+                            "strategy": bp.strategy.value,
+                            "risk": bp.risk.value,
+                            "rationale": bp.rationale[:200],
+                        }
+                        for bp in plan.block_plans
+                    ],
                 },
             )
             await tracer.emit(
@@ -1165,6 +1180,8 @@ class JobOrchestrator:
                     break
 
                 checks: list[dict[str, Any]] = recon_result.get("checks", [])
+                _runtime_error: str = recon_result.get("runtime_error", "")
+                _stderr: str = recon_result.get("stderr", "")
                 all_passed = all(c.get("status") == "pass" for c in checks)
                 recon_passed = all_passed
                 exec_ok = all_passed
@@ -1266,8 +1283,23 @@ class JobOrchestrator:
                     error_summary = "; ".join(failed_details + extra_hints)
                     error_summary = error_summary.replace("\n", " ")[:500]
                     flag = f"recon_failure_attempt_{attempt}: {error_summary}"
+                    retry_flags: list[str] = [flag]
+                    # Surface the actual Python traceback so the LLM can fix the root cause
+                    if _runtime_error:
+                        rt_flag = (
+                            f"runtime_error_attempt_{attempt}: "
+                            + _runtime_error.replace("\n", " ")[:400]
+                        )
+                        retry_flags.append(rt_flag)
+                    elif _stderr:
+                        # Extract the last meaningful line from stderr (usually the exception)
+                        _err_tail = " | ".join(
+                            line for line in _stderr.splitlines() if line.strip()
+                        )[-400:]
+                        stderr_flag = f"stderr_attempt_{attempt}: {_err_tail}"
+                        retry_flags.append(stderr_flag)
                     attempt_context = attempt_context.model_copy(
-                        update={"risk_flags": [*attempt_context.risk_flags, flag]}
+                        update={"risk_flags": [*attempt_context.risk_flags, *retry_flags]}
                     )
                 # On attempt 3 fall through — use last generated code as-is
 

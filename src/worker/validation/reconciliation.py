@@ -421,6 +421,8 @@ class RemoteReconciliationService:
                 session_dir,
             )
             checks = raw.get("checks") or []
+            runtime_error: str = raw.get("error") or ""
+            stderr: str = raw.get("stderr") or ""
             for c in checks:
                 name = c.get("name", "?")
                 detail = c.get("detail", "")
@@ -428,6 +430,8 @@ class RemoteReconciliationService:
                     logger.info("recon check %-20s PASS", name)
                 else:
                     logger.warning("recon check %-20s FAIL  %s", name, detail)
+            if runtime_error:
+                logger.warning("executor runtime error: %s", runtime_error[:500])
             if checks:
                 all_passed = all(c.get("status") == "pass" for c in checks)
                 logger.info(
@@ -435,7 +439,12 @@ class RemoteReconciliationService:
                     "PASS" if all_passed else "FAIL",
                     len(checks),
                 )
-            return {"checks": checks}
+            result: dict[str, Any] = {"checks": checks}
+            if runtime_error:
+                result["runtime_error"] = runtime_error
+            if stderr:
+                result["stderr"] = stderr
+            return result
         except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError) as exc:
             logger.warning("RemoteReconciliationService: executor unreachable: %s", exc)
             return {"checks": []}
