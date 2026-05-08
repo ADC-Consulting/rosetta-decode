@@ -5,6 +5,7 @@ import type {
   ConfigurationValue,
   OutputCoverage,
 } from "@/api/types";
+import PreviewLineageGraph from "@/components/PreviewLineageGraph";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChevronDown, ChevronRight, Pencil } from "lucide-react";
@@ -684,7 +685,25 @@ export default function MigrationPreviewPage(): React.ReactElement {
               )}
             </section>
 
-            {/* ── 4. Migration risk ───────────────────────────────── */}
+            {/* ── 4. Pipeline lineage ─────────────────────────────── */}
+            {assessment.blocks.length > 0 && (
+              <section aria-labelledby="lineage-heading">
+                <h2
+                  id="lineage-heading"
+                  className="text-xl font-semibold mb-4"
+                >
+                  Pipeline lineage
+                </h2>
+                <div className="border rounded-lg overflow-hidden" style={{ height: 320 }}>
+                  <PreviewLineageGraph
+                    blocks={assessment.blocks}
+                    outputDatasets={assessment.output_datasets}
+                  />
+                </div>
+              </section>
+            )}
+
+            {/* ── 5. Migration risk ───────────────────────────────── */}
             <section aria-labelledby="risk-heading">
               <h2 id="risk-heading" className="text-base font-semibold text-foreground mb-3">
                 Migration risk
