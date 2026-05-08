@@ -216,3 +216,16 @@ Distinct from F6 (dependency graph between SAS files) — this is a within-job s
 A "Refine" button on the job results page that re-submits the same SAS input to the LLM with additional context: the previous output, the reconciliation report, and explicit instructions to fix failing checks. The worker runs the full pipeline again and saves a new version (see F10).
 
 Requires F10 (artefact versioning) to be meaningful.
+
+---
+
+### F21 — Pre-Migration Assessment
+**Area:** Backend / API + Frontend  
+**Serves:** US1, US2  
+**Phase:** 2
+
+Before committing to a migration run, the user is shown a full readiness assessment at a dedicated `/migrate/preview` page. The assessment is derived from a static parse of the uploaded files plus a single lightweight LLM call to generate a plain-English pipeline description. No job is created and no worker is invoked until the user explicitly confirms.
+
+The assessment answers the four questions a code/product owner needs to make a confident sign-off decision: does the tool understand the code, what cannot be automatically translated, can the result be verified, and what manual effort will be required after the migration runs. It surfaces missing file dependencies, circular dependencies, structural importance per block (with user-overridable ratings), validation coverage with reference data schema previews, configuration values that may need to remain runtime parameters, and sensitive data patterns in uploaded datasets.
+
+The "Start Migration" button is gated behind explicit acknowledgment checkboxes for any blocking blocks and sensitive data findings. All confirmation data — owner notes, importance overrides, acknowledgment record, and the AI-generated description — is stored on the job record for audit trail purposes and PDF export.
