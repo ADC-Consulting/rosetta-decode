@@ -11,6 +11,7 @@ const EditorFullPage = lazy(() => import("./pages/EditorFullPage"));
 const GlobalLineagePage = lazy(() => import("./pages/GlobalLineagePage"));
 const DocsPage = lazy(() => import("./pages/DocsPage"));
 const ExplainPage = lazy(() => import("./pages/ExplainPage"));
+const MigrationPreviewPage = lazy(() => import("./pages/MigrationPreviewPage"));
 
 function App(): React.ReactElement {
   return (
@@ -34,6 +35,7 @@ function App(): React.ReactElement {
                 <Route path="/lineage" element={<GlobalLineagePage />} />
                 <Route path="/docs" element={<DocsPage />} />
                 <Route path="/explain" element={<ExplainPage />} />
+                <Route path="/migrate/preview" element={<MigrationPreviewPage />} />
               </Routes>
             </Suspense>
           </main>
