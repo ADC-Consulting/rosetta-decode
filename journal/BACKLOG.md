@@ -223,19 +223,19 @@
 
 ---
 
-**F21 — Pre-Migration Assessment (`docs/plans/latest/F21-pre-migration-assessment.md`)**
+**F21 — Pre-Migration Assessment (`docs/plans/latest/F21-pre-migration-assessment.md`) — COMPLETE**
 
-- [ ] F21 S-A: Alembic migration 018 — `notes TEXT` + `assessment JSON` columns on jobs table
-- [ ] F21 S-B: `Job` ORM model — add `notes` and `assessment` mapped columns
-- [ ] F21 S-C: `AnalyseResponse` Pydantic schemas (`AssessedBlock`, `OutputCoverage`, `PreviewStats`, etc.)
-- [ ] F21 S-D: `POST /analyse` route — synchronous parser + lightweight LLM description + full assessment response
-- [ ] F21 S-E: Extend `POST /migrate` — accept `notes`, `importance_overrides`, `assessment_json`; store on job
-- [ ] F21 S-F: Backend tests — `test_analyse_route.py` + updated migrate tests
-- [ ] F21 S-G: Frontend TypeScript types — `AnalyseResponse` and all nested interfaces
-- [ ] F21 S-H: Frontend API functions — `analyseMigration` + updated `submitMigration`
-- [ ] F21 S-I: `MigrationPreviewPage` component — full assessment page, all seven sections
-- [ ] F21 S-J: Route registration + upload dialog wiring (`App.tsx`, `JobsPage.tsx`)
-- [ ] F21 S-K: `make test` exits 0
+- [x] F21 S-A: Alembic migration 018 — `notes TEXT` + `assessment JSON` columns on jobs table
+- [x] F21 S-B: `Job` ORM model — add `notes` and `assessment` mapped columns
+- [x] F21 S-C: `AnalyseResponse` Pydantic schemas (`AssessedBlock`, `OutputCoverage`, `PreviewStats`, etc.)
+- [x] F21 S-D: `POST /analyse` route — synchronous parser + lightweight LLM description + full assessment response
+- [x] F21 S-E: Extend `POST /migrate` — accept `notes`, `importance_overrides`, `assessment_json`; store on job
+- [x] F21 S-F: Backend tests — `test_analyse_route.py` + updated migrate tests
+- [x] F21 S-G: Frontend TypeScript types — `AnalyseResponse` and all nested interfaces
+- [x] F21 S-H: Frontend API functions — `analyseMigration` + updated `submitMigration`
+- [x] F21 S-I: `MigrationPreviewPage` component — full assessment page, all seven sections
+- [x] F21 S-J: Route registration + upload dialog wiring (`App.tsx`, `JobsPage.tsx`)
+- [x] F21 S-K: `make test` exits 0
 
 ---
 

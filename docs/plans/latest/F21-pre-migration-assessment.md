@@ -2,7 +2,7 @@
 
 **Phase:** 2  
 **Area:** Both (Backend / API + Frontend)  
-**Status:** in-progress
+**Status:** complete
 
 ## Goal
 
@@ -37,7 +37,7 @@ See brainstorm record in session journal. Final layout: full-page route `/migrat
 **File:** `alembic/versions/018_add_job_notes_assessment.py`  
 **Depends on:** none  
 **Done when:** migration adds `notes TEXT NULL` and `assessment JSON NULL` to `jobs` table using `sa.JSON()` (not JSONB — SQLite compatibility); `alembic downgrade` removes them cleanly.
-- [ ] done
+- [x] done
 
 ---
 
@@ -45,7 +45,7 @@ See brainstorm record in session journal. Final layout: full-page route `/migrat
 **File:** `src/backend/db/models.py`  
 **Depends on:** S-A  
 **Done when:** `Job` has `notes: Mapped[str | None] = mapped_column(Text, nullable=True)` and `assessment: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)`.
-- [ ] done
+- [x] done
 
 ---
 
@@ -123,7 +123,7 @@ class AnalyseResponse(BaseModel):
     parser_warning: str | None = None
     llm_skipped: bool = False
 ```
-- [ ] done
+- [x] done
 
 ---
 
@@ -168,7 +168,7 @@ class AnalyseResponse(BaseModel):
 - Output coverage: for each terminal output dataset, find any uploaded reference file (CSV, sas7bdat) whose stem matches the dataset name; if found, read row count and column names via `pyreadstat` or `csv.DictReader`
 - `input_hash`: SHA-256 of all SAS file content bytes (same algorithm as `POST /migrate`)
 - Graceful degradation: parser exception → `parser_warning` set, return minimal response with `blocks=[]`; LLM exception → `llm_skipped=True`, continue
-- [ ] done
+- [x] done
 
 ---
 
@@ -178,7 +178,7 @@ class AnalyseResponse(BaseModel):
 **Done when:** handler accepts three new optional `Form` parameters — `notes: str | None = Form(default=None)`, `importance_overrides: str | None = Form(default=None)`, `assessment_json: str | None = Form(default=None)` — parses the two JSON strings with `json.loads()` (guarded), merges `importance_overrides` into the `assessment` dict, and writes both `job.notes` and `job.assessment` to the job row before commit. `MigrateResponse` is unchanged.
 
 **Note:** `importance_overrides` is not stored as a separate column — it is embedded in the `assessment` JSON blob under the key `"importance_overrides"`. This avoids schema proliferation. Also fix pre-existing drift: remove `name?: string` from the TypeScript `MigrateResponse` interface (it is not returned by the backend).
-- [ ] done
+- [x] done
 
 ---
 
@@ -192,7 +192,7 @@ class AnalyseResponse(BaseModel):
 - `POST /analyse` with LLM mocked to raise → `llm_skipped=True`, 200 (not 500)
 - `POST /analyse` with no SAS files → 400
 - `POST /migrate` with `notes` and `assessment_json` → job row has `notes` and `assessment` set
-- [ ] done
+- [x] done
 
 ---
 
@@ -280,7 +280,7 @@ export interface AnalyseResponse {
 ```
 
 Also fix pre-existing drift: remove `name?: string` from `MigrateResponse` interface.
-- [ ] done
+- [x] done
 
 ---
 
@@ -299,7 +299,7 @@ export interface AnalyseInput {
   refTargetPath?: string | null;
 }
 ```
-- [ ] done
+- [x] done
 
 ---
 
@@ -323,7 +323,7 @@ export interface AnalyseInput {
 - `llm_skipped` → shows notice in the description section: "Summary unavailable — could not reach the translation model"
 - Prior migration history: not in this feature — deferred (requires a `GET /jobs?input_hash=` query not currently exposed)
 - Export PDF: not in this feature — deferred (requires a PDF generation library)
-- [ ] done
+- [x] done
 
 ---
 
@@ -333,14 +333,14 @@ export interface AnalyseInput {
 **Done when:**
 - `App.tsx`: `<Route path="/migrate/preview" element={<MigrationPreviewPage />} />` added alongside existing routes
 - `JobsPage.tsx`: upload dialog's submit handler (`handleSubmit` or equivalent) navigates to `/migrate/preview` with `location.state = { sasFiles, zipFile, refDataset, refTargetPath, name }` instead of calling `submitMigration` directly; the dialog closes after navigation
-- [ ] done
+- [x] done
 
 ---
 
 ### S-K: `make test` exits 0, ruff and mypy pass
 **Depends on:** S-A through S-J  
 **Done when:** `make test` green, no ruff errors, no mypy errors.
-- [ ] done
+- [x] done
 
 ## API Contract Summary
 
