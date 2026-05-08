@@ -237,6 +237,16 @@
 - [x] F21 S-J: Route registration + upload dialog wiring (`App.tsx`, `JobsPage.tsx`)
 - [x] F21 S-K: `make test` exits 0
 
+**F21 UX improvements — Pre-Migration Assessment manager experience**
+
+- [ ] F21-UX: Add headline summary card at top of page — single RED/AMBER/GREEN readiness signal, effort estimate, and one-line critical issue callout (currently requires mental arithmetic across 4 separate pills)
+- [ ] F21-UX: Promote PII/sensitive-data section — render as prominent banner above the fold whenever findings are present (currently buried as last section before acknowledgments)
+- [ ] F21-UX: Move effort estimate into the readiness verdict section — it's the most actionable number for resource planning and is currently at section 7
+- [ ] F21-UX: Rename tier labels to decision-oriented language — "🔵 Best-effort" is meaningless to a non-technical code owner; replace with e.g. "Will attempt (unknown patterns — verify output)"
+- [ ] F21-UX: Add "What you need to do" summary before acknowledgments — list manual blocks grouped by type (macro rewrite / external proc / data format) so manager knows whether they have the right person available
+- [ ] F21-UX: Move lineage graph to after the migration risk tiers — currently shown before the manager knows which nodes are risky
+- [ ] F21-UX: Hide or collapse configuration values + output coverage sections by default — these are engineer-facing and don't help a manager with the sign-off decision
+
 ---
 
 ## Phase 3 — Frontend Features (post-MVP)

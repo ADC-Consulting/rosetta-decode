@@ -6,6 +6,32 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-05-08 — F21 lineage graph + manager UX audit
+
+**Duration:** ~1h | **Focus:** pipeline lineage graph for assessment page, UX feedback
+
+### Done
+- **feat(F21):** `PreviewLineageGraph` component (`src/frontend/src/components/PreviewLineageGraph.tsx`) — React Flow + dagre LR graph derived entirely from existing `AssessedBlock[]` data; 4 node types: SAS file (blue border), intermediate dataset (gray), terminal output (green), external input (dashed gray); `MiniMap`, `Controls`, floating legend; `nodesDraggable/nodesConnectable/elementsSelectable` all false (read-only)
+- **feat(F21):** `MigrationPreviewPage` updated to render `<PreviewLineageGraph>` in a new "Pipeline lineage" section between Scope and Migration Risk
+- **backlog:** 7 F21 UX improvement items added based on manager-experience audit: headline summary card, PII banner above the fold, effort estimate promoted, tier label renames, "What you need to do" summary, lineage graph reorder, configuration/coverage sections hidden by default
+
+### Decisions
+- none
+
+### Open Questions
+- none
+
+### Next Session — Start Here
+1. Pick up any item from the F21 UX improvements block in `journal/BACKLOG.md` — the highest-priority is the **headline summary card** (single RED/AMBER/GREEN verdict + effort + critical issue at top of page)
+2. No active plan file — create one via `/plan-feature` if implementing the full UX pass
+
+### Files Touched
+- `src/frontend/src/components/PreviewLineageGraph.tsx` (new)
+- `src/frontend/src/pages/MigrationPreviewPage.tsx`
+- `journal/BACKLOG.md`
+
+---
+
 ## 2026-05-05 — LiveTraceDialog multi-phase rail + README + status UX
 
 **Duration:** ~2h | **Focus:** F20 phase rail, README rewrite, job status display cleanup
