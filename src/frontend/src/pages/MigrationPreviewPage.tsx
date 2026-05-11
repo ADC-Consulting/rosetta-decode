@@ -3,6 +3,7 @@ import type {
   AnalyseResponse,
   AssessedBlock,
   ConfigurationValue,
+  MissingDependency,
   OutputCoverage,
 } from "@/api/types";
 import PreviewLineageGraph from "@/components/PreviewLineageGraph";
@@ -346,11 +347,17 @@ function AssessmentHeadline({ stats, missingDeps, circularDeps }: AssessmentHead
         : `All blocks convert automatically · ${effortStr} review`;
 
   const recommendation =
-    verdict === "red"
-      ? `Proceed only if your team is ready to implement ${stats.needs_manual} manual block${stats.needs_manual !== 1 ? "s" : ""} — the pipeline will run but those steps will produce placeholder code until implemented.`
-      : verdict === "amber"
-        ? `Migration can proceed — a developer should review the ${stats.review_recommended + stats.best_effort} high-impact block${stats.review_recommended + stats.best_effort !== 1 ? "s" : ""} after the run completes.`
-        : "This migration can proceed automatically. Review the output against your reference data after the run.";
+    missingDeps > 0
+      ? verdict === "red"
+        ? `${stats.needs_manual} block${stats.needs_manual !== 1 ? "s" : ""} require manual implementation and ${missingDeps} macro/include file${missingDeps !== 1 ? "s" : ""} are missing — resolve both before this migration is production-ready.`
+        : verdict === "amber"
+          ? `Migration can proceed but ${missingDeps} macro/include file${missingDeps !== 1 ? "s" : ""} are missing — the translator will have limited context for macro-heavy blocks. Review output carefully.`
+          : `All blocks convert automatically but ${missingDeps} macro/include file${missingDeps !== 1 ? "s" : ""} are missing — some macro translations may be incomplete.`
+      : verdict === "red"
+        ? `Proceed only if your team is ready to implement ${stats.needs_manual} manual block${stats.needs_manual !== 1 ? "s" : ""} — the pipeline will run but those steps will produce placeholder code until implemented.`
+        : verdict === "amber"
+          ? `Migration can proceed — a developer should review the ${stats.review_recommended + stats.best_effort} high-impact block${stats.review_recommended + stats.best_effort !== 1 ? "s" : ""} after the run completes.`
+          : "This migration can proceed automatically. Review the output against your reference data after the run.";
 
   const bgClass =
     verdict === "red"
@@ -450,7 +457,7 @@ function ActionSummary({ manualBlocks, reviewBlocks, bestEffortBlocks }: ActionS
                   {datasets.length > 0 && (
                     <span className="text-muted-foreground">
                       {" · produces "}
-                      <span className="font-mono">{datasets.slice(0, 3).join(", ")}{datasets.length > 3 ? ` +${datasets.length - 3} more` : ""}</span>
+                      <span className="font-mono">{datasets.join(", ")}</span>
                     </span>
                   )}
                 </span>
@@ -475,7 +482,7 @@ function ActionSummary({ manualBlocks, reviewBlocks, bestEffortBlocks }: ActionS
                   {datasets.length > 0 && (
                     <span className="text-muted-foreground">
                       {" · produces "}
-                      <span className="font-mono">{datasets.slice(0, 3).join(", ")}{datasets.length > 3 ? ` +${datasets.length - 3} more` : ""}</span>
+                      <span className="font-mono">{datasets.join(", ")}</span>
                     </span>
                   )}
                 </span>
@@ -490,7 +497,7 @@ function ActionSummary({ manualBlocks, reviewBlocks, bestEffortBlocks }: ActionS
                   {datasets.length > 0 && (
                     <span className="text-muted-foreground">
                       {" · produces "}
-                      <span className="font-mono">{datasets.slice(0, 3).join(", ")}{datasets.length > 3 ? ` +${datasets.length - 3} more` : ""}</span>
+                      <span className="font-mono">{datasets.join(", ")}</span>
                     </span>
                   )}
                 </span>
@@ -538,6 +545,7 @@ export default function MigrationPreviewPage(): React.ReactElement {
   const [descriptionText, setDescriptionText] = useState<string>("");
   const [acknowledgments, setAcknowledgments] = useState<Record<string, boolean>>({});
   const [sensitiveConfirmed, setSensitiveConfirmed] = useState(false);
+  const [missingDepsConfirmed, setMissingDepsConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [coverageOpen, setCoverageOpen] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
@@ -664,14 +672,23 @@ export default function MigrationPreviewPage(): React.ReactElement {
     return result;
   }, [assessment?.blocks, importanceOverrides]);
 
+  const uniqueMissingDeps = useMemo(() => {
+    const map = new Map<string, { dep: MissingDependency; refCount: number }>();
+    for (const dep of assessment?.missing_dependencies ?? []) {
+      const existing = map.get(dep.name);
+      if (existing) existing.refCount += 1;
+      else map.set(dep.name, { dep, refCount: 1 });
+    }
+    return [...map.values()];
+  }, [assessment?.missing_dependencies]);
+
   // Acknowledgment gate
   const requiredAcks = new Set(manualBlocks.map((b) => b.block_id));
+  const manualAcked = [...requiredAcks].every((id) => acknowledgments[id]);
   const allAcked =
-    [...requiredAcks].every((id) => acknowledgments[id]) &&
-    (assessment?.sensitive_data_findings.length ?? 0) === 0 ||
-    ([...requiredAcks].every((id) => acknowledgments[id]) &&
-      (assessment?.sensitive_data_findings.length ?? 0) > 0 &&
-      sensitiveConfirmed);
+    manualAcked &&
+    ((assessment?.sensitive_data_findings.length ?? 0) === 0 || sensitiveConfirmed) &&
+    (uniqueMissingDeps.length === 0 || missingDepsConfirmed);
 
   const submitDisabled = submitting || !allAcked;
 
@@ -713,7 +730,7 @@ export default function MigrationPreviewPage(): React.ReactElement {
             {/* ── Headline verdict ──────────────────────────────── */}
             <AssessmentHeadline
               stats={assessment.stats}
-              missingDeps={assessment.missing_dependencies.length}
+              missingDeps={uniqueMissingDeps.length}
               circularDeps={assessment.circular_dependencies.length}
             />
 
@@ -747,7 +764,7 @@ export default function MigrationPreviewPage(): React.ReactElement {
             )}
 
             {/* ── Blockers (conditional) ────────────────────────── */}
-            {(assessment.missing_dependencies.length > 0 ||
+            {(uniqueMissingDeps.length > 0 ||
               assessment.circular_dependencies.length > 0) && (
               <section aria-labelledby="blockers-heading">
                 <h2
@@ -757,19 +774,23 @@ export default function MigrationPreviewPage(): React.ReactElement {
                   Blockers
                 </h2>
                 <div className="space-y-3">
-                  {assessment.missing_dependencies.length > 0 && (
+                  {uniqueMissingDeps.length > 0 && (
                     <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 space-y-2">
                       <p className="text-sm font-medium text-destructive">
-                        Missing dependencies ({assessment.missing_dependencies.length})
+                        Missing dependencies ({uniqueMissingDeps.length})
                       </p>
                       <ul className="space-y-1">
-                        {assessment.missing_dependencies.map((dep, i) => (
-                          <li key={i} className="text-xs text-muted-foreground">
-                            <span className="font-mono text-foreground">{dep.name}</span>{" "}
-                            ({dep.dependency_type}) — referenced in{" "}
-                            <span className="font-mono">{dep.referenced_in}</span>
-                          </li>
-                        ))}
+                        {uniqueMissingDeps.map(({ dep, refCount }) => {
+                          const displayName = dep.name.split("/").pop() ?? dep.name;
+                          return (
+                            <li key={dep.name} className="text-xs text-muted-foreground">
+                              <span className="font-mono text-foreground">{displayName}</span>
+                              {refCount > 1 && (
+                                <span className="ml-1 text-muted-foreground/70">(referenced by {refCount} files)</span>
+                              )}
+                            </li>
+                          );
+                        })}
                       </ul>
                     </div>
                   )}
@@ -969,7 +990,7 @@ export default function MigrationPreviewPage(): React.ReactElement {
                   )}
                   Validation coverage
                   <span className="text-sm font-normal text-muted-foreground">
-                    ({assessment.output_coverage.length})
+                    ({assessment.output_coverage.length} dataset{assessment.output_coverage.length !== 1 ? "s" : ""})
                   </span>
                 </button>
                 {coverageOpen && (
@@ -999,7 +1020,7 @@ export default function MigrationPreviewPage(): React.ReactElement {
                   )}
                   Configuration values
                   <span className="text-sm font-normal text-muted-foreground">
-                    ({assessment.configuration_values.length})
+                    ({assessment.configuration_values.length} value{assessment.configuration_values.length !== 1 ? "s" : ""})
                   </span>
                 </button>
                 {configOpen && (
@@ -1057,8 +1078,26 @@ export default function MigrationPreviewPage(): React.ReactElement {
                   </label>
                 )}
 
+                {uniqueMissingDeps.length > 0 && (
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 h-4 w-4 rounded border-input accent-primary cursor-pointer"
+                      checked={missingDepsConfirmed}
+                      onChange={(e) => setMissingDepsConfirmed(e.target.checked)}
+                      aria-label="Acknowledge missing macro/include files"
+                    />
+                    <span className="text-sm text-foreground">
+                      I understand that {uniqueMissingDeps.length} macro/include file
+                      {uniqueMissingDeps.length !== 1 ? "s are" : " is"} missing and that translated output may
+                      be incomplete for blocks that depend on them.
+                    </span>
+                  </label>
+                )}
+
                 {manualBlocks.length === 0 &&
-                  assessment.sensitive_data_findings.length === 0 && (
+                  assessment.sensitive_data_findings.length === 0 &&
+                  uniqueMissingDeps.length === 0 && (
                     <p className="text-sm text-muted-foreground">
                       No acknowledgments required — this migration can proceed automatically.
                     </p>

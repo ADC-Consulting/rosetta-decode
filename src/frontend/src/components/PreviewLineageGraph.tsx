@@ -335,7 +335,7 @@ function PreviewLineageGraphInner({
       nodes={nodes}
       edges={edges}
       fitView
-      fitViewOptions={{ padding: 0.25 }}
+      fitViewOptions={{ padding: 0.4 }}
       nodesDraggable={false}
       nodesConnectable={false}
       elementsSelectable={false}

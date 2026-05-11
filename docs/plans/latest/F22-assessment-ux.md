@@ -2,7 +2,7 @@
 
 **Phase:** 2
 **Area:** Frontend
-**Status:** in-progress
+**Status:** complete (S-A through S-Q)
 
 ## Goal
 
@@ -54,7 +54,7 @@ Done looks like: a manager opening the assessment page immediately sees their ov
 - A critical issue callout line when any of: `needs_manual > 0` ("N block(s) will generate placeholder code — pipeline will be incomplete until implemented"), `missing_dependencies.length > 0` ("N missing dependency/ies will block the run"), or `circular_dependencies.length > 0` ("Circular dependency detected — execution order cannot be resolved")
 - The four pill counts (needs manual / recommend review / best-effort / auto) preserved as a secondary row within the same card
 - The standalone "Post-migration effort estimate" section (currently section 7) is removed — effort data now lives only in this card
-- [ ] done
+- [x] done
 
 ---
 
@@ -62,7 +62,7 @@ Done looks like: a manager opening the assessment page immediately sees their ov
 **File:** `src/frontend/src/pages/MigrationPreviewPage.tsx`
 **Depends on:** none
 **Done when:** When `assessment.sensitive_data_findings.length > 0`, a destructive-red alert banner renders immediately after the headline card and before the Scope section. The banner lists every detected pattern inline (e.g. "DOB, SSN, EMAIL detected in customers.sas7bdat"). The existing "Sensitive data detected" section at the bottom of the page is removed to avoid duplication — the PII acknowledgment checkbox in the Acknowledgments section is retained.
-- [ ] done
+- [x] done
 
 ---
 
@@ -74,7 +74,7 @@ Done looks like: a manager opening the assessment page immediately sees their ov
 - `"🟡 High-impact — developer review recommended"`
 - `"🔵 Will attempt — unknown patterns, verify output"`
 - `"✅ Converts automatically"` (unchanged)
-- [ ] done
+- [x] done
 
 ---
 
@@ -84,7 +84,7 @@ Done looks like: a manager opening the assessment page immediately sees their ov
 **Done when:**
 - `showBlastRadius` prop in `BlockCard` is `true` for both `"manual"` and `"review"` tiers (currently only `"manual"`)
 - Within each tier, blocks are sorted descending by `blast_radius.length` before rendering — highest downstream impact shown first. Ties retain parse order.
-- [ ] done
+- [x] done
 
 ---
 
@@ -103,7 +103,7 @@ Done looks like: a manager opening the assessment page immediately sees their ov
 - Groups 🔵 blocks by `importance_reason` (if any), including their output datasets, e.g.: "3 best-effort blocks — verify output matches expected results · produces `SUMMARY_TABLE`"
 - Groups 🟡 blocks (if any), including their output datasets: "2 high-impact blocks translated — developer should review generated code · produces `REVENUE_REPORT`"
 - If neither: "No post-migration review required"
-- [ ] done
+- [x] done
 
 ---
 
@@ -111,7 +111,7 @@ Done looks like: a manager opening the assessment page immediately sees their ov
 **File:** `src/frontend/src/pages/MigrationPreviewPage.tsx`
 **Depends on:** S-A, S-B (so the full new section order can be set in one pass)
 **Done when:** JSX section order matches the target order in the Goal section. The lineage graph `<section>` moves from its current position (between Scope and Migration Risk) to after Migration Risk. The standalone "Post-migration effort estimate" section is absent (removed in S-A). `PreviewLineageGraph` receives a new `fileRiskTiers` prop (computed in this subtask: a `Record<string, "manual" | "review" | "best-effort" | "auto">` keyed by `source_file`, taking the worst tier across all blocks for that file).
-- [ ] done
+- [x] done
 
 ---
 
@@ -125,7 +125,7 @@ Done looks like: a manager opening the assessment page immediately sees their ov
 - `"auto"` or absent → `#22c55e` (green-500)
 
 The legend overlay is updated to reflect this: SAS file node legend entry replaced by four coloured swatches (🔴 Cannot auto-convert / 🟡 Needs review / 🔵 Best-effort / 🟢 All auto).
-- [ ] done
+- [x] done
 
 ---
 
@@ -133,14 +133,77 @@ The legend overlay is updated to reflect this: SAS file node legend entry replac
 **File:** `src/frontend/src/pages/MigrationPreviewPage.tsx`
 **Depends on:** none
 **Done when:** Both the "Validation coverage" and "Configuration values" sections render collapsed by default. Each has a `[Show / Hide]` toggle using the same `useState(false)` + chevron pattern already used by `TierSection`. Content is unchanged when expanded.
-- [ ] done
+- [x] done
 
 ---
 
 ### S-I: `make test` exits 0
 **Depends on:** S-A through S-H
 **Done when:** `make test` green with no ruff, mypy, tsc, or eslint errors.
-- [ ] done
+- [x] done
+
+---
+
+### S-J: Deduplicate missing dependencies
+**File:** `src/frontend/src/pages/MigrationPreviewPage.tsx`
+**Depends on:** none
+**Done when:** `uniqueMissingDeps` useMemo deduplicates `assessment.missing_dependencies` by `dep.name`; headline and Blockers section use the deduplicated count.
+- [x] done
+
+---
+
+### S-K: Improve missing dep path display
+**File:** `src/frontend/src/pages/MigrationPreviewPage.tsx`
+**Depends on:** S-J
+**Done when:** Blockers section shows basename (last path segment) per unique dep, with "(referenced by N files)" when N > 1; unresolved macro prefixes no longer shown.
+- [x] done
+
+---
+
+### S-L: Fix headline recommendation sentence when missing deps present
+**File:** `src/frontend/src/pages/MigrationPreviewPage.tsx`
+**Depends on:** S-J
+**Done when:** `AssessmentHeadline` overrides the recommendation text when `missingDeps > 0` to accurately describe the macro-context gap rather than saying "Migration can proceed".
+- [x] done
+
+---
+
+### S-M: Missing deps acknowledgment checkbox + gate fix
+**File:** `src/frontend/src/pages/MigrationPreviewPage.tsx`
+**Depends on:** S-J
+**Done when:** `missingDepsConfirmed` state added; acknowledgment checkbox renders when `uniqueMissingDeps.length > 0`; `allAcked` gates on it; "No acknowledgments required" text only shown when all three gates are empty.
+- [x] done
+
+---
+
+### S-N: Remove "+N more" truncation from action summary datasets
+**File:** `src/frontend/src/pages/MigrationPreviewPage.tsx`
+**Depends on:** none
+**Done when:** All three `datasets.slice(0, 3)` patterns in `ActionSummary` replaced with `datasets.join(", ")`.
+- [x] done
+
+---
+
+### S-O: Validation/Config section count labels
+**File:** `src/frontend/src/pages/MigrationPreviewPage.tsx`
+**Depends on:** none
+**Done when:** Section headers read "N datasets" and "N values" instead of bare "(N)".
+- [x] done
+
+---
+
+### S-P: Lineage graph fitView padding
+**File:** `src/frontend/src/components/PreviewLineageGraph.tsx`
+**Depends on:** none
+**Done when:** `fitViewOptions.padding` changed from 0.25 to 0.4 to reduce right-side clipping on initial render.
+- [x] done
+
+---
+
+### S-Q: `make test` exits 0 (post bug-fix pass)
+**Depends on:** S-J through S-P
+**Done when:** `make test` green with no ruff, mypy, tsc, or eslint errors.
+- [x] done
 
 ## Dependencies on other features
 
