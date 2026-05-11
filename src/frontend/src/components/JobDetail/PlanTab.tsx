@@ -356,7 +356,7 @@ export default function PlanTab({
             )}
 
             {/* Summary text */}
-            <div className="flex items-center px-5 py-2">
+            <div className="flex items-center px-5 pt-4 pb-3">
               <p className="text-sm text-foreground/80 leading-relaxed w-full">
                 {planData.summary ?? (
                   <span className="italic text-muted-foreground">
