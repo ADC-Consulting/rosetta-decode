@@ -6,9 +6,9 @@ Most recent session on top. Each entry should answer:
 
 ---
 
-## 2026-05-11 — F22 Plan tab overhaul — PM-first layout
+## 2026-05-11 — F22 Plan tab overhaul + design review iteration
 
-**Duration:** ~3h | **Focus:** Plan tab UX, pre-migration assessment consolidation, PM-facing attention summary
+**Duration:** ~5h | **Focus:** Plan tab UX, pre-migration assessment consolidation, PM-facing attention summary, critical design review
 
 ### Done
 - **fix(F22):** Post-submit navigation goes to `/jobs/{id}` instead of `/jobs`
@@ -20,20 +20,27 @@ Most recent session on top. Each entry should answer:
 - **fix(F22):** Restored effort estimate and circular dep warning dropped in S-W (S-X)
 - **feat(F22):** `AttentionBlocksSummary` — PM-facing section showing one card per block needing attention: status badge, file+line, block type, confidence %, plain-language rationale. Blocks toggle moved outside card and labelled "developer detail" (S-Y)
 - **fix(F22):** Layout polish pass — grammar fix (singular/plural `n()` helper), red-outline "Accept anyway" button when `manual_todo > 0`, hide zero-value stat pills, attention block badge+location on two lines, tighter spacing, removed "· developer detail" qualifier (S-Z)
+- **feat(F22):** Trust-aware `TrustBadge` in page header overrides static `StatusBadge` for proposed/under_review jobs (Not Ready / Needs Review / Ready to Accept)
+- **feat(F22):** Recommendation strip redesigned — icon + bold verdict + muted detail; green state gets stronger left-border + bg-green-50
+- **fix(F22):** Plan tab critical UX improvements — 12-issue audit resolved: DATA_STEP casing, emoji gap, ⚠ icon, description de-emphasis, confidence/risk bars w-28, strip top spacing, attention heading sentence form, badge→location gap
+- **feat(F22):** Plan tab layout — Blocks toggle moved inside Card as final divide-y row; Blocks auto-expand in green state (blocksCollapsedManual tracks user overrides); Effort moved to card header row; in-card Accept button in recommendation strip for all trust states
+- **fix(F22):** Accept button consolidated to Plan tab only — removed from page header entirely; in-card button shows Accept migration / Accept anyway depending on trust state
 
 ### Decisions
 - Pre-migration assessment panel belongs on MigrationPreviewPage (decision gate), not in the job detail Plan tab. Post-run, the trust report stats are authoritative; only missing deps, PII, circular deps, and effort estimate remain uniquely useful from the assessment.
-- Plan tab now has two audiences clearly separated: PM view (always visible card + attention summary) and developer view (collapsed Blocks table).
+- Plan tab now has two audiences clearly separated: PM view (always visible card + attention summary) and developer view (auto-expanded or collapsible Blocks table).
+- Accept CTA lives exclusively in the Plan tab recommendation strip (not duplicated in the page header) — forces the PM to review the plan verdict before acting.
 
 ### Open Questions
 - none
 
 ### Next Session — Start Here
-1. F22 is complete (S-A through S-Z) — branch `feat/F22-assessment-ux` is ready to PR
-2. Next backlog item: **F1-ext: Macro definition + call expansion** (`%MACRO` / `%MEND`) — the attention block demo showed `m_derive_age_group.sas:8` flagged as manual precisely because macro parameter context is missing; this feature would resolve that class of blocks
+1. F22 is complete — branch `feat/F22-assessment-ux` is ready to PR
+2. Next backlog item: **F1-ext: Macro definition + call expansion** (`%MACRO` / `%MEND`)
 
 ### Files Touched
 - `src/frontend/src/components/JobDetail/PlanTab.tsx`
+- `src/frontend/src/pages/JobDetailPage.tsx`
 - `src/frontend/src/pages/MigrationPreviewPage.tsx`
 - `src/backend/api/routes/jobs.py`
 - `src/frontend/src/api/jobs.ts`

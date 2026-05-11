@@ -265,6 +265,9 @@
 - [x] F22 S-X: Restore effort estimate + circular dep warning dropped during S-W
 - [x] F22 S-Y: PM-facing AttentionBlocksSummary — one card per attention block with rationale, status badge, confidence %; Blocks toggle labelled "developer detail"
 - [x] F22 S-Z: Layout polish — grammar fix (n() helper), red-outline "Accept anyway" button, hide zero stats, two-line block card, tighter spacing, remove "developer detail" qualifier
+- [x] F22 post-S-Z: Trust-aware `TrustBadge` in page header; recommendation strip icon+bold verdict+muted detail; 12-issue design review (bars w-28, strip spacing, attention heading, badge→location gap)
+- [x] F22 post-S-Z: Plan tab layout — Blocks inside card, auto-expand green state, effort to card header, in-card Accept/Accept-anyway button for all trust states
+- [x] F22 post-S-Z: Accept CTA consolidated to Plan tab only — removed from page header for all trust states
 
 ---
 
