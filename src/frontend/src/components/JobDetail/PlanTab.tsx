@@ -317,17 +317,23 @@ export default function PlanTab({
   const recommendation = trustReport
     ? trustReport.manual_todo > 0
       ? {
-          text: `Not ready to accept — ${n(trustReport.manual_todo, "block")} requires manual implementation before the pipeline will run correctly.`,
+          icon: "⚠",
+          label: "Not ready to accept",
+          detail: `${n(trustReport.manual_todo, "block")} requires manual implementation before the pipeline will run correctly.`,
           classes: "border-l-2 border-red-400 bg-red-50/60 text-red-800",
         }
       : trustReport.needs_review > 0
         ? {
-            text: `Review recommended — ${n(trustReport.needs_review, "block")} was translated but reconciliation flagged differences. A developer should verify the output before accepting.`,
+            icon: "⚠",
+            label: "Review recommended",
+            detail: `${n(trustReport.needs_review, "block")} was translated but reconciliation flagged differences. A developer should verify the output before accepting.`,
             classes: "border-l-2 border-amber-400 bg-amber-50/60 text-amber-800",
           }
         : {
-            text: `Ready to accept — all ${n(trustReport.auto_verified, "block")} auto-verified against reference data.`,
-            classes: "border-l-2 border-green-400 bg-green-50/60 text-green-800",
+            icon: "✓",
+            label: "Ready to accept",
+            detail: `All ${n(trustReport.auto_verified, "block")} auto-verified against reference data.`,
+            classes: "border-l-[3px] border-green-500 bg-green-50 text-green-800",
           }
     : null;
 
@@ -339,8 +345,13 @@ export default function PlanTab({
           <CardContent className="p-0 flex flex-col divide-y divide-border">
             {/* Go/no-go recommendation */}
             {recommendation && (
-              <div className={`px-5 py-2.5 text-xs font-medium ${recommendation.classes}`}>
-                {recommendation.text}
+              <div className={`px-5 py-3 flex items-baseline gap-2 ${recommendation.classes}`}>
+                <span className="text-sm font-bold shrink-0 leading-none">{recommendation.icon}</span>
+                <span className="text-xs">
+                  <span className="font-semibold">{recommendation.label}</span>
+                  {" — "}
+                  <span className="opacity-80">{recommendation.detail}</span>
+                </span>
               </div>
             )}
 
