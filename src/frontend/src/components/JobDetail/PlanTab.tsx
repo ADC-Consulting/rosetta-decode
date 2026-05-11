@@ -150,10 +150,12 @@ function AttentionBlocksSummary({
 
   if (attentionBlocks.length === 0) return null;
 
+  const count = attentionBlocks.length;
+
   return (
-    <div className="space-y-2">
-      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        Needs attention
+    <div className="px-5 py-3 space-y-2.5">
+      <p className="text-xs font-semibold text-muted-foreground">
+        Needs attention · {count} {count === 1 ? "block" : "blocks"}
       </p>
       {attentionBlocks.map((block) => {
         const isManual = block.strategy === "manual";
@@ -170,16 +172,17 @@ function AttentionBlocksSummary({
           >
             <div className="space-y-0.5">
               <span
-                className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full ${
+                className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${
                   isManual
                     ? "bg-red-100 text-red-800"
                     : "bg-amber-100 text-amber-800"
                 }`}
               >
-                {isManual ? "🔴 Manual implementation required" : "🟡 Review recommended"}
+                <span>{isManual ? "🔴" : "🟡"}</span>
+                <span>{isManual ? "Manual implementation required" : "Review recommended"}</span>
               </span>
               <p className="text-xs text-muted-foreground font-mono">
-                {block.source_file} · line {block.start_line} · {block.block_type.replace(/_/g, " ").toLowerCase()}
+                {block.source_file} · line {block.start_line} · {block.block_type}
                 {!isManual && ` · ${confidencePct}% confident`}
               </p>
             </div>
@@ -190,7 +193,7 @@ function AttentionBlocksSummary({
             )}
             {isManual && (
               <p className="text-xs text-red-700 font-medium">
-                Accepting now will run this block as placeholder code — the pipeline will be incomplete until a developer implements it.
+                ⚠ Accepting now will run this block as placeholder code — the pipeline will be incomplete until a developer implements it.
               </p>
             )}
           </div>
@@ -343,7 +346,7 @@ export default function PlanTab({
 
             {/* Summary text */}
             <div className="flex items-center px-5 py-2">
-              <p className="text-sm text-foreground leading-relaxed w-full">
+              <p className="text-sm text-foreground/80 leading-relaxed w-full">
                 {planData.summary ?? (
                   <span className="italic text-muted-foreground">
                     No summary available.
@@ -431,18 +434,18 @@ export default function PlanTab({
                 </>
               )}
             </div>
+
+            {/* Attention blocks — inside card, below stats */}
+            {hasAttentionBlocks && planData?.block_plans && (
+              <AttentionBlocksSummary
+                blockPlans={planData.block_plans}
+                trustBlocks={trustBlocks}
+              />
+            )}
           </CardContent>
         </Card>
 
-        {/* PM-facing attention summary — tightly coupled to plan card above */}
-        {hasAttentionBlocks && (
-          <AttentionBlocksSummary
-            blockPlans={planData.block_plans}
-            trustBlocks={trustBlocks}
-          />
-        )}
-
-        {/* Developer-facing block table — collapsed by default, separated from PM content */}
+        {/* Developer-facing block table — collapsed by default */}
         {planData?.block_plans && planData.block_plans.length > 0 && (
           <div className="space-y-2 pt-1">
             <button
@@ -459,6 +462,11 @@ export default function PlanTab({
               <Badge variant="secondary" className="text-xs font-mono">
                 {planData.block_plans.length}
               </Badge>
+              {trustReport && trustReport.manual_todo > 0 && (
+                <span className="text-xs text-red-600 font-medium">
+                  · {trustReport.manual_todo} not ready
+                </span>
+              )}
             </button>
             {!blocksCollapsed && (
               <BlockPlanTable

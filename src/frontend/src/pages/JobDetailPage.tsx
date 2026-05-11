@@ -7,7 +7,7 @@ import {
   refineJob,
   saveVersion,
 } from "@/api/jobs";
-import type { BlockOverride, JobStatusValue } from "@/api/types";
+import type { BlockOverride, JobStatusValue, TrustReportResponse } from "@/api/types";
 // import ChangelogFeed from "@/components/JobDetail/ChangelogFeed";
 import EditorTab from "@/components/JobDetail/EditorTab";
 import LineageTab from "@/components/JobDetail/LineageTab";
@@ -30,6 +30,18 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 export { STATUS_LABEL } from "@/components/JobDetail/constants";
 export { StatusBadge } from "@/components/JobDetail/StatusBadge";
+
+function TrustBadge({ trustReport }: { trustReport: TrustReportResponse }): React.ReactElement {
+  const isNotReady = trustReport.manual_todo > 0;
+  const isNeedsReview = !isNotReady && trustReport.needs_review > 0;
+  const bg = isNotReady ? "bg-red-600" : isNeedsReview ? "bg-amber-500" : "bg-emerald-600";
+  const label = isNotReady ? "Not Ready" : isNeedsReview ? "Needs Review" : "Ready to Accept";
+  return (
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 ${bg}`}>
+      <span className="text-xs font-medium text-white">{label}</span>
+    </span>
+  );
+}
 
 export default function JobDetailPage(): React.ReactElement {
   const { id = "" } = useParams<{ id: string }>();
@@ -196,7 +208,11 @@ export default function JobDetailPage(): React.ReactElement {
               <span className="text-xl font-semibold text-foreground truncate">
                 {job?.name ?? shortId}
               </span>
-              {job && <StatusBadge status={job.status} />}
+              {job && (
+                trustReportData && (job.status === "proposed" || job.status === "under_review")
+                  ? <TrustBadge trustReport={trustReportData} />
+                  : <StatusBadge status={job.status} />
+              )}
             </div>
           </div>
 
@@ -232,15 +248,20 @@ export default function JobDetailPage(): React.ReactElement {
                     </span>
                   )}
                   {trustReportData?.manual_todo ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setShowAcceptConfirm(true)}
-                      disabled={acceptMutation.isPending}
-                      className="cursor-pointer border-red-300 text-red-700 hover:bg-red-50"
-                    >
-                      Accept anyway
-                    </Button>
+                    <>
+                      <span className="text-xs text-red-600 font-medium">
+                        {trustReportData.manual_todo} block{trustReportData.manual_todo === 1 ? "" : "s"} not ready
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setShowAcceptConfirm(true)}
+                        disabled={acceptMutation.isPending}
+                        className="cursor-pointer border-red-300 text-red-700 hover:bg-red-50"
+                      >
+                        Accept anyway
+                      </Button>
+                    </>
                   ) : (
                     <Button
                       size="sm"
