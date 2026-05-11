@@ -93,104 +93,37 @@ function StatPill({
 }
 
 // ---------------------------------------------------------------------------
-// AssessmentPanel
+// AssessmentCallouts — slim inline notes derived from the pre-migration
+// assessment that remain relevant after the plan has been generated:
+// missing macro/include files and detected PII patterns.
 // ---------------------------------------------------------------------------
 
-const VERDICT_STYLES = {
-  red: { bg: "bg-red-50 border-red-200", badge: "bg-red-100 text-red-800", dot: "bg-red-500" },
-  amber: { bg: "bg-amber-50 border-amber-200", badge: "bg-amber-100 text-amber-800", dot: "bg-amber-500" },
-  green: { bg: "bg-green-50 border-green-200", badge: "bg-green-100 text-green-800", dot: "bg-green-500" },
-};
+function AssessmentCallouts({
+  assessment,
+}: {
+  assessment: AnalyseResponse;
+}): React.ReactElement | null {
+  const uniqueMissingDeps = [
+    ...new Map(assessment.missing_dependencies.map((d) => [d.name, d])).values(),
+  ];
+  const piiPatterns = [
+    ...new Set(assessment.sensitive_data_findings.map((f) => f.pattern)),
+  ];
 
-function AssessmentPanel({ assessment }: { assessment: AnalyseResponse }): React.ReactElement {
-  const { stats } = assessment;
-  const [collapsed, setCollapsed] = useState(true);
-
-  const verdict =
-    stats.needs_manual > 0 ? "red" : stats.review_recommended > 0 || stats.best_effort > 0 ? "amber" : "green";
-  const style = VERDICT_STYLES[verdict];
-
-  // Show "< 1 hr" rather than "0–0.1 hr" for small pipelines — a zero looks like a bug.
-  const lowHr = Math.round((stats.estimated_minutes_low / 60) * 10) / 10;
-  const highHr = Math.round((stats.estimated_minutes_high / 60) * 10) / 10;
-  const effortStr = highHr < 1 ? "< 1 hr" : lowHr === highHr ? `~${lowHr} hr` : `${lowHr}–${highHr} hr`;
-
-  // Include all tier counts inline so the expanded tile grid is not needed.
-  const summaryLine =
-    verdict === "red"
-      ? `${stats.needs_manual} cannot auto-convert · ${stats.review_recommended + stats.best_effort} review · ${stats.auto_converts} auto · ${effortStr}`
-      : verdict === "amber"
-        ? `${stats.review_recommended + stats.best_effort} need review · ${stats.auto_converts} auto-convert · ${effortStr}`
-        : `All ${stats.auto_converts} blocks auto-convert · ${effortStr}`;
-
-  const uniqueMissingDeps = [...new Map(assessment.missing_dependencies.map((d) => [d.name, d])).values()];
-
-  // needs_manual is already in the summary line — only show blockers for things not already surfaced there.
-  const hasBlockers = uniqueMissingDeps.length > 0 || assessment.circular_dependencies.length > 0;
-
-  // Only show the expand toggle when there is detail worth showing.
-  const hasExpandableDetail =
-    assessment.sensitive_data_findings.length > 0 || uniqueMissingDeps.length > 0;
+  if (uniqueMissingDeps.length === 0 && piiPatterns.length === 0) return null;
 
   return (
-    <div className={`rounded-lg border p-4 space-y-3 ${style.bg}`}>
-      {/* Header row */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="space-y-1 flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${style.badge}`}>
-              {verdict === "red" ? "🔴 Not ready" : verdict === "amber" ? "🟡 Review needed" : "🟢 Ready"}
-            </span>
-            <span className="text-xs text-muted-foreground">{summaryLine}</span>
-          </div>
-          {assessment.pipeline_description && (
-            <p className="text-xs text-foreground/80 leading-relaxed line-clamp-2">
-              {assessment.pipeline_description}
-            </p>
-          )}
-        </div>
-        {hasExpandableDetail && (
-          <button
-            type="button"
-            onClick={() => setCollapsed((v) => !v)}
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground shrink-0 cursor-pointer"
-          >
-            {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
-            {collapsed ? "Details" : "Hide"}
-          </button>
-        )}
-      </div>
-
-      {/* Blocker row — missing deps and circular deps only; needs_manual is already in the summary line */}
-      {hasBlockers && (
-        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
-          {uniqueMissingDeps.length > 0 && (
-            <span className="text-amber-700">⚠ {uniqueMissingDeps.length} missing macro/include file(s)</span>
-          )}
-          {assessment.circular_dependencies.length > 0 && (
-            <span className="text-red-700">⚠ Circular dependency detected</span>
-          )}
-        </div>
+    <div className="flex flex-wrap gap-x-5 gap-y-1 px-5 py-2 text-xs border-t border-border">
+      {uniqueMissingDeps.length > 0 && (
+        <span className="text-amber-700">
+          ⚠ {uniqueMissingDeps.length} missing macro/include file(s):{" "}
+          {uniqueMissingDeps.map((d) => d.name.split("/").pop() ?? d.name).join(", ")}
+        </span>
       )}
-
-      {/* Expanded detail: sensitive data patterns and missing dep names.
-          The tier counts are already in the summary line so no tile grid here. */}
-      {hasExpandableDetail && !collapsed && (
-        <div className="space-y-3 pt-1 border-t border-current/10">
-          {assessment.sensitive_data_findings.length > 0 && (
-            <div className="text-xs text-red-700 bg-red-50 rounded p-2">
-              🔒 Sensitive data detected:{" "}
-              {[...new Set(assessment.sensitive_data_findings.map((f) => f.pattern))].join(", ")}
-            </div>
-          )}
-          {uniqueMissingDeps.length > 0 && (
-            <ul className="text-xs text-muted-foreground space-y-0.5 list-disc list-inside">
-              {uniqueMissingDeps.map((d) => (
-                <li key={d.name}>{d.name.split("/").pop() ?? d.name}</li>
-              ))}
-            </ul>
-          )}
-        </div>
+      {piiPatterns.length > 0 && (
+        <span className="text-orange-700">
+          🔒 Sensitive data detected: {piiPatterns.join(", ")}
+        </span>
       )}
     </div>
   );
@@ -253,31 +186,16 @@ export default function PlanTab({
 
   if (!isReviewable) {
     return (
-      <div className="space-y-4">
-        {assessmentData && (
-          <>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pre-migration assessment</p>
-            <AssessmentPanel assessment={assessmentData} />
-          </>
-        )}
-        <p className="text-sm text-muted-foreground">
-          Migration plan available once migration completes.
-        </p>
-      </div>
+      <p className="text-sm text-muted-foreground">
+        Migration plan available once migration completes.
+      </p>
     );
   }
 
   if (isLoading) {
     return (
-      <div className="space-y-4">
-        {assessmentData && (
-          <>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pre-migration assessment</p>
-            <AssessmentPanel assessment={assessmentData} />
-          </>
-        )}
+      <div className="space-y-3">
         <Skeleton className="h-28 w-full rounded-lg" />
-        <Skeleton className="h-8 w-full rounded-md" />
         <div className="space-y-2">
           {Array.from({ length: 5 }).map((_, i) => (
             <Skeleton key={i} className="h-10 w-full rounded" />
@@ -289,17 +207,9 @@ export default function PlanTab({
 
   if (!planData) {
     return (
-      <div className="space-y-4">
-        {assessmentData && (
-          <>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pre-migration assessment</p>
-            <AssessmentPanel assessment={assessmentData} />
-          </>
-        )}
-        <p className="text-sm text-muted-foreground">
-          No migration plan available for this job.
-        </p>
-      </div>
+      <p className="text-sm text-muted-foreground">
+        No migration plan available for this job.
+      </p>
     );
   }
 
@@ -321,19 +231,6 @@ export default function PlanTab({
   return (
     <TooltipProvider>
       <div className="h-full min-h-0 overflow-y-auto space-y-4 pb-6">
-        {/* Pre-migration assessment */}
-        {assessmentData && (
-          <>
-            <div className="flex items-baseline gap-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pre-migration assessment</p>
-              <span className="text-xs text-muted-foreground/50">predicted before run</span>
-            </div>
-            <AssessmentPanel assessment={assessmentData} />
-          </>
-        )}
-
-        {/* Migration plan */}
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Migration plan</p>
         <Card className="border-border bg-muted/30">
           <CardContent className="p-0 flex flex-col divide-y divide-border">
             {/* Summary text */}
@@ -347,9 +244,11 @@ export default function PlanTab({
               </p>
             </div>
 
-            {/* Stats row — left-aligned */}
+            {/* Assessment callouts — missing deps and PII only, if present */}
+            {assessmentData && <AssessmentCallouts assessment={assessmentData} />}
+
+            {/* Stats row */}
             <div className="flex items-center justify-start gap-4 px-5 py-2 flex-wrap">
-              {/* Confidence bar — only shown once trust report has loaded */}
               {trustReport && (
                 <>
                   <div className="flex items-center gap-2">
@@ -368,12 +267,10 @@ export default function PlanTab({
                       {confidencePct}%
                     </span>
                   </div>
-
                   <Separator orientation="vertical" className="h-4 hidden sm:block" />
                 </>
               )}
 
-              {/* Risk bar */}
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground shrink-0">
                   Risk
@@ -391,7 +288,6 @@ export default function PlanTab({
                 </span>
               </div>
 
-              {/* Stat pills */}
               {trustReport && (
                 <>
                   <Separator orientation="vertical" className="h-4 hidden sm:block" />
@@ -420,7 +316,7 @@ export default function PlanTab({
               )}
             </div>
 
-            {/* Blocks toggle — nested inside the card to show it belongs to the plan */}
+            {/* Blocks toggle */}
             {planData?.block_plans && planData.block_plans.length > 0 && (
               <div className="px-5 py-2">
                 <button
