@@ -382,14 +382,33 @@ export default function PlanTab({
                     <span className="opacity-80">{recommendation.detail}</span>
                   </span>
                 </div>
-                {isGreen && isAcceptable && onAccept && (
-                  <Button
-                    size="sm"
-                    onClick={onAccept}
-                    className="cursor-pointer shrink-0 ml-3 bg-green-700 hover:bg-green-800 text-white text-xs h-7 px-3"
-                  >
-                    Accept migration
-                  </Button>
+                {isAcceptable && onAccept && (
+                  isGreen ? (
+                    <Button
+                      size="sm"
+                      onClick={onAccept}
+                      className="cursor-pointer shrink-0 ml-3 bg-green-700 hover:bg-green-800 text-white text-xs h-7 px-3"
+                    >
+                      Accept migration
+                    </Button>
+                  ) : trustReport?.manual_todo ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={onAccept}
+                      className="cursor-pointer shrink-0 ml-3 border-red-300 text-red-700 hover:bg-red-50 text-xs h-7 px-3"
+                    >
+                      Accept anyway
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      onClick={onAccept}
+                      className="cursor-pointer shrink-0 ml-3 text-xs h-7 px-3"
+                    >
+                      Accept migration
+                    </Button>
+                  )
                 )}
               </div>
             )}

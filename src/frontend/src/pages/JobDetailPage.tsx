@@ -240,41 +240,11 @@ export default function JobDetailPage(): React.ReactElement {
             </TabsList>
 
             <div className="ml-auto flex items-center gap-2">
-              {(job?.status === "proposed" || job?.status === "under_review") && (
-                <>
-                  {job?.status === "under_review" && (
-                    <span className="text-sm text-amber-600 font-medium px-2 py-1 bg-amber-50 rounded border border-amber-200">
-                      ⚠ Under review — reconciliation failed
-                    </span>
-                  )}
-                  {trustReportData?.manual_todo ? (
-                    <>
-                      <span className="text-xs text-red-600 font-medium">
-                        {trustReportData.manual_todo} block{trustReportData.manual_todo === 1 ? "" : "s"} not ready
-                      </span>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setShowAcceptConfirm(true)}
-                        disabled={acceptMutation.isPending}
-                        className="cursor-pointer border-red-300 text-red-700 hover:bg-red-50"
-                      >
-                        Accept anyway
-                      </Button>
-                    </>
-                  ) : (
-                    <Button
-                      size="sm"
-                      onClick={() => setShowAcceptConfirm(true)}
-                      disabled={acceptMutation.isPending}
-                      className="cursor-pointer"
-                    >
-                      Accept migration
-                    </Button>
-                  )}
-                </>
+              {job?.status === "under_review" && (
+                <span className="text-sm text-amber-600 font-medium px-2 py-1 bg-amber-50 rounded border border-amber-200">
+                  ⚠ Under review — reconciliation failed
+                </span>
               )}
-
               {job?.status === "accepted" && (
                 <span className="text-sm text-emerald-600 font-medium">
                   ✓ Accepted
