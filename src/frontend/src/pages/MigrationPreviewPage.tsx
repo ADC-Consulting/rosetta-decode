@@ -611,9 +611,10 @@ export default function MigrationPreviewPage(): React.ReactElement {
         acknowledgments: ackRecords,
         sensitive_data_confirmed: sensitiveConfirmed,
         assessed_at: new Date().toISOString(),
+        analyse_response: assessment,
       };
 
-      await submitMigration(
+      const result = await submitMigration(
         state.sasFiles ?? [],
         state.refDataset,
         state.zipFile,
@@ -624,7 +625,7 @@ export default function MigrationPreviewPage(): React.ReactElement {
         snapshot,
       );
 
-      navigate("/jobs");
+      navigate(`/jobs/${result.job_id}`);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Submission failed");
     } finally {
