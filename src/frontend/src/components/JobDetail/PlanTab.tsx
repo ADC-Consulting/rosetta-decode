@@ -270,7 +270,12 @@ export default function PlanTab({
   if (!isReviewable) {
     return (
       <div className="space-y-4">
-        {assessmentData && <AssessmentPanel assessment={assessmentData} />}
+        {assessmentData && (
+          <>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pre-migration assessment</p>
+            <AssessmentPanel assessment={assessmentData} />
+          </>
+        )}
         <p className="text-sm text-muted-foreground">
           Migration plan available once migration completes.
         </p>
@@ -281,7 +286,12 @@ export default function PlanTab({
   if (isLoading) {
     return (
       <div className="space-y-4">
-        {assessmentData && <AssessmentPanel assessment={assessmentData} />}
+        {assessmentData && (
+          <>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pre-migration assessment</p>
+            <AssessmentPanel assessment={assessmentData} />
+          </>
+        )}
         <Skeleton className="h-28 w-full rounded-lg" />
         <Skeleton className="h-8 w-full rounded-md" />
         <div className="space-y-2">
@@ -296,7 +306,12 @@ export default function PlanTab({
   if (!planData) {
     return (
       <div className="space-y-4">
-        {assessmentData && <AssessmentPanel assessment={assessmentData} />}
+        {assessmentData && (
+          <>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pre-migration assessment</p>
+            <AssessmentPanel assessment={assessmentData} />
+          </>
+        )}
         <p className="text-sm text-muted-foreground">
           No migration plan available for this job.
         </p>
@@ -322,10 +337,16 @@ export default function PlanTab({
   return (
     <TooltipProvider>
       <div className="h-full min-h-0 overflow-y-auto space-y-4 pb-6">
-        {/* Pre-migration assessment panel */}
-        {assessmentData && <AssessmentPanel assessment={assessmentData} />}
+        {/* Pre-migration assessment */}
+        {assessmentData && (
+          <>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pre-migration assessment</p>
+            <AssessmentPanel assessment={assessmentData} />
+          </>
+        )}
 
-        {/* Single summary card */}
+        {/* Migration plan */}
+        {assessmentData && <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Migration plan</p>}
         <Card className="border-border bg-muted/30">
           <CardContent className="p-0 flex flex-col divide-y divide-border">
             {/* Top — summary text, full width */}
