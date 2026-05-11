@@ -258,6 +258,7 @@
 - [x] F22 S-Q: `make test` exits 0 (post bug-fix pass)
 - [x] F22 S-R: Navigate to `/jobs/{id}` after submit (was `navigate("/jobs")`)
 - [x] F22 S-S: Persist full `AnalyseResponse` in assessment snapshot; `GET /jobs/{id}/assessment` endpoint; `AssessmentPanel` in PlanTab
+- [x] F22 S-T: AssessmentPanel UX polish — effort floor, inline tier counts, remove tile grid, hide toggle when empty, temporal subtitles, blocks hint
 
 ---
 

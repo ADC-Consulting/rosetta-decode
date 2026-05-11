@@ -205,6 +205,36 @@ The legend overlay is updated to reflect this: SAS file node legend entry replac
 **Done when:** `make test` green with no ruff, mypy, tsc, or eslint errors.
 - [x] done
 
+---
+
+### S-R: Navigate to `/jobs/{id}` after submit
+**File:** `src/frontend/src/pages/MigrationPreviewPage.tsx`
+**Depends on:** none
+**Done when:** After a successful POST /migrate, `navigate(\`/jobs/${result.job_id}\`)` is called instead of `navigate("/jobs")`, so the user lands directly on the new job's detail page.
+- [x] done
+
+---
+
+### S-S: Persist assessment in Plan tab
+**Files:** `src/frontend/src/pages/MigrationPreviewPage.tsx`, `src/backend/api/routes/jobs.py`, `src/frontend/src/api/jobs.ts`, `src/frontend/src/components/JobDetail/PlanTab.tsx`, `tests/test_analyse_route.py`
+**Depends on:** none
+**Done when:** Full `AnalyseResponse` is persisted in `job.assessment.analyse_response` at submit time; `GET /jobs/{id}/assessment` endpoint returns it (204 if absent); `getJobAssessment()` API client fetches it; `AssessmentPanel` in PlanTab displays verdict, effort, blockers, and expandable details above the migration plan.
+- [x] done
+
+---
+
+### S-T: Plan tab AssessmentPanel UX polish
+**File:** `src/frontend/src/components/JobDetail/PlanTab.tsx`
+**Depends on:** S-S
+**Done when:**
+- Effort estimate shows `"< 1 hr"` floor (not `"0–0.1 hr"`) when high estimate < 1 hr
+- Summary line includes all tier counts inline (e.g. "3 need review · 2 auto-convert · < 1 hr"), removing the need for a tile grid
+- 4-tile tier count grid removed from expanded section (data now in summary line)
+- Expand/collapse toggle hidden when there is no expandable detail (no PII findings and no unique missing deps)
+- Section labels show temporal subtitles: "Pre-migration assessment · predicted before run" and "Migration plan · actual results after run"
+- Blocks row in the plan card shows "· N need attention" hint when `needs_review + manual_todo > 0`
+- [x] done
+
 ## Dependencies on other features
 
 - F21 (complete) — all data fields sourced from `AnalyseResponse`; `PreviewLineageGraph` component already exists at `src/frontend/src/components/PreviewLineageGraph.tsx`

@@ -110,20 +110,26 @@ function AssessmentPanel({ assessment }: { assessment: AnalyseResponse }): React
     stats.needs_manual > 0 ? "red" : stats.review_recommended > 0 || stats.best_effort > 0 ? "amber" : "green";
   const style = VERDICT_STYLES[verdict];
 
-  const lowHr = Math.round(stats.estimated_minutes_low / 60 * 10) / 10;
-  const highHr = Math.round(stats.estimated_minutes_high / 60 * 10) / 10;
-  const effortStr = `${lowHr}–${highHr} hr`;
+  // Show "< 1 hr" rather than "0–0.1 hr" for small pipelines — a zero looks like a bug.
+  const lowHr = Math.round((stats.estimated_minutes_low / 60) * 10) / 10;
+  const highHr = Math.round((stats.estimated_minutes_high / 60) * 10) / 10;
+  const effortStr = highHr < 1 ? "< 1 hr" : lowHr === highHr ? `~${lowHr} hr` : `${lowHr}–${highHr} hr`;
 
+  // Include all tier counts inline so the expanded tile grid is not needed.
   const summaryLine =
     verdict === "red"
-      ? `${stats.needs_manual} block(s) cannot auto-convert · ${effortStr} manual effort`
+      ? `${stats.needs_manual} cannot auto-convert · ${stats.review_recommended + stats.best_effort} review · ${stats.auto_converts} auto · ${effortStr}`
       : verdict === "amber"
-        ? `${stats.review_recommended + stats.best_effort} block(s) need developer review · ${effortStr}`
-        : `All blocks convert automatically · ${effortStr} review`;
+        ? `${stats.review_recommended + stats.best_effort} need review · ${stats.auto_converts} auto-convert · ${effortStr}`
+        : `All ${stats.auto_converts} blocks auto-convert · ${effortStr}`;
 
   const uniqueMissingDeps = [...new Map(assessment.missing_dependencies.map((d) => [d.name, d])).values()];
   const hasBlockers =
     stats.needs_manual > 0 || uniqueMissingDeps.length > 0 || assessment.circular_dependencies.length > 0;
+
+  // Only show the expand toggle when there is detail worth showing.
+  const hasExpandableDetail =
+    assessment.sensitive_data_findings.length > 0 || uniqueMissingDeps.length > 0;
 
   return (
     <div className={`rounded-lg border p-4 space-y-3 ${style.bg}`}>
@@ -142,13 +148,15 @@ function AssessmentPanel({ assessment }: { assessment: AnalyseResponse }): React
             </p>
           )}
         </div>
-        <button
-          type="button"
-          onClick={() => setCollapsed((v) => !v)}
-          className="text-xs text-muted-foreground hover:text-foreground shrink-0 cursor-pointer"
-        >
-          {collapsed ? "Show details" : "Hide"}
-        </button>
+        {hasExpandableDetail && (
+          <button
+            type="button"
+            onClick={() => setCollapsed((v) => !v)}
+            className="text-xs text-muted-foreground hover:text-foreground shrink-0 cursor-pointer"
+          >
+            {collapsed ? "Show details" : "Hide"}
+          </button>
+        )}
       </div>
 
       {/* Blocker row — always visible when blockers exist */}
@@ -166,45 +174,25 @@ function AssessmentPanel({ assessment }: { assessment: AnalyseResponse }): React
         </div>
       )}
 
-      {/* Expanded detail */}
-      {!collapsed && (
+      {/* Expanded detail: sensitive data patterns and missing dep names.
+          The tier counts are already in the summary line so no tile grid here. */}
+      {hasExpandableDetail && !collapsed && (
         <div className="space-y-3 pt-1 border-t border-current/10">
-          {/* Tier counts */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {[
-              { label: "Cannot auto-convert", count: stats.needs_manual, color: "text-red-700" },
-              { label: "Needs review", count: stats.review_recommended, color: "text-amber-700" },
-              { label: "Best-effort", count: stats.best_effort, color: "text-blue-700" },
-              { label: "Auto-converts", count: stats.auto_converts, color: "text-green-700" },
-            ].map(({ label, count, color }) => (
-              <div key={label} className="bg-white/60 rounded p-2 text-center">
-                <div className={`text-base font-bold tabular-nums ${color}`}>{count}</div>
-                <div className="text-[10px] text-muted-foreground leading-tight">{label}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Sensitive data */}
           {assessment.sensitive_data_findings.length > 0 && (
             <div className="text-xs text-red-700 bg-red-50 rounded p-2">
               🔒 Sensitive data detected:{" "}
               {[...new Set(assessment.sensitive_data_findings.map((f) => f.pattern))].join(", ")}
             </div>
           )}
-
-          {/* Missing deps detail */}
           {uniqueMissingDeps.length > 0 && (
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-amber-700">Missing dependencies</p>
-              <ul className="text-xs text-muted-foreground space-y-0.5 list-disc list-inside">
-                {uniqueMissingDeps.slice(0, 5).map((d) => (
-                  <li key={d.name}>{d.name.split("/").pop() ?? d.name}</li>
-                ))}
-                {uniqueMissingDeps.length > 5 && (
-                  <li className="text-muted-foreground/60">+{uniqueMissingDeps.length - 5} more</li>
-                )}
-              </ul>
-            </div>
+            <ul className="text-xs text-muted-foreground space-y-0.5 list-disc list-inside">
+              {uniqueMissingDeps.slice(0, 5).map((d) => (
+                <li key={d.name}>{d.name.split("/").pop() ?? d.name}</li>
+              ))}
+              {uniqueMissingDeps.length > 5 && (
+                <li className="text-muted-foreground/60">+{uniqueMissingDeps.length - 5} more</li>
+              )}
+            </ul>
           )}
         </div>
       )}
@@ -340,13 +328,21 @@ export default function PlanTab({
         {/* Pre-migration assessment */}
         {assessmentData && (
           <>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pre-migration assessment</p>
+            <div className="flex items-baseline gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pre-migration assessment</p>
+              <span className="text-xs text-muted-foreground/50">predicted before run</span>
+            </div>
             <AssessmentPanel assessment={assessmentData} />
           </>
         )}
 
         {/* Migration plan */}
-        {assessmentData && <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Migration plan</p>}
+        {assessmentData && (
+          <div className="flex items-baseline gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Migration plan</p>
+            <span className="text-xs text-muted-foreground/50">actual results after run</span>
+          </div>
+        )}
         <Card className="border-border bg-muted/30">
           <CardContent className="p-0 flex flex-col divide-y divide-border">
             {/* Top — summary text, full width */}
@@ -462,6 +458,11 @@ export default function PlanTab({
               <Badge variant="secondary" className="text-xs font-mono">
                 {planData.block_plans.length}
               </Badge>
+              {trustReport && trustReport.needs_review + trustReport.manual_todo > 0 && (
+                <span className="text-xs text-amber-600">
+                  · {trustReport.needs_review + trustReport.manual_todo} need attention
+                </span>
+              )}
             </button>
             {!blocksCollapsed && (
               <BlockPlanTable
