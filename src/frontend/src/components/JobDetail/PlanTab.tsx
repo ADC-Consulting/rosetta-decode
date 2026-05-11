@@ -154,8 +154,8 @@ function AttentionBlocksSummary({
 
   return (
     <div className="px-5 py-3 space-y-2.5">
-      <p className="text-xs font-semibold text-muted-foreground">
-        Needs attention · {count} {count === 1 ? "block" : "blocks"}
+      <p className="text-xs font-semibold text-foreground/60">
+        {count === 1 ? "1 block needs attention" : `${count} blocks need attention`}
       </p>
       {attentionBlocks.map((block) => {
         const isManual = block.strategy === "manual";
@@ -170,7 +170,7 @@ function AttentionBlocksSummary({
                 : "border-amber-200 bg-amber-50/50"
             }`}
           >
-            <div className="space-y-0.5">
+            <div className="space-y-1.5">
               <span
                 className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${
                   isManual
@@ -345,7 +345,7 @@ export default function PlanTab({
           <CardContent className="p-0 flex flex-col divide-y divide-border">
             {/* Go/no-go recommendation */}
             {recommendation && (
-              <div className={`px-5 py-3 flex items-baseline gap-2 ${recommendation.classes}`}>
+              <div className={`px-5 pt-4 pb-3 flex items-baseline gap-2 ${recommendation.classes}`}>
                 <span className="text-sm font-bold shrink-0 leading-none">{recommendation.icon}</span>
                 <span className="text-xs">
                   <span className="font-semibold">{recommendation.label}</span>
@@ -379,7 +379,7 @@ export default function PlanTab({
                     </span>
                     <Progress
                       value={confidencePct}
-                      className="h-1.5 w-20 **:data-[slot=progress-indicator]:bg-(--bar-fill)"
+                      className="h-1.5 w-28 **:data-[slot=progress-indicator]:bg-(--bar-fill)"
                       style={{ "--bar-fill": confidenceColor } as React.CSSProperties}
                     />
                     <span
@@ -397,7 +397,7 @@ export default function PlanTab({
                 <span className="text-xs text-muted-foreground shrink-0">Risk</span>
                 <Progress
                   value={riskPctMap[planData.overall_risk] ?? 0}
-                  className="h-1.5 w-20 **:data-[slot=progress-indicator]:bg-(--bar-fill)"
+                  className="h-1.5 w-28 **:data-[slot=progress-indicator]:bg-(--bar-fill)"
                   style={{ "--bar-fill": riskBar.color } as React.CSSProperties}
                 />
                 <span
