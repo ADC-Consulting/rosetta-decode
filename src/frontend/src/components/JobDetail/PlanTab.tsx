@@ -119,8 +119,7 @@ function AssessmentCallouts({
       )}
       {uniqueMissingDeps.length > 0 && (
         <span className="text-amber-700">
-          ⚠ {uniqueMissingDeps.length} missing macro/include file(s):{" "}
-          {uniqueMissingDeps.map((d) => d.name.split("/").pop() ?? d.name).join(", ")}
+          ⚠ {uniqueMissingDeps.length} file{uniqueMissingDeps.length > 1 ? "s" : ""} referenced but not uploaded — translations for dependent blocks may be incomplete ({uniqueMissingDeps.map((d) => d.name.split("/").pop() ?? d.name).join(", ")})
         </span>
       )}
       {piiPatterns.length > 0 && (
@@ -194,6 +193,11 @@ function AttentionBlocksSummary({
             {block.rationale && (
               <p className="text-xs text-foreground/70 leading-relaxed">
                 {block.rationale}
+              </p>
+            )}
+            {isManual && (
+              <p className="text-xs text-red-700 font-medium">
+                Accepting now will run this block as placeholder code — the pipeline will be incomplete until a developer implements it.
               </p>
             )}
           </div>
@@ -313,12 +317,36 @@ export default function PlanTab({
   const hasAttentionBlocks =
     trustReport && (trustReport.needs_review + trustReport.manual_todo) > 0;
 
+  const recommendation = trustReport
+    ? trustReport.manual_todo > 0
+      ? {
+          text: `Not ready to accept — ${trustReport.manual_todo} block${trustReport.manual_todo > 1 ? "s" : ""} require manual implementation before the pipeline will run correctly.`,
+          classes: "border-l-2 border-red-400 bg-red-50/60 text-red-800",
+        }
+      : trustReport.needs_review > 0
+        ? {
+            text: `Review recommended — ${trustReport.needs_review} block${trustReport.needs_review > 1 ? "s" : ""} were translated but reconciliation flagged differences. A developer should verify the output before accepting.`,
+            classes: "border-l-2 border-amber-400 bg-amber-50/60 text-amber-800",
+          }
+        : {
+            text: `Ready to accept — all ${trustReport.auto_verified} block${trustReport.auto_verified !== 1 ? "s" : ""} auto-verified against reference data.`,
+            classes: "border-l-2 border-green-400 bg-green-50/60 text-green-800",
+          }
+    : null;
+
   return (
     <TooltipProvider>
       <div className="h-full min-h-0 overflow-y-auto space-y-4 pb-6">
         {/* Plan summary card */}
-        <Card className="border-border bg-muted/30">
+        <Card className="overflow-hidden border-border bg-muted/30">
           <CardContent className="p-0 flex flex-col divide-y divide-border">
+            {/* Go/no-go recommendation */}
+            {recommendation && (
+              <div className={`px-5 py-2.5 text-xs font-medium ${recommendation.classes}`}>
+                {recommendation.text}
+              </div>
+            )}
+
             {/* Summary text */}
             <div className="flex items-center px-5 py-2">
               <p className="text-sm text-foreground leading-relaxed w-full">
