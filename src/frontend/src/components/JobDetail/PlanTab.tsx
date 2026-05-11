@@ -124,8 +124,9 @@ function AssessmentPanel({ assessment }: { assessment: AnalyseResponse }): React
         : `All ${stats.auto_converts} blocks auto-convert · ${effortStr}`;
 
   const uniqueMissingDeps = [...new Map(assessment.missing_dependencies.map((d) => [d.name, d])).values()];
-  const hasBlockers =
-    stats.needs_manual > 0 || uniqueMissingDeps.length > 0 || assessment.circular_dependencies.length > 0;
+
+  // needs_manual is already in the summary line — only show blockers for things not already surfaced there.
+  const hasBlockers = uniqueMissingDeps.length > 0 || assessment.circular_dependencies.length > 0;
 
   // Only show the expand toggle when there is detail worth showing.
   const hasExpandableDetail =
@@ -152,19 +153,17 @@ function AssessmentPanel({ assessment }: { assessment: AnalyseResponse }): React
           <button
             type="button"
             onClick={() => setCollapsed((v) => !v)}
-            className="text-xs text-muted-foreground hover:text-foreground shrink-0 cursor-pointer"
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground shrink-0 cursor-pointer"
           >
-            {collapsed ? "Show details" : "Hide"}
+            {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+            {collapsed ? "Details" : "Hide"}
           </button>
         )}
       </div>
 
-      {/* Blocker row — always visible when blockers exist */}
+      {/* Blocker row — missing deps and circular deps only; needs_manual is already in the summary line */}
       {hasBlockers && (
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
-          {stats.needs_manual > 0 && (
-            <span className="text-red-700">⚠ {stats.needs_manual} block(s) require manual implementation</span>
-          )}
           {uniqueMissingDeps.length > 0 && (
             <span className="text-amber-700">⚠ {uniqueMissingDeps.length} missing macro/include file(s)</span>
           )}
@@ -186,12 +185,9 @@ function AssessmentPanel({ assessment }: { assessment: AnalyseResponse }): React
           )}
           {uniqueMissingDeps.length > 0 && (
             <ul className="text-xs text-muted-foreground space-y-0.5 list-disc list-inside">
-              {uniqueMissingDeps.slice(0, 5).map((d) => (
+              {uniqueMissingDeps.map((d) => (
                 <li key={d.name}>{d.name.split("/").pop() ?? d.name}</li>
               ))}
-              {uniqueMissingDeps.length > 5 && (
-                <li className="text-muted-foreground/60">+{uniqueMissingDeps.length - 5} more</li>
-              )}
             </ul>
           )}
         </div>
@@ -337,12 +333,10 @@ export default function PlanTab({
         )}
 
         {/* Migration plan */}
-        {assessmentData && (
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Migration plan</p>
-        )}
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Migration plan</p>
         <Card className="border-border bg-muted/30">
           <CardContent className="p-0 flex flex-col divide-y divide-border">
-            {/* Top — summary text, full width */}
+            {/* Summary text */}
             <div className="flex items-center px-5 py-2">
               <p className="text-sm text-foreground leading-relaxed w-full">
                 {planData.summary ?? (
@@ -353,32 +347,31 @@ export default function PlanTab({
               </p>
             </div>
 
-            {/* Bottom — stats centered */}
-            <div className="flex items-center justify-center gap-4 px-5 py-2 flex-wrap">
-              {/* Confidence bar */}
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground shrink-0">
-                  Confidence
-                </span>
-                <Progress
-                  value={confidencePct}
-                  className="h-1.5 w-20 **:data-[slot=progress-indicator]:bg-(--bar-fill)"
-                  style={
-                    { "--bar-fill": confidenceColor } as React.CSSProperties
-                  }
-                />
-                <span
-                  className="text-xs font-semibold tabular-nums"
-                  style={{ color: confidenceColor }}
-                >
-                  {confidencePct}%
-                </span>
-              </div>
+            {/* Stats row — left-aligned */}
+            <div className="flex items-center justify-start gap-4 px-5 py-2 flex-wrap">
+              {/* Confidence bar — only shown once trust report has loaded */}
+              {trustReport && (
+                <>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground shrink-0">
+                      Confidence
+                    </span>
+                    <Progress
+                      value={confidencePct}
+                      className="h-1.5 w-20 **:data-[slot=progress-indicator]:bg-(--bar-fill)"
+                      style={{ "--bar-fill": confidenceColor } as React.CSSProperties}
+                    />
+                    <span
+                      className="text-xs font-semibold tabular-nums"
+                      style={{ color: confidenceColor }}
+                    >
+                      {confidencePct}%
+                    </span>
+                  </div>
 
-              <Separator
-                orientation="vertical"
-                className="h-4 hidden sm:block"
-              />
+                  <Separator orientation="vertical" className="h-4 hidden sm:block" />
+                </>
+              )}
 
               {/* Risk bar */}
               <div className="flex items-center gap-2">
@@ -401,10 +394,7 @@ export default function PlanTab({
               {/* Stat pills */}
               {trustReport && (
                 <>
-                  <Separator
-                    orientation="vertical"
-                    className="h-4 hidden sm:block"
-                  />
+                  <Separator orientation="vertical" className="h-4 hidden sm:block" />
                   <StatPill
                     count={trustReport.auto_verified}
                     label="Auto-verified"
@@ -429,52 +419,48 @@ export default function PlanTab({
                 </>
               )}
             </div>
+
+            {/* Blocks toggle — nested inside the card to show it belongs to the plan */}
+            {planData?.block_plans && planData.block_plans.length > 0 && (
+              <div className="px-5 py-2">
+                <button
+                  type="button"
+                  onClick={() => setBlocksCollapsed((v) => !v)}
+                  className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+                >
+                  {blocksCollapsed ? (
+                    <ChevronRight size={14} className="text-muted-foreground shrink-0" />
+                  ) : (
+                    <ChevronDown size={14} className="text-muted-foreground shrink-0" />
+                  )}
+                  <h2 className="text-sm font-semibold text-foreground">Blocks</h2>
+                  <Badge variant="secondary" className="text-xs font-mono">
+                    {planData.block_plans.length}
+                  </Badge>
+                  {trustReport && trustReport.needs_review + trustReport.manual_todo > 0 && (
+                    <span className="text-xs text-amber-600">
+                      · {trustReport.needs_review + trustReport.manual_todo} need attention
+                    </span>
+                  )}
+                </button>
+              </div>
+            )}
           </CardContent>
         </Card>
 
-        {/* Block plan section */}
-        {planData?.block_plans && planData.block_plans.length > 0 && (
-          <div className="space-y-2">
-            <button
-              type="button"
-              onClick={() => setBlocksCollapsed((v) => !v)}
-              className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
-            >
-              {blocksCollapsed ? (
-                <ChevronRight
-                  size={14}
-                  className="text-muted-foreground shrink-0"
-                />
-              ) : (
-                <ChevronDown
-                  size={14}
-                  className="text-muted-foreground shrink-0"
-                />
-              )}
-              <h2 className="text-sm font-semibold text-foreground">Blocks</h2>
-              <Badge variant="secondary" className="text-xs font-mono">
-                {planData.block_plans.length}
-              </Badge>
-              {trustReport && trustReport.needs_review + trustReport.manual_todo > 0 && (
-                <span className="text-xs text-amber-600">
-                  · {trustReport.needs_review + trustReport.manual_todo} need attention
-                </span>
-              )}
-            </button>
-            {!blocksCollapsed && (
-              <BlockPlanTable
-                blockPlans={planData.block_plans}
-                isProposed={isProposed}
-                trustBlocks={trustBlocks}
-                jobId={jobId}
-                jobStatus={jobStatus}
-                isAccepted={jobStatus === "accepted"}
-                onBlockRefineSuccess={onBlockRefineSuccess}
-                jobPythonCode={jobPythonCode}
-                generatedFiles={generatedFiles}
-              />
-            )}
-          </div>
+        {/* Block table — outside the card so it can expand to full width */}
+        {!blocksCollapsed && planData?.block_plans && planData.block_plans.length > 0 && (
+          <BlockPlanTable
+            blockPlans={planData.block_plans}
+            isProposed={isProposed}
+            trustBlocks={trustBlocks}
+            jobId={jobId}
+            jobStatus={jobStatus}
+            isAccepted={jobStatus === "accepted"}
+            onBlockRefineSuccess={onBlockRefineSuccess}
+            jobPythonCode={jobPythonCode}
+            generatedFiles={generatedFiles}
+          />
         )}
       </div>
     </TooltipProvider>
