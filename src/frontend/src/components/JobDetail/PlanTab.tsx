@@ -9,6 +9,7 @@ import type {
   TrustReportResponse,
 } from "@/api/types";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
@@ -214,6 +215,7 @@ export default function PlanTab({
   onBlockRefineSuccess,
   jobPythonCode,
   generatedFiles,
+  onAccept,
 }: {
   jobId: string;
   isReviewable: boolean;
@@ -226,6 +228,7 @@ export default function PlanTab({
   onBlockRefineSuccess?: () => void;
   jobPythonCode?: string;
   generatedFiles?: Record<string, string>;
+  onAccept?: () => void;
 }): React.ReactElement {
   const trustReportEnabled =
     !!jobId &&
@@ -256,7 +259,14 @@ export default function PlanTab({
     : {};
 
   const isProposed = jobStatus === "proposed";
-  const [blocksCollapsed, setBlocksCollapsed] = useState(true);
+  const isAcceptable = jobStatus === "proposed" || jobStatus === "under_review";
+
+  // Blocks are auto-expanded when the trust report is green (no attention
+  // needed). blocksCollapsedManual tracks explicit user toggles so the auto
+  // state doesn't override a deliberate choice.
+  const [blocksCollapsedManual, setBlocksCollapsedManual] = useState<boolean | null>(null);
+  const isGreen = !!trustReport && trustReport.manual_todo === 0 && trustReport.needs_review === 0;
+  const blocksCollapsed = blocksCollapsedManual !== null ? blocksCollapsedManual : !isGreen;
 
   if (!isReviewable) {
     return (
@@ -339,19 +349,48 @@ export default function PlanTab({
 
   return (
     <TooltipProvider>
-      <div className="h-full min-h-0 overflow-y-auto space-y-3 pb-6">
-        {/* Plan summary card + attention section grouped tightly */}
+      <div className="h-full min-h-0 overflow-y-auto pb-6">
         <Card className="overflow-hidden border-border bg-muted/30">
           <CardContent className="p-0 flex flex-col divide-y divide-border">
-            {/* Go/no-go recommendation */}
-            {recommendation && (
-              <div className={`px-5 pt-4 pb-3 flex items-baseline gap-2 ${recommendation.classes}`}>
-                <span className="text-sm font-bold shrink-0 leading-none">{recommendation.icon}</span>
-                <span className="text-xs">
-                  <span className="font-semibold">{recommendation.label}</span>
-                  {" — "}
-                  <span className="opacity-80">{recommendation.detail}</span>
+            {/* Card header — label + effort estimate */}
+            <div className="flex items-center justify-between px-5 py-3">
+              <span className="text-xs font-semibold text-foreground/50 uppercase tracking-wide">
+                Migration plan
+              </span>
+              {effortStr && (
+                <span className="text-xs text-muted-foreground">
+                  Est.{" "}
+                  <span className="font-semibold text-foreground/70">
+                    {effortStr}
+                  </span>
                 </span>
+              )}
+            </div>
+
+            {/* Go/no-go recommendation + in-card Accept button for green state */}
+            {recommendation && (
+              <div
+                className={`px-5 pt-4 pb-3 flex items-center gap-2 justify-between ${recommendation.classes}`}
+              >
+                <div className="flex items-baseline gap-2 flex-1 min-w-0">
+                  <span className="text-sm font-bold shrink-0 leading-none">
+                    {recommendation.icon}
+                  </span>
+                  <span className="text-xs">
+                    <span className="font-semibold">{recommendation.label}</span>
+                    {" — "}
+                    <span className="opacity-80">{recommendation.detail}</span>
+                  </span>
+                </div>
+                {isGreen && isAcceptable && onAccept && (
+                  <Button
+                    size="sm"
+                    onClick={onAccept}
+                    className="cursor-pointer shrink-0 ml-3 bg-green-700 hover:bg-green-800 text-white text-xs h-7 px-3"
+                  >
+                    Accept migration
+                  </Button>
+                )}
               </div>
             )}
 
@@ -369,7 +408,7 @@ export default function PlanTab({
             {/* Assessment callouts — missing deps, circular deps, PII */}
             {assessmentData && <AssessmentCallouts assessment={assessmentData} />}
 
-            {/* Stats row */}
+            {/* Stats row — confidence + risk bars */}
             <div className="flex items-center justify-start gap-4 px-5 py-2 flex-wrap">
               {trustReport && (
                 <>
@@ -408,16 +447,6 @@ export default function PlanTab({
                 </span>
               </div>
 
-              {effortStr && (
-                <>
-                  <Separator orientation="vertical" className="h-4 hidden sm:block" />
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-muted-foreground shrink-0">Effort</span>
-                    <span className="text-xs font-semibold tabular-nums">{effortStr}</span>
-                  </div>
-                </>
-              )}
-
               {trustReport && (
                 <>
                   <Separator orientation="vertical" className="h-4 hidden sm:block" />
@@ -453,47 +482,49 @@ export default function PlanTab({
                 trustBlocks={trustBlocks}
               />
             )}
+
+            {/* Blocks toggle — final card row, auto-expanded when green */}
+            {planData?.block_plans && planData.block_plans.length > 0 && (
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setBlocksCollapsedManual(!blocksCollapsed)}
+                  className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity w-full px-5 py-3"
+                >
+                  {blocksCollapsed ? (
+                    <ChevronRight size={14} className="text-muted-foreground shrink-0" />
+                  ) : (
+                    <ChevronDown size={14} className="text-muted-foreground shrink-0" />
+                  )}
+                  <h2 className="text-sm font-semibold text-foreground">Blocks</h2>
+                  <Badge variant="secondary" className="text-xs font-mono">
+                    {planData.block_plans.length}
+                  </Badge>
+                  {trustReport && trustReport.manual_todo > 0 && (
+                    <span className="text-xs text-red-600 font-medium">
+                      · {trustReport.manual_todo} not ready
+                    </span>
+                  )}
+                </button>
+                {!blocksCollapsed && (
+                  <div className="px-4 pb-4">
+                    <BlockPlanTable
+                      blockPlans={planData.block_plans}
+                      isProposed={isProposed}
+                      trustBlocks={trustBlocks}
+                      jobId={jobId}
+                      jobStatus={jobStatus}
+                      isAccepted={jobStatus === "accepted"}
+                      onBlockRefineSuccess={onBlockRefineSuccess}
+                      jobPythonCode={jobPythonCode}
+                      generatedFiles={generatedFiles}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
-
-        {/* Developer-facing block table — collapsed by default */}
-        {planData?.block_plans && planData.block_plans.length > 0 && (
-          <div className="space-y-2 pt-1">
-            <button
-              type="button"
-              onClick={() => setBlocksCollapsed((v) => !v)}
-              className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
-            >
-              {blocksCollapsed ? (
-                <ChevronRight size={14} className="text-muted-foreground shrink-0" />
-              ) : (
-                <ChevronDown size={14} className="text-muted-foreground shrink-0" />
-              )}
-              <h2 className="text-sm font-semibold text-foreground">Blocks</h2>
-              <Badge variant="secondary" className="text-xs font-mono">
-                {planData.block_plans.length}
-              </Badge>
-              {trustReport && trustReport.manual_todo > 0 && (
-                <span className="text-xs text-red-600 font-medium">
-                  · {trustReport.manual_todo} not ready
-                </span>
-              )}
-            </button>
-            {!blocksCollapsed && (
-              <BlockPlanTable
-                blockPlans={planData.block_plans}
-                isProposed={isProposed}
-                trustBlocks={trustBlocks}
-                jobId={jobId}
-                jobStatus={jobStatus}
-                isAccepted={jobStatus === "accepted"}
-                onBlockRefineSuccess={onBlockRefineSuccess}
-                jobPythonCode={jobPythonCode}
-                generatedFiles={generatedFiles}
-              />
-            )}
-          </div>
-        )}
       </div>
     </TooltipProvider>
   );

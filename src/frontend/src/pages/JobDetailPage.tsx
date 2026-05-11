@@ -301,6 +301,7 @@ export default function JobDetailPage(): React.ReactElement {
                 onBlockRefineSuccess={() => setEditorCode(null)}
                 jobPythonCode={job?.python_code ?? undefined}
                 generatedFiles={job?.generated_files ?? undefined}
+                onAccept={() => setShowAcceptConfirm(true)}
               />
             </TabsContent>
 
