@@ -452,6 +452,33 @@ async def get_job_doc(
     return JobDocResponse(job_id=job_id, doc=job.doc, non_technical_doc=non_technical_doc)
 
 
+@router.get("/jobs/{job_id}/assessment", response_model=None)
+async def get_job_assessment(
+    job_id: uuid.UUID,
+    session: AsyncSession = Depends(get_async_session),
+) -> JSONResponse:
+    """Return the pre-migration assessment stored when the job was submitted.
+
+    Args:
+        job_id: UUID of the migration job.
+        session: Injected async database session.
+
+    Returns:
+        The stored assessment dict (containing ``analyse_response`` and
+        acknowledgment metadata), or 204 if no assessment was captured.
+
+    Raises:
+        HTTPException: 404 if the job does not exist.
+    """
+    result = await session.execute(select(Job).where(Job.id == str(job_id)))
+    job = result.scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+    if not job.assessment:
+        return JSONResponse(status_code=204, content=None)
+    return JSONResponse(status_code=200, content=job.assessment)
+
+
 @router.get("/jobs/{job_id}/plan", response_model=None)
 async def get_job_plan(
     job_id: uuid.UUID,

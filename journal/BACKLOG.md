@@ -237,17 +237,27 @@
 - [x] F21 S-J: Route registration + upload dialog wiring (`App.tsx`, `JobsPage.tsx`)
 - [x] F21 S-K: `make test` exits 0
 
-**F22 — Pre-Migration Assessment UX improvements (`docs/plans/latest/F22-assessment-ux.md`)**
+**F22 — Pre-Migration Assessment UX improvements (`docs/plans/latest/F22-assessment-ux.md`) — COMPLETE**
 
-- [ ] F22 S-A: Headline verdict card — RED/AMBER/GREEN + effort + critical issue callout → see `docs/plans/latest/F22-assessment-ux.md`
-- [ ] F22 S-B: PII alert banner above the fold → see `docs/plans/latest/F22-assessment-ux.md`
-- [ ] F22 S-C: Manager-friendly tier label copy → see `docs/plans/latest/F22-assessment-ux.md`
-- [ ] F22 S-D: Blast radius on 🟡 blocks + sort blocks within tiers by blast radius → see `docs/plans/latest/F22-assessment-ux.md`
-- [ ] F22 S-E: "What you need to do" summary — pre/post split, grouped by importance_reason → see `docs/plans/latest/F22-assessment-ux.md`
-- [ ] F22 S-F: Section reorder — lineage after risk, full order, fileRiskTiers prop wired → see `docs/plans/latest/F22-assessment-ux.md`
-- [ ] F22 S-G: PreviewLineageGraph risk-tier colouring (SAS file node borders) → see `docs/plans/latest/F22-assessment-ux.md`
-- [ ] F22 S-H: Collapse configuration values and validation coverage by default → see `docs/plans/latest/F22-assessment-ux.md`
-- [ ] F22 S-I: `make test` exits 0
+- [x] F22 S-A: Headline verdict card — RED/AMBER/GREEN + effort + critical issue callout → see `docs/plans/latest/F22-assessment-ux.md`
+- [x] F22 S-B: PII alert banner above the fold → see `docs/plans/latest/F22-assessment-ux.md`
+- [x] F22 S-C: Manager-friendly tier label copy → see `docs/plans/latest/F22-assessment-ux.md`
+- [x] F22 S-D: Blast radius on 🟡 blocks + sort blocks within tiers by blast radius → see `docs/plans/latest/F22-assessment-ux.md`
+- [x] F22 S-E: "What you need to do" summary — pre/post split, grouped by importance_reason → see `docs/plans/latest/F22-assessment-ux.md`
+- [x] F22 S-F: Section reorder — lineage after risk, full order, fileRiskTiers prop wired → see `docs/plans/latest/F22-assessment-ux.md`
+- [x] F22 S-G: PreviewLineageGraph risk-tier colouring (SAS file node borders) → see `docs/plans/latest/F22-assessment-ux.md`
+- [x] F22 S-H: Collapse configuration values and validation coverage by default → see `docs/plans/latest/F22-assessment-ux.md`
+- [x] F22 S-I: `make test` exits 0
+- [x] F22 S-J: Deduplicate missing dependencies by name → see `docs/plans/latest/F22-assessment-ux.md`
+- [x] F22 S-K: Improve missing dep path display (basename + referenced-by count) → see `docs/plans/latest/F22-assessment-ux.md`
+- [x] F22 S-L: Fix headline recommendation sentence when missing deps present → see `docs/plans/latest/F22-assessment-ux.md`
+- [x] F22 S-M: Missing deps acknowledgment checkbox + gate fix → see `docs/plans/latest/F22-assessment-ux.md`
+- [x] F22 S-N: Remove "+N more" truncation from action summary datasets → see `docs/plans/latest/F22-assessment-ux.md`
+- [x] F22 S-O: Validation/Config section count labels → see `docs/plans/latest/F22-assessment-ux.md`
+- [x] F22 S-P: Lineage graph fitView padding → see `docs/plans/latest/F22-assessment-ux.md`
+- [x] F22 S-Q: `make test` exits 0 (post bug-fix pass)
+- [x] F22 S-R: Navigate to `/jobs/{id}` after submit (was `navigate("/jobs")`)
+- [x] F22 S-S: Persist full `AnalyseResponse` in assessment snapshot; `GET /jobs/{id}/assessment` endpoint; `AssessmentPanel` in PlanTab
 
 ---
 

@@ -268,3 +268,50 @@ async def test_migrate_no_assessment_leaves_columns_null(
 
     assert job.notes is None
     assert job.assessment is None
+
+
+# ── Tests for GET /jobs/{id}/assessment ──────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_get_assessment_returns_stored_data(client: AsyncClient) -> None:
+    """GET /jobs/{id}/assessment returns 200 with the stored assessment JSON."""
+    assessment_payload = {
+        "pipeline_description": "Test pipeline",
+        "analyse_response": {"stats": {"needs_manual": 1}, "blocks": []},
+    }
+
+    post = await client.post(
+        "/migrate",
+        files=[("sas_files", ("script.sas", _MINIMAL_SAS, "text/plain"))],
+        data={"assessment_json": json.dumps(assessment_payload)},
+    )
+    assert post.status_code == 200
+    job_id = post.json()["job_id"]
+
+    response = await client.get(f"/jobs/{job_id}/assessment")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["pipeline_description"] == "Test pipeline"
+    assert body["analyse_response"]["stats"]["needs_manual"] == 1
+
+
+@pytest.mark.asyncio
+async def test_get_assessment_returns_204_when_none(client: AsyncClient) -> None:
+    """GET /jobs/{id}/assessment returns 204 when no assessment was captured."""
+    post = await client.post(
+        "/migrate",
+        files=[("sas_files", ("script.sas", _MINIMAL_SAS, "text/plain"))],
+    )
+    assert post.status_code == 200
+    job_id = post.json()["job_id"]
+
+    response = await client.get(f"/jobs/{job_id}/assessment")
+    assert response.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_get_assessment_returns_404_for_unknown_job(client: AsyncClient) -> None:
+    """GET /jobs/{id}/assessment returns 404 for a non-existent job."""
+    response = await client.get("/jobs/00000000-0000-0000-0000-000000000000/assessment")
+    assert response.status_code == 404

@@ -1,5 +1,6 @@
 import { extractApiError } from "./errors";
 import type {
+    AnalyseResponse,
     BlockRefineRequest,
     BlockRefineResponse,
     BlockRevisionHistory,
@@ -227,6 +228,16 @@ export async function getJobTrustReport(jobId: string): Promise<TrustReportRespo
   const res = await fetch(`${BASE}/jobs/${jobId}/trust-report`);
   if (!res.ok) throw new Error(await extractApiError(res));
   return res.json() as Promise<TrustReportResponse>;
+}
+
+// ── F21/F22: Pre-migration assessment ────────────────────────────────────────
+
+export async function getJobAssessment(jobId: string): Promise<AnalyseResponse | null> {
+  const res = await fetch(`${BASE}/jobs/${jobId}/assessment`);
+  if (res.status === 204 || res.status === 404) return null;
+  if (!res.ok) throw new Error(await extractApiError(res));
+  const data = (await res.json()) as { analyse_response?: AnalyseResponse };
+  return data.analyse_response ?? null;
 }
 
 // ── Attachments ───────────────────────────────────────────────────────────────

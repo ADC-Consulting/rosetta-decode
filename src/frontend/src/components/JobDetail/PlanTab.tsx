@@ -1,5 +1,6 @@
-import { getJobPlan, getJobTrustReport } from "@/api/jobs";
+import { getJobAssessment, getJobPlan, getJobTrustReport } from "@/api/jobs";
 import type {
+  AnalyseResponse,
   BlockOverride,
   JobPlanResponse,
   JobStatusValue,
@@ -92,6 +93,126 @@ function StatPill({
 }
 
 // ---------------------------------------------------------------------------
+// AssessmentPanel
+// ---------------------------------------------------------------------------
+
+const VERDICT_STYLES = {
+  red: { bg: "bg-red-50 border-red-200", badge: "bg-red-100 text-red-800", dot: "bg-red-500" },
+  amber: { bg: "bg-amber-50 border-amber-200", badge: "bg-amber-100 text-amber-800", dot: "bg-amber-500" },
+  green: { bg: "bg-green-50 border-green-200", badge: "bg-green-100 text-green-800", dot: "bg-green-500" },
+};
+
+function AssessmentPanel({ assessment }: { assessment: AnalyseResponse }): React.ReactElement {
+  const { stats } = assessment;
+  const [collapsed, setCollapsed] = useState(true);
+
+  const verdict =
+    stats.needs_manual > 0 ? "red" : stats.review_recommended > 0 || stats.best_effort > 0 ? "amber" : "green";
+  const style = VERDICT_STYLES[verdict];
+
+  const lowHr = Math.round(stats.estimated_minutes_low / 60 * 10) / 10;
+  const highHr = Math.round(stats.estimated_minutes_high / 60 * 10) / 10;
+  const effortStr = `${lowHr}–${highHr} hr`;
+
+  const summaryLine =
+    verdict === "red"
+      ? `${stats.needs_manual} block(s) cannot auto-convert · ${effortStr} manual effort`
+      : verdict === "amber"
+        ? `${stats.review_recommended + stats.best_effort} block(s) need developer review · ${effortStr}`
+        : `All blocks convert automatically · ${effortStr} review`;
+
+  const uniqueMissingDeps = [...new Map(assessment.missing_dependencies.map((d) => [d.name, d])).values()];
+  const hasBlockers =
+    stats.needs_manual > 0 || uniqueMissingDeps.length > 0 || assessment.circular_dependencies.length > 0;
+
+  return (
+    <div className={`rounded-lg border p-4 space-y-3 ${style.bg}`}>
+      {/* Header row */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="space-y-1 flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${style.badge}`}>
+              {verdict === "red" ? "🔴 Not ready" : verdict === "amber" ? "🟡 Review needed" : "🟢 Ready"}
+            </span>
+            <span className="text-xs text-muted-foreground">{summaryLine}</span>
+          </div>
+          {assessment.pipeline_description && (
+            <p className="text-xs text-foreground/80 leading-relaxed line-clamp-2">
+              {assessment.pipeline_description}
+            </p>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => setCollapsed((v) => !v)}
+          className="text-xs text-muted-foreground hover:text-foreground shrink-0 cursor-pointer"
+        >
+          {collapsed ? "Show details" : "Hide"}
+        </button>
+      </div>
+
+      {/* Blocker row — always visible when blockers exist */}
+      {hasBlockers && (
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+          {stats.needs_manual > 0 && (
+            <span className="text-red-700">⚠ {stats.needs_manual} block(s) require manual implementation</span>
+          )}
+          {uniqueMissingDeps.length > 0 && (
+            <span className="text-amber-700">⚠ {uniqueMissingDeps.length} missing macro/include file(s)</span>
+          )}
+          {assessment.circular_dependencies.length > 0 && (
+            <span className="text-red-700">⚠ Circular dependency detected</span>
+          )}
+        </div>
+      )}
+
+      {/* Expanded detail */}
+      {!collapsed && (
+        <div className="space-y-3 pt-1 border-t border-current/10">
+          {/* Tier counts */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {[
+              { label: "Cannot auto-convert", count: stats.needs_manual, color: "text-red-700" },
+              { label: "Needs review", count: stats.review_recommended, color: "text-amber-700" },
+              { label: "Best-effort", count: stats.best_effort, color: "text-blue-700" },
+              { label: "Auto-converts", count: stats.auto_converts, color: "text-green-700" },
+            ].map(({ label, count, color }) => (
+              <div key={label} className="bg-white/60 rounded p-2 text-center">
+                <div className={`text-base font-bold tabular-nums ${color}`}>{count}</div>
+                <div className="text-[10px] text-muted-foreground leading-tight">{label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Sensitive data */}
+          {assessment.sensitive_data_findings.length > 0 && (
+            <div className="text-xs text-red-700 bg-red-50 rounded p-2">
+              🔒 Sensitive data detected:{" "}
+              {[...new Set(assessment.sensitive_data_findings.map((f) => f.pattern))].join(", ")}
+            </div>
+          )}
+
+          {/* Missing deps detail */}
+          {uniqueMissingDeps.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-amber-700">Missing dependencies</p>
+              <ul className="text-xs text-muted-foreground space-y-0.5 list-disc list-inside">
+                {uniqueMissingDeps.slice(0, 5).map((d) => (
+                  <li key={d.name}>{d.name.split("/").pop() ?? d.name}</li>
+                ))}
+                {uniqueMissingDeps.length > 5 && (
+                  <li className="text-muted-foreground/60">+{uniqueMissingDeps.length - 5} more</li>
+                )}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // PlanTab
 // ---------------------------------------------------------------------------
 
@@ -127,6 +248,12 @@ export default function PlanTab({
     enabled: !!jobId && isReviewable,
   });
 
+  const { data: assessmentData } = useQuery<AnalyseResponse | null>({
+    queryKey: ["job", jobId, "assessment"],
+    queryFn: () => getJobAssessment(jobId),
+    enabled: !!jobId,
+  });
+
   const { data: trustReport } = useQuery<TrustReportResponse>({
     queryKey: ["trust-report", jobId],
     queryFn: () => getJobTrustReport(jobId),
@@ -142,15 +269,19 @@ export default function PlanTab({
 
   if (!isReviewable) {
     return (
-      <p className="text-sm text-muted-foreground">
-        Migration plan available once migration completes.
-      </p>
+      <div className="space-y-4">
+        {assessmentData && <AssessmentPanel assessment={assessmentData} />}
+        <p className="text-sm text-muted-foreground">
+          Migration plan available once migration completes.
+        </p>
+      </div>
     );
   }
 
   if (isLoading) {
     return (
       <div className="space-y-4">
+        {assessmentData && <AssessmentPanel assessment={assessmentData} />}
         <Skeleton className="h-28 w-full rounded-lg" />
         <Skeleton className="h-8 w-full rounded-md" />
         <div className="space-y-2">
@@ -164,9 +295,12 @@ export default function PlanTab({
 
   if (!planData) {
     return (
-      <p className="text-sm text-muted-foreground">
-        No migration plan available for this job.
-      </p>
+      <div className="space-y-4">
+        {assessmentData && <AssessmentPanel assessment={assessmentData} />}
+        <p className="text-sm text-muted-foreground">
+          No migration plan available for this job.
+        </p>
+      </div>
     );
   }
 
@@ -188,6 +322,9 @@ export default function PlanTab({
   return (
     <TooltipProvider>
       <div className="h-full min-h-0 overflow-y-auto space-y-4 pb-6">
+        {/* Pre-migration assessment panel */}
+        {assessmentData && <AssessmentPanel assessment={assessmentData} />}
+
         {/* Single summary card */}
         <Card className="border-border bg-muted/30">
           <CardContent className="p-0 flex flex-col divide-y divide-border">
