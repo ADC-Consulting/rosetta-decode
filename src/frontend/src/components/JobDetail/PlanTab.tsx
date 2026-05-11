@@ -2,6 +2,7 @@ import { getJobAssessment, getJobPlan, getJobTrustReport } from "@/api/jobs";
 import type {
   AnalyseResponse,
   BlockOverride,
+  BlockPlan,
   JobPlanResponse,
   JobStatusValue,
   TrustReportBlock,
@@ -93,9 +94,7 @@ function StatPill({
 }
 
 // ---------------------------------------------------------------------------
-// AssessmentCallouts — slim inline notes derived from the pre-migration
-// assessment that remain relevant after the plan has been generated:
-// missing macro/include files and detected PII patterns.
+// AssessmentCallouts — missing deps, circular deps, PII.
 // ---------------------------------------------------------------------------
 
 function AssessmentCallouts({
@@ -129,6 +128,77 @@ function AssessmentCallouts({
           🔒 Sensitive data detected: {piiPatterns.join(", ")}
         </span>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AttentionBlocksSummary — PM-facing per-block summary for blocks that need
+// action. Shows only the blocks requiring attention with plain-language
+// rationale, so a code owner can assess risk without reading the full table.
+// ---------------------------------------------------------------------------
+
+function AttentionBlocksSummary({
+  blockPlans,
+  trustBlocks,
+}: {
+  blockPlans: BlockPlan[];
+  trustBlocks: Record<string, TrustReportBlock>;
+}): React.ReactElement | null {
+  const attentionBlocks = blockPlans.filter(
+    (b) => trustBlocks[b.block_id]?.needs_attention,
+  );
+
+  if (attentionBlocks.length === 0) return null;
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        Needs attention
+      </p>
+      {attentionBlocks.map((block) => {
+        const isManual = block.strategy === "manual";
+        const confidencePct = Math.round(block.confidence_score * 100);
+
+        return (
+          <div
+            key={block.block_id}
+            className={`rounded-md border px-4 py-3 space-y-1.5 ${
+              isManual
+                ? "border-red-200 bg-red-50/50"
+                : "border-amber-200 bg-amber-50/50"
+            }`}
+          >
+            <div className="flex items-center gap-2 flex-wrap">
+              <span
+                className={`text-xs font-semibold px-2 py-0.5 rounded-full shrink-0 ${
+                  isManual
+                    ? "bg-red-100 text-red-800"
+                    : "bg-amber-100 text-amber-800"
+                }`}
+              >
+                {isManual ? "🔴 Manual implementation required" : "🟡 Review recommended"}
+              </span>
+              <span className="text-xs text-muted-foreground font-mono">
+                {block.source_file} · line {block.start_line}
+              </span>
+              <span className="text-xs text-muted-foreground capitalize">
+                {block.block_type.replace(/_/g, " ").toLowerCase()}
+              </span>
+              {!isManual && (
+                <span className="text-xs text-muted-foreground ml-auto tabular-nums">
+                  {confidencePct}% confident
+                </span>
+              )}
+            </div>
+            {block.rationale && (
+              <p className="text-xs text-foreground/70 leading-relaxed">
+                {block.rationale}
+              </p>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -201,8 +271,8 @@ export default function PlanTab({
       <div className="space-y-3">
         <Skeleton className="h-28 w-full rounded-lg" />
         <div className="space-y-2">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-10 w-full rounded" />
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-16 w-full rounded-md" />
           ))}
         </div>
       </div>
@@ -240,9 +310,13 @@ export default function PlanTab({
     return hi < 1 ? "< 1 hr" : lo === hi ? `~${lo} hr` : `${lo}–${hi} hr`;
   })();
 
+  const hasAttentionBlocks =
+    trustReport && (trustReport.needs_review + trustReport.manual_todo) > 0;
+
   return (
     <TooltipProvider>
       <div className="h-full min-h-0 overflow-y-auto space-y-4 pb-6">
+        {/* Plan summary card */}
         <Card className="border-border bg-muted/30">
           <CardContent className="p-0 flex flex-col divide-y divide-border">
             {/* Summary text */}
@@ -256,7 +330,7 @@ export default function PlanTab({
               </p>
             </div>
 
-            {/* Assessment callouts — missing deps and PII only, if present */}
+            {/* Assessment callouts — missing deps, circular deps, PII */}
             {assessmentData && <AssessmentCallouts assessment={assessmentData} />}
 
             {/* Stats row */}
@@ -284,9 +358,7 @@ export default function PlanTab({
               )}
 
               <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground shrink-0">
-                  Risk
-                </span>
+                <span className="text-xs text-muted-foreground shrink-0">Risk</span>
                 <Progress
                   value={riskPctMap[planData.overall_risk] ?? 0}
                   className="h-1.5 w-20 **:data-[slot=progress-indicator]:bg-(--bar-fill)"
@@ -332,53 +404,57 @@ export default function PlanTab({
                     label="Manual TODO"
                     colorClass="text-muted-foreground"
                     dotClass="bg-border"
-                    tooltip="Blocks the migration planner marked as manual, manual_ingestion, or skip — constructs that cannot be auto-translated. A developer must write the Python equivalent by hand."
+                    tooltip="Blocks the migration planner marked as manual — constructs that cannot be auto-translated. A developer must write the Python equivalent by hand."
                   />
                 </>
               )}
             </div>
-
-            {/* Blocks toggle */}
-            {planData?.block_plans && planData.block_plans.length > 0 && (
-              <div className="px-5 py-2">
-                <button
-                  type="button"
-                  onClick={() => setBlocksCollapsed((v) => !v)}
-                  className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
-                >
-                  {blocksCollapsed ? (
-                    <ChevronRight size={14} className="text-muted-foreground shrink-0" />
-                  ) : (
-                    <ChevronDown size={14} className="text-muted-foreground shrink-0" />
-                  )}
-                  <h2 className="text-sm font-semibold text-foreground">Blocks</h2>
-                  <Badge variant="secondary" className="text-xs font-mono">
-                    {planData.block_plans.length}
-                  </Badge>
-                  {trustReport && trustReport.needs_review + trustReport.manual_todo > 0 && (
-                    <span className="text-xs text-amber-600">
-                      · {trustReport.needs_review + trustReport.manual_todo} need attention
-                    </span>
-                  )}
-                </button>
-              </div>
-            )}
           </CardContent>
         </Card>
 
-        {/* Block table — outside the card so it can expand to full width */}
-        {!blocksCollapsed && planData?.block_plans && planData.block_plans.length > 0 && (
-          <BlockPlanTable
+        {/* PM-facing attention summary — only when blocks need action */}
+        {hasAttentionBlocks && (
+          <AttentionBlocksSummary
             blockPlans={planData.block_plans}
-            isProposed={isProposed}
             trustBlocks={trustBlocks}
-            jobId={jobId}
-            jobStatus={jobStatus}
-            isAccepted={jobStatus === "accepted"}
-            onBlockRefineSuccess={onBlockRefineSuccess}
-            jobPythonCode={jobPythonCode}
-            generatedFiles={generatedFiles}
           />
+        )}
+
+        {/* Developer-facing block table — collapsed by default */}
+        {planData?.block_plans && planData.block_plans.length > 0 && (
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => setBlocksCollapsed((v) => !v)}
+              className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+            >
+              {blocksCollapsed ? (
+                <ChevronRight size={14} className="text-muted-foreground shrink-0" />
+              ) : (
+                <ChevronDown size={14} className="text-muted-foreground shrink-0" />
+              )}
+              <h2 className="text-sm font-semibold text-foreground">Blocks</h2>
+              <Badge variant="secondary" className="text-xs font-mono">
+                {planData.block_plans.length}
+              </Badge>
+              {hasAttentionBlocks && (
+                <span className="text-xs text-muted-foreground">· developer detail</span>
+              )}
+            </button>
+            {!blocksCollapsed && (
+              <BlockPlanTable
+                blockPlans={planData.block_plans}
+                isProposed={isProposed}
+                trustBlocks={trustBlocks}
+                jobId={jobId}
+                jobStatus={jobStatus}
+                isAccepted={jobStatus === "accepted"}
+                onBlockRefineSuccess={onBlockRefineSuccess}
+                jobPythonCode={jobPythonCode}
+                generatedFiles={generatedFiles}
+              />
+            )}
+          </div>
         )}
       </div>
     </TooltipProvider>
