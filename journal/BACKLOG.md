@@ -259,6 +259,11 @@
 - [x] F22 S-R: Navigate to `/jobs/{id}` after submit (was `navigate("/jobs")`)
 - [x] F22 S-S: Persist full `AnalyseResponse` in assessment snapshot; `GET /jobs/{id}/assessment` endpoint; `AssessmentPanel` in PlanTab
 - [x] F22 S-T: AssessmentPanel UX polish — effort floor, inline tier counts, remove tile grid, hide toggle when empty, temporal subtitles, blocks hint
+- [x] F22 S-U: Remove misleading "actual results after run" subtitle from Migration plan label
+- [x] F22 S-V: Plan tab 7 UX fixes — blocker dedup, label always shown, left-align stats, chevron toggle, no dep truncation, hide confidence until loaded, blocks in card
+- [x] F22 S-W: Collapse AssessmentPanel — replace with slim AssessmentCallouts row (missing deps + PII only) inside plan card
+- [x] F22 S-X: Restore effort estimate + circular dep warning dropped during S-W
+- [x] F22 S-Y: PM-facing AttentionBlocksSummary — one card per attention block with rationale, status badge, confidence %; Blocks toggle labelled "developer detail"
 
 ---
 

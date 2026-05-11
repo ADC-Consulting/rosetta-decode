@@ -6,6 +6,43 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-05-11 — F22 Plan tab overhaul — PM-first layout
+
+**Duration:** ~3h | **Focus:** Plan tab UX, pre-migration assessment consolidation, PM-facing attention summary
+
+### Done
+- **fix(F22):** Post-submit navigation goes to `/jobs/{id}` instead of `/jobs`
+- **feat(F22):** Persist full `AnalyseResponse` in `job.assessment.analyse_response`; `GET /jobs/{id}/assessment` endpoint; `AssessmentPanel` in PlanTab (S-S)
+- **fix(F22):** 6 UX polish fixes on AssessmentPanel — effort floor, inline tier counts, remove tile grid, hide toggle when empty, temporal subtitles, blocks hint (S-T)
+- **fix(F22):** Remove misleading "actual results after run" subtitle from Migration plan label (S-U)
+- **fix(F22):** 7 UX fixes — redundant blocker row, label always shown, left-align stats, chevron toggle, no dep truncation, hide confidence until loaded, blocks nested in card (S-V)
+- **refactor(F22):** Collapsed full `AssessmentPanel` into slim `AssessmentCallouts` row — removed duplicate/contradictory pre-run counts, kept only missing deps + PII (S-W)
+- **fix(F22):** Restored effort estimate and circular dep warning dropped in S-W (S-X)
+- **feat(F22):** `AttentionBlocksSummary` — PM-facing section showing one card per block needing attention: status badge, file+line, block type, confidence %, plain-language rationale. Blocks toggle moved outside card and labelled "developer detail" (S-Y)
+
+### Decisions
+- Pre-migration assessment panel belongs on MigrationPreviewPage (decision gate), not in the job detail Plan tab. Post-run, the trust report stats are authoritative; only missing deps, PII, circular deps, and effort estimate remain uniquely useful from the assessment.
+- Plan tab now has two audiences clearly separated: PM view (always visible card + attention summary) and developer view (collapsed Blocks table).
+
+### Open Questions
+- none
+
+### Next Session — Start Here
+1. F22 is complete — branch `feat/F22-assessment-ux` is ready to PR
+2. Next backlog item: **F1-ext: Macro definition + call expansion** (`%MACRO` / `%MEND`) — the attention block demo showed `m_derive_age_group.sas:8` flagged as manual precisely because macro parameter context is missing; this feature would resolve that class of blocks
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/PlanTab.tsx`
+- `src/frontend/src/pages/MigrationPreviewPage.tsx`
+- `src/backend/api/routes/jobs.py`
+- `src/frontend/src/api/jobs.ts`
+- `tests/test_analyse_route.py`
+- `docs/plans/latest/F22-assessment-ux.md`
+- `journal/BACKLOG.md`
+- `journal/SESSIONS.md`
+
+---
+
 ## 2026-05-08 — F21 lineage graph + manager UX audit
 
 **Duration:** ~1h | **Focus:** pipeline lineage graph for assessment page, UX feedback

@@ -2,7 +2,7 @@
 
 **Phase:** 2
 **Area:** Frontend
-**Status:** complete (S-A through S-Q)
+**Status:** complete (S-A through S-Y)
 
 ## Goal
 
@@ -233,6 +233,46 @@ The legend overlay is updated to reflect this: SAS file node legend entry replac
 - Expand/collapse toggle hidden when there is no expandable detail (no PII findings and no unique missing deps)
 - Section labels show temporal subtitles: "Pre-migration assessment · predicted before run" and "Migration plan · actual results after run"
 - Blocks row in the plan card shows "· N need attention" hint when `needs_review + manual_todo > 0`
+- [x] done
+
+---
+
+### S-U: Remove "actual results after run" subtitle from Migration plan label
+**File:** `src/frontend/src/components/JobDetail/PlanTab.tsx`
+**Depends on:** S-T
+**Done when:** The "actual results after run" subtitle is removed from the Migration plan section label — it was misleading because the plan is shown pre-accept with an "Accept migration" button.
+- [x] done
+
+---
+
+### S-V: Plan tab 7 UX fixes
+**File:** `src/frontend/src/components/JobDetail/PlanTab.tsx`
+**Depends on:** S-U
+**Done when:** All 7 issues fixed: (1) redundant needs_manual blocker row removed; (2) "Migration plan" label always renders regardless of assessment; (3) stats row left-aligned; (4) "Show details" replaced with chevron icon; (5) missing dep list no longer truncated at 5; (6) confidence bar hidden until trust report loads; (7) Blocks toggle nested inside plan card to show ownership.
+- [x] done
+
+---
+
+### S-W: Collapse pre-migration assessment into plan card callouts
+**File:** `src/frontend/src/components/JobDetail/PlanTab.tsx`
+**Depends on:** S-V
+**Done when:** The separate `AssessmentPanel` section is removed from PlanTab. A slim `AssessmentCallouts` row inside the plan card surfaces only the two items that remain relevant post-run — missing macro/include files and detected PII patterns. Assessment verdict/tier counts/effort are no longer shown separately since they duplicated (and contradicted) the trust report stats.
+- [x] done
+
+---
+
+### S-X: Restore effort estimate and circular dependency warning
+**File:** `src/frontend/src/components/JobDetail/PlanTab.tsx`
+**Depends on:** S-W
+**Done when:** Effort estimate (from `assessmentData.stats`) added to the stats row alongside Confidence and Risk. Circular dependency warning added to `AssessmentCallouts`. Both were unique-value items dropped when the full assessment panel was removed.
+- [x] done
+
+---
+
+### S-Y: PM-facing attention block summary
+**File:** `src/frontend/src/components/JobDetail/PlanTab.tsx`
+**Depends on:** S-X
+**Done when:** `AttentionBlocksSummary` component renders between the plan card and the Blocks toggle when `needs_review + manual_todo > 0`. One card per attention block showing: status badge (Manual implementation required / Review recommended), source file + line, block type, confidence %, and plain-language rationale. Blocks toggle moves back outside the plan card and is labelled "· developer detail" when attention blocks are visible.
 - [x] done
 
 ## Dependencies on other features
