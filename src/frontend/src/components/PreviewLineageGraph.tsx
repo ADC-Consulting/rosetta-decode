@@ -9,6 +9,7 @@ import "reactflow/dist/style.css";
 interface PreviewLineageGraphProps {
   blocks: AssessedBlock[];
   outputDatasets: string[];
+  fileRiskTiers?: Record<string, "manual" | "review" | "best-effort" | "auto">;
 }
 
 // ── Node types ────────────────────────────────────────────────────────────────
@@ -95,6 +96,13 @@ const NODE_STYLES: Record<NodeKind, React.CSSProperties> = {
   },
 };
 
+const TIER_BORDER: Record<string, string> = {
+  manual: "#ef4444",
+  review: "#f59e0b",
+  "best-effort": "#3b82f6",
+  auto: "#22c55e",
+};
+
 // ── Dagre layout ──────────────────────────────────────────────────────────────
 
 function applyDagreLayout(
@@ -137,6 +145,7 @@ function applyDagreLayout(
 function buildGraph(
   blocks: AssessedBlock[],
   outputDatasets: string[],
+  fileRiskTiers?: Record<string, "manual" | "review" | "best-effort" | "auto">,
 ): { nodes: Node<PreviewNodeData>[]; edges: Edge[] } {
   const outputSet = new Set(outputDatasets.map((d) => d.toLowerCase()));
 
@@ -196,12 +205,14 @@ function buildGraph(
     if (!nodeIds.has(id)) {
       nodeIds.add(id);
       const basename = file.split("/").pop() ?? file;
+      const tier = fileRiskTiers?.[file];
+      const tierBorder = tier ? TIER_BORDER[tier] : TIER_BORDER.auto;
       nodes.push({
         id,
         type: "default",
         position: { x: 0, y: 0 },
         data: { label: basename, kind: "sas_file" },
-        style: NODE_STYLES.sas_file,
+        style: { ...NODE_STYLES.sas_file, border: `2px solid ${tierBorder}`, boxShadow: `0 1px 4px ${tierBorder}26` },
         sourcePosition: Position.Right,
         targetPosition: Position.Left,
         draggable: false,
@@ -311,10 +322,11 @@ function buildGraph(
 function PreviewLineageGraphInner({
   blocks,
   outputDatasets,
+  fileRiskTiers,
 }: PreviewLineageGraphProps): React.ReactElement | null {
   if (blocks.length === 0) return null;
 
-  const { nodes, edges } = buildGraph(blocks, outputDatasets);
+  const { nodes, edges } = buildGraph(blocks, outputDatasets, fileRiskTiers);
 
   if (nodes.length === 0) return null;
 
@@ -335,7 +347,7 @@ function PreviewLineageGraphInner({
       <MiniMap
         nodeColor={(n) => {
           const kind = (n.data as PreviewNodeData).kind;
-          if (kind === "sas_file") return "#3b82f6";
+          if (kind === "sas_file") return (n.style?.borderColor as string | undefined) ?? "#3b82f6";
           if (kind === "output_dataset") return "#22c55e";
           if (kind === "external_input") return "#e2e8f0";
           return "#94a3b8";
@@ -351,8 +363,20 @@ function PreviewLineageGraphInner({
 function LineageLegend(): React.ReactElement {
   const items: { label: string; style: React.CSSProperties }[] = [
     {
-      label: "SAS file",
+      label: "🔴 Cannot auto-convert",
+      style: { background: "#ffffff", border: "2px solid #ef4444", borderRadius: 3 },
+    },
+    {
+      label: "🟡 Needs review",
+      style: { background: "#ffffff", border: "2px solid #f59e0b", borderRadius: 3 },
+    },
+    {
+      label: "🔵 Best-effort",
       style: { background: "#ffffff", border: "2px solid #3b82f6", borderRadius: 3 },
+    },
+    {
+      label: "🟢 All auto",
+      style: { background: "#ffffff", border: "2px solid #22c55e", borderRadius: 3 },
     },
     {
       label: "Intermediate dataset",

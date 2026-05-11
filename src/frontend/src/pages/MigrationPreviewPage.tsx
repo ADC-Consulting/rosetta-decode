@@ -9,7 +9,7 @@ import PreviewLineageGraph from "@/components/PreviewLineageGraph";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChevronDown, ChevronRight, Pencil } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
@@ -236,7 +236,7 @@ function TierSection({
               block={block}
               overrides={overrides}
               onImportanceChange={onImportanceChange}
-              showBlastRadius={tier === "manual"}
+              showBlastRadius={tier === "manual" || tier === "review"}
               showCode={tier === "manual"}
             />
           ))}
@@ -324,6 +324,185 @@ function ConfigValueRow({ item }: ConfigValueRowProps) {
   );
 }
 
+// ── Assessment headline ───────────────────────────────────────────────────────
+
+interface AssessmentHeadlineProps {
+  stats: AnalyseResponse["stats"];
+  missingDeps: number;
+  circularDeps: number;
+}
+
+function AssessmentHeadline({ stats, missingDeps, circularDeps }: AssessmentHeadlineProps) {
+  const verdict =
+    stats.needs_manual > 0 ? "red" : stats.review_recommended > 0 || stats.best_effort > 0 ? "amber" : "green";
+
+  const effortStr = fmtMinutes(stats.estimated_minutes_low, stats.estimated_minutes_high);
+
+  const summaryLine =
+    verdict === "red"
+      ? `${stats.needs_manual} block${stats.needs_manual !== 1 ? "s" : ""} cannot auto-convert · ${effortStr} manual effort`
+      : verdict === "amber"
+        ? `${stats.review_recommended + stats.best_effort} block${stats.review_recommended + stats.best_effort !== 1 ? "s" : ""} need developer review · ${effortStr}`
+        : `All blocks convert automatically · ${effortStr} review`;
+
+  const recommendation =
+    verdict === "red"
+      ? `Proceed only if your team is ready to implement ${stats.needs_manual} manual block${stats.needs_manual !== 1 ? "s" : ""} — the pipeline will run but those steps will produce placeholder code until implemented.`
+      : verdict === "amber"
+        ? `Migration can proceed — a developer should review the ${stats.review_recommended + stats.best_effort} high-impact block${stats.review_recommended + stats.best_effort !== 1 ? "s" : ""} after the run completes.`
+        : "This migration can proceed automatically. Review the output against your reference data after the run.";
+
+  const bgClass =
+    verdict === "red"
+      ? "border-red-300 bg-red-50 dark:border-red-800 dark:bg-red-950/30"
+      : verdict === "amber"
+        ? "border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30"
+        : "border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30";
+
+  const headingColor =
+    verdict === "red"
+      ? "text-red-800 dark:text-red-200"
+      : verdict === "amber"
+        ? "text-amber-800 dark:text-amber-200"
+        : "text-emerald-800 dark:text-emerald-200";
+
+  const issues: string[] = [];
+  if (stats.needs_manual > 0)
+    issues.push(
+      `${stats.needs_manual} block${stats.needs_manual !== 1 ? "s" : ""} will generate placeholder code — pipeline will be incomplete until implemented`,
+    );
+  if (missingDeps > 0)
+    issues.push(
+      `${missingDeps} missing ${missingDeps !== 1 ? "dependencies" : "dependency"} will block the run`,
+    );
+  if (circularDeps > 0) issues.push("Circular dependency detected — execution order cannot be resolved");
+
+  return (
+    <div className={`rounded-lg border p-5 space-y-4 ${bgClass}`}>
+      <div className="space-y-1">
+        <p className={`text-lg font-semibold ${headingColor}`}>{summaryLine}</p>
+        <p className={`text-sm ${headingColor} opacity-90`}>{recommendation}</p>
+      </div>
+
+      {issues.length > 0 && (
+        <ul className="space-y-1">
+          {issues.map((issue, i) => (
+            <li key={i} className={`flex items-start gap-2 text-sm font-medium ${headingColor}`}>
+              <span className="shrink-0 mt-0.5">⚠</span>
+              <span>{issue}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="flex flex-wrap gap-3 pt-1">
+        <StatPill value={stats.needs_manual} label="need manual work" color="red" />
+        <StatPill value={stats.review_recommended} label="recommend review" color="amber" />
+        <StatPill value={stats.best_effort} label="best-effort" color="blue" />
+        <StatPill value={stats.auto_converts} label="convert automatically" color="emerald" />
+      </div>
+    </div>
+  );
+}
+
+// ── Action summary ────────────────────────────────────────────────────────────
+
+interface ActionSummaryProps {
+  manualBlocks: AssessedBlock[];
+  reviewBlocks: AssessedBlock[];
+  bestEffortBlocks: AssessedBlock[];
+}
+
+function ActionSummary({ manualBlocks, reviewBlocks, bestEffortBlocks }: ActionSummaryProps) {
+  function groupByReason(blocks: AssessedBlock[]): Map<string, { count: number; datasets: string[] }> {
+    const map = new Map<string, { count: number; datasets: string[] }>();
+    for (const block of blocks) {
+      const reason = block.importance_reason || "supporting step";
+      const existing = map.get(reason) ?? { count: 0, datasets: [] };
+      const newDatasets = block.output_datasets.filter((d) => !existing.datasets.includes(d));
+      map.set(reason, { count: existing.count + 1, datasets: [...existing.datasets, ...newDatasets] });
+    }
+    return map;
+  }
+
+  const manualGroups = groupByReason(manualBlocks);
+  const reviewGroups = groupByReason(reviewBlocks);
+  const bestEffortGroups = groupByReason(bestEffortBlocks);
+
+  const hasPostMigration = reviewBlocks.length > 0 || bestEffortBlocks.length > 0;
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-4 space-y-4">
+      <h3 className="text-sm font-semibold text-foreground">What you need to do</h3>
+
+      <div className="space-y-1.5">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Before migration starts</p>
+        {manualBlocks.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No manual implementation required before migration.</p>
+        ) : (
+          <ul className="space-y-1.5">
+            {[...manualGroups.entries()].map(([reason, { count, datasets }]) => (
+              <li key={reason} className="flex items-start gap-2 text-sm">
+                <span className="text-red-500 shrink-0 mt-0.5">•</span>
+                <span className="text-foreground">
+                  <span className="font-medium">{count} × {reason} block{count !== 1 ? "s" : ""}</span>
+                  {" — manual implementation required"}
+                  {datasets.length > 0 && (
+                    <span className="text-muted-foreground">
+                      {" · produces "}
+                      <span className="font-mono">{datasets.slice(0, 3).join(", ")}{datasets.length > 3 ? ` +${datasets.length - 3} more` : ""}</span>
+                    </span>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="space-y-1.5">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">After migration runs</p>
+        {!hasPostMigration ? (
+          <p className="text-sm text-muted-foreground">No post-migration review required.</p>
+        ) : (
+          <ul className="space-y-1.5">
+            {[...bestEffortGroups.entries()].map(([reason, { count, datasets }]) => (
+              <li key={reason} className="flex items-start gap-2 text-sm">
+                <span className="text-blue-500 shrink-0 mt-0.5">•</span>
+                <span className="text-foreground">
+                  <span className="font-medium">{count} × best-effort block{count !== 1 ? "s" : ""} ({reason})</span>
+                  {" — verify output matches expected results"}
+                  {datasets.length > 0 && (
+                    <span className="text-muted-foreground">
+                      {" · produces "}
+                      <span className="font-mono">{datasets.slice(0, 3).join(", ")}{datasets.length > 3 ? ` +${datasets.length - 3} more` : ""}</span>
+                    </span>
+                  )}
+                </span>
+              </li>
+            ))}
+            {[...reviewGroups.entries()].map(([reason, { count, datasets }]) => (
+              <li key={reason} className="flex items-start gap-2 text-sm">
+                <span className="text-amber-500 shrink-0 mt-0.5">•</span>
+                <span className="text-foreground">
+                  <span className="font-medium">{count} × high-impact block{count !== 1 ? "s" : ""} ({reason}) translated</span>
+                  {" — developer should review generated code"}
+                  {datasets.length > 0 && (
+                    <span className="text-muted-foreground">
+                      {" · produces "}
+                      <span className="font-mono">{datasets.slice(0, 3).join(", ")}{datasets.length > 3 ? ` +${datasets.length - 3} more` : ""}</span>
+                    </span>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Loading skeleton ──────────────────────────────────────────────────────────
 
 function LoadingSkeleton() {
@@ -360,6 +539,8 @@ export default function MigrationPreviewPage(): React.ReactElement {
   const [acknowledgments, setAcknowledgments] = useState<Record<string, boolean>>({});
   const [sensitiveConfirmed, setSensitiveConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [coverageOpen, setCoverageOpen] = useState(false);
+  const [configOpen, setConfigOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Redirect guard
@@ -444,21 +625,44 @@ export default function MigrationPreviewPage(): React.ReactElement {
   }
 
   // Tier groupings
-  const manualBlocks = (assessment?.blocks ?? []).filter(
-    (b) => !b.is_translatable,
+  const sortByBlast = (arr: AssessedBlock[]) =>
+    [...arr].sort((a, b) => b.blast_radius.length - a.blast_radius.length);
+
+  const manualBlocks = sortByBlast(
+    (assessment?.blocks ?? []).filter((b) => !b.is_translatable),
   );
-  const reviewBlocks = (assessment?.blocks ?? []).filter(
-    (b) =>
-      b.is_translatable &&
-      !b.is_unknown_proc &&
-      (importanceOverrides[b.block_id] ?? b.structural_importance) === "high",
+  const reviewBlocks = sortByBlast(
+    (assessment?.blocks ?? []).filter(
+      (b) =>
+        b.is_translatable &&
+        !b.is_unknown_proc &&
+        (importanceOverrides[b.block_id] ?? b.structural_importance) === "high",
+    ),
   );
-  const bestEffortBlocks = (assessment?.blocks ?? []).filter(
-    (b) => b.is_translatable && b.is_unknown_proc,
+  const bestEffortBlocks = sortByBlast(
+    (assessment?.blocks ?? []).filter((b) => b.is_translatable && b.is_unknown_proc),
   );
-  const autoBlocks = (assessment?.blocks ?? []).filter(
-    (b) => tierFor(b, importanceOverrides) === "auto",
+  const autoBlocks = sortByBlast(
+    (assessment?.blocks ?? []).filter((b) => tierFor(b, importanceOverrides) === "auto"),
   );
+
+  const fileRiskTiers = useMemo(() => {
+    const TIER_ORDER: Record<"manual" | "review" | "best-effort" | "auto", number> = {
+      manual: 0,
+      review: 1,
+      "best-effort": 2,
+      auto: 3,
+    };
+    const result: Record<string, "manual" | "review" | "best-effort" | "auto"> = {};
+    for (const block of assessment?.blocks ?? []) {
+      const t = tierFor(block, importanceOverrides);
+      const existing = result[block.source_file];
+      if (!existing || TIER_ORDER[t] < TIER_ORDER[existing]) {
+        result[block.source_file] = t;
+      }
+    }
+    return result;
+  }, [assessment?.blocks, importanceOverrides]);
 
   // Acknowledgment gate
   const requiredAcks = new Set(manualBlocks.map((b) => b.block_id));
@@ -506,7 +710,32 @@ export default function MigrationPreviewPage(): React.ReactElement {
         {/* ── Assessment ──────────────────────────────────────────── */}
         {!loading && assessment && (
           <div className="space-y-8">
-            {/* Parser warning banner */}
+            {/* ── Headline verdict ──────────────────────────────── */}
+            <AssessmentHeadline
+              stats={assessment.stats}
+              missingDeps={assessment.missing_dependencies.length}
+              circularDeps={assessment.circular_dependencies.length}
+            />
+
+            {/* ── PII banner (conditional) ──────────────────────── */}
+            {assessment.sensitive_data_findings.length > 0 && (
+              <div
+                role="alert"
+                className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 space-y-2"
+              >
+                <p className="text-sm font-semibold text-destructive">
+                  ⚠ Sensitive data detected
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  The following PII-pattern column names were found:{" "}
+                  {assessment.sensitive_data_findings
+                    .map((f) => `${f.pattern} (in ${f.found_in})`)
+                    .join(", ")}
+                </p>
+              </div>
+            )}
+
+            {/* ── Parser warning banner ─────────────────────────── */}
             {assessment.parser_warning && (
               <div
                 role="alert"
@@ -517,36 +746,7 @@ export default function MigrationPreviewPage(): React.ReactElement {
               </div>
             )}
 
-            {/* ── 1. Verdict ──────────────────────────────────────── */}
-            <section aria-labelledby="verdict-heading">
-              <h2 id="verdict-heading" className="text-base font-semibold text-foreground mb-3">
-                Readiness verdict
-              </h2>
-              <div className="flex flex-wrap gap-4">
-                <StatPill
-                  value={assessment.stats.needs_manual}
-                  label="need manual work"
-                  color="red"
-                />
-                <StatPill
-                  value={assessment.stats.review_recommended}
-                  label="recommend review"
-                  color="amber"
-                />
-                <StatPill
-                  value={assessment.stats.best_effort}
-                  label="best-effort"
-                  color="blue"
-                />
-                <StatPill
-                  value={assessment.stats.auto_converts}
-                  label="convert automatically"
-                  color="emerald"
-                />
-              </div>
-            </section>
-
-            {/* ── 2. Blockers (conditional) ───────────────────────── */}
+            {/* ── Blockers (conditional) ────────────────────────── */}
             {(assessment.missing_dependencies.length > 0 ||
               assessment.circular_dependencies.length > 0) && (
               <section aria-labelledby="blockers-heading">
@@ -591,7 +791,7 @@ export default function MigrationPreviewPage(): React.ReactElement {
               </section>
             )}
 
-            {/* ── 3. Scope + AI description ───────────────────────── */}
+            {/* ── Scope + AI description ────────────────────────── */}
             <section aria-labelledby="scope-heading">
               <h2 id="scope-heading" className="text-base font-semibold text-foreground mb-3">
                 Scope
@@ -685,32 +885,14 @@ export default function MigrationPreviewPage(): React.ReactElement {
               )}
             </section>
 
-            {/* ── 4. Pipeline lineage ─────────────────────────────── */}
-            {assessment.blocks.length > 0 && (
-              <section aria-labelledby="lineage-heading">
-                <h2
-                  id="lineage-heading"
-                  className="text-xl font-semibold mb-4"
-                >
-                  Pipeline lineage
-                </h2>
-                <div className="border rounded-lg overflow-hidden" style={{ height: 320 }}>
-                  <PreviewLineageGraph
-                    blocks={assessment.blocks}
-                    outputDatasets={assessment.output_datasets}
-                  />
-                </div>
-              </section>
-            )}
-
-            {/* ── 5. Migration risk ───────────────────────────────── */}
+            {/* ── Migration risk ────────────────────────────────── */}
             <section aria-labelledby="risk-heading">
               <h2 id="risk-heading" className="text-base font-semibold text-foreground mb-3">
                 Migration risk
               </h2>
               <div className="space-y-3">
                 <TierSection
-                  label="🔴 Needs manual work"
+                  label="🔴 Cannot auto-convert — manual implementation required"
                   count={manualBlocks.length}
                   tier="manual"
                   blocks={manualBlocks}
@@ -718,7 +900,7 @@ export default function MigrationPreviewPage(): React.ReactElement {
                   onImportanceChange={handleImportanceChange}
                 />
                 <TierSection
-                  label="🟡 Recommend review"
+                  label="🟡 High-impact — developer review recommended"
                   count={reviewBlocks.length}
                   tier="review"
                   blocks={reviewBlocks}
@@ -726,7 +908,7 @@ export default function MigrationPreviewPage(): React.ReactElement {
                   onImportanceChange={handleImportanceChange}
                 />
                 <TierSection
-                  label="🔵 Best-effort"
+                  label="🔵 Will attempt — unknown patterns, verify output"
                   count={bestEffortBlocks.length}
                   tier="best-effort"
                   blocks={bestEffortBlocks}
@@ -744,90 +926,93 @@ export default function MigrationPreviewPage(): React.ReactElement {
               </div>
             </section>
 
-            {/* ── 5. Validation coverage ──────────────────────────── */}
-            {assessment.output_coverage.length > 0 && (
-              <section aria-labelledby="coverage-heading">
-                <h2
-                  id="coverage-heading"
-                  className="text-base font-semibold text-foreground mb-3"
-                >
-                  Validation coverage
+            {/* ── Pipeline lineage (after risk) ─────────────────── */}
+            {assessment.blocks.length > 0 && (
+              <section aria-labelledby="lineage-heading">
+                <h2 id="lineage-heading" className="text-base font-semibold text-foreground mb-3">
+                  Pipeline lineage
                 </h2>
-                <div className="space-y-2">
-                  {assessment.output_coverage.map((item) => (
-                    <OutputCoverageRow key={item.dataset_name} item={item} />
-                  ))}
+                <div className="border rounded-lg overflow-hidden" style={{ height: 320 }}>
+                  <PreviewLineageGraph
+                    blocks={assessment.blocks}
+                    outputDatasets={assessment.output_datasets}
+                    fileRiskTiers={fileRiskTiers}
+                  />
                 </div>
               </section>
             )}
 
-            {/* ── 6. Post-migration effort ─────────────────────────── */}
-            <section aria-labelledby="effort-heading">
-              <h2 id="effort-heading" className="text-base font-semibold text-foreground mb-3">
-                Post-migration effort estimate
-              </h2>
-              <div className="rounded-lg border border-border bg-card p-4">
-                <p className="text-2xl font-semibold text-foreground">
-                  {fmtMinutes(
-                    assessment.stats.estimated_minutes_low,
-                    assessment.stats.estimated_minutes_high,
-                  )}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Estimated manual review time across{" "}
-                  {assessment.stats.needs_manual + assessment.stats.review_recommended} block
-                  {assessment.stats.needs_manual + assessment.stats.review_recommended !== 1
-                    ? "s"
-                    : ""}{" "}
-                  requiring attention
-                </p>
-              </div>
+            {/* ── What you need to do ───────────────────────────── */}
+            <section aria-labelledby="action-heading">
+              <h2 id="action-heading" className="sr-only">What you need to do</h2>
+              <ActionSummary
+                manualBlocks={manualBlocks}
+                reviewBlocks={reviewBlocks}
+                bestEffortBlocks={bestEffortBlocks}
+              />
             </section>
 
-            {/* ── 7. Configuration values ──────────────────────────── */}
+            {/* ── Validation coverage (collapsed by default) ────── */}
+            {assessment.output_coverage.length > 0 && (
+              <section aria-labelledby="coverage-heading">
+                <button
+                  type="button"
+                  onClick={() => setCoverageOpen((o) => !o)}
+                  className="flex items-center gap-2 text-base font-semibold text-foreground mb-3 w-full text-left"
+                  aria-expanded={coverageOpen}
+                  id="coverage-heading"
+                >
+                  {coverageOpen ? (
+                    <ChevronDown className="h-4 w-4 text-muted-foreground" aria-hidden />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden />
+                  )}
+                  Validation coverage
+                  <span className="text-sm font-normal text-muted-foreground">
+                    ({assessment.output_coverage.length})
+                  </span>
+                </button>
+                {coverageOpen && (
+                  <div className="space-y-2">
+                    {assessment.output_coverage.map((item) => (
+                      <OutputCoverageRow key={item.dataset_name} item={item} />
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {/* ── Configuration values (collapsed by default) ───── */}
             {assessment.configuration_values.length > 0 && (
               <section aria-labelledby="config-heading">
-                <h2
+                <button
+                  type="button"
+                  onClick={() => setConfigOpen((o) => !o)}
+                  className="flex items-center gap-2 text-base font-semibold text-foreground mb-3 w-full text-left"
+                  aria-expanded={configOpen}
                   id="config-heading"
-                  className="text-base font-semibold text-foreground mb-3"
                 >
+                  {configOpen ? (
+                    <ChevronDown className="h-4 w-4 text-muted-foreground" aria-hidden />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden />
+                  )}
                   Configuration values
-                </h2>
-                <div className="space-y-1.5">
-                  {assessment.configuration_values.map((item) => (
-                    <ConfigValueRow key={item.name} item={item} />
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {/* ── 8. Sensitive data (conditional) ─────────────────── */}
-            {assessment.sensitive_data_findings.length > 0 && (
-              <section aria-labelledby="pii-heading">
-                <h2
-                  id="pii-heading"
-                  className="text-base font-semibold text-foreground mb-3"
-                >
-                  Sensitive data detected
-                </h2>
-                <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 space-y-3">
-                  <p className="text-sm text-destructive font-medium">
-                    The following PII-pattern column names were found:
-                  </p>
-                  <ul className="space-y-1">
-                    {assessment.sensitive_data_findings.map((f, i) => (
-                      <li key={i} className="text-xs text-muted-foreground">
-                        Pattern{" "}
-                        <span className="font-mono text-foreground">{f.pattern}</span>{" "}
-                        in <span className="font-mono">{f.found_in}</span>
-                      </li>
+                  <span className="text-sm font-normal text-muted-foreground">
+                    ({assessment.configuration_values.length})
+                  </span>
+                </button>
+                {configOpen && (
+                  <div className="space-y-1.5">
+                    {assessment.configuration_values.map((item) => (
+                      <ConfigValueRow key={item.name} item={item} />
                     ))}
-                  </ul>
-                </div>
+                  </div>
+                )}
               </section>
             )}
 
-            {/* ── 9. Acknowledgments + actions ─────────────────────── */}
+            {/* ── Acknowledgments + actions ─────────────────────── */}
             <section aria-labelledby="ack-heading">
               <h2 id="ack-heading" className="text-base font-semibold text-foreground mb-3">
                 Acknowledgments
