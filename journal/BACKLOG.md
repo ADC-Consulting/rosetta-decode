@@ -237,15 +237,17 @@
 - [x] F21 S-J: Route registration + upload dialog wiring (`App.tsx`, `JobsPage.tsx`)
 - [x] F21 S-K: `make test` exits 0
 
-**F21 UX improvements — Pre-Migration Assessment manager experience**
+**F22 — Pre-Migration Assessment UX improvements (`docs/plans/latest/F22-assessment-ux.md`)**
 
-- [ ] F21-UX: Add headline summary card at top of page — single RED/AMBER/GREEN readiness signal, effort estimate, and one-line critical issue callout (currently requires mental arithmetic across 4 separate pills)
-- [ ] F21-UX: Promote PII/sensitive-data section — render as prominent banner above the fold whenever findings are present (currently buried as last section before acknowledgments)
-- [ ] F21-UX: Move effort estimate into the readiness verdict section — it's the most actionable number for resource planning and is currently at section 7
-- [ ] F21-UX: Rename tier labels to decision-oriented language — "🔵 Best-effort" is meaningless to a non-technical code owner; replace with e.g. "Will attempt (unknown patterns — verify output)"
-- [ ] F21-UX: Add "What you need to do" summary before acknowledgments — list manual blocks grouped by type (macro rewrite / external proc / data format) so manager knows whether they have the right person available
-- [ ] F21-UX: Move lineage graph to after the migration risk tiers — currently shown before the manager knows which nodes are risky
-- [ ] F21-UX: Hide or collapse configuration values + output coverage sections by default — these are engineer-facing and don't help a manager with the sign-off decision
+- [ ] F22 S-A: Headline verdict card — RED/AMBER/GREEN + effort + critical issue callout → see `docs/plans/latest/F22-assessment-ux.md`
+- [ ] F22 S-B: PII alert banner above the fold → see `docs/plans/latest/F22-assessment-ux.md`
+- [ ] F22 S-C: Manager-friendly tier label copy → see `docs/plans/latest/F22-assessment-ux.md`
+- [ ] F22 S-D: Blast radius on 🟡 blocks + sort blocks within tiers by blast radius → see `docs/plans/latest/F22-assessment-ux.md`
+- [ ] F22 S-E: "What you need to do" summary — pre/post split, grouped by importance_reason → see `docs/plans/latest/F22-assessment-ux.md`
+- [ ] F22 S-F: Section reorder — lineage after risk, full order, fileRiskTiers prop wired → see `docs/plans/latest/F22-assessment-ux.md`
+- [ ] F22 S-G: PreviewLineageGraph risk-tier colouring (SAS file node borders) → see `docs/plans/latest/F22-assessment-ux.md`
+- [ ] F22 S-H: Collapse configuration values and validation coverage by default → see `docs/plans/latest/F22-assessment-ux.md`
+- [ ] F22 S-I: `make test` exits 0
 
 ---
 
