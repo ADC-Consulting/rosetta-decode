@@ -338,10 +338,7 @@ export default function PlanTab({
 
         {/* Migration plan */}
         {assessmentData && (
-          <div className="flex items-baseline gap-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Migration plan</p>
-            <span className="text-xs text-muted-foreground/50">actual results after run</span>
-          </div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Migration plan</p>
         )}
         <Card className="border-border bg-muted/30">
           <CardContent className="p-0 flex flex-col divide-y divide-border">
