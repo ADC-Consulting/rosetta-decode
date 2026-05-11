@@ -168,9 +168,9 @@ function AttentionBlocksSummary({
                 : "border-amber-200 bg-amber-50/50"
             }`}
           >
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="space-y-0.5">
               <span
-                className={`text-xs font-semibold px-2 py-0.5 rounded-full shrink-0 ${
+                className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full ${
                   isManual
                     ? "bg-red-100 text-red-800"
                     : "bg-amber-100 text-amber-800"
@@ -178,17 +178,10 @@ function AttentionBlocksSummary({
               >
                 {isManual ? "🔴 Manual implementation required" : "🟡 Review recommended"}
               </span>
-              <span className="text-xs text-muted-foreground font-mono">
-                {block.source_file} · line {block.start_line}
-              </span>
-              <span className="text-xs text-muted-foreground capitalize">
-                {block.block_type.replace(/_/g, " ").toLowerCase()}
-              </span>
-              {!isManual && (
-                <span className="text-xs text-muted-foreground ml-auto tabular-nums">
-                  {confidencePct}% confident
-                </span>
-              )}
+              <p className="text-xs text-muted-foreground font-mono">
+                {block.source_file} · line {block.start_line} · {block.block_type.replace(/_/g, " ").toLowerCase()}
+                {!isManual && ` · ${confidencePct}% confident`}
+              </p>
             </div>
             {block.rationale && (
               <p className="text-xs text-foreground/70 leading-relaxed">
@@ -317,27 +310,28 @@ export default function PlanTab({
   const hasAttentionBlocks =
     trustReport && (trustReport.needs_review + trustReport.manual_todo) > 0;
 
+  const n = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
   const recommendation = trustReport
     ? trustReport.manual_todo > 0
       ? {
-          text: `Not ready to accept — ${trustReport.manual_todo} block${trustReport.manual_todo > 1 ? "s" : ""} require manual implementation before the pipeline will run correctly.`,
+          text: `Not ready to accept — ${n(trustReport.manual_todo, "block")} requires manual implementation before the pipeline will run correctly.`,
           classes: "border-l-2 border-red-400 bg-red-50/60 text-red-800",
         }
       : trustReport.needs_review > 0
         ? {
-            text: `Review recommended — ${trustReport.needs_review} block${trustReport.needs_review > 1 ? "s" : ""} were translated but reconciliation flagged differences. A developer should verify the output before accepting.`,
+            text: `Review recommended — ${n(trustReport.needs_review, "block")} was translated but reconciliation flagged differences. A developer should verify the output before accepting.`,
             classes: "border-l-2 border-amber-400 bg-amber-50/60 text-amber-800",
           }
         : {
-            text: `Ready to accept — all ${trustReport.auto_verified} block${trustReport.auto_verified !== 1 ? "s" : ""} auto-verified against reference data.`,
+            text: `Ready to accept — all ${n(trustReport.auto_verified, "block")} auto-verified against reference data.`,
             classes: "border-l-2 border-green-400 bg-green-50/60 text-green-800",
           }
     : null;
 
   return (
     <TooltipProvider>
-      <div className="h-full min-h-0 overflow-y-auto space-y-4 pb-6">
-        {/* Plan summary card */}
+      <div className="h-full min-h-0 overflow-y-auto space-y-3 pb-6">
+        {/* Plan summary card + attention section grouped tightly */}
         <Card className="overflow-hidden border-border bg-muted/30">
           <CardContent className="p-0 flex flex-col divide-y divide-border">
             {/* Go/no-go recommendation */}
@@ -421,17 +415,17 @@ export default function PlanTab({
                     tooltip="The generated Python was executed against the same input data as the SAS and the outputs matched — schema, row count, and aggregates all pass. Safe to accept without manual review."
                   />
                   <StatPill
-                    count={trustReport.needs_review}
+                    count={trustReport.needs_review > 0 ? trustReport.needs_review : undefined}
                     label="Needs review"
                     colorClass="text-amber-700"
                     dotClass="bg-amber-500"
                     tooltip="Translation ran but reconciliation flagged differences, and the LLM's own confidence was low. A human should inspect these blocks before accepting the migration."
                   />
                   <StatPill
-                    count={trustReport.manual_todo}
+                    count={trustReport.manual_todo > 0 ? trustReport.manual_todo : undefined}
                     label="Manual TODO"
-                    colorClass="text-muted-foreground"
-                    dotClass="bg-border"
+                    colorClass="text-red-700"
+                    dotClass="bg-red-500"
                     tooltip="Blocks the migration planner marked as manual — constructs that cannot be auto-translated. A developer must write the Python equivalent by hand."
                   />
                 </>
@@ -440,7 +434,7 @@ export default function PlanTab({
           </CardContent>
         </Card>
 
-        {/* PM-facing attention summary — only when blocks need action */}
+        {/* PM-facing attention summary — tightly coupled to plan card above */}
         {hasAttentionBlocks && (
           <AttentionBlocksSummary
             blockPlans={planData.block_plans}
@@ -448,9 +442,9 @@ export default function PlanTab({
           />
         )}
 
-        {/* Developer-facing block table — collapsed by default */}
+        {/* Developer-facing block table — collapsed by default, separated from PM content */}
         {planData?.block_plans && planData.block_plans.length > 0 && (
-          <div className="space-y-2">
+          <div className="space-y-2 pt-1">
             <button
               type="button"
               onClick={() => setBlocksCollapsed((v) => !v)}
@@ -465,9 +459,6 @@ export default function PlanTab({
               <Badge variant="secondary" className="text-xs font-mono">
                 {planData.block_plans.length}
               </Badge>
-              {hasAttentionBlocks && (
-                <span className="text-xs text-muted-foreground">· developer detail</span>
-              )}
             </button>
             {!blocksCollapsed && (
               <BlockPlanTable

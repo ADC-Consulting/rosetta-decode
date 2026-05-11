@@ -264,6 +264,7 @@
 - [x] F22 S-W: Collapse AssessmentPanel — replace with slim AssessmentCallouts row (missing deps + PII only) inside plan card
 - [x] F22 S-X: Restore effort estimate + circular dep warning dropped during S-W
 - [x] F22 S-Y: PM-facing AttentionBlocksSummary — one card per attention block with rationale, status badge, confidence %; Blocks toggle labelled "developer detail"
+- [x] F22 S-Z: Layout polish — grammar fix (n() helper), red-outline "Accept anyway" button, hide zero stats, two-line block card, tighter spacing, remove "developer detail" qualifier
 
 ---
 

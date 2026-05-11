@@ -231,14 +231,26 @@ export default function JobDetailPage(): React.ReactElement {
                       ⚠ Under review — reconciliation failed
                     </span>
                   )}
-                  <Button
-                    size="sm"
-                    onClick={() => setShowAcceptConfirm(true)}
-                    disabled={acceptMutation.isPending}
-                    className="cursor-pointer"
-                  >
-                    Accept migration
-                  </Button>
+                  {trustReportData?.manual_todo ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setShowAcceptConfirm(true)}
+                      disabled={acceptMutation.isPending}
+                      className="cursor-pointer border-red-300 text-red-700 hover:bg-red-50"
+                    >
+                      Accept anyway
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      onClick={() => setShowAcceptConfirm(true)}
+                      disabled={acceptMutation.isPending}
+                      className="cursor-pointer"
+                    >
+                      Accept migration
+                    </Button>
+                  )}
                 </>
               )}
 

@@ -19,6 +19,7 @@ Most recent session on top. Each entry should answer:
 - **refactor(F22):** Collapsed full `AssessmentPanel` into slim `AssessmentCallouts` row — removed duplicate/contradictory pre-run counts, kept only missing deps + PII (S-W)
 - **fix(F22):** Restored effort estimate and circular dep warning dropped in S-W (S-X)
 - **feat(F22):** `AttentionBlocksSummary` — PM-facing section showing one card per block needing attention: status badge, file+line, block type, confidence %, plain-language rationale. Blocks toggle moved outside card and labelled "developer detail" (S-Y)
+- **fix(F22):** Layout polish pass — grammar fix (singular/plural `n()` helper), red-outline "Accept anyway" button when `manual_todo > 0`, hide zero-value stat pills, attention block badge+location on two lines, tighter spacing, removed "· developer detail" qualifier (S-Z)
 
 ### Decisions
 - Pre-migration assessment panel belongs on MigrationPreviewPage (decision gate), not in the job detail Plan tab. Post-run, the trust report stats are authoritative; only missing deps, PII, circular deps, and effort estimate remain uniquely useful from the assessment.
@@ -28,7 +29,7 @@ Most recent session on top. Each entry should answer:
 - none
 
 ### Next Session — Start Here
-1. F22 is complete — branch `feat/F22-assessment-ux` is ready to PR
+1. F22 is complete (S-A through S-Z) — branch `feat/F22-assessment-ux` is ready to PR
 2. Next backlog item: **F1-ext: Macro definition + call expansion** (`%MACRO` / `%MEND`) — the attention block demo showed `m_derive_age_group.sas:8` flagged as manual precisely because macro parameter context is missing; this feature would resolve that class of blocks
 
 ### Files Touched

@@ -2,7 +2,7 @@
 
 **Phase:** 2
 **Area:** Frontend
-**Status:** complete (S-A through S-Y)
+**Status:** complete (S-A through S-Z)
 
 ## Goal
 
@@ -273,6 +273,14 @@ The legend overlay is updated to reflect this: SAS file node legend entry replac
 **File:** `src/frontend/src/components/JobDetail/PlanTab.tsx`
 **Depends on:** S-X
 **Done when:** `AttentionBlocksSummary` component renders between the plan card and the Blocks toggle when `needs_review + manual_todo > 0`. One card per attention block showing: status badge (Manual implementation required / Review recommended), source file + line, block type, confidence %, and plain-language rationale. Blocks toggle moves back outside the plan card and is labelled "· developer detail" when attention blocks are visible.
+- [x] done
+
+---
+
+### S-Z: Plan tab layout polish pass
+**Files:** `src/frontend/src/components/JobDetail/PlanTab.tsx`, `src/frontend/src/pages/JobDetailPage.tsx`
+**Depends on:** S-Y
+**Done when:** Six layout improvements applied: (1) grammar fixed — `n()` helper produces correct singular/plural ("1 block requires" not "1 block require"); (2) Accept button shows red-outline "Accept anyway" when `manual_todo > 0`; (3) zero-value stats hidden — `needs_review` and `manual_todo` pills omitted when 0, `manual_todo` pill is red; (4) attention block card shows badge on first line and monospace location (`file · line · type · confidence`) on second; (5) outer spacing tightened to `space-y-3`; (6) "· developer detail" qualifier removed from Blocks toggle.
 - [x] done
 
 ## Dependencies on other features
