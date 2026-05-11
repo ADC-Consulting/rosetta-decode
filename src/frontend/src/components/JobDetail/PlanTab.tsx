@@ -109,11 +109,15 @@ function AssessmentCallouts({
   const piiPatterns = [
     ...new Set(assessment.sensitive_data_findings.map((f) => f.pattern)),
   ];
+  const hasCircular = assessment.circular_dependencies.length > 0;
 
-  if (uniqueMissingDeps.length === 0 && piiPatterns.length === 0) return null;
+  if (uniqueMissingDeps.length === 0 && piiPatterns.length === 0 && !hasCircular) return null;
 
   return (
     <div className="flex flex-wrap gap-x-5 gap-y-1 px-5 py-2 text-xs border-t border-border">
+      {hasCircular && (
+        <span className="text-red-700">⚠ Circular dependency — execution order cannot be resolved</span>
+      )}
       {uniqueMissingDeps.length > 0 && (
         <span className="text-amber-700">
           ⚠ {uniqueMissingDeps.length} missing macro/include file(s):{" "}
@@ -228,6 +232,14 @@ export default function PlanTab({
     label: planData.overall_risk,
   };
 
+  const effortStr = (() => {
+    const s = assessmentData?.stats;
+    if (!s) return null;
+    const lo = Math.round((s.estimated_minutes_low / 60) * 10) / 10;
+    const hi = Math.round((s.estimated_minutes_high / 60) * 10) / 10;
+    return hi < 1 ? "< 1 hr" : lo === hi ? `~${lo} hr` : `${lo}–${hi} hr`;
+  })();
+
   return (
     <TooltipProvider>
       <div className="h-full min-h-0 overflow-y-auto space-y-4 pb-6">
@@ -287,6 +299,16 @@ export default function PlanTab({
                   {riskBar.label}
                 </span>
               </div>
+
+              {effortStr && (
+                <>
+                  <Separator orientation="vertical" className="h-4 hidden sm:block" />
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-muted-foreground shrink-0">Effort</span>
+                    <span className="text-xs font-semibold tabular-nums">{effortStr}</span>
+                  </div>
+                </>
+              )}
 
               {trustReport && (
                 <>
