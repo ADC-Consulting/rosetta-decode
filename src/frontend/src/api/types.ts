@@ -34,7 +34,6 @@ export interface MigrateResponse {
   job_id: string;
   accepted: string[];
   rejected: FileRejection[];
-  name?: string;
 }
 
 export interface BlockOverride {
@@ -409,3 +408,81 @@ export type TraceEvent =
   | ParseResultEvent
   | PlanResultEvent
   | EnrichmentItemDoneEvent;
+
+// ── F21 — Pre-Migration Assessment ───────────────────────────────────────────
+
+export interface AssessedBlock {
+  block_id: string;
+  source_file: string;
+  start_line: number;
+  end_line: number;
+  block_type: string;
+  functional_description: string;
+  is_translatable: boolean;
+  is_unknown_proc: boolean;
+  structural_importance: "low" | "medium" | "high";
+  importance_reason: string;
+  input_datasets: string[];
+  output_datasets: string[];
+  blast_radius: string[];
+  raw_sas_snippet: string;
+}
+
+export interface MissingDependency {
+  name: string;
+  referenced_in: string;
+  dependency_type: "file" | "dataset";
+}
+
+export interface CircularDependency {
+  cycle: string[];
+}
+
+export interface OutputCoverage {
+  dataset_name: string;
+  structural_importance: "low" | "medium" | "high";
+  has_reference: boolean;
+  reference_filename: string | null;
+  row_count: number | null;
+  column_names: string[];
+}
+
+export interface ConfigurationValue {
+  name: string;
+  value: string;
+  looks_dynamic: boolean;
+}
+
+export interface SensitiveDataFinding {
+  pattern: string;
+  found_in: string;
+}
+
+export interface PreviewStats {
+  total_blocks: number;
+  needs_manual: number;
+  best_effort: number;
+  review_recommended: number;
+  auto_converts: number;
+  macro_var_count: number;
+  macro_def_count: number;
+  estimated_minutes_low: number;
+  estimated_minutes_high: number;
+}
+
+export interface AnalyseResponse {
+  input_hash: string;
+  filenames: string[];
+  input_sources: string[];
+  output_datasets: string[];
+  stats: PreviewStats;
+  blocks: AssessedBlock[];
+  missing_dependencies: MissingDependency[];
+  circular_dependencies: CircularDependency[];
+  output_coverage: OutputCoverage[];
+  configuration_values: ConfigurationValue[];
+  sensitive_data_findings: SensitiveDataFinding[];
+  pipeline_description: string | null;
+  parser_warning: string | null;
+  llm_skipped: boolean;
+}

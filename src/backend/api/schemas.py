@@ -535,3 +535,98 @@ class ExecuteResponse(BaseModel):
     checks: list[dict[str, Any]] | None = None
     error: str | None = None
     elapsed_ms: int
+
+
+# F21 — Pre-Migration Assessment schemas
+
+
+class AssessedBlock(BaseModel):
+    """Assessment data for a single parsed SAS block."""
+
+    block_id: str
+    source_file: str
+    start_line: int
+    end_line: int
+    block_type: str
+    functional_description: str
+    is_translatable: bool
+    is_unknown_proc: bool
+    structural_importance: Literal["low", "medium", "high"]
+    importance_reason: str
+    input_datasets: list[str]
+    output_datasets: list[str]
+    blast_radius: list[str]
+    raw_sas_snippet: str
+
+
+class MissingDependency(BaseModel):
+    """A file or dataset referenced but not uploaded."""
+
+    name: str
+    referenced_in: str
+    dependency_type: Literal["file", "dataset"]
+
+
+class CircularDependency(BaseModel):
+    """A cycle detected in the dataset dependency graph."""
+
+    cycle: list[str]
+
+
+class OutputCoverage(BaseModel):
+    """Coverage status for a single terminal output dataset."""
+
+    dataset_name: str
+    structural_importance: Literal["low", "medium", "high"]
+    has_reference: bool
+    reference_filename: str | None
+    row_count: int | None
+    column_names: list[str]
+
+
+class ConfigurationValue(BaseModel):
+    """A SAS macro variable that may represent a configurable value."""
+
+    name: str
+    value: str
+    looks_dynamic: bool
+
+
+class SensitiveDataFinding(BaseModel):
+    """A PII-pattern column name found in uploaded data or KEEP/DROP lists."""
+
+    pattern: str
+    found_in: str
+
+
+class PreviewStats(BaseModel):
+    """Aggregate statistics for the pre-migration assessment."""
+
+    total_blocks: int
+    needs_manual: int
+    best_effort: int
+    review_recommended: int
+    auto_converts: int
+    macro_var_count: int
+    macro_def_count: int
+    estimated_minutes_low: int
+    estimated_minutes_high: int
+
+
+class AnalyseResponse(BaseModel):
+    """Response body for POST /analyse."""
+
+    input_hash: str
+    filenames: list[str]
+    input_sources: list[str]
+    output_datasets: list[str]
+    stats: PreviewStats
+    blocks: list[AssessedBlock]
+    missing_dependencies: list[MissingDependency]
+    circular_dependencies: list[CircularDependency]
+    output_coverage: list[OutputCoverage]
+    configuration_values: list[ConfigurationValue]
+    sensitive_data_findings: list[SensitiveDataFinding]
+    pipeline_description: str | None = None
+    parser_warning: str | None = None
+    llm_skipped: bool = False

@@ -1,5 +1,4 @@
 import { downloadJob, getJob, listJobs } from "@/api/jobs";
-import { submitMigration } from "@/api/migrate";
 import LiveTraceDialog from "@/components/LiveTraceDialog";
 import type { JobStatusValue, JobSummary } from "@/api/types";
 import { Button } from "@/components/ui/button";
@@ -13,7 +12,7 @@ import {
 import { useUploadState } from "@/context/UploadStateContext";
 import { cn } from "@/lib/utils";
 import { STATUS_LABEL } from "@/pages/JobDetailPage";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
   Archive,
@@ -539,7 +538,6 @@ export default function JobsPage(): React.ReactElement {
 
   const {
     phase,
-    setPhase,
     files,
     zipEntries,
     manifest,
@@ -551,7 +549,6 @@ export default function JobsPage(): React.ReactElement {
     removeFile,
     toggleZipExpanded,
     excludeZipEntry,
-    setManifest,
     reset,
     newMigration,
     inputRef,
@@ -596,31 +593,10 @@ export default function JobsPage(): React.ReactElement {
     },
   });
 
-  const mutation = useMutation({
-    mutationFn: () =>
-      submitMigration(sasFiles, refDataset, zipFile, migrationName, refTargetPath),
-    onSuccess: (data) => {
-      setManifest(data);
-      setPhase("submitted");
-      void queryClient.invalidateQueries({ queryKey: ["jobs"] });
-      handleDialogOpenChange(false);
-    },
-    onError: (err) => {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : "Something went wrong while submitting the migration. Please try again.",
-      );
-    },
-  });
-
-  const isPending = mutation.status === "pending";
   const submitDisabled =
     files.length === 0 ||
     unknownFiles.length > 0 ||
-    isPending ||
-    migrationName.trim() === "" ||
-    !refTargetPath;
+    migrationName.trim() === "";
 
   const isAccepted = jobStatus?.status === "accepted";
   const isProposed =
@@ -658,7 +634,10 @@ export default function JobsPage(): React.ReactElement {
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (submitDisabled) return;
-    mutation.mutate();
+    handleDialogOpenChange(false);
+    navigate("/migrate/preview", {
+      state: { sasFiles, zipFile, refDataset, refTargetPath, name: migrationName },
+    });
   }
 
   function copyText(text: string) {
@@ -1097,10 +1076,9 @@ export default function JobsPage(): React.ReactElement {
                 type="submit"
                 form="migration-form"
                 disabled={submitDisabled}
-                aria-busy={isPending}
                 className="cursor-pointer"
               >
-                {isPending ? "Submitting…" : "Migrate"}
+                Review &amp; Migrate
               </Button>
             )}
 

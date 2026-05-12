@@ -2,6 +2,7 @@
 
 import hashlib
 import io
+import json
 import logging
 import os
 import uuid
@@ -86,6 +87,9 @@ async def migrate(
     ref_csv: UploadFile | None = None,
     name: str | None = Form(default=None),
     ref_target_path: str | None = Form(default=None),
+    notes: str | None = Form(default=None),
+    importance_overrides: str | None = Form(default=None),
+    assessment_json: str | None = Form(default=None),
 ) -> MigrateResponse:
     """Accept SAS files or a zip archive and enqueue a migration job.
 
@@ -98,6 +102,9 @@ async def migrate(
         name: Optional human-readable label for the migration job.
         ref_target_path: Optional path of a zip-extracted file to promote as the canonical
             reconciliation reference (``__ref_csv__`` or ``__ref_sas7bdat__``).
+        notes: Optional plain-text notes from the user about this migration.
+        importance_overrides: Optional JSON string mapping block_id → importance level.
+        assessment_json: Optional JSON string with the full pre-migration assessment snapshot.
 
     Returns:
         MigrateResponse with job UUID, accepted file list, and any rejected files.
@@ -201,12 +208,32 @@ async def migrate(
 
     input_hash = hasher.hexdigest()
 
+    # Parse optional assessment fields
+    assessment_dict: dict[str, object] = {}
+    if assessment_json:
+        try:
+            parsed = json.loads(assessment_json)
+            if isinstance(parsed, dict):
+                assessment_dict = parsed
+        except (json.JSONDecodeError, ValueError):
+            logger.warning("Failed to parse assessment_json; ignoring.")
+
+    if importance_overrides:
+        try:
+            overrides = json.loads(importance_overrides)
+            if isinstance(overrides, dict):
+                assessment_dict["importance_overrides"] = overrides
+        except (json.JSONDecodeError, ValueError):
+            logger.warning("Failed to parse importance_overrides; ignoring.")
+
     job = Job(
         id=job_id,
         status="queued",
         input_hash=input_hash,
         files=file_contents,
         name=name,
+        notes=notes,
+        assessment=assessment_dict if assessment_dict else None,
     )
     session.add(job)
     await session.commit()

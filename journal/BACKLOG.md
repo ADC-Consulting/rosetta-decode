@@ -223,6 +223,69 @@
 
 ---
 
+**F21 — Pre-Migration Assessment (`docs/plans/latest/F21-pre-migration-assessment.md`) — COMPLETE**
+
+- [x] F21 S-A: Alembic migration 018 — `notes TEXT` + `assessment JSON` columns on jobs table
+- [x] F21 S-B: `Job` ORM model — add `notes` and `assessment` mapped columns
+- [x] F21 S-C: `AnalyseResponse` Pydantic schemas (`AssessedBlock`, `OutputCoverage`, `PreviewStats`, etc.)
+- [x] F21 S-D: `POST /analyse` route — synchronous parser + lightweight LLM description + full assessment response
+- [x] F21 S-E: Extend `POST /migrate` — accept `notes`, `importance_overrides`, `assessment_json`; store on job
+- [x] F21 S-F: Backend tests — `test_analyse_route.py` + updated migrate tests
+- [x] F21 S-G: Frontend TypeScript types — `AnalyseResponse` and all nested interfaces
+- [x] F21 S-H: Frontend API functions — `analyseMigration` + updated `submitMigration`
+- [x] F21 S-I: `MigrationPreviewPage` component — full assessment page, all seven sections
+- [x] F21 S-J: Route registration + upload dialog wiring (`App.tsx`, `JobsPage.tsx`)
+- [x] F21 S-K: `make test` exits 0
+
+**F22 — Pre-Migration Assessment UX improvements (`docs/plans/latest/F22-assessment-ux.md`) — COMPLETE**
+
+- [x] F22 S-A: Headline verdict card — RED/AMBER/GREEN + effort + critical issue callout → see `docs/plans/latest/F22-assessment-ux.md`
+- [x] F22 S-B: PII alert banner above the fold → see `docs/plans/latest/F22-assessment-ux.md`
+- [x] F22 S-C: Manager-friendly tier label copy → see `docs/plans/latest/F22-assessment-ux.md`
+- [x] F22 S-D: Blast radius on 🟡 blocks + sort blocks within tiers by blast radius → see `docs/plans/latest/F22-assessment-ux.md`
+- [x] F22 S-E: "What you need to do" summary — pre/post split, grouped by importance_reason → see `docs/plans/latest/F22-assessment-ux.md`
+- [x] F22 S-F: Section reorder — lineage after risk, full order, fileRiskTiers prop wired → see `docs/plans/latest/F22-assessment-ux.md`
+- [x] F22 S-G: PreviewLineageGraph risk-tier colouring (SAS file node borders) → see `docs/plans/latest/F22-assessment-ux.md`
+- [x] F22 S-H: Collapse configuration values and validation coverage by default → see `docs/plans/latest/F22-assessment-ux.md`
+- [x] F22 S-I: `make test` exits 0
+- [x] F22 S-J: Deduplicate missing dependencies by name → see `docs/plans/latest/F22-assessment-ux.md`
+- [x] F22 S-K: Improve missing dep path display (basename + referenced-by count) → see `docs/plans/latest/F22-assessment-ux.md`
+- [x] F22 S-L: Fix headline recommendation sentence when missing deps present → see `docs/plans/latest/F22-assessment-ux.md`
+- [x] F22 S-M: Missing deps acknowledgment checkbox + gate fix → see `docs/plans/latest/F22-assessment-ux.md`
+- [x] F22 S-N: Remove "+N more" truncation from action summary datasets → see `docs/plans/latest/F22-assessment-ux.md`
+- [x] F22 S-O: Validation/Config section count labels → see `docs/plans/latest/F22-assessment-ux.md`
+- [x] F22 S-P: Lineage graph fitView padding → see `docs/plans/latest/F22-assessment-ux.md`
+- [x] F22 S-Q: `make test` exits 0 (post bug-fix pass)
+- [x] F22 S-R: Navigate to `/jobs/{id}` after submit (was `navigate("/jobs")`)
+- [x] F22 S-S: Persist full `AnalyseResponse` in assessment snapshot; `GET /jobs/{id}/assessment` endpoint; `AssessmentPanel` in PlanTab
+- [x] F22 S-T: AssessmentPanel UX polish — effort floor, inline tier counts, remove tile grid, hide toggle when empty, temporal subtitles, blocks hint
+- [x] F22 S-U: Remove misleading "actual results after run" subtitle from Migration plan label
+- [x] F22 S-V: Plan tab 7 UX fixes — blocker dedup, label always shown, left-align stats, chevron toggle, no dep truncation, hide confidence until loaded, blocks in card
+- [x] F22 S-W: Collapse AssessmentPanel — replace with slim AssessmentCallouts row (missing deps + PII only) inside plan card
+- [x] F22 S-X: Restore effort estimate + circular dep warning dropped during S-W
+- [x] F22 S-Y: PM-facing AttentionBlocksSummary — one card per attention block with rationale, status badge, confidence %; Blocks toggle labelled "developer detail"
+- [x] F22 S-Z: Layout polish — grammar fix (n() helper), red-outline "Accept anyway" button, hide zero stats, two-line block card, tighter spacing, remove "developer detail" qualifier
+- [x] F22 post-S-Z: Trust-aware `TrustBadge` in page header; recommendation strip icon+bold verdict+muted detail; 12-issue design review (bars w-28, strip spacing, attention heading, badge→location gap)
+- [x] F22 post-S-Z: Plan tab layout — Blocks inside card, auto-expand green state, effort to card header, in-card Accept/Accept-anyway button for all trust states
+- [x] F22 post-S-Z: Accept CTA consolidated to Plan tab only — removed from page header for all trust states
+
+**F23 — Plan tab PM-readability pass (`docs/plans/latest/F23-plan-tab-pm-readability.md`) — COMPLETE**
+
+- [x] F23 S-A: Rename "Risk" → "Complexity" in stats row; add tooltips to both Confidence and Complexity bars
+- [x] F23 S-B: Rewrite recommendation strip detail texts for all three states (green/amber/red)
+- [x] F23 S-C: Add "Produces" output scope row to plan card
+- [x] F23 S-D: Revert Blocks auto-expand — collapse by default in all states
+- [x] F23 S-E: `make test` exits 0
+- [x] F23 S-F: Scope summary line in card header (SAS files · blocks · output datasets)
+- [x] F23 S-G: Accept button moved to standalone bottom card row; accepted state shows confirmation text
+- [x] F23 S-H: Stats row moved above assessment callouts
+- [x] F23 S-I: "Reads" input sources row alongside "Produces"
+- [x] F23 S-J: Attention block cards show "Affects: X, Y" from AssessedBlock.output_datasets
+- [x] F23 S-K: Missing-deps warning elevated to distinct amber bordered card
+- [x] F23 S-L: `make test` exits 0
+
+---
+
 ## Phase 3 — Frontend Features (post-MVP)
 
 - [ ] F2: Code Explanation Assistant page (chat UI — explain SAS/Python snippets)

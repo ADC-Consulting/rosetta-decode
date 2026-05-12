@@ -7,7 +7,7 @@ import {
   refineJob,
   saveVersion,
 } from "@/api/jobs";
-import type { BlockOverride, JobStatusValue } from "@/api/types";
+import type { BlockOverride, JobStatusValue, TrustReportResponse } from "@/api/types";
 // import ChangelogFeed from "@/components/JobDetail/ChangelogFeed";
 import EditorTab from "@/components/JobDetail/EditorTab";
 import LineageTab from "@/components/JobDetail/LineageTab";
@@ -30,6 +30,18 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 export { STATUS_LABEL } from "@/components/JobDetail/constants";
 export { StatusBadge } from "@/components/JobDetail/StatusBadge";
+
+function TrustBadge({ trustReport }: { trustReport: TrustReportResponse }): React.ReactElement {
+  const isNotReady = trustReport.manual_todo > 0;
+  const isNeedsReview = !isNotReady && trustReport.needs_review > 0;
+  const bg = isNotReady ? "bg-red-600" : isNeedsReview ? "bg-amber-500" : "bg-emerald-600";
+  const label = isNotReady ? "Not Ready" : isNeedsReview ? "Needs Review" : "Ready to Accept";
+  return (
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 ${bg}`}>
+      <span className="text-xs font-medium text-white">{label}</span>
+    </span>
+  );
+}
 
 export default function JobDetailPage(): React.ReactElement {
   const { id = "" } = useParams<{ id: string }>();
@@ -196,7 +208,11 @@ export default function JobDetailPage(): React.ReactElement {
               <span className="text-xl font-semibold text-foreground truncate">
                 {job?.name ?? shortId}
               </span>
-              {job && <StatusBadge status={job.status} />}
+              {job && (
+                trustReportData && (job.status === "proposed" || job.status === "under_review")
+                  ? <TrustBadge trustReport={trustReportData} />
+                  : <StatusBadge status={job.status} />
+              )}
             </div>
           </div>
 
@@ -224,24 +240,11 @@ export default function JobDetailPage(): React.ReactElement {
             </TabsList>
 
             <div className="ml-auto flex items-center gap-2">
-              {(job?.status === "proposed" || job?.status === "under_review") && (
-                <>
-                  {job?.status === "under_review" && (
-                    <span className="text-sm text-amber-600 font-medium px-2 py-1 bg-amber-50 rounded border border-amber-200">
-                      ⚠ Under review — reconciliation failed
-                    </span>
-                  )}
-                  <Button
-                    size="sm"
-                    onClick={() => setShowAcceptConfirm(true)}
-                    disabled={acceptMutation.isPending}
-                    className="cursor-pointer"
-                  >
-                    Accept migration
-                  </Button>
-                </>
+              {job?.status === "under_review" && (
+                <span className="text-sm text-amber-600 font-medium px-2 py-1 bg-amber-50 rounded border border-amber-200">
+                  ⚠ Under review — reconciliation failed
+                </span>
               )}
-
               {job?.status === "accepted" && (
                 <span className="text-sm text-emerald-600 font-medium">
                   ✓ Accepted
@@ -268,6 +271,7 @@ export default function JobDetailPage(): React.ReactElement {
                 onBlockRefineSuccess={() => setEditorCode(null)}
                 jobPythonCode={job?.python_code ?? undefined}
                 generatedFiles={job?.generated_files ?? undefined}
+                onAccept={() => setShowAcceptConfirm(true)}
               />
             </TabsContent>
 
