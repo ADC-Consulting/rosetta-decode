@@ -115,8 +115,7 @@ function AssessmentCallouts({
   if (uniqueMissingDeps.length === 0 && piiPatterns.length === 0 && !hasCircular) return null;
 
   return (
-    <div className="px-5 py-2 space-y-2 border-t border-border">
-      {/* Missing deps — elevated to distinct amber card */}
+    <div className="px-5 py-3 space-y-2">
       {uniqueMissingDeps.length > 0 && (
         <div className="rounded-md border border-amber-200 bg-amber-50/60 px-4 py-2.5 space-y-0.5">
           <p className="text-xs font-semibold text-amber-800">Translation may be incomplete</p>
@@ -125,7 +124,6 @@ function AssessmentCallouts({
           </p>
         </div>
       )}
-      {/* Circular dep and PII remain as inline spans */}
       {(hasCircular || piiPatterns.length > 0) && (
         <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs">
           {hasCircular && (
@@ -143,9 +141,7 @@ function AssessmentCallouts({
 }
 
 // ---------------------------------------------------------------------------
-// AttentionBlocksSummary — PM-facing per-block summary for blocks that need
-// action. Shows only the blocks requiring attention with plain-language
-// rationale and which output datasets are affected.
+// AttentionBlocksSummary
 // ---------------------------------------------------------------------------
 
 function AttentionBlocksSummary({
@@ -200,7 +196,8 @@ function AttentionBlocksSummary({
                 <span>{isManual ? "🔴" : "🟡"}</span>
                 <span>{isManual ? "Manual implementation required" : "Review recommended"}</span>
               </span>
-              <p className="text-xs text-muted-foreground font-mono">
+              {/* Plain text location — no monospace */}
+              <p className="text-xs text-muted-foreground">
                 {block.source_file} · line {block.start_line} · {block.block_type}
                 {!isManual && ` · ${confidencePct}% confident`}
               </p>
@@ -339,7 +336,6 @@ export default function PlanTab({
     return hi < 1 ? "< 1 hr" : lo === hi ? `~${lo} hr` : `${lo}–${hi} hr`;
   })();
 
-  // S-F: scope summary — "2 SAS files · 15 blocks · 3 output datasets"
   const scopeParts: string[] = [];
   if (assessmentData?.filenames?.length) {
     const c = assessmentData.filenames.length;
@@ -357,6 +353,17 @@ export default function PlanTab({
   const hasAttentionBlocks =
     trustReport && (trustReport.needs_review + trustReport.manual_todo) > 0;
 
+  const hasWarnings =
+    hasAttentionBlocks ||
+    (assessmentData &&
+      (assessmentData.missing_dependencies.length > 0 ||
+        assessmentData.circular_dependencies.length > 0 ||
+        assessmentData.sensitive_data_findings.length > 0));
+
+  const hasReadsProduce =
+    (assessmentData?.input_sources?.length ?? 0) > 0 ||
+    (assessmentData?.output_datasets?.length ?? 0) > 0;
+
   const n = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
   const recommendation = trustReport
     ? trustReport.manual_todo > 0
@@ -364,20 +371,20 @@ export default function PlanTab({
           icon: "⚠",
           label: "Not ready to accept",
           detail: `${n(trustReport.manual_todo, "block")} could not be auto-translated and will produce placeholder code. The pipeline will be incomplete until a developer implements ${trustReport.manual_todo === 1 ? "it" : "them"}.`,
-          classes: "border-l-2 border-red-400 bg-red-50/60 text-red-800",
+          classes: "border-red-400 bg-red-50/60 text-red-800",
         }
       : trustReport.needs_review > 0
         ? {
             icon: "⚠",
             label: "Review recommended",
             detail: `${n(trustReport.needs_review, "block")} was translated but the generated output differed from the original SAS. A developer should review those blocks before this pipeline is used in production.`,
-            classes: "border-l-2 border-amber-400 bg-amber-50/60 text-amber-800",
+            classes: "border-amber-400 bg-amber-50/60 text-amber-800",
           }
         : {
             icon: "✓",
             label: "Ready to accept",
             detail: `The generated Python matched the original SAS output — schema, row counts, and aggregates verified. Accepting marks this pipeline ready for use and retires the SAS workflow.`,
-            classes: "border-l-[3px] border-green-500 bg-green-50 text-green-800",
+            classes: "border-green-500 bg-green-50 text-green-800",
           }
     : null;
 
@@ -385,109 +392,109 @@ export default function PlanTab({
     <TooltipProvider>
       <div className="h-full min-h-0 overflow-y-auto pb-6">
         <Card className="overflow-hidden border-border bg-muted/30">
-          <CardContent className="p-0 flex flex-col divide-y divide-border">
-            {/* Card header — label + effort + scope summary (S-F) */}
-            <div className="px-5 py-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-foreground/50 uppercase tracking-wide">
-                  Migration plan
-                </span>
-                {effortStr && (
-                  <span className="text-xs text-muted-foreground">
-                    Est.{" "}
-                    <span className="font-semibold text-foreground/70">
-                      {effortStr}
-                    </span>
+          {/* No divide-y — borders applied per zone boundary below */}
+          <CardContent className="p-0 flex flex-col">
+
+            {/* ── Header: scope summary + effort ───────────────────────── */}
+            <div className="flex items-center justify-between px-5 py-3">
+              <p className="text-xs text-muted-foreground">
+                {scopeParts.length > 0
+                  ? scopeParts.join(" · ")
+                  : "Migration plan"}
+              </p>
+              {effortStr && (
+                <span className="text-xs text-muted-foreground shrink-0">
+                  Est.{" "}
+                  <span className="font-semibold text-foreground/70">
+                    {effortStr}
                   </span>
-                )}
-              </div>
-              {scopeParts.length > 0 && (
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {scopeParts.join(" · ")}
-                </p>
+                </span>
               )}
             </div>
 
-            {/* Go/no-go recommendation — verdict text only, no button (S-G) */}
+            {/* ── Verdict strip: headline + subordinate detail ──────────── */}
             {recommendation && (
-              <div className={`px-5 pt-4 pb-3 ${recommendation.classes}`}>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-sm font-bold shrink-0 leading-none">
+              <div className={`px-5 py-4 border-t border-l-[3px] ${recommendation.classes}`}>
+                <div className="flex items-center gap-2">
+                  <span className="text-base leading-none shrink-0">
                     {recommendation.icon}
                   </span>
-                  <span className="text-xs">
-                    <span className="font-semibold">{recommendation.label}</span>
-                    {" — "}
-                    <span className="opacity-80">{recommendation.detail}</span>
+                  <span className="text-sm font-bold">
+                    {recommendation.label}
                   </span>
                 </div>
+                <p className="text-xs leading-relaxed mt-1.5 ml-[26px] opacity-75">
+                  {recommendation.detail}
+                </p>
               </div>
             )}
 
-            {/* Summary text */}
-            <div className="flex items-center px-5 pt-4 pb-3">
-              <p className="text-sm text-foreground/80 leading-relaxed w-full">
-                {planData.summary ?? (
-                  <span className="italic text-muted-foreground">
-                    No summary available.
-                  </span>
-                )}
-              </p>
+            {/* ── Context zone: summary + Reads/Produces (no internal borders) */}
+            <div className="border-t border-border">
+              <div className="px-5 pt-4 pb-3">
+                <p className="text-sm text-foreground/80 leading-relaxed">
+                  {planData.summary ?? (
+                    <span className="italic text-muted-foreground">
+                      No summary available.
+                    </span>
+                  )}
+                </p>
+              </div>
+
+              {/* Reads + Produces on one row */}
+              {hasReadsProduce && (
+                <div className="flex flex-wrap gap-x-6 gap-y-1 px-5 pb-3.5">
+                  {assessmentData?.input_sources && assessmentData.input_sources.length > 0 && (
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-xs font-semibold text-foreground/50 uppercase tracking-wide shrink-0">
+                        Reads
+                      </span>
+                      <span className="text-xs text-foreground/70 leading-relaxed">
+                        {assessmentData.input_sources.join(", ")}
+                      </span>
+                    </div>
+                  )}
+                  {assessmentData?.output_datasets && assessmentData.output_datasets.length > 0 && (
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-xs font-semibold text-foreground/50 uppercase tracking-wide shrink-0">
+                        Produces
+                      </span>
+                      <span className="text-xs text-foreground/70 leading-relaxed">
+                        {assessmentData.output_datasets.join(", ")}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
-            {/* Reads — input sources (S-I) */}
-            {assessmentData?.input_sources && assessmentData.input_sources.length > 0 && (
-              <div className="flex items-baseline gap-3 px-5 py-2.5">
-                <span className="text-xs font-semibold text-foreground/50 uppercase tracking-wide shrink-0">
-                  Reads
-                </span>
-                <span className="text-xs text-foreground/70 leading-relaxed">
-                  {assessmentData.input_sources.join(", ")}
-                </span>
-              </div>
-            )}
-
-            {/* Produces — output dataset scope */}
-            {assessmentData?.output_datasets && assessmentData.output_datasets.length > 0 && (
-              <div className="flex items-baseline gap-3 px-5 py-2.5">
-                <span className="text-xs font-semibold text-foreground/50 uppercase tracking-wide shrink-0">
-                  Produces
-                </span>
-                <span className="text-xs text-foreground/70 leading-relaxed">
-                  {assessmentData.output_datasets.join(", ")}
-                </span>
-              </div>
-            )}
-
-            {/* Stats row — moved above callouts (S-H) */}
-            <div className="flex items-center justify-start gap-4 px-5 py-2 flex-wrap">
+            {/* ── Metrics zone: assessment bars + reconciliation pills ───── */}
+            <div className="flex items-center gap-4 px-5 py-2.5 border-t border-border flex-wrap">
+              {/* Assessment bars */}
               {trustReport && (
-                <>
-                  <div className="flex items-center gap-2">
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={<span className="text-xs text-muted-foreground shrink-0 cursor-help" />}
-                      >
-                        Confidence
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom" className="max-w-72 text-xs leading-relaxed whitespace-normal">
-                        The AI translator's self-assessed confidence in its own translation quality, averaged across all blocks. Reconciliation results above are the stronger signal — a block can pass verification even at moderate confidence.
-                      </TooltipContent>
-                    </Tooltip>
-                    <Progress
-                      value={confidencePct}
-                      className="h-1.5 w-28 **:data-[slot=progress-indicator]:bg-(--bar-fill)"
-                      style={{ "--bar-fill": confidenceColor } as React.CSSProperties}
-                    />
-                    <span
-                      className="text-xs font-semibold tabular-nums"
-                      style={{ color: confidenceColor }}
+                <div className="flex items-center gap-2">
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={<span className="text-xs text-muted-foreground shrink-0 cursor-help" />}
                     >
-                      {confidencePct}%
-                    </span>
-                  </div>
-                  <Separator orientation="vertical" className="h-4 hidden sm:block" />
-                </>
+                      Confidence
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-72 text-xs leading-relaxed whitespace-normal">
+                      The AI translator's self-assessed confidence in its own translation quality, averaged across all blocks. Reconciliation results above are the stronger signal — a block can pass verification even at moderate confidence.
+                    </TooltipContent>
+                  </Tooltip>
+                  <Progress
+                    value={confidencePct}
+                    className="h-1.5 w-24 **:data-[slot=progress-indicator]:bg-(--bar-fill)"
+                    style={{ "--bar-fill": confidenceColor } as React.CSSProperties}
+                  />
+                  <span
+                    className="text-xs font-semibold tabular-nums"
+                    style={{ color: confidenceColor }}
+                  >
+                    {confidencePct}%
+                  </span>
+                </div>
               )}
 
               <div className="flex items-center gap-2">
@@ -503,7 +510,7 @@ export default function PlanTab({
                 </Tooltip>
                 <Progress
                   value={riskPctMap[planData.overall_risk] ?? 0}
-                  className="h-1.5 w-28 **:data-[slot=progress-indicator]:bg-(--bar-fill)"
+                  className="h-1.5 w-24 **:data-[slot=progress-indicator]:bg-(--bar-fill)"
                   style={{ "--bar-fill": riskBar.color } as React.CSSProperties}
                 />
                 <span
@@ -514,49 +521,54 @@ export default function PlanTab({
                 </span>
               </div>
 
+              {/* Reconciliation pills — visually grouped, stronger signal */}
               {trustReport && (
                 <>
                   <Separator orientation="vertical" className="h-4 hidden sm:block" />
-                  <StatPill
-                    count={trustReport.auto_verified}
-                    label="Auto-verified"
-                    colorClass="text-green-700"
-                    dotClass="bg-green-500"
-                    tooltip="The generated Python was executed against the same input data as the SAS and the outputs matched — schema, row count, and aggregates all pass. Safe to accept without manual review."
-                  />
-                  <StatPill
-                    count={trustReport.needs_review > 0 ? trustReport.needs_review : undefined}
-                    label="Needs review"
-                    colorClass="text-amber-700"
-                    dotClass="bg-amber-500"
-                    tooltip="Translation ran but reconciliation flagged differences, and the LLM's own confidence was low. A human should inspect these blocks before accepting the migration."
-                  />
-                  <StatPill
-                    count={trustReport.manual_todo > 0 ? trustReport.manual_todo : undefined}
-                    label="Manual TODO"
-                    colorClass="text-red-700"
-                    dotClass="bg-red-500"
-                    tooltip="Blocks the migration planner marked as manual — constructs that cannot be auto-translated. A developer must write the Python equivalent by hand."
-                  />
+                  <div className="flex items-center gap-3 rounded-md bg-muted/60 px-2.5 py-1">
+                    <StatPill
+                      count={trustReport.auto_verified}
+                      label="Auto-verified"
+                      colorClass="text-green-700"
+                      dotClass="bg-green-500"
+                      tooltip="The generated Python was executed against the same input data as the SAS and the outputs matched — schema, row count, and aggregates all pass. Safe to accept without manual review."
+                    />
+                    <StatPill
+                      count={trustReport.needs_review > 0 ? trustReport.needs_review : undefined}
+                      label="Needs review"
+                      colorClass="text-amber-700"
+                      dotClass="bg-amber-500"
+                      tooltip="Translation ran but reconciliation flagged differences, and the LLM's own confidence was low. A human should inspect these blocks before accepting the migration."
+                    />
+                    <StatPill
+                      count={trustReport.manual_todo > 0 ? trustReport.manual_todo : undefined}
+                      label="Manual TODO"
+                      colorClass="text-red-700"
+                      dotClass="bg-red-500"
+                      tooltip="Blocks the migration planner marked as manual — constructs that cannot be auto-translated. A developer must write the Python equivalent by hand."
+                    />
+                  </div>
                 </>
               )}
             </div>
 
-            {/* Assessment callouts — missing deps (elevated), circular deps, PII (S-K) */}
-            {assessmentData && <AssessmentCallouts assessment={assessmentData} />}
-
-            {/* Attention blocks — with "Affects" per card (S-J) */}
-            {hasAttentionBlocks && planData?.block_plans && (
-              <AttentionBlocksSummary
-                blockPlans={planData.block_plans}
-                trustBlocks={trustBlocks}
-                assessedBlocks={assessmentData?.blocks}
-              />
+            {/* ── Warnings zone: callouts + attention blocks ────────────── */}
+            {hasWarnings && (
+              <div className="border-t border-border">
+                {assessmentData && <AssessmentCallouts assessment={assessmentData} />}
+                {hasAttentionBlocks && planData?.block_plans && (
+                  <AttentionBlocksSummary
+                    blockPlans={planData.block_plans}
+                    trustBlocks={trustBlocks}
+                    assessedBlocks={assessmentData?.blocks}
+                  />
+                )}
+              </div>
             )}
 
-            {/* Blocks toggle */}
+            {/* ── Blocks toggle ─────────────────────────────────────────── */}
             {planData?.block_plans && planData.block_plans.length > 0 && (
-              <div>
+              <div className="border-t border-border">
                 <button
                   type="button"
                   onClick={() => setBlocksCollapsed(!blocksCollapsed)}
@@ -595,14 +607,14 @@ export default function PlanTab({
               </div>
             )}
 
-            {/* Accept action row — standalone bottom row (S-G) */}
+            {/* ── Action zone: full-width accept button or confirmation ──── */}
             {isAcceptable && onAccept ? (
-              <div className="px-5 py-3 flex justify-end">
+              <div className="px-5 py-3 border-t border-border">
                 {isGreen ? (
                   <Button
                     size="sm"
                     onClick={onAccept}
-                    className="cursor-pointer bg-green-700 hover:bg-green-800 text-white text-xs h-7 px-3"
+                    className="cursor-pointer w-full bg-green-700 hover:bg-green-800 text-white text-xs h-8"
                   >
                     Accept migration
                   </Button>
@@ -611,7 +623,7 @@ export default function PlanTab({
                     size="sm"
                     variant="outline"
                     onClick={onAccept}
-                    className="cursor-pointer border-red-300 text-red-700 hover:bg-red-50 text-xs h-7 px-3"
+                    className="cursor-pointer w-full border-red-300 text-red-700 hover:bg-red-50 text-xs h-8"
                   >
                     Accept anyway
                   </Button>
@@ -619,19 +631,20 @@ export default function PlanTab({
                   <Button
                     size="sm"
                     onClick={onAccept}
-                    className="cursor-pointer text-xs h-7 px-3"
+                    className="cursor-pointer w-full text-xs h-8"
                   >
                     Accept migration
                   </Button>
                 )}
               </div>
             ) : jobStatus === "accepted" ? (
-              <div className="px-5 py-3">
+              <div className="px-5 py-3 border-t border-border">
                 <span className="text-xs text-emerald-700 font-medium">
                   ✓ This migration has been accepted
                 </span>
               </div>
             ) : null}
+
           </CardContent>
         </Card>
       </div>
