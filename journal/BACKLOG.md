@@ -271,11 +271,18 @@
 
 **F23 — Plan tab PM-readability pass (`docs/plans/latest/F23-plan-tab-pm-readability.md`) — COMPLETE**
 
-- [x] F23 S-A: Rename "Risk" → "Complexity" in stats row; add tooltips to both Confidence and Complexity bars explaining what they measure and that reconciliation is the stronger signal
-- [x] F23 S-B: Rewrite recommendation strip detail texts for all three states (green/amber/red) — explain what reference data is and what accepting means
-- [x] F23 S-C: Add "Produces" output scope row to plan card — output datasets from `assessmentData.output_datasets`
-- [x] F23 S-D: Revert Blocks auto-expand — collapse by default in all states; `blocksCollapsedManual` → simple `useState(true)`
+- [x] F23 S-A: Rename "Risk" → "Complexity" in stats row; add tooltips to both Confidence and Complexity bars
+- [x] F23 S-B: Rewrite recommendation strip detail texts for all three states (green/amber/red)
+- [x] F23 S-C: Add "Produces" output scope row to plan card
+- [x] F23 S-D: Revert Blocks auto-expand — collapse by default in all states
 - [x] F23 S-E: `make test` exits 0
+- [x] F23 S-F: Scope summary line in card header (SAS files · blocks · output datasets)
+- [x] F23 S-G: Accept button moved to standalone bottom card row; accepted state shows confirmation text
+- [x] F23 S-H: Stats row moved above assessment callouts
+- [x] F23 S-I: "Reads" input sources row alongside "Produces"
+- [x] F23 S-J: Attention block cards show "Affects: X, Y" from AssessedBlock.output_datasets
+- [x] F23 S-K: Missing-deps warning elevated to distinct amber bordered card
+- [x] F23 S-L: `make test` exits 0
 
 ---
 

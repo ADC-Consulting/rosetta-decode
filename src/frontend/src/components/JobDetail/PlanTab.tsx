@@ -1,6 +1,7 @@
 import { getJobAssessment, getJobPlan, getJobTrustReport } from "@/api/jobs";
 import type {
   AnalyseResponse,
+  AssessedBlock,
   BlockOverride,
   BlockPlan,
   JobPlanResponse,
@@ -95,7 +96,7 @@ function StatPill({
 }
 
 // ---------------------------------------------------------------------------
-// AssessmentCallouts — missing deps, circular deps, PII.
+// AssessmentCallouts — missing deps (elevated card), circular deps, PII.
 // ---------------------------------------------------------------------------
 
 function AssessmentCallouts({
@@ -114,19 +115,28 @@ function AssessmentCallouts({
   if (uniqueMissingDeps.length === 0 && piiPatterns.length === 0 && !hasCircular) return null;
 
   return (
-    <div className="flex flex-wrap gap-x-5 gap-y-1 px-5 py-2 text-xs border-t border-border">
-      {hasCircular && (
-        <span className="text-red-700">⚠ Circular dependency — execution order cannot be resolved</span>
-      )}
+    <div className="px-5 py-2 space-y-2 border-t border-border">
+      {/* Missing deps — elevated to distinct amber card */}
       {uniqueMissingDeps.length > 0 && (
-        <span className="text-amber-700">
-          ⚠ {uniqueMissingDeps.length} file{uniqueMissingDeps.length > 1 ? "s" : ""} referenced but not uploaded — translations for dependent blocks may be incomplete ({uniqueMissingDeps.map((d) => d.name.split("/").pop() ?? d.name).join(", ")})
-        </span>
+        <div className="rounded-md border border-amber-200 bg-amber-50/60 px-4 py-2.5 space-y-0.5">
+          <p className="text-xs font-semibold text-amber-800">Translation may be incomplete</p>
+          <p className="text-xs text-amber-700/80">
+            {uniqueMissingDeps.length} source file{uniqueMissingDeps.length > 1 ? "s" : ""} referenced but not uploaded — translations for dependent blocks may be incomplete ({uniqueMissingDeps.map((d) => d.name.split("/").pop() ?? d.name).join(", ")})
+          </p>
+        </div>
       )}
-      {piiPatterns.length > 0 && (
-        <span className="text-orange-700">
-          🔒 Sensitive data detected: {piiPatterns.join(", ")}
-        </span>
+      {/* Circular dep and PII remain as inline spans */}
+      {(hasCircular || piiPatterns.length > 0) && (
+        <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs">
+          {hasCircular && (
+            <span className="text-red-700">⚠ Circular dependency — execution order cannot be resolved</span>
+          )}
+          {piiPatterns.length > 0 && (
+            <span className="text-orange-700">
+              🔒 Sensitive data detected: {piiPatterns.join(", ")}
+            </span>
+          )}
+        </div>
       )}
     </div>
   );
@@ -135,21 +145,27 @@ function AssessmentCallouts({
 // ---------------------------------------------------------------------------
 // AttentionBlocksSummary — PM-facing per-block summary for blocks that need
 // action. Shows only the blocks requiring attention with plain-language
-// rationale, so a code owner can assess risk without reading the full table.
+// rationale and which output datasets are affected.
 // ---------------------------------------------------------------------------
 
 function AttentionBlocksSummary({
   blockPlans,
   trustBlocks,
+  assessedBlocks,
 }: {
   blockPlans: BlockPlan[];
   trustBlocks: Record<string, TrustReportBlock>;
+  assessedBlocks?: AssessedBlock[];
 }): React.ReactElement | null {
   const attentionBlocks = blockPlans.filter(
     (b) => trustBlocks[b.block_id]?.needs_attention,
   );
 
   if (attentionBlocks.length === 0) return null;
+
+  const assessedMap: Record<string, AssessedBlock> = assessedBlocks
+    ? Object.fromEntries(assessedBlocks.map((b) => [b.block_id, b]))
+    : {};
 
   const count = attentionBlocks.length;
 
@@ -161,6 +177,8 @@ function AttentionBlocksSummary({
       {attentionBlocks.map((block) => {
         const isManual = block.strategy === "manual";
         const confidencePct = Math.round(block.confidence_score * 100);
+        const assessed = assessedMap[block.block_id];
+        const affectsDatasets = assessed?.output_datasets ?? [];
 
         return (
           <div
@@ -186,6 +204,11 @@ function AttentionBlocksSummary({
                 {block.source_file} · line {block.start_line} · {block.block_type}
                 {!isManual && ` · ${confidencePct}% confident`}
               </p>
+              {affectsDatasets.length > 0 && (
+                <p className="text-xs text-foreground/50">
+                  Affects: {affectsDatasets.join(", ")}
+                </p>
+              )}
             </div>
             {block.rationale && (
               <p className="text-xs text-foreground/70 leading-relaxed">
@@ -316,6 +339,21 @@ export default function PlanTab({
     return hi < 1 ? "< 1 hr" : lo === hi ? `~${lo} hr` : `${lo}–${hi} hr`;
   })();
 
+  // S-F: scope summary — "2 SAS files · 15 blocks · 3 output datasets"
+  const scopeParts: string[] = [];
+  if (assessmentData?.filenames?.length) {
+    const c = assessmentData.filenames.length;
+    scopeParts.push(`${c} SAS file${c === 1 ? "" : "s"}`);
+  }
+  if (planData.block_plans.length) {
+    const c = planData.block_plans.length;
+    scopeParts.push(`${c} block${c === 1 ? "" : "s"}`);
+  }
+  if (assessmentData?.output_datasets?.length) {
+    const c = assessmentData.output_datasets.length;
+    scopeParts.push(`${c} output dataset${c === 1 ? "" : "s"}`);
+  }
+
   const hasAttentionBlocks =
     trustReport && (trustReport.needs_review + trustReport.manual_todo) > 0;
 
@@ -348,27 +386,32 @@ export default function PlanTab({
       <div className="h-full min-h-0 overflow-y-auto pb-6">
         <Card className="overflow-hidden border-border bg-muted/30">
           <CardContent className="p-0 flex flex-col divide-y divide-border">
-            {/* Card header — label + effort estimate */}
-            <div className="flex items-center justify-between px-5 py-3">
-              <span className="text-xs font-semibold text-foreground/50 uppercase tracking-wide">
-                Migration plan
-              </span>
-              {effortStr && (
-                <span className="text-xs text-muted-foreground">
-                  Est.{" "}
-                  <span className="font-semibold text-foreground/70">
-                    {effortStr}
-                  </span>
+            {/* Card header — label + effort + scope summary (S-F) */}
+            <div className="px-5 py-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-foreground/50 uppercase tracking-wide">
+                  Migration plan
                 </span>
+                {effortStr && (
+                  <span className="text-xs text-muted-foreground">
+                    Est.{" "}
+                    <span className="font-semibold text-foreground/70">
+                      {effortStr}
+                    </span>
+                  </span>
+                )}
+              </div>
+              {scopeParts.length > 0 && (
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {scopeParts.join(" · ")}
+                </p>
               )}
             </div>
 
-            {/* Go/no-go recommendation + in-card Accept button for green state */}
+            {/* Go/no-go recommendation — verdict text only, no button (S-G) */}
             {recommendation && (
-              <div
-                className={`px-5 pt-4 pb-3 flex items-center gap-2 justify-between ${recommendation.classes}`}
-              >
-                <div className="flex items-baseline gap-2 flex-1 min-w-0">
+              <div className={`px-5 pt-4 pb-3 ${recommendation.classes}`}>
+                <div className="flex items-baseline gap-2">
                   <span className="text-sm font-bold shrink-0 leading-none">
                     {recommendation.icon}
                   </span>
@@ -378,34 +421,6 @@ export default function PlanTab({
                     <span className="opacity-80">{recommendation.detail}</span>
                   </span>
                 </div>
-                {isAcceptable && onAccept && (
-                  isGreen ? (
-                    <Button
-                      size="sm"
-                      onClick={onAccept}
-                      className="cursor-pointer shrink-0 ml-3 bg-green-700 hover:bg-green-800 text-white text-xs h-7 px-3"
-                    >
-                      Accept migration
-                    </Button>
-                  ) : trustReport?.manual_todo ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={onAccept}
-                      className="cursor-pointer shrink-0 ml-3 border-red-300 text-red-700 hover:bg-red-50 text-xs h-7 px-3"
-                    >
-                      Accept anyway
-                    </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      onClick={onAccept}
-                      className="cursor-pointer shrink-0 ml-3 text-xs h-7 px-3"
-                    >
-                      Accept migration
-                    </Button>
-                  )
-                )}
               </div>
             )}
 
@@ -420,6 +435,18 @@ export default function PlanTab({
               </p>
             </div>
 
+            {/* Reads — input sources (S-I) */}
+            {assessmentData?.input_sources && assessmentData.input_sources.length > 0 && (
+              <div className="flex items-baseline gap-3 px-5 py-2.5">
+                <span className="text-xs font-semibold text-foreground/50 uppercase tracking-wide shrink-0">
+                  Reads
+                </span>
+                <span className="text-xs text-foreground/70 leading-relaxed">
+                  {assessmentData.input_sources.join(", ")}
+                </span>
+              </div>
+            )}
+
             {/* Produces — output dataset scope */}
             {assessmentData?.output_datasets && assessmentData.output_datasets.length > 0 && (
               <div className="flex items-baseline gap-3 px-5 py-2.5">
@@ -432,10 +459,7 @@ export default function PlanTab({
               </div>
             )}
 
-            {/* Assessment callouts — missing deps, circular deps, PII */}
-            {assessmentData && <AssessmentCallouts assessment={assessmentData} />}
-
-            {/* Stats row — confidence + complexity bars */}
+            {/* Stats row — moved above callouts (S-H) */}
             <div className="flex items-center justify-start gap-4 px-5 py-2 flex-wrap">
               {trustReport && (
                 <>
@@ -518,15 +542,19 @@ export default function PlanTab({
               )}
             </div>
 
-            {/* Attention blocks — inside card, below stats */}
+            {/* Assessment callouts — missing deps (elevated), circular deps, PII (S-K) */}
+            {assessmentData && <AssessmentCallouts assessment={assessmentData} />}
+
+            {/* Attention blocks — with "Affects" per card (S-J) */}
             {hasAttentionBlocks && planData?.block_plans && (
               <AttentionBlocksSummary
                 blockPlans={planData.block_plans}
                 trustBlocks={trustBlocks}
+                assessedBlocks={assessmentData?.blocks}
               />
             )}
 
-            {/* Blocks toggle — final card row, auto-expanded when green */}
+            {/* Blocks toggle */}
             {planData?.block_plans && planData.block_plans.length > 0 && (
               <div>
                 <button
@@ -566,6 +594,44 @@ export default function PlanTab({
                 )}
               </div>
             )}
+
+            {/* Accept action row — standalone bottom row (S-G) */}
+            {isAcceptable && onAccept ? (
+              <div className="px-5 py-3 flex justify-end">
+                {isGreen ? (
+                  <Button
+                    size="sm"
+                    onClick={onAccept}
+                    className="cursor-pointer bg-green-700 hover:bg-green-800 text-white text-xs h-7 px-3"
+                  >
+                    Accept migration
+                  </Button>
+                ) : trustReport?.manual_todo ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={onAccept}
+                    className="cursor-pointer border-red-300 text-red-700 hover:bg-red-50 text-xs h-7 px-3"
+                  >
+                    Accept anyway
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    onClick={onAccept}
+                    className="cursor-pointer text-xs h-7 px-3"
+                  >
+                    Accept migration
+                  </Button>
+                )}
+              </div>
+            ) : jobStatus === "accepted" ? (
+              <div className="px-5 py-3">
+                <span className="text-xs text-emerald-700 font-medium">
+                  ✓ This migration has been accepted
+                </span>
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       </div>
