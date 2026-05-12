@@ -6,6 +6,13 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-05-11 — Plan tab CTA consolidation + PM metrics framing
+
+- **Accept CTA lives exclusively in the Plan tab recommendation strip:** removed from page header for all trust states (green/amber/red); PM must be on the Plan tab to accept, ensuring they see the verdict before acting · rationale: header button was 600px from the decision content and created duplicates · revisit never
+- **Confidence and Risk bars stay on plan card but with context:** renamed Risk → Complexity; both bars get tooltips; they are valid context for a PM but need framing so they don't appear to contradict the reconciliation verdict · rationale: removing them entirely was rejected — they give useful signal about translation difficulty · revisit never
+
+---
+
 ## 2026-05-04 — cumulative execution, planner correctness, post-run risk design
 
 - **Cumulative code over Parquet session cache:** each block is executed with all prior blocks' code prepended; Parquet cache silently left gaps when upstream blocks crashed mid-execution leaving no save; cumulative code is always correct regardless of upstream crash · revisit never

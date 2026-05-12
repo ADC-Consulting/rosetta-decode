@@ -269,6 +269,14 @@
 - [x] F22 post-S-Z: Plan tab layout — Blocks inside card, auto-expand green state, effort to card header, in-card Accept/Accept-anyway button for all trust states
 - [x] F22 post-S-Z: Accept CTA consolidated to Plan tab only — removed from page header for all trust states
 
+**F23 — Plan tab PM-readability pass (draft plan, not yet started)**
+
+- [ ] F23 S-A: Rename "Risk" → "Complexity" in stats row; add tooltips to both Confidence and Complexity bars explaining what they measure and that reconciliation is the stronger signal
+- [ ] F23 S-B: Rewrite recommendation strip detail texts for all three states (green/amber/red) — explain what reference data is and what accepting means
+- [ ] F23 S-C: Add "Produces" output scope row to plan card — deduplicated output datasets from `block_plans[*].output_datasets`
+- [ ] F23 S-D: Revert Blocks auto-expand — collapse by default in all states; `blocksCollapsedManual` → simple `useState(true)`
+- [ ] F23 S-E: `make test` exits 0
+
 ---
 
 ## Phase 3 — Frontend Features (post-MVP)

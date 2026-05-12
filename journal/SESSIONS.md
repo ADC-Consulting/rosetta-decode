@@ -6,9 +6,9 @@ Most recent session on top. Each entry should answer:
 
 ---
 
-## 2026-05-11 — F22 Plan tab overhaul + design review iteration
+## 2026-05-11 — F22 Plan tab overhaul + design review + F23 planning
 
-**Duration:** ~5h | **Focus:** Plan tab UX, pre-migration assessment consolidation, PM-facing attention summary, critical design review
+**Duration:** ~6h | **Focus:** Plan tab UX, pre-migration assessment consolidation, PM-facing attention summary, critical design review, F23 draft
 
 ### Done
 - **fix(F22):** Post-submit navigation goes to `/jobs/{id}` instead of `/jobs`
@@ -25,18 +25,21 @@ Most recent session on top. Each entry should answer:
 - **fix(F22):** Plan tab critical UX improvements — 12-issue audit resolved: DATA_STEP casing, emoji gap, ⚠ icon, description de-emphasis, confidence/risk bars w-28, strip top spacing, attention heading sentence form, badge→location gap
 - **feat(F22):** Plan tab layout — Blocks toggle moved inside Card as final divide-y row; Blocks auto-expand in green state (blocksCollapsedManual tracks user overrides); Effort moved to card header row; in-card Accept button in recommendation strip for all trust states
 - **fix(F22):** Accept button consolidated to Plan tab only — removed from page header entirely; in-card button shows Accept migration / Accept anyway depending on trust state
+- **analysis:** PM-facing critical review of Plan tab — 8 issues identified (Risk contradicts verdict, Confidence opaque, no accept consequence, reference data unexplained, no output scope, Blocks auto-expand)
+- **planning:** F23 draft agreed — 5 subtasks: rename Risk→Complexity + tooltips on both bars, rewrite recommendation detail texts, add Produces row, revert Blocks auto-expand, make test
 
 ### Decisions
 - Pre-migration assessment panel belongs on MigrationPreviewPage (decision gate), not in the job detail Plan tab. Post-run, the trust report stats are authoritative; only missing deps, PII, circular deps, and effort estimate remain uniquely useful from the assessment.
 - Plan tab now has two audiences clearly separated: PM view (always visible card + attention summary) and developer view (auto-expanded or collapsible Blocks table).
 - Accept CTA lives exclusively in the Plan tab recommendation strip (not duplicated in the page header) — forces the PM to review the plan verdict before acting.
+- Confidence and Risk bars stay on the plan card but renamed (Risk → Complexity) and given tooltips — they are useful context for a PM, just need framing.
 
 ### Open Questions
 - none
 
 ### Next Session — Start Here
-1. F22 is complete — branch `feat/F22-assessment-ux` is ready to PR
-2. Next backlog item: **F1-ext: Macro definition + call expansion** (`%MACRO` / `%MEND`)
+1. F22 branch `feat/F22-assessment-ux` is ready to PR
+2. Implement **F23 — Plan tab PM-readability pass** (draft plan agreed, no plan file written yet — write it first via `/plan-feature`): S-A rename Risk→Complexity + tooltips, S-B rewrite recommendation detail texts, S-C add Produces row, S-D revert Blocks auto-expand, S-E make test
 
 ### Files Touched
 - `src/frontend/src/components/JobDetail/PlanTab.tsx`
