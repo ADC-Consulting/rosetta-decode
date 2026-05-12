@@ -260,13 +260,9 @@ export default function PlanTab({
 
   const isProposed = jobStatus === "proposed";
   const isAcceptable = jobStatus === "proposed" || jobStatus === "under_review";
-
-  // Blocks are auto-expanded when the trust report is green (no attention
-  // needed). blocksCollapsedManual tracks explicit user toggles so the auto
-  // state doesn't override a deliberate choice.
-  const [blocksCollapsedManual, setBlocksCollapsedManual] = useState<boolean | null>(null);
   const isGreen = !!trustReport && trustReport.manual_todo === 0 && trustReport.needs_review === 0;
-  const blocksCollapsed = blocksCollapsedManual !== null ? blocksCollapsedManual : !isGreen;
+
+  const [blocksCollapsed, setBlocksCollapsed] = useState(true);
 
   if (!isReviewable) {
     return (
@@ -329,20 +325,20 @@ export default function PlanTab({
       ? {
           icon: "⚠",
           label: "Not ready to accept",
-          detail: `${n(trustReport.manual_todo, "block")} requires manual implementation before the pipeline will run correctly.`,
+          detail: `${n(trustReport.manual_todo, "block")} could not be auto-translated and will produce placeholder code. The pipeline will be incomplete until a developer implements ${trustReport.manual_todo === 1 ? "it" : "them"}.`,
           classes: "border-l-2 border-red-400 bg-red-50/60 text-red-800",
         }
       : trustReport.needs_review > 0
         ? {
             icon: "⚠",
             label: "Review recommended",
-            detail: `${n(trustReport.needs_review, "block")} was translated but reconciliation flagged differences. A developer should verify the output before accepting.`,
+            detail: `${n(trustReport.needs_review, "block")} was translated but the generated output differed from the original SAS. A developer should review those blocks before this pipeline is used in production.`,
             classes: "border-l-2 border-amber-400 bg-amber-50/60 text-amber-800",
           }
         : {
             icon: "✓",
             label: "Ready to accept",
-            detail: `All ${n(trustReport.auto_verified, "block")} auto-verified against reference data.`,
+            detail: `The generated Python matched the original SAS output — schema, row counts, and aggregates verified. Accepting marks this pipeline ready for use and retires the SAS workflow.`,
             classes: "border-l-[3px] border-green-500 bg-green-50 text-green-800",
           }
     : null;
@@ -424,17 +420,36 @@ export default function PlanTab({
               </p>
             </div>
 
+            {/* Produces — output dataset scope */}
+            {assessmentData?.output_datasets && assessmentData.output_datasets.length > 0 && (
+              <div className="flex items-baseline gap-3 px-5 py-2.5">
+                <span className="text-xs font-semibold text-foreground/50 uppercase tracking-wide shrink-0">
+                  Produces
+                </span>
+                <span className="text-xs text-foreground/70 leading-relaxed">
+                  {assessmentData.output_datasets.join(", ")}
+                </span>
+              </div>
+            )}
+
             {/* Assessment callouts — missing deps, circular deps, PII */}
             {assessmentData && <AssessmentCallouts assessment={assessmentData} />}
 
-            {/* Stats row — confidence + risk bars */}
+            {/* Stats row — confidence + complexity bars */}
             <div className="flex items-center justify-start gap-4 px-5 py-2 flex-wrap">
               {trustReport && (
                 <>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground shrink-0">
-                      Confidence
-                    </span>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={<span className="text-xs text-muted-foreground shrink-0 cursor-help" />}
+                      >
+                        Confidence
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="max-w-72 text-xs leading-relaxed whitespace-normal">
+                        The AI translator's self-assessed confidence in its own translation quality, averaged across all blocks. Reconciliation results above are the stronger signal — a block can pass verification even at moderate confidence.
+                      </TooltipContent>
+                    </Tooltip>
                     <Progress
                       value={confidencePct}
                       className="h-1.5 w-28 **:data-[slot=progress-indicator]:bg-(--bar-fill)"
@@ -452,7 +467,16 @@ export default function PlanTab({
               )}
 
               <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground shrink-0">Risk</span>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={<span className="text-xs text-muted-foreground shrink-0 cursor-help" />}
+                  >
+                    Complexity
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-72 text-xs leading-relaxed whitespace-normal">
+                    How complex the SAS patterns were to translate. Higher complexity means some constructs required interpretation. This is not a measure of whether the translation succeeded — check the reconciliation result above for that.{planData.risk_explanation ? ` ${planData.risk_explanation}` : ""}
+                  </TooltipContent>
+                </Tooltip>
                 <Progress
                   value={riskPctMap[planData.overall_risk] ?? 0}
                   className="h-1.5 w-28 **:data-[slot=progress-indicator]:bg-(--bar-fill)"
@@ -507,7 +531,7 @@ export default function PlanTab({
               <div>
                 <button
                   type="button"
-                  onClick={() => setBlocksCollapsedManual(!blocksCollapsed)}
+                  onClick={() => setBlocksCollapsed(!blocksCollapsed)}
                   className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity w-full px-5 py-3"
                 >
                   {blocksCollapsed ? (
