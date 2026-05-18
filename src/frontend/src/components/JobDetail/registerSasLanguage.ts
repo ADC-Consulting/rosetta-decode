@@ -71,11 +71,20 @@ export function registerSasLanguage(monaco: Monaco): void {
         ],
         [/&[a-zA-Z_][a-zA-Z0-9_]*/, "variable"],
         [
+          /[a-zA-Z_][a-zA-Z0-9_]*(?=\s*\()/,
+          {
+            cases: {
+              "@sasFunctions": "keyword.function",
+              "@keywords": "keyword",
+              "@default": "identifier",
+            },
+          },
+        ],
+        [
           /[a-zA-Z_][a-zA-Z0-9_]*/,
           {
             cases: {
               "@keywords": "keyword",
-              "@sasFunctions": "keyword.function",
               "@default": "identifier",
             },
           },
