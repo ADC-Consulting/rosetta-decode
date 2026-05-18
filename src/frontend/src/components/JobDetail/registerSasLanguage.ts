@@ -28,6 +28,12 @@ export function registerSasLanguage(monaco: Monaco): void {
     macroKeywords: [
       "%LET", "%IF", "%THEN", "%ELSE", "%DO", "%END",
       "%MACRO", "%MEND", "%INCLUDE", "%PUT",
+      "%LOCAL", "%GLOBAL", "%RETURN", "%ABORT",
+      "%SYSFUNC", "%QSYSFUNC", "%EVAL", "%SYSEVALF",
+      "%STR", "%NRSTR", "%QUOTE", "%NRQUOTE",
+      "%SYMEXIST", "%SYMGLOBL", "%SYMLOCAL",
+      "%UPCASE", "%LOWCASE", "%TRIM", "%LEFT",
+      "%SCAN", "%SUBSTR", "%INDEX",
     ],
     sasFunctions: [
       "missing", "substr", "trim", "input", "catx", "compress", "scan",
@@ -81,7 +87,7 @@ export function registerSasLanguage(monaco: Monaco): void {
     rules: [
       { token: "keyword", foreground: "569CD6", fontStyle: "bold" },
       { token: "keyword.macro", foreground: "c678dd", fontStyle: "bold" },
-      { token: "keyword.function", foreground: "4EC9B0", fontStyle: "bold" },
+      { token: "keyword.function", foreground: "569CD6", fontStyle: "bold" },
       { token: "variable", foreground: "e5c07b" },
       { token: "variable.macro", foreground: "e5c07b" },
       { token: "string", foreground: "e06c75" },
@@ -100,7 +106,7 @@ export function registerSasLanguage(monaco: Monaco): void {
     rules: [
       { token: "keyword", foreground: "0070C0", fontStyle: "bold" },
       { token: "keyword.macro", foreground: "8700af", fontStyle: "bold" },
-      { token: "keyword.function", foreground: "007070", fontStyle: "bold" },
+      { token: "keyword.function", foreground: "0070C0", fontStyle: "bold" },
       { token: "variable", foreground: "795e26" },
       { token: "variable.macro", foreground: "795e26" },
       { token: "string", foreground: "a31515" },
