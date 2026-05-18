@@ -19,15 +19,27 @@ export function registerSasLanguage(monaco: Monaco): void {
       "FROM", "GROUP", "HAVING", "ORDER", "INTO", "INSERT", "DELETE",
       "UPDATE", "JOIN", "ON", "AND", "OR", "NOT", "IN", "LIKE", "BETWEEN",
       "CASE", "DISTINCT", "UNION", "OUTER", "INNER", "LEFT", "RIGHT", "FULL",
+      "ERROR", "LEAVE", "CONTINUE", "STOP", "ABORT", "LINK", "GOTO", "RETURN",
+      "GT", "LT", "EQ", "NE", "GE", "LE",
     ],
     macroKeywords: [
       "%LET", "%IF", "%THEN", "%ELSE", "%DO", "%END",
       "%MACRO", "%MEND", "%INCLUDE", "%PUT",
     ],
+    sasFunctions: [
+      "missing", "substr", "trim", "input", "put", "catx", "compress", "scan",
+      "upcase", "lowcase", "strip", "length", "index", "tranwrd", "coalescec",
+      "coalesce", "int", "round", "sum", "mean", "min", "max", "abs", "mod",
+      "floor", "ceil", "lag", "dif", "today", "date", "time", "datetime",
+      "datepart", "timepart", "mdy", "ymd", "year", "month", "day", "hour",
+      "minute", "second", "n", "nmiss", "range", "std", "var", "cv", "median",
+      "countw", "count", "find", "findc", "reverse", "repeat", "left", "right",
+      "trimn", "cats", "catt", "catn", "prxmatch", "prxchange", "prxparse",
+    ],
     tokenizer: {
       root: [
         [/\/\*/, "comment", "@blockComment"],
-        [/^\s*\*[^;]*;/, "comment"],
+        [/^\*[^;]*;/, "comment"],
         [
           /%[a-zA-Z]+/,
           { cases: { "@macroKeywords": "keyword.macro", "@default": "variable.macro" } },
@@ -35,7 +47,13 @@ export function registerSasLanguage(monaco: Monaco): void {
         [/&[a-zA-Z_][a-zA-Z0-9_]*/, "variable"],
         [
           /[a-zA-Z_][a-zA-Z0-9_]*/,
-          { cases: { "@keywords": "keyword", "@default": "identifier" } },
+          {
+            cases: {
+              "@keywords": "keyword",
+              "@sasFunctions": "keyword.function",
+              "@default": "identifier",
+            },
+          },
         ],
         [/"([^"\\]|\\.)*"/, "string"],
         [/'([^'\\]|\\.)*'/, "string"],
@@ -55,8 +73,9 @@ export function registerSasLanguage(monaco: Monaco): void {
     base: "vs-dark",
     inherit: true,
     rules: [
-      { token: "keyword", foreground: "4fc1ff", fontStyle: "bold" },
+      { token: "keyword", foreground: "569CD6", fontStyle: "bold" },
       { token: "keyword.macro", foreground: "c678dd", fontStyle: "bold" },
+      { token: "keyword.function", foreground: "4EC9B0", fontStyle: "bold" },
       { token: "variable", foreground: "e5c07b" },
       { token: "variable.macro", foreground: "e5c07b" },
       { token: "string", foreground: "e06c75" },
@@ -73,8 +92,9 @@ export function registerSasLanguage(monaco: Monaco): void {
     base: "vs",
     inherit: true,
     rules: [
-      { token: "keyword", foreground: "0070c1", fontStyle: "bold" },
+      { token: "keyword", foreground: "0070C0", fontStyle: "bold" },
       { token: "keyword.macro", foreground: "8700af", fontStyle: "bold" },
+      { token: "keyword.function", foreground: "007070", fontStyle: "bold" },
       { token: "variable", foreground: "795e26" },
       { token: "variable.macro", foreground: "795e26" },
       { token: "string", foreground: "a31515" },
@@ -85,5 +105,48 @@ export function registerSasLanguage(monaco: Monaco): void {
       { token: "identifier", foreground: "000000" },
     ],
     colors: { "editor.background": "#ffffff" },
+  });
+
+  monaco.languages.registerFoldingRangeProvider("sas", {
+    provideFoldingRanges(model) {
+      const ranges: monaco.languages.FoldingRange[] = [];
+      const lines = model.getLinesContent();
+      const n = lines.length;
+
+      // Stack-based fold for DATA/PROC...RUN/QUIT and DO...END
+      const dataProc: number[] = []; // stack of 1-based start lines for DATA/PROC
+      const doStack: number[] = []; // stack of 1-based start lines for DO
+
+      for (let i = 0; i < n; i++) {
+        const line = lines[i].trim().toUpperCase();
+        const lineNo = i + 1; // Monaco uses 1-based line numbers
+
+        if (/^(DATA|PROC)\b/.test(line)) {
+          dataProc.push(lineNo);
+        } else if (/^RUN\s*;/.test(line) || /^QUIT\s*;/.test(line)) {
+          const start = dataProc.pop();
+          if (start !== undefined && lineNo > start) {
+            ranges.push({
+              start,
+              end: lineNo,
+              kind: monaco.languages.FoldingRangeKind.Region,
+            });
+          }
+        } else if (/\bDO\s*;/.test(line) || /\bDO\b/.test(line)) {
+          doStack.push(lineNo);
+        } else if (/^END\s*;/.test(line)) {
+          const start = doStack.pop();
+          if (start !== undefined && lineNo > start) {
+            ranges.push({
+              start,
+              end: lineNo,
+              kind: monaco.languages.FoldingRangeKind.Region,
+            });
+          }
+        }
+      }
+
+      return ranges;
+    },
   });
 }
