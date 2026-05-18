@@ -24,6 +24,19 @@ export function registerSasLanguage(monaco: Monaco): void {
       "DESCENDING", "ASCENDING",
       "ERROR", "LEAVE", "CONTINUE", "STOP", "ABORT", "LINK", "GOTO", "RETURN",
       "GT", "LT", "EQ", "NE", "GE", "LE",
+      // PROC options (cross-PROC)
+      "NOPRINT", "NOOBS", "LABEL", "NOCENTER", "NODATE", "NONUMBER",
+      "LINESIZE", "PAGESIZE",
+      // PROC SORT
+      "NODUPKEY", "NODUP", "DUPOUT", "NOEQUALS", "SORTSEQ",
+      // PROC FREQ / MEANS / SUMMARY
+      "NWAY", "NLEVELS", "NOMISSING", "MAXDEC",
+      // PROC SQL
+      "OUTOBS", "INOBS", "NOEXEC", "STIMER",
+      // PROC IMPORT / EXPORT
+      "DATAFILE", "DBMS", "REPLACE", "GETNAMES", "GUESSINGROWS",
+      // PROC REG / LOGISTIC / GLM
+      "OUTEST", "COVOUT", "NOINT",
     ],
     macroKeywords: [
       "%LET", "%IF", "%THEN", "%ELSE", "%DO", "%END",
