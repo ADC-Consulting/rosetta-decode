@@ -39,7 +39,7 @@ export function registerSasLanguage(monaco: Monaco): void {
     tokenizer: {
       root: [
         [/\/\*/, "comment", "@blockComment"],
-        [/^\*[^;]*;/, "comment"],
+        [/^[ \t]*\*[^;]*;/, "comment"],
         [
           /%[a-zA-Z]+/,
           { cases: { "@macroKeywords": "keyword.macro", "@default": "variable.macro" } },
