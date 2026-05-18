@@ -6,6 +6,33 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-05-18 — F24 SAS editor fidelity — browser verification + SAS Studio parity
+
+**Duration:** ~1.5h | **Focus:** F24 post-commit browser testing + iterative fix rounds
+
+### Done
+- **fix(F24):** Monaco global theme override — Python editor (`theme="vs"`) was overriding the SAS editor's `sas-light` theme (Monaco themes are global); fixed `EditorTab.tsx` to use a single `monacoTheme` variable for both editors
+- **fix(F24):** Indented `* text;` star comments — regex `^\*` required `*` at column 0; changed to `^[ \t]*\*` to match indented star comments
+- **fix(F24):** `intck` was black (not highlighted) — added to `sasFunctions`; `label`/`format` added to `keywords`; `put` moved from `sasFunctions` to `keywords` (it is a DATA step statement, not a function)
+- **fix(F24):** macroKeywords expansion — `%LOCAL`, `%GLOBAL`, `%RETURN`, `%ABORT`, `%SYSFUNC`, `%QSYSFUNC`, `%EVAL`, `%SYSEVALF`, `%STR`, `%NRSTR`, `%QUOTE`, `%NRQUOTE`, `%SYMEXIST`, `%SYMGLOBL`, `%SYMLOCAL`, `%UPCASE`, `%LOWCASE`, `%TRIM`, `%LEFT`, `%SCAN`, `%SUBSTR`, `%INDEX` were falling to `variable.macro` (brown) — added to `macroKeywords` so they render purple
+- **fix(F24):** Function color aligned to SAS Studio — changed `keyword.function` from teal (`#007070`/`#4EC9B0`) to the same blue as keywords (`#0070C0`/`#569CD6`); SAS Studio Enhanced Editor does not visually distinguish built-in functions from keyword statements
+
+### Decisions
+- **Function color = keyword color:** SAS Studio Enhanced Editor uses one blue for both keywords and built-in functions. We aligned to this rather than the F24 spec (which had specified teal for functions). User confirmed "identical to SAS Studio."
+
+### Open Questions
+- none
+
+### Next Session — Start Here
+1. Verify `feat/F24-sas-editor-fidelity` branch, then push and open PR
+2. Check F20 Stream B items (ExecutionOutputPanel + Trust tab) if that's the next priority
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/registerSasLanguage.ts`
+- `src/frontend/src/components/JobDetail/EditorTab.tsx`
+
+---
+
 ## 2026-05-05 — LiveTraceDialog multi-phase rail + README + status UX
 
 **Duration:** ~2h | **Focus:** F20 phase rail, README rewrite, job status display cleanup
