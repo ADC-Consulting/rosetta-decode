@@ -1118,9 +1118,7 @@ export default function EditorTab({
   const [execOutputTab, setExecOutputTab] = useState<ExecOutputTab>("output");
   const pythonEditorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const sasEditorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
-  const monacoTheme = editorDark
-    ? { sas: "sas-dark", python: "vs-dark" }
-    : { sas: "sas-light", python: "vs" };
+  const monacoTheme = editorDark ? "sas-dark" : "sas-light";
   const [selectedSasKey, setSelectedSasKey] = useState<string>("");
   const [overrideRevisionCode, setOverrideRevisionCode] = useState<
     string | null
@@ -1430,7 +1428,7 @@ export default function EditorTab({
                           height="100%"
                           defaultValue={sasSource}
                           language="sas"
-                          theme={monacoTheme.sas}
+                          theme={monacoTheme}
                           beforeMount={registerSasLanguage}
                           loading={
                             <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
@@ -1488,7 +1486,7 @@ export default function EditorTab({
                         height="100%"
                         defaultValue={rightCode}
                         language="python"
-                        theme={monacoTheme.python}
+                        theme={monacoTheme}
                         loading={
                           <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
                             Loading…
