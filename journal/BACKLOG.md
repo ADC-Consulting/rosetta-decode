@@ -225,11 +225,16 @@
 
 ## Phase 3 — Frontend Features (post-MVP)
 
-**F24 — SAS Editor Fidelity (`docs/plans/latest/F24-sas-editor-fidelity.md`)**
+**F24 — SAS Editor Fidelity (`docs/plans/latest/F24-sas-editor-fidelity.md`) — complete**
 - [x] F24 S-A: Tokenizer improvements — functions token, missing keywords, `* text;` comment fix → see `docs/plans/latest/F24-sas-editor-fidelity.md`
 - [x] F24 S-B: Theme brightness — sas-light keyword blue + keyword.function colour both themes → see `docs/plans/latest/F24-sas-editor-fidelity.md`
 - [x] F24 S-C: Code folding for DATA/PROC/DO blocks → see `docs/plans/latest/F24-sas-editor-fidelity.md`
 - [x] F24 S-D: `make test` exits 0 → see `docs/plans/latest/F24-sas-editor-fidelity.md`
+- [x] F24 post-plan: Monaco global theme override fix — Python editor was resetting theme to `vs`; unified both editors to `sas-light`/`sas-dark`
+- [x] F24 post-plan: macroKeywords expansion — 21 missing tokens (`%LOCAL`, `%SYSFUNC`, `%SYMEXIST`, etc.) now purple
+- [x] F24 post-plan: function color = keyword color — aligned to SAS Studio (no teal distinction)
+- [x] F24 post-plan: PROC option keywords — `NOPRINT`, `NODUPKEY`, `NWAY`, `NLEVELS`, `DATAFILE`, `DBMS`, `REPLACE`, `NOCENTER`, `LINESIZE`, `PAGESIZE` + 15 others added to keywords
+- [x] F24 post-plan: sasFunctions lookahead — `(?=\s*\()` prevents `n`, `sum`, `mean`, `min`, `max` etc. highlighting blue as variable names
 
 - [ ] F2: Code Explanation Assistant page (chat UI — explain SAS/Python snippets)
 - [ ] F7: Side-by-side SAS vs Python diff view
