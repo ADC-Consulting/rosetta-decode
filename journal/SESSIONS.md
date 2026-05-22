@@ -6,6 +6,42 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-05-22 — GitHub issue triage + PR #34 screenshots
+
+**Duration:** ~2h | **Focus:** Backlog issue review, solution recommendations, PR #34 screenshot capture
+
+### Done
+- **Triage:** Analysed 6 reopened doc/spec GitHub issues (#14, #23, #26, #30, #32, #33) and gave concrete resolution recommendations for each (see decisions below)
+- **PR #34 screenshots:** Captured three clean screenshots of the feat/F22-assessment-ux UI for PR #34:
+  - `01_plan_tab_final.png` — Plan tab (green verdict strip, scope summary, confidence/complexity bars, amber missing-deps warning, full-width Accept button)
+  - `02_assessment_preview.png` — Pre-Migration Assessment page top (effort estimate, block classification tiles, blockers)
+  - `03_assessment_scope.png` — Assessment scope section (file/block counts, input/output datasets, migration risk tier)
+  - Saved to `/tmp/pr34_screenshots/` for manual upload to PR description
+
+### Decisions
+- **#14 close on merge:** Already superseded by PR #34; close automatically when #34 merges.
+- **#23 is Lasse's:** Research task (Danske Bank benchmark) — not a dev task. Follow up with Lasse; output feeds #32.
+- **#26 = docs commit:** Update `docs/mvp-scope.md` with supported/out-of-scope table + add a short UI scope note. No implementation needed.
+- **#30 = split:** Write persona map doc now (quick) + file a separate issue for persona-differentiated UX implementation (Phase 3+).
+- **#32 = design before F25:** Write `docs/reports-spec.md` before implementing the Evaluation tab (F25). Ideally after #23 delivers findings; can proceed with best-guess spec if #23 is stalled.
+- **#33 = split:** Document input prerequisites now (derivable from current implementation); SAS 6.12/8/9.x version testing blocked on obtaining sample code.
+
+### Open Questions
+- When will Lasse complete #23 (Danske Bank review)? Unblocks #32 spec.
+- Are PRs #34 and #36 both ready to merge? Both have green CI.
+
+### Next Session — Start Here
+1. Merge PR #34 (feat/F22-assessment-ux) and PR #36 (feat/F24-sas-editor-fidelity)
+2. Close #14 with a reference to PR #34 once it merges; apply `shipped` label to #22 once #36 merges
+3. Pick up one of the doc tasks: #26 (scope doc) or #30 (persona map) — both are quick docs commits on main
+4. After docs commits, plan F25 (Evaluation tab, GitHub issue #17) — read `docs/features.md` F17 entry before planning
+
+### Files Touched
+- `journal/SESSIONS.md`
+- `journal/BACKLOG.md`
+
+---
+
 ## 2026-05-18 — F24 SAS editor fidelity — browser verification + SAS Studio parity
 
 **Duration:** ~3h | **Focus:** F24 iterative fix rounds, PROC options, false-positive elimination

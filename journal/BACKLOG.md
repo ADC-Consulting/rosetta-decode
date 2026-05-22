@@ -236,6 +236,12 @@
 - [x] F24 post-plan: PROC option keywords — `NOPRINT`, `NODUPKEY`, `NWAY`, `NLEVELS`, `DATAFILE`, `DBMS`, `REPLACE`, `NOCENTER`, `LINESIZE`, `PAGESIZE` + 15 others added to keywords
 - [x] F24 post-plan: sasFunctions lookahead — `(?=\s*\()` prevents `n`, `sum`, `mean`, `min`, `max` etc. highlighting blue as variable names
 
+**Doc/spec tasks (GitHub issues — quick wins)**
+- [ ] #26: Update `docs/mvp-scope.md` with supported/out-of-scope table + add short UI scope note
+- [ ] #30 (part): Write `docs/personas.md` persona-to-view mapping (tech lead vs PO); file separate issue for UX implementation
+- [ ] #32: Write `docs/reports-spec.md` before implementing F25 — ideally after #23 (Danske Bank review) delivers findings
+- [ ] #33 (part): Document input prerequisites in `docs/` (derivable from current implementation)
+
 - [ ] F2: Code Explanation Assistant page (chat UI — explain SAS/Python snippets)
 - [ ] F7: Side-by-side SAS vs Python diff view
 - [ ] F12: Auto-generated technical docs + lineage metadata (backend data layer for F5)
