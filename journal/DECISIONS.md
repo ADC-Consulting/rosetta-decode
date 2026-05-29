@@ -6,6 +6,14 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-05-18 — SAS editor tokenizer design
+
+- **sasFunctions require `(` lookahead:** Monarch rule split into two — `(?=\s*\()` rule checks `sasFunctions` first (only fires when token is immediately followed by `(`); second rule checks `keywords` only; prevents `sum`, `mean`, `n`, `min`, `max`, `count` etc. from highlighting blue when used as variable names · revisit if stateful per-PROC tokenizer is ever implemented
+- **PROC options as global flat keywords:** common PROC options (`NOPRINT`, `NODUPKEY`, `NWAY`, etc.) added to the keyword array rather than a stateful per-PROC tokenizer; false positive risk is negligible in practice (these tokens are never used as variable names); stateful approach left as future Option B if anyone raises a false positive · revisit never unless false positives reported
+- **Function color = keyword color in SAS themes:** `keyword.function` uses same blue as `keyword` (`#0070C0` light / `#569CD6` dark); SAS Studio Enhanced Editor does not visually distinguish function calls from statement keywords · revisit never
+
+---
+
 ## 2026-05-04 — cumulative execution, planner correctness, post-run risk design
 
 - **Cumulative code over Parquet session cache:** each block is executed with all prior blocks' code prepended; Parquet cache silently left gaps when upstream blocks crashed mid-execution leaving no save; cumulative code is always correct regardless of upstream crash · revisit never

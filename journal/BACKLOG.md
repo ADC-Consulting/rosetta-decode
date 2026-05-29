@@ -225,6 +225,23 @@
 
 ## Phase 3 — Frontend Features (post-MVP)
 
+**F24 — SAS Editor Fidelity (`docs/plans/latest/F24-sas-editor-fidelity.md`) — complete**
+- [x] F24 S-A: Tokenizer improvements — functions token, missing keywords, `* text;` comment fix → see `docs/plans/latest/F24-sas-editor-fidelity.md`
+- [x] F24 S-B: Theme brightness — sas-light keyword blue + keyword.function colour both themes → see `docs/plans/latest/F24-sas-editor-fidelity.md`
+- [x] F24 S-C: Code folding for DATA/PROC/DO blocks → see `docs/plans/latest/F24-sas-editor-fidelity.md`
+- [x] F24 S-D: `make test` exits 0 → see `docs/plans/latest/F24-sas-editor-fidelity.md`
+- [x] F24 post-plan: Monaco global theme override fix — Python editor was resetting theme to `vs`; unified both editors to `sas-light`/`sas-dark`
+- [x] F24 post-plan: macroKeywords expansion — 21 missing tokens (`%LOCAL`, `%SYSFUNC`, `%SYMEXIST`, etc.) now purple
+- [x] F24 post-plan: function color = keyword color — aligned to SAS Studio (no teal distinction)
+- [x] F24 post-plan: PROC option keywords — `NOPRINT`, `NODUPKEY`, `NWAY`, `NLEVELS`, `DATAFILE`, `DBMS`, `REPLACE`, `NOCENTER`, `LINESIZE`, `PAGESIZE` + 15 others added to keywords
+- [x] F24 post-plan: sasFunctions lookahead — `(?=\s*\()` prevents `n`, `sum`, `mean`, `min`, `max` etc. highlighting blue as variable names
+
+**Doc/spec tasks (GitHub issues — quick wins)**
+- [ ] #26: Update `docs/mvp-scope.md` with supported/out-of-scope table + add short UI scope note
+- [ ] #30 (part): Write `docs/personas.md` persona-to-view mapping (tech lead vs PO); file separate issue for UX implementation
+- [ ] #32: Write `docs/reports-spec.md` before implementing F25 — ideally after #23 (Danske Bank review) delivers findings
+- [ ] #33 (part): Document input prerequisites in `docs/` (derivable from current implementation)
+
 - [ ] F2: Code Explanation Assistant page (chat UI — explain SAS/Python snippets)
 - [ ] F7: Side-by-side SAS vs Python diff view
 - [ ] F12: Auto-generated technical docs + lineage metadata (backend data layer for F5)
