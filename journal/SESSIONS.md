@@ -6,6 +6,31 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-05-29 — Session orientation (no implementation)
+
+**Duration:** ~10m | **Focus:** Context review only
+
+### Done
+- Ran session-start: reviewed last session, active plan (F20 Stream B pending), and PR merge priorities
+
+### Decisions
+- none
+
+### Open Questions
+- Are PRs #34 and #36 already merged? (Were the "Start Here" items from 2026-05-22 completed?)
+- Has Lasse completed #23 (Danske Bank review, unblocks #32 spec)?
+
+### Next Session — Start Here
+1. Confirm PR #34 (feat/F22-assessment-ux) and PR #36 (feat/F24-sas-editor-fidelity) merged; close #14, apply `shipped` label to #22
+2. Quick doc task: #26 (update `docs/mvp-scope.md`) or #30 (write `docs/personas.md`) — both on main
+3. After docs, plan F25 (Evaluation tab, GitHub issue #17) — read `docs/features.md` F17 entry first
+4. F20 Stream B still pending: ExecutionOutputPanel improvements + Trust tab in EditorTab → `docs/plans/latest/F20-live-trace-popup.md`
+
+### Files Touched
+- `journal/SESSIONS.md`
+
+---
+
 ## 2026-05-22 — GitHub issue triage + PR #34 screenshots
 
 **Duration:** ~2h | **Focus:** Backlog issue review, solution recommendations, PR #34 screenshot capture

@@ -23,6 +23,73 @@ Everything else is post-MVP.
 
 ---
 
+## Supported SAS Constructs
+
+### Fully supported — translated automatically
+
+| Construct | Notes |
+|---|---|
+| `DATA` step (`SET`, `MERGE`, `IF/THEN/ELSE`, `WHERE`, `KEEP`, `DROP`, `RETAIN`, `ARRAY`, `OUTPUT`) | Core translation target; pandas (local) or PySpark (cloud) |
+| `PROC SQL` | Mapped to `spark.sql()` / SQLite; standard ANSI SQL subset |
+| `PROC SORT` | Mapped to `.sort_values()` / `.orderBy()` |
+| `PROC MEANS` | Aggregations mapped to `.groupBy().agg()` |
+| `PROC FREQ` | Frequency tables mapped to `.groupBy().count()` |
+| `PROC TRANSPOSE` | Mapped to `.pivot()` / `.unpivot()` |
+| `PROC APPEND` | Mapped to `pd.concat` / `union()` |
+| `PROC RANK` | Mapped to `.rank()` / `F.rank()` over window |
+| `PROC IMPORT` | Emits a `pd.read_csv()` scaffold with a `# TODO: verify delimiter` note |
+| `PROC EXPORT` | Emits a `.to_csv()` / `.write.csv()` call |
+| `%LET` macro variables | Resolved to Python constants at parse time |
+| `%MACRO` / `%MEND` definitions and calls | Expanded and inlined; simple parametric macros only |
+
+### Best-effort — translated with manual review flag
+
+| Construct | Limitation |
+|---|---|
+| `PROC IML` | Matrix language; complex linear algebra may require manual rewrite |
+| `PROC FCMP` | User-defined functions; translated as Python `def` blocks |
+| `PROC OPTMODEL` | Optimization modelling; emitted as a stub with a `# SAS-MANUAL` note |
+| `PROC FORMAT` | Format catalogs; mapped to Python dicts or UDF stubs |
+| Unrecognised `PROC` names | Best-effort translation; flagged for review |
+| Complex macro logic (`%IF`/`%DO` with runtime-dependent conditions) | Partial expansion; remaining macro calls preserved as comments |
+
+### Out of scope — flagged as `# SAS-UNRECOGNIZED`
+
+| Construct | Reason |
+|---|---|
+| ODS (`ODS PDF`, `ODS HTML`, `ODS EXCEL`, etc.) | Reporting/output delivery — no Python equivalent in a pipeline context |
+| `PROC REPORT` / `PROC TABULATE` | Formatted reporting procedures |
+| `PROC MIXED` / `PROC GLM` / `PROC REG` / `PROC LOGISTIC` | SAS/STAT statistical modelling — requires `statsmodels`/`sklearn` with manual mapping |
+| `PROC GPLOT` / `PROC SGPLOT` | Graphics procedures |
+| `SAS/CONNECT` | Remote SAS session management |
+| `SAS/ACCESS` libname engines (Oracle, Teradata, etc.) | Database-specific connection layer |
+| `FILENAME` pipe / FTP / email statements | Platform I/O |
+
+---
+
+## UI Scope
+
+The browser UI covers the full migration workflow end to end:
+
+| Page | What it does |
+|---|---|
+| **Migrations** | Upload SAS files, monitor job status, navigate to completed jobs |
+| **Job Detail — Plan tab** | Block-by-block migration plan: strategy, confidence, reconciliation result, rationale |
+| **Job Detail — Editor tab** | Side-by-side SAS source and generated Python; inline editing; execution with live log/output |
+| **Job Detail — Report tab** | Plain-English summary of the migrated pipeline (auto-generated) |
+| **Job Detail — Lineage tab** | Data flow graph: files → blocks → outputs, three levels (Blocks / Files / Pipeline) |
+| **Lineage** | Cross-migration global lineage view; connect multiple jobs to trace shared datasets |
+| **Explain** | Chat interface: ask questions about the SAS code or a specific migration |
+
+Out of scope for the UI (post-MVP or not planned):
+
+- User authentication / login (Phase 4)
+- Multi-user collaboration or comments
+- Scheduling or pipeline orchestration
+- Direct Databricks notebook export (Phase 4)
+
+---
+
 ## CLOUD Flag Behaviour
 
 Controlled by `CLOUD` in `.env` (never in code).
