@@ -48,6 +48,7 @@ Two primary personas use rosetta-decode. They have different goals, different li
 |---|---|
 | **Job Detail — Report tab** | Read the plain-English summary of what the pipeline does; verify the description matches expectations |
 | **Job Detail — Plan tab (summary card)** | Check the top-level confidence score, block count, risk tier, and whether any blocks need attention |
+| **Docs page** | Browse documentation cards across all migrations; read plain-English and technical doc tabs side by side; check confidence/risk badges without navigating into individual jobs |
 | **Migrations list** | Track overall migration progress; see which jobs are done vs under review |
 
 ### Key metrics they care about
@@ -73,6 +74,7 @@ Two primary personas use rosetta-decode. They have different goals, different li
 | Editor tab | Primary | Not used |
 | Report tab | Secondary (skim) | Primary |
 | Lineage tab | Primary | Occasionally (high-level) |
+| Docs page | Occasionally | Primary (cross-migration overview) |
 | Explain chat | For SAS questions | For business logic questions |
 | Migrations list | Operational | Progress tracking |
 | Download zip | Handoff to QA | Not used |

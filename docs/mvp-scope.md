@@ -50,6 +50,9 @@ Everything else is post-MVP.
 | `PROC FCMP` | User-defined functions; translated as Python `def` blocks |
 | `PROC OPTMODEL` | Optimization modelling; emitted as a stub with a `# SAS-MANUAL` note |
 | `PROC FORMAT` | Format catalogs; mapped to Python dicts or UDF stubs |
+| `PROC PRINT` | Reporting procedure; translated as a no-op `print(df)` or skipped |
+| `PROC CONTENTS` | Metadata procedure; translated as `df.dtypes` / `df.info()` equivalent |
+| `PROC DATASETS` | Dataset management; translated best-effort; destructive operations flagged |
 | Unrecognised `PROC` names | Best-effort translation; flagged for review |
 | Complex macro logic (`%IF`/`%DO` with runtime-dependent conditions) | Partial expansion; remaining macro calls preserved as comments |
 
@@ -78,6 +81,7 @@ The browser UI covers the full migration workflow end to end:
 | **Job Detail — Editor tab** | Side-by-side SAS source and generated Python; inline editing; execution with live log/output |
 | **Job Detail — Report tab** | Plain-English summary of the migrated pipeline (auto-generated) |
 | **Job Detail — Lineage tab** | Data flow graph: files → blocks → outputs, three levels (Blocks / Files / Pipeline) |
+| **Docs** | Cross-migration documentation view: migration cards with plain-English and technical doc tabs, confidence/risk badges, read-only file tree |
 | **Lineage** | Cross-migration global lineage view; connect multiple jobs to trace shared datasets |
 | **Explain** | Chat interface: ask questions about the SAS code or a specific migration |
 
