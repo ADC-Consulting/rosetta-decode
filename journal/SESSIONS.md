@@ -6,6 +6,43 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-05-29 — Doc sprint: SAS scope, personas, input prerequisites (#26 #30 #33)
+
+**Duration:** ~2h | **Focus:** GitHub issue triage + three documentation files
+
+### Done
+- **Confirmed:** PR #36 (F24) merged; issue #22 (SAS editor) closed automatically; PR #34 (F22) still open
+- **#26:** Updated `docs/mvp-scope.md` — added supported/best-effort/out-of-scope SAS construct tables and UI scope section covering all 7 pages
+- **#30 (doc part):** Created `docs/personas.md` — P1 (technical lead) and P2 (PO/analyst) persona-to-view mapping, key metrics, actions, feature mapping table
+- **#33 (doc part):** Created `docs/input-prerequisites.md` — accepted formats, SAS version compatibility, reference CSV guidance, system requirements
+- **PR #37 opened:** `docs/sas-scope-personas-prerequisites` → main, closes #26 #30 #33
+- **PR test plan executed:** found and fixed 3 gaps — PROC_PRINT/CONTENTS/DATASETS missing from best-effort table; `/docs` page missing from UI scope and P2 views; accepted formats were correct
+- **PR description updated:** all 3 test plan items ticked; CI failing due to org billing lock (not code)
+
+### Decisions
+- none architectural
+
+### Open Questions
+- PR #34 (feat/F22-assessment-ux) still open — needs merge; #14 closes on merge
+- Lasse's #23 (Danske Bank review) still open — blocks #32 and #24
+- Issue #35 (Lasse's agent pipeline proposal) needs a conversation before any dev work; may overlap with the product itself
+- CI blocked by org billing issue — admin access needed to unblock GitHub Actions
+
+### Next Session — Start Here
+1. Merge PR #37 once billing is resolved (or bypass if you have permissions)
+2. Merge PR #34 (feat/F22-assessment-ux); close #14
+3. Write `docs/confidence-metric.md` for issue #18 — short tech note + user-facing explanation of what the confidence score means (quick win, unblocks #17 tooltip requirement)
+4. Plan F25 (Evaluation tab — issue #17): read `docs/features.md` F17 entry + `journal/DECISIONS.md` before planning
+
+### Files Touched
+- `docs/mvp-scope.md`
+- `docs/personas.md` (new)
+- `docs/input-prerequisites.md` (new)
+- `journal/SESSIONS.md`
+- `journal/BACKLOG.md`
+
+---
+
 ## 2026-05-22 — GitHub issue triage + PR #34 screenshots
 
 **Duration:** ~2h | **Focus:** Backlog issue review, solution recommendations, PR #34 screenshot capture

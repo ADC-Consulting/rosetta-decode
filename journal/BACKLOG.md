@@ -237,10 +237,12 @@
 - [x] F24 post-plan: sasFunctions lookahead — `(?=\s*\()` prevents `n`, `sum`, `mean`, `min`, `max` etc. highlighting blue as variable names
 
 **Doc/spec tasks (GitHub issues — quick wins)**
-- [ ] #26: Update `docs/mvp-scope.md` with supported/out-of-scope table + add short UI scope note
-- [ ] #30 (part): Write `docs/personas.md` persona-to-view mapping (tech lead vs PO); file separate issue for UX implementation
+- [x] #26: Update `docs/mvp-scope.md` with supported/out-of-scope table + add short UI scope note → PR #37
+- [x] #30 (part): Write `docs/personas.md` persona-to-view mapping (tech lead vs PO); file separate issue for UX implementation → PR #37
 - [ ] #32: Write `docs/reports-spec.md` before implementing F25 — ideally after #23 (Danske Bank review) delivers findings
-- [ ] #33 (part): Document input prerequisites in `docs/` (derivable from current implementation)
+- [x] #33 (part): Document input prerequisites in `docs/input-prerequisites.md` → PR #37
+- [ ] #18: Write `docs/confidence-metric.md` — what the confidence score means and how it is computed; user-facing explanation + internal tech note (unblocks #17 tooltip)
+- [ ] #35: Discuss Lasse's agent pipeline proposal before planning any dev work — may overlap with product scope
 
 - [ ] F2: Code Explanation Assistant page (chat UI — explain SAS/Python snippets)
 - [ ] F7: Side-by-side SAS vs Python diff view
