@@ -6,6 +6,50 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-01 — F25 Evaluation tab: criticality, blast_radius fix, PR ready
+**Duration:** ~3h | **Focus:** F25 implementation + browser test
+
+### Done
+- **Data model verification:** confirmed `cross_file_edges` dicts use `source_block_id` (not `source_file`) — existing `_blast_radius_map` was silently broken; `BlockPlan` has no `output_datasets`; block-level blast_radius derivable from `source_block_id` directly
+- **F25 S-A:** added `criticality: str = "normal"` and `human_review_required: bool = False` to `TrustReportBlock` in `schemas.py`
+- **F25 S-B:** fixed `_blast_radius_map` (source_file → source_block_id), added `_criticality()` helper, wired both fields into `get_job_trust_report`
+- **F25 S-C:** 7 new unit tests for criticality rules + integration test; 2 existing blast_radius tests updated to correct key format; 723 tests passing
+- **F25 S-D–F:** added `criticality`/`human_review_required` to `types.ts`; built `EvaluationTab.tsx` (criticality badges, help dialog, top-10 risky blocks, blast_radius gated on lineage_available); wired Evaluation tab into `JobDetailPage` at position 5; deleted `TrustReportTab.tsx`
+- **Committed:** `feat/F25-evaluation-tab` branch, single commit `c3b6ad2`, all pre-commit hooks green
+- **Browser tested:** Evaluation tab renders correctly with seeded test job — summary cards, criticality badge, help dialog all working
+- **F26 planned:** criticality column on Plan tab block table; plan file written at `docs/plans/latest/F26-criticality-plan-tab.md`; no code written yet (session ended before implementation)
+
+### Decisions
+- `_blast_radius_map` fix: use `source_block_id` as map key — see DECISIONS.md 2026-06-01
+- Criticality is mixed signal (strategy + confidence + blast_radius), not pure blast_radius — see DECISIONS.md 2026-06-01
+
+### Open Questions
+- PR #37 (docs sprint) and PR #38 (confidence-metric) still blocked by org billing issue — need admin to unblock CI
+- PR #34 (F22) still open
+- F26 implementation not started — one session to complete (single file, ~40 lines)
+
+### Next Session — Start Here
+1. Read `docs/plans/latest/F26-criticality-plan-tab.md` — plan is approved, start with S-A
+2. Add Criticality column to `BlockPlanTable.tsx`: table header + row badge using `trust?.criticality`, `—` fallback; reuse CRITICALITY_CLASSES colour map from `EvaluationTab.tsx`
+3. Run `make test`, verify green, commit to `feat/F25-evaluation-tab` (or new branch if F25 PR is merged)
+4. Generate PR summary for F25 with `/git-pr-summary`
+
+### Files Touched
+- `src/backend/api/schemas.py`
+- `src/backend/api/routes/jobs.py`
+- `tests/test_changelog_trust_report.py`
+- `src/frontend/src/api/types.ts`
+- `src/frontend/src/components/JobDetail/EvaluationTab.tsx` (new)
+- `src/frontend/src/components/JobDetail/TrustReportTab.tsx` (deleted)
+- `src/frontend/src/pages/JobDetailPage.tsx`
+- `docs/plans/latest/F25-evaluation-tab.md`
+- `docs/plans/latest/F26-criticality-plan-tab.md` (new)
+- `journal/BACKLOG.md`
+- `journal/DECISIONS.md`
+- `journal/SESSIONS.md`
+
+---
+
 ## 2026-05-29 — Doc sprint: SAS scope, personas, input prerequisites (#26 #30 #33)
 
 **Duration:** ~2h | **Focus:** GitHub issue triage + three documentation files
