@@ -6,28 +6,40 @@ Most recent session on top. Each entry should answer:
 
 ---
 
-## 2026-05-29 — Session orientation (no implementation)
+## 2026-05-29 — Doc sprint: SAS scope, personas, input prerequisites (#26 #30 #33)
 
-**Duration:** ~10m | **Focus:** Context review only
+**Duration:** ~2h | **Focus:** GitHub issue triage + three documentation files
 
 ### Done
-- Ran session-start: reviewed last session, active plan (F20 Stream B pending), and PR merge priorities
+- **Confirmed:** PR #36 (F24) merged; issue #22 (SAS editor) closed automatically; PR #34 (F22) still open
+- **#26:** Updated `docs/mvp-scope.md` — added supported/best-effort/out-of-scope SAS construct tables and UI scope section covering all 7 pages
+- **#30 (doc part):** Created `docs/personas.md` — P1 (technical lead) and P2 (PO/analyst) persona-to-view mapping, key metrics, actions, feature mapping table
+- **#33 (doc part):** Created `docs/input-prerequisites.md` — accepted formats, SAS version compatibility, reference CSV guidance, system requirements
+- **PR #37 opened:** `docs/sas-scope-personas-prerequisites` → main, closes #26 #30 #33
+- **PR test plan executed:** found and fixed 3 gaps — PROC_PRINT/CONTENTS/DATASETS missing from best-effort table; `/docs` page missing from UI scope and P2 views; accepted formats were correct
+- **PR description updated:** all 3 test plan items ticked; CI failing due to org billing lock (not code)
 
 ### Decisions
-- none
+- none architectural
 
 ### Open Questions
-- Are PRs #34 and #36 already merged? (Were the "Start Here" items from 2026-05-22 completed?)
-- Has Lasse completed #23 (Danske Bank review, unblocks #32 spec)?
+- PR #34 (feat/F22-assessment-ux) still open — needs merge; #14 closes on merge
+- Lasse's #23 (Danske Bank review) still open — blocks #32 and #24
+- Issue #35 (Lasse's agent pipeline proposal) needs a conversation before any dev work; may overlap with the product itself
+- CI blocked by org billing issue — admin access needed to unblock GitHub Actions
 
 ### Next Session — Start Here
-1. Confirm PR #34 (feat/F22-assessment-ux) and PR #36 (feat/F24-sas-editor-fidelity) merged; close #14, apply `shipped` label to #22
-2. Quick doc task: #26 (update `docs/mvp-scope.md`) or #30 (write `docs/personas.md`) — both on main
-3. After docs, plan F25 (Evaluation tab, GitHub issue #17) — read `docs/features.md` F17 entry first
-4. F20 Stream B still pending: ExecutionOutputPanel improvements + Trust tab in EditorTab → `docs/plans/latest/F20-live-trace-popup.md`
+1. Merge PR #37 once billing is resolved (or bypass if you have permissions)
+2. Merge PR #34 (feat/F22-assessment-ux); close #14
+3. Write `docs/confidence-metric.md` for issue #18 — short tech note + user-facing explanation of what the confidence score means (quick win, unblocks #17 tooltip requirement)
+4. Plan F25 (Evaluation tab — issue #17): read `docs/features.md` F17 entry + `journal/DECISIONS.md` before planning
 
 ### Files Touched
+- `docs/mvp-scope.md`
+- `docs/personas.md` (new)
+- `docs/input-prerequisites.md` (new)
 - `journal/SESSIONS.md`
+- `journal/BACKLOG.md`
 
 ---
 
