@@ -304,19 +304,19 @@ async def test_plain_english_agent_generate_returns_doc(monkeypatch: pytest.Monk
 # ── _blast_radius_map direct tests ────────────────────────────────────────────
 
 
-def test_blast_radius_map_counts_source_files() -> None:
-    """_blast_radius_map counts outgoing edges per source_file."""
+def test_blast_radius_map_counts_source_blocks() -> None:
+    """_blast_radius_map counts outgoing edges per source_block_id."""
     from src.backend.api.routes.jobs import _blast_radius_map
 
     edges = [
-        {"source_file": "a.sas", "target_file": "b.sas"},
-        {"source_file": "a.sas", "target_file": "c.sas"},
-        {"source_file": "b.sas", "target_file": "c.sas"},
-        {"source_file": "", "target_file": "c.sas"},  # empty source — skipped
+        {"source_block_id": "a.sas:1", "target_block_id": "b.sas:1", "shared_dataset": "x"},
+        {"source_block_id": "a.sas:1", "target_block_id": "c.sas:1", "shared_dataset": "y"},
+        {"source_block_id": "b.sas:1", "target_block_id": "c.sas:1", "shared_dataset": "z"},
+        {"source_block_id": "", "target_block_id": "c.sas:1", "shared_dataset": "w"},
     ]
     result = _blast_radius_map(edges)
-    assert result["a.sas"] == 2
-    assert result["b.sas"] == 1
+    assert result["a.sas:1"] == 2
+    assert result["b.sas:1"] == 1
     assert "" not in result
 
 
@@ -347,7 +347,13 @@ async def test_trust_report_with_multiple_revisions_same_block(
         lineage={
             "nodes": [],
             "edges": [],
-            "cross_file_edges": [{"source_file": "test.sas", "target_file": "other.sas"}],
+            "cross_file_edges": [
+                {
+                    "source_block_id": "test.sas:1",
+                    "target_block_id": "other.sas:1",
+                    "shared_dataset": "out",
+                },
+            ],
         },
     )
     job.id = job_id
@@ -377,3 +383,72 @@ async def test_trust_report_with_multiple_revisions_same_block(
     # The translate block had revision 2 = pass, manual block has no revision
     translate_blocks = [b for b in data["blocks"] if b["strategy"] == "translate"]
     assert any(b["reconciliation_status"] == "pass" for b in translate_blocks)
+
+
+# ── _criticality direct tests ─────────────────────────────────────────────────
+
+
+def test_criticality_manual_strategy() -> None:
+    from src.backend.api.routes.jobs import _criticality
+
+    assert _criticality("manual", "high", "pass", 0) == "critical"
+
+
+def test_criticality_very_low_band() -> None:
+    from src.backend.api.routes.jobs import _criticality
+
+    assert _criticality("translate", "very_low", None, None) == "critical"
+
+
+def test_criticality_high_blast_radius() -> None:
+    from src.backend.api.routes.jobs import _criticality
+
+    assert _criticality("translate", "medium", None, 3) == "high"
+    assert _criticality("translate", "medium", None, 5) == "high"
+
+
+def test_criticality_pass_high_confidence() -> None:
+    from src.backend.api.routes.jobs import _criticality
+
+    assert _criticality("translate", "high", "pass", 0) == "low"
+
+
+def test_criticality_human_review_required() -> None:
+    from src.backend.api.routes.jobs import _criticality
+
+    assert _criticality("manual", "high", None, None) == "critical"
+    assert _criticality("translate", "low", None, None) == "high"
+    assert _criticality("translate", "medium", None, None) == "normal"
+    assert _criticality("translate", "high", None, 0) == "low"
+
+
+def test_criticality_recon_fail_is_high() -> None:
+    from src.backend.api.routes.jobs import _criticality
+
+    assert _criticality("translate", "high", "fail", 0) == "high"
+
+
+@pytest.mark.asyncio
+async def test_trust_report_blocks_have_criticality_fields(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Trust report response includes criticality and human_review_required per block."""
+    import uuid as _uuid
+
+    job_id = str(_uuid.uuid4())
+    job = _make_job(status="proposed", migration_plan=_SAMPLE_PLAN)
+    job.id = job_id
+    db_session.add(job)
+    await db_session.commit()
+
+    response = await client.get(f"/jobs/{job_id}/trust-report")
+    assert response.status_code == 200
+    data = response.json()
+    for block in data["blocks"]:
+        assert "criticality" in block
+        assert block["criticality"] in ("critical", "high", "normal", "low")
+        assert "human_review_required" in block
+        assert isinstance(block["human_review_required"], bool)
+    manual_blocks = [b for b in data["blocks"] if b["strategy"] == "manual"]
+    assert all(b["criticality"] == "critical" for b in manual_blocks)
+    assert all(b["human_review_required"] is True for b in manual_blocks)

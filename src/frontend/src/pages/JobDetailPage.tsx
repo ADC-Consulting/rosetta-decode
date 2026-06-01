@@ -15,7 +15,7 @@ import PlanTab from "@/components/JobDetail/PlanTab";
 import ReportTab from "@/components/JobDetail/ReportTab";
 import { StatusBadge } from "@/components/JobDetail/StatusBadge";
 import VersionHistoryRail from "@/components/VersionHistoryRail";
-// import TrustReportTab from "@/components/JobDetail/TrustReportTab";
+import EvaluationTab from "@/components/JobDetail/EvaluationTab";
 import {
   POLLING_STATUSES,
   TAB_CONTENT_HEIGHT,
@@ -215,9 +215,9 @@ export default function JobDetailPage(): React.ReactElement {
               <TabsTrigger value="lineage" className="cursor-pointer">
                 Lineage
               </TabsTrigger>
-              {/* <TabsTrigger value="trust" className="cursor-pointer">
-              Trust Report
-            </TabsTrigger> */}
+              <TabsTrigger value="evaluation" className="cursor-pointer">
+                Evaluation
+              </TabsTrigger>
               {/* <TabsTrigger value="history" className="cursor-pointer">
               History
             </TabsTrigger> */}
@@ -325,9 +325,9 @@ export default function JobDetailPage(): React.ReactElement {
               <LineageTab jobId={id} blockPlans={planData?.block_plans} />
             </TabsContent>
 
-            {/* <TabsContent value="trust" className="mt-0 flex-1 min-h-0">
-            <TrustReportTab jobId={id} jobStatus={job?.status ?? "queued"} />
-          </TabsContent> */}
+            <TabsContent value="evaluation" className="mt-0 flex-1 min-h-0">
+              <EvaluationTab jobId={id} jobStatus={job?.status ?? "queued"} />
+            </TabsContent>
 
             {/* <TabsContent value="history" className="mt-0 flex-1 min-h-0 overflow-y-auto">
             <div className="px-4 py-4">
