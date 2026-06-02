@@ -135,11 +135,11 @@ function GlossaryDialog({
 }): React.ReactElement {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[80vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Glossary</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4 text-sm">
+        <div className="space-y-4 text-sm overflow-y-auto pr-1">
           <div>
             <p className="font-semibold mb-1">Risk levels</p>
             <p className="text-xs text-muted-foreground mb-1.5">
@@ -255,6 +255,37 @@ function GlossaryDialog({
                 <span className="font-medium text-red-700">Failed recon</span> —
                 Python code executed but output did not match the SAS reference
                 data.
+              </li>
+            </ul>
+          </div>
+          <div>
+            <p className="font-semibold mb-1">Criticality</p>
+            <p className="text-xs text-muted-foreground mb-1.5">
+              A post-translation signal that combines translation strategy,
+              confidence, reconciliation outcome, and how many other files
+              depend on this block. Unlike Risk (which is assessed before
+              translation), Criticality reflects what actually needs human
+              attention now.
+            </p>
+            <ul className="space-y-1 text-muted-foreground text-xs">
+              <li>
+                <span className="font-medium text-red-700">Critical</span> —
+                Strategy is manual, or LLM confidence was very low. Requires
+                human authoring or rewrite.
+              </li>
+              <li>
+                <span className="font-medium text-orange-700">High</span> —
+                Confidence was low, reconciliation failed, or this block feeds
+                three or more downstream files. Human review required.
+              </li>
+              <li>
+                <span className="font-medium text-amber-700">Medium</span> —
+                Translation ran with medium confidence. Worth a spot check.
+              </li>
+              <li>
+                <span className="font-medium text-green-700">Low</span> —
+                High confidence, reconciliation passed, minimal downstream
+                impact. Safe to accept.
               </li>
             </ul>
           </div>
