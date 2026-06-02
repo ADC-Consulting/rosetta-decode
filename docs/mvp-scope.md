@@ -16,7 +16,7 @@ Deliver a working end-to-end migration for a single, real SAS script — local e
 | **F8 — Compliance & Audit Traceability** | Immutable audit record per job (input hashes, model, timestamp, reconciliation results). Exposed via API. No new data computed — jobs table already holds it. |
 | **F9 — Downloadable Migration Output** | `GET /jobs/{id}/download` returns a zip: `pipeline.py` + `reconciliation_report.json` + `audit.json`. |
 | **F-LLM — LLM system prompt + resilience** | System prompt establishes the agent as a SAS migration expert targeting Python/PySpark. Worker must not crash if LLM API is temporarily unreachable — job marked failed with clear error, process stays alive. |
-| **F-sas7bdat — Binary dataset reading** | `LocalBackend` reads `.sas7bdat` files via `pyreadstat` (dep already declared). `.sas7bdat` files are loaded as DataFrames and made available to the pipeline execution context. |
+| **F-sas7bdat — Binary dataset reading** | `LocalBackend` reads `.sas7bdat` files via `pyreadstat`. Files are loaded as DataFrames and made available to the pipeline execution context. Column names are extracted; column labels, display formats, variable types, lengths, and row counts are available in `pyreadstat` metadata but are not currently extracted or stored. |
 | **F-UI — Upload & Results page** | Single-page React UI: upload `.sas` + optional `.sas7bdat` / `.csv` / `.log` files, poll job status, view generated Python + reconciliation report, download zip. Wires to existing `POST /migrate`, `GET /jobs/{id}`, `GET /jobs/{id}/download`. |
 
 Everything else is post-MVP.
@@ -49,7 +49,7 @@ Everything else is post-MVP.
 | `PROC IML` | Matrix language; complex linear algebra may require manual rewrite |
 | `PROC FCMP` | User-defined functions; translated as Python `def` blocks |
 | `PROC OPTMODEL` | Optimization modelling; emitted as a stub with a `# SAS-MANUAL` note |
-| `PROC FORMAT` | Format catalogs; mapped to Python dicts or UDF stubs |
+| `PROC FORMAT` | Format catalog blocks are detected and stored as block nodes; inner `VALUE`/`INVALUE` pair parsing (value-to-label mappings) is not yet implemented and is not converted to Python dicts |
 | `PROC PRINT` | Reporting procedure; translated as a no-op `print(df)` or skipped |
 | `PROC CONTENTS` | Metadata procedure; translated as `df.dtypes` / `df.info()` equivalent |
 | `PROC DATASETS` | Dataset management; translated best-effort; destructive operations flagged |

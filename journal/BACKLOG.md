@@ -257,6 +257,38 @@
 - [x] F26 S-A: Add Criticality column to `BlockPlanTable` → `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
 - [x] F26 S-B: `make test` exits 0
 
+**5-tab chevron restructure (issues #39–47) — see DECISIONS.md 2026-06-02**
+- [x] #39: Audit SAS metadata extraction — audit complete; gaps documented below; issue to be closed once gap items are filed or triaged
+
+  **#39 findings — SAS metadata extraction gaps**
+
+  *Tier 1 — Critical (affects translation correctness)*
+  - [ ] `.sas7bdat` column types, labels, formats, lengths — `pyreadstat` exposes `meta.column_labels`, `meta.column_formats`, `meta.readstat_variable_types`, `meta.column_lengths`; none currently extracted or surfaced
+  - [ ] `PROC FORMAT` value-to-label mappings — block is detected but inner `VALUE`/`INVALUE` pairs are not parsed; losing format definitions breaks any downstream BI semantic layer
+  - [ ] `INFILE`/`INPUT` column definitions — fixed-column and delimited layouts not extracted; column names/types are inferred from the LLM, not from the source declaration
+  - [ ] `CALL SYMPUT`/`CALL SYMPUTX` — runtime macro variable assignment not captured; dynamic values unresolvable without this
+
+  *Tier 2 — Data model completeness*
+  - [ ] `PROC SQL CREATE TABLE` column definitions — column names and types declared inline not extracted into the block model
+  - [ ] `LIBNAME` engine type — `ENGINE=` option not stored; needed to distinguish SAS/SHARE, Hadoop, ODBC, etc. for Data Storage tab mapping
+  - [ ] Variable-level `FORMAT` and `INFORMAT` statements — per-variable display/read formats not captured from `DATA` step
+  - [ ] `.sas7bdat` row counts — `meta.row_count` available via pyreadstat; not currently read or stored
+
+  *Tier 3 — BI / reporting layer*
+  - [ ] `PROC TABULATE` — falls to `PROC_UNKNOWN`; most OLAP-like native SAS proc; should be recognised for BI tab
+  - [ ] `PROC FORMAT` block content — block node exists, inner pairs unparsed (duplicate of Tier 1 but specifically for the BI semantic layer use-case)
+  - [ ] `PROC CONTENTS` output dataset target — output `OUT=` dataset not captured
+  - [ ] `PROC EXPORT` output file path — `OUTFILE=` not captured; needed to trace data lineage to downstream consumers
+- [ ] #44: BI tab placeholder — empty state in chevron shell (unblocked once #40 lands)
+- [ ] #45: AI tab placeholder — empty state in chevron shell (unblocked once #40 lands)
+- [ ] #40: Scaffold 5-step chevron tab shell (Plan → ETL → Data Storage → BI → AI) — **blocked: wireframe pending**
+- [ ] #41: Plan tab — block table + criticality review queue (collapsible) + report (collapsed) — **blocked: wireframe pending**
+- [ ] #42: ETL tab — Lineage DAG as primary canvas, code editor as click-through panel — **blocked: wireframe pending**
+- [ ] #43: Data Storage tab — SAS table inventory, DW mapping — **blocked: wireframe pending**
+- [ ] #46: Remove legacy tab components (Plan/Editor/Report/Lineage/History/Evaluation) — blocked: depends on #40–45
+- [ ] #47: Remove legacy standalone pages and routes — blocked: depends on #46
+- [ ] #17: Close — delivered by F25 + F26 (Evaluation tab with criticality)
+
 - [ ] F2: Code Explanation Assistant page (chat UI — explain SAS/Python snippets)
 - [ ] F7: Side-by-side SAS vs Python diff view
 - [ ] F12: Auto-generated technical docs + lineage metadata (backend data layer for F5)

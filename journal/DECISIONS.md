@@ -6,6 +6,26 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-06-02 — 5-tab chevron UI restructure (issues #40–47)
+
+- **New tab structure: Plan → ETL → Data Storage → BI → AI:** Replaces current Plan / Editor / Report / Lineage / History / Evaluation tabs; chevron shape from wireframe (pending on #40) · rationale: aligns UI with the migration pipeline stages rather than tool functions · revisit if wireframe changes scope
+- **Plan tab absorbs Evaluation + Report:** Block table (with Criticality column) is primary content; Criticality review queue sits above as a collapsible panel expanded by default; Report is a collapsible panel collapsed by default; EvaluationTab summary cards fold into the existing job summary header · revisit never
+- **ETL tab repurposes Lineage as primary canvas:** Lineage DAG is the main view; clicking a node opens the block's SAS↔Python code editor in a slide-in panel; standalone Editor tab is retired · rationale: keeps spatial/dependency context visible while editing; unifies "where does this block fit" with "what does it do" · revisit if DAG performance is poor on large jobs
+- **BI and AI tabs are placeholders:** No functional content until scope is defined; empty state only · revisit when stakeholder requirements land
+- **Implementation blocked on wireframes:** #40 (chevron shell), #41 (Plan tab), #42 (ETL tab) must not be started until wireframes are attached to the issues · revisit when dev X uploads wireframes
+
+## 2026-06-02 — 5-tab chevron implementation approach
+
+- **Tab routing uses query params (`/jobs/:id?tab=plan`):** One route handles all 5 tabs; deep-linking and back-button work without defining 5 path segments; syncs shadcn Tabs `value` with `useSearchParams` · rationale: path segments require router restructure; in-memory loses deep-linking entirely; query params are minimal change with full capability · revisit never
+- **Migration strategy: additive then remove:** New chevron shell (#40–45) is built and verified first; legacy tab bar is hidden (not deleted) once shell is wired; legacy components removed in #46 as a separate PR · rationale: issues are already sequenced this way; keeps rollback to a one-line change if the shell breaks; avoids a single enormous PR · revisit never
+- **History tab folds into Plan tab as a collapsed panel:** Job-level audit timeline moves to a collapsible "Migration history" panel at the bottom of Plan tab (collapsed by default), consistent with the Report panel pattern; per-block revision history (clock icon in BlockPlanTable) remains in place · rationale: history is most relevant alongside the plan it reflects; dropping it loses audit trail visibility important for regulated enterprise migrations · revisit never
+- **#39 audit gates #43 scope:** Data Storage tab (#43) must not be planned until #39 (SAS metadata audit) confirms what the parser already extracts; avoids writing a frontend plan that depends on non-existent backend data · revisit never
+- **#39 audit complete — #43 now unblocked (2026-06-02):** Audit confirmed partial extraction: LIBNAME path mapping, block boundaries, %LET/%MACRO, and column names from `.sas7bdat` are present; column labels/formats/types, PROC FORMAT value mappings, INFILE/INPUT layouts, CALL SYMPUT, and LIBNAME engine type are absent. Gaps documented as Tier 1/2/3 items in backlog and `docs/input-prerequisites.md`. #43 may be planned against what is currently available with explicit placeholders for unextracted fields · revisit never
+- **Tab key strings are kebab-case:** `plan`, `etl`, `data-storage`, `bi`, `ai` — used as `?tab=` query param values; kebab-case is the URL convention; `data-storage` preferred over `datastorage` (readability) and `data_storage` (underscore unconventional in query params); strings do not conflict with legacy tab keys during the additive migration phase · revisit never
+- **Full-page editor route `/jobs/:id/editor` is kept, not retired in #47:** Slide-in panel in ETL tab serves spatial context (DAG + code together); full-page route serves focus mode (distraction-free editing of dense blocks); these are distinct use cases. Entry point moves from Plan tab View Code dialog → ETL tab slide-in panel maximize button; return `?tab=` parameter updated to `etl`; route itself is unchanged. #47 removes the legacy tab bar, not this page · revisit never
+
+---
+
 ## 2026-06-01 — F25 criticality design
 
 - **`_blast_radius_map` bug fixed — source_block_id not source_file:** `cross_file_edges` dicts produced by the lineage enricher use `source_block_id` / `target_block_id` / `shared_dataset` keys; the old function read `source_file` so blast_radius was always `None`; fixed to key on `source_block_id` giving block-level counts · revisit never
