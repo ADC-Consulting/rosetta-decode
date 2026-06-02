@@ -34,14 +34,23 @@ A High confidence score does not mean the output is semantically correct in all 
 
 Confidence is computed per block (DATA step, PROC, etc.), not per column or per row.
 
-If no reference CSV was uploaded, there is no reconciliation to validate against — the score reflects LLM self-assessment only.`;
+If no reference CSV was uploaded, there is no reconciliation to validate against — the score reflects LLM self-assessment only.
+
+What criticality means:
+
+Criticality is a post-translation signal that combines strategy, confidence, reconciliation outcome, and blast radius (how many downstream files depend on this block). It differs from Risk, which is a static pre-translation assessment of SAS construct complexity.
+
+• Critical — Strategy is manual, or confidence was very low. Block needs human authoring or rewrite.
+• High — Confidence was low, reconciliation failed, or this block feeds 3+ downstream files.
+• Medium — Translation ran with medium confidence. Worth a spot check before accepting.
+• Low — High confidence, reconciliation passed, minimal downstream impact.`;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const CRITICALITY_CLASSES: Record<string, string> = {
   critical: "text-red-700 bg-red-50 border border-red-200",
   high: "text-orange-700 bg-orange-50 border border-orange-200",
-  normal: "text-amber-700 bg-amber-50 border border-amber-200",
+  medium: "text-amber-700 bg-amber-50 border border-amber-200",
   low: "text-green-700 bg-green-50 border border-green-200",
 };
 
@@ -151,7 +160,7 @@ function FileSection({ file }: { file: TrustReportFile }): React.ReactElement {
 const CRITICALITY_ORDER: Record<string, number> = {
   critical: 0,
   high: 1,
-  normal: 2,
+  medium: 2,
   low: 3,
 };
 
