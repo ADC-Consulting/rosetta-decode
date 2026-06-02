@@ -143,15 +143,20 @@
 - [x] fix(backend): output variable NameError — root cause was (1) block topo sort placing PROC_IML before its producer, (2) GenericProcAgent prompt using wrong `libname_table` form for inter-block inputs; fixed via Kahn's sort tiebreaker + prompt/renamer fixes across all agents
 - [ ] UI bug (unresolved): TipTap toolbar cursor jumps to bottom after one keystroke — multiple fixes attempted, none confirmed working
 - [ ] UI bug (unresolved): tab heights not filling available space — `calc(100vh - 160px)` applied to all four tabs, not confirmed working
-- [ ] fix(backend): `translate_best_effort` strategy — add to migration planner prompt OR remove enum; currently dead (LLM never assigns it)
+- [ ] fix(backend): `translate_best_effort` strategy — removed in F27 S-C/S-D → see `docs/plans/latest/F27-trust-report-bug-fixes.md`
 - [x] fix(backend): `manual_ingestion` StubGenerator — now emits `pd.read_csv(disk_path)` scaffold with `is_untranslatable=False`, `confidence_score=0.7`; block_plan strategy passed to router via `block_plan_map` in `_translate_blocks()`
 - [x] fix(executor): data_dir routing — uploaded files saved to `/uploads/<job_id>/<basename>`; executor rewrites `/workspace/data/` → `data_dir/` at run time; `data_dir` threaded through all recon call sites
 - [x] fix(executor): xlsx support — openpyxl added to Dockerfile; `_fix_excel_spark_reads()` guard rewrites bad Spark xlsx reads; prompt updated with pandas bridge pattern
 - [x] fix(backend): PROC IMPORT output_var naming — removed `_file_io_types` exclusion from `all_block_outputs`; `normalise_output_var` + `normalise_output_var_in_code` shared utilities in `agents/shared.py`
 - [x] fix(backend): file_count off-by-one — counts per-path `__ref_*__` sentinels; excludes canonical aliases and `__refine_context__`
 - [ ] refactor(backend): consolidate job statuses — backend statuses (queued/running/proposed/under_review/accepted/done/failed) should be reduced; proposed and under_review are internal pipeline concepts that leak into the UI; frontend currently maps them to "Processing" and "Needs Review" as a workaround; backend statuses should be simplified when safe to do so without breaking DB queries or worker logic
-- [ ] fix(backend): `auto_verified` trust report counter always 0 — derive from `reconciliation_status == "pass" AND confidence in (high, medium)` instead
-- [ ] fix(backend): `needs_attention` too strict — widen to: strategy in manual/skip OR recon fail OR confidence in (low, very_low, unknown)
+**F27 — Trust report bug fixes (`docs/plans/latest/F27-trust-report-bug-fixes.md`) — in-progress**
+- [ ] F27 S-A: Fix `auto_verified` counter — `reconciliation_status != "fail"` instead of `== "pass"` → see `docs/plans/latest/F27-trust-report-bug-fixes.md`
+- [ ] F27 S-B: Fix `needs_attention` — add `translated_with_review` to condition → see `docs/plans/latest/F27-trust-report-bug-fixes.md`
+- [ ] F27 S-C: Remove `translate_best_effort` from backend enum + schemas → see `docs/plans/latest/F27-trust-report-bug-fixes.md`
+- [ ] F27 S-D: Remove `translate_best_effort` from frontend label map → see `docs/plans/latest/F27-trust-report-bug-fixes.md`
+- [ ] F27 S-E: Update trust report tests → see `docs/plans/latest/F27-trust-report-bug-fixes.md`
+- [ ] F27 S-F: `make test` exits 0 → see `docs/plans/latest/F27-trust-report-bug-fixes.md`
 - [x] fix(tests): coverage raised from 86% → 95% — comprehensive test additions across all agent factories, router, reconciliation, worker/main, jobs routes, explain routes, codegen, macro_expander
 - [x] feat(backend): folder-aware agent context — `DataFileInfo` + `data_files` + `libname_map` on `JobContext`; `_sniff_file()` helper; `build_context_section()` shared utility; all 4 agents prepend context section
 - [x] UX: history pane ordering — v1 at top, descending to latest; "Latest" badge on last entry (`VersionHistoryRail` + `EditorTab`)
