@@ -192,7 +192,6 @@ class TranslationStrategy(StrEnum):
 
     TRANSLATED = "translated"
     TRANSLATED_WITH_REVIEW = "translated_with_review"
-    TRANSLATE_BEST_EFFORT = "translate_best_effort"
     MANUAL = "manual"
 
 
