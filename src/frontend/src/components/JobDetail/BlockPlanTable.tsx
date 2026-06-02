@@ -101,16 +101,10 @@ const STRATEGY_LABELS: Record<string, string> = {
   manual: "Manual",
 };
 
-const RISK_COLOR: Record<string, string> = {
-  low: "text-green-700",
-  medium: "text-amber-700",
-  high: "text-red-700",
-};
-
 const RISK_LABELS: Record<string, string> = {
-  low: "Low",
-  medium: "Mid",
-  high: "High",
+  low: "low",
+  medium: "medium",
+  high: "high",
 };
 
 const CONFIDENCE_BAND_TEXT_COLOR: Record<string, string> = {
@@ -124,7 +118,7 @@ const CONFIDENCE_BAND_TEXT_COLOR: Record<string, string> = {
 const CRITICALITY_CLASSES: Record<string, string> = {
   critical: "text-red-700 bg-red-50 border border-red-200",
   high: "text-orange-700 bg-orange-50 border border-orange-200",
-  normal: "text-amber-700 bg-amber-50 border border-amber-200",
+  medium: "text-amber-700 bg-amber-50 border border-amber-200",
   low: "text-green-700 bg-green-50 border border-green-200",
 };
 
@@ -628,11 +622,18 @@ export default function BlockPlanTable({
 
                         {/* Risk */}
                         <td className="px-3 py-2 text-xs">
-                          <span
-                            className={`font-semibold ${RISK_COLOR[bp.risk] ?? ""}`}
-                          >
-                            {RISK_LABELS[bp.risk] ?? bp.risk}
-                          </span>
+                          {(() => {
+                            const riskCls: Record<string, string> = {
+                              low: "text-green-700 bg-green-50 border border-green-200",
+                              medium: "text-amber-700 bg-amber-50 border border-amber-200",
+                              high: "text-red-700 bg-red-50 border border-red-200",
+                            };
+                            return (
+                              <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${riskCls[bp.risk] ?? "text-muted-foreground bg-muted border border-border"}`}>
+                                {RISK_LABELS[bp.risk] ?? bp.risk}
+                              </span>
+                            );
+                          })()}
                         </td>
 
                         {/* Criticality */}
