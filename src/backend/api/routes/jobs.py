@@ -1773,17 +1773,18 @@ _CONFIDENCE_ORDER = {"low": 0, "medium": 1, "high": 2, "unknown": -1}
 
 
 def _blast_radius_map(cross_file_edges: list[dict[str, Any]]) -> dict[str, int]:
-    """Count downstream edges per source file from cross-file lineage edges.
+    """Count outgoing cross-file edges per source block.
 
     Args:
-        cross_file_edges: List of edge dicts with ``source_file`` keys.
+        cross_file_edges: Edge dicts with ``source_block_id`` keys (as produced
+            by the lineage enricher).
 
     Returns:
-        Mapping from source_file to count of outgoing edges.
+        Mapping from block_id to count of outgoing cross-file edges.
     """
     counts: dict[str, int] = {}
     for edge in cross_file_edges:
-        src = edge.get("source_file", "")
+        src = edge.get("source_block_id", "")
         if src:
             counts[src] = counts.get(src, 0) + 1
     return counts
@@ -1795,6 +1796,25 @@ def _effective_confidence(band: str, recon_status: str | None) -> str:
     if recon_status == "fail":
         return "low" if band in ("high", "medium") else "very_low"
     return band
+
+
+def _criticality(
+    strategy: str,
+    effective_band: str,
+    recon_status: str | None,
+    blast_radius: int | None,
+) -> str:
+    if strategy == "manual" or effective_band == "very_low":
+        return "critical"
+    if (
+        effective_band == "low"
+        or recon_status == "fail"
+        or (blast_radius is not None and blast_radius >= 3)
+    ):
+        return "high"
+    if effective_band in ("medium", "unknown"):
+        return "medium"
+    return "low"
 
 
 def _block_sort_key(block: TrustReportBlock) -> tuple[int, int, int]:
@@ -1954,7 +1974,9 @@ async def get_job_trust_report(
             or (confidence_band or "unknown") in ("low", "very_low", "unknown")
         )
 
-        radius: int | None = blast_map.get(source_file) if lineage else None
+        radius: int | None = blast_map.get(block_id) if lineage else None
+        eff_band = _effective_confidence(confidence_band or "unknown", reconciliation_status)
+        crit = _criticality(strategy, eff_band, reconciliation_status, radius)
 
         blocks.append(
             TrustReportBlock(
@@ -1969,9 +1991,9 @@ async def get_job_trust_report(
                 reconciliation_status=reconciliation_status,
                 needs_attention=needs_attention,
                 blast_radius=radius,
-                effective_confidence_band=_effective_confidence(
-                    confidence_band or "unknown", reconciliation_status
-                ),
+                effective_confidence_band=eff_band,
+                criticality=crit,
+                human_review_required=crit in ("critical", "high"),
             )
         )
 

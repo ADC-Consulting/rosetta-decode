@@ -6,6 +6,14 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-06-01 — F25 criticality design
+
+- **`_blast_radius_map` bug fixed — source_block_id not source_file:** `cross_file_edges` dicts produced by the lineage enricher use `source_block_id` / `target_block_id` / `shared_dataset` keys; the old function read `source_file` so blast_radius was always `None`; fixed to key on `source_block_id` giving block-level counts · revisit never
+- **Criticality is mixed signal (strategy + confidence + blast_radius), not pure blast_radius:** `critical` when strategy==manual OR effective_band==very_low; `high` when band==low OR recon==fail OR blast_radius≥3; `normal` for medium/unknown band; `low` for high band · rationale: pure blast_radius would give 0 to all single-file jobs; mixing translation quality into criticality is the most actionable signal for reviewers · revisit if users request a purely impact-based tier
+- **Criticality computed at read time, not stored:** no DB migration needed; always reflects current blast_radius and recon state · revisit if read-time computation becomes a performance concern at scale
+
+---
+
 ## 2026-05-18 — SAS editor tokenizer design
 
 - **sasFunctions require `(` lookahead:** Monarch rule split into two — `(?=\s*\()` rule checks `sasFunctions` first (only fires when token is immediately followed by `(`); second rule checks `keywords` only; prevents `sum`, `mean`, `n`, `min`, `max`, `count` etc. from highlighting blue when used as variable names · revisit if stateful per-PROC tokenizer is ever implemented

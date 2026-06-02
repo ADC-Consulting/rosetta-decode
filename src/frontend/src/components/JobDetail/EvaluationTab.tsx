@@ -1,15 +1,67 @@
 import { getJobTrustReport } from "@/api/jobs";
 import type { TrustReportBlock, TrustReportFile } from "@/api/types";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, XCircle } from "lucide-react";
+import { CheckCircle2, Info, XCircle } from "lucide-react";
 import { useState } from "react";
 
-interface TrustReportTabProps {
+interface EvaluationTabProps {
   jobId: string;
   jobStatus: string;
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Confidence metric help content ────────────────────────────────────────────
+
+const CONFIDENCE_HELP = `What the confidence score tells you:
+
+• High (≥ 85%) — The translation agent was confident and, where a reference output was available, the Python output matched the SAS output exactly. Safe to treat as verified.
+
+• Medium (65–84%) — The translation is likely correct but has not been fully verified, or the agent had some uncertainty. Worth a quick review.
+
+• Low (40–64%) — The agent flagged uncertainty, or the output did not match the reference. Requires human review before the block can be trusted.
+
+• Very Low (< 40%) — The agent had very low confidence, or the block failed reconciliation and was already low confidence. Likely needs manual rewrite.
+
+What it does not guarantee:
+
+A High confidence score does not mean the output is semantically correct in all edge cases — it means the automated checks passed and the LLM was confident. A human reviewer should still check any block that is business-critical.
+
+Confidence is computed per block (DATA step, PROC, etc.), not per column or per row.
+
+If no reference CSV was uploaded, there is no reconciliation to validate against — the score reflects LLM self-assessment only.
+
+What criticality means:
+
+Criticality is a post-translation signal that combines strategy, confidence, reconciliation outcome, and blast radius (how many downstream files depend on this block). It differs from Risk, which is a static pre-translation assessment of SAS construct complexity.
+
+• Critical — Strategy is manual, or confidence was very low. Block needs human authoring or rewrite.
+• High — Confidence was low, reconciliation failed, or this block feeds 3+ downstream files.
+• Medium — Translation ran with medium confidence. Worth a spot check before accepting.
+• Low — High confidence, reconciliation passed, minimal downstream impact.`;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+const CRITICALITY_CLASSES: Record<string, string> = {
+  critical: "text-red-700 bg-red-50 border border-red-200",
+  high: "text-orange-700 bg-orange-50 border border-orange-200",
+  medium: "text-amber-700 bg-amber-50 border border-amber-200",
+  low: "text-green-700 bg-green-50 border border-green-200",
+};
+
+function CriticalityBadge({ value }: { value: string }): React.ReactElement {
+  const cls = CRITICALITY_CLASSES[value] ?? "text-muted-foreground bg-muted border border-border";
+  return (
+    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${cls}`}>
+      {value}
+    </span>
+  );
+}
 
 function ConfidenceBadge({ value }: { value: string | null }): React.ReactElement {
   if (!value) return <span className="text-muted-foreground">—</span>;
@@ -48,8 +100,7 @@ const STRATEGY_LABELS = {
 
 function StrategyBadge({ value }: { value: string }): React.ReactElement {
   const colorClass =
-    STRATEGY_COLOR[value as keyof typeof STRATEGY_COLOR] ??
-    "bg-muted text-muted-foreground";
+    STRATEGY_COLOR[value as keyof typeof STRATEGY_COLOR] ?? "bg-muted text-muted-foreground";
   const label = STRATEGY_LABELS[value as keyof typeof STRATEGY_LABELS] ?? value;
   return (
     <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${colorClass}`}>
@@ -106,7 +157,20 @@ function FileSection({ file }: { file: TrustReportFile }): React.ReactElement {
   );
 }
 
-function ReviewQueueRow({ block }: { block: TrustReportBlock }): React.ReactElement {
+const CRITICALITY_ORDER: Record<string, number> = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+};
+
+function ReviewQueueRow({
+  block,
+  lineageAvailable,
+}: {
+  block: TrustReportBlock;
+  lineageAvailable: boolean;
+}): React.ReactElement {
   return (
     <tr className="border-t border-border text-sm">
       <td className="px-3 py-2 font-mono text-xs text-muted-foreground max-w-[160px] truncate">
@@ -127,9 +191,21 @@ function ReviewQueueRow({ block }: { block: TrustReportBlock }): React.ReactElem
       <td className="px-3 py-2">
         <ReconciliationBadge value={block.reconciliation_status} />
       </td>
-      <td className="px-3 py-2 text-xs text-muted-foreground">
-        {block.blast_radius !== null ? block.blast_radius : "—"}
+      <td className="px-3 py-2">
+        <CriticalityBadge value={block.criticality} />
       </td>
+      <td className="px-3 py-2 text-center">
+        {block.human_review_required ? (
+          <CheckCircle2 size={14} className="text-red-600 mx-auto" aria-label="required" />
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
+      </td>
+      {lineageAvailable && (
+        <td className="px-3 py-2 text-xs text-muted-foreground">
+          {block.blast_radius !== null ? block.blast_radius : "—"}
+        </td>
+      )}
     </tr>
   );
 }
@@ -138,10 +214,10 @@ function ReviewQueueRow({ block }: { block: TrustReportBlock }): React.ReactElem
 
 const ENABLED_STATUSES = new Set(["proposed", "accepted", "done"]);
 
-export default function TrustReportTab({
+export default function EvaluationTab({
   jobId,
   jobStatus,
-}: TrustReportTabProps): React.ReactElement {
+}: EvaluationTabProps): React.ReactElement {
   const enabled = ENABLED_STATUSES.has(jobStatus);
 
   const { data, isLoading, isError } = useQuery({
@@ -153,7 +229,7 @@ export default function TrustReportTab({
   if (!enabled) {
     return (
       <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
-        Trust report is available once the migration is proposed.
+        Evaluation is available once the migration is proposed.
       </div>
     );
   }
@@ -161,7 +237,7 @@ export default function TrustReportTab({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
-        Loading trust report…
+        Loading evaluation…
       </div>
     );
   }
@@ -169,7 +245,7 @@ export default function TrustReportTab({
   if (isError || !data) {
     return (
       <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
-        Could not load trust report.
+        Could not load evaluation data.
       </div>
     );
   }
@@ -180,10 +256,18 @@ export default function TrustReportTab({
     low: "text-red-700 bg-red-50 border border-red-200",
     unknown: "text-muted-foreground bg-muted border border-border",
   };
-  const overallClass =
-    overallColors[data.overall_confidence] ?? overallColors.unknown;
+  const overallClass = overallColors[data.overall_confidence] ?? overallColors.unknown;
 
-  const attentionBlocks = data.review_queue.filter((b) => b.needs_attention);
+  const topRisky = [...data.review_queue]
+    .sort((a, b) => {
+      const cDiff =
+        (CRITICALITY_ORDER[a.criticality] ?? 99) - (CRITICALITY_ORDER[b.criticality] ?? 99);
+      if (cDiff !== 0) return cDiff;
+      const aConf = typeof a.blast_radius === "number" ? a.blast_radius : -1;
+      const bConf = typeof b.blast_radius === "number" ? b.blast_radius : -1;
+      return bConf - aConf;
+    })
+    .slice(0, 10);
 
   return (
     <div className="h-full overflow-y-auto">
@@ -212,11 +296,9 @@ export default function TrustReportTab({
           />
         </div>
 
-        {/* Overall confidence */}
+        {/* Overall confidence + help */}
         <div className="flex items-center gap-3">
-          <span className="text-sm text-muted-foreground font-medium">
-            Overall confidence
-          </span>
+          <span className="text-sm text-muted-foreground font-medium">Overall confidence</span>
           <span
             className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold ${overallClass}`}
           >
@@ -225,6 +307,25 @@ export default function TrustReportTab({
           <span className="text-xs text-muted-foreground">
             {data.auto_verified} / {data.total_blocks} blocks auto-verified
           </span>
+          <Dialog>
+            <DialogTrigger asChild>
+              <button
+                type="button"
+                className="ml-1 text-muted-foreground hover:text-foreground transition-colors"
+                aria-label="What does confidence mean?"
+              >
+                <Info size={15} />
+              </button>
+            </DialogTrigger>
+            <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Confidence metric</DialogTitle>
+              </DialogHeader>
+              <pre className="text-sm text-foreground whitespace-pre-wrap font-sans leading-relaxed">
+                {CONFIDENCE_HELP}
+              </pre>
+            </DialogContent>
+          </Dialog>
         </div>
 
         {/* Lineage notice */}
@@ -234,12 +335,17 @@ export default function TrustReportTab({
           </div>
         )}
 
-        {/* Review queue */}
+        {/* Top risky blocks */}
         <section>
-          <h2 className="text-sm font-semibold text-foreground mb-3">Needs Attention</h2>
-          {attentionBlocks.length === 0 ? (
+          <h2 className="text-sm font-semibold text-foreground mb-3">
+            Top Risky Blocks
+            <span className="ml-2 text-xs font-normal text-muted-foreground">
+              (sorted by criticality, max 10)
+            </span>
+          </h2>
+          {topRisky.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              All blocks verified — nothing needs attention ✓
+              All blocks verified — nothing needs attention
             </p>
           ) : (
             <div className="overflow-x-auto rounded-lg border border-border">
@@ -252,12 +358,20 @@ export default function TrustReportTab({
                     <th className="px-3 py-2 text-left font-medium">Self confidence</th>
                     <th className="px-3 py-2 text-left font-medium">Verified confidence</th>
                     <th className="px-3 py-2 text-left font-medium">Reconciliation</th>
-                    <th className="px-3 py-2 text-left font-medium">Blast radius</th>
+                    <th className="px-3 py-2 text-left font-medium">Criticality</th>
+                    <th className="px-3 py-2 text-left font-medium">Human review</th>
+                    {data.lineage_available && (
+                      <th className="px-3 py-2 text-left font-medium">Blast radius</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
-                  {attentionBlocks.map((block) => (
-                    <ReviewQueueRow key={block.block_id} block={block} />
+                  {topRisky.map((block) => (
+                    <ReviewQueueRow
+                      key={block.block_id}
+                      block={block}
+                      lineageAvailable={data.lineage_available}
+                    />
                   ))}
                 </tbody>
               </table>

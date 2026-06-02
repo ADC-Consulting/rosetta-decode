@@ -101,16 +101,10 @@ const STRATEGY_LABELS: Record<string, string> = {
   manual: "Manual",
 };
 
-const RISK_COLOR: Record<string, string> = {
-  low: "text-green-700",
-  medium: "text-amber-700",
-  high: "text-red-700",
-};
-
 const RISK_LABELS: Record<string, string> = {
-  low: "Low",
-  medium: "Mid",
-  high: "High",
+  low: "low",
+  medium: "medium",
+  high: "high",
 };
 
 const CONFIDENCE_BAND_TEXT_COLOR: Record<string, string> = {
@@ -119,6 +113,13 @@ const CONFIDENCE_BAND_TEXT_COLOR: Record<string, string> = {
   low: "text-red-600",
   "very low": "text-red-800",
   unknown: "text-muted-foreground",
+};
+
+const CRITICALITY_CLASSES: Record<string, string> = {
+  critical: "text-red-700 bg-red-50 border border-red-200",
+  high: "text-orange-700 bg-orange-50 border border-orange-200",
+  medium: "text-amber-700 bg-amber-50 border border-amber-200",
+  low: "text-green-700 bg-green-50 border border-green-200",
 };
 
 // ---------------------------------------------------------------------------
@@ -134,11 +135,11 @@ function GlossaryDialog({
 }): React.ReactElement {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[80vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Glossary</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4 text-sm">
+        <div className="space-y-4 text-sm overflow-y-auto pr-1">
           <div>
             <p className="font-semibold mb-1">Risk levels</p>
             <p className="text-xs text-muted-foreground mb-1.5">
@@ -254,6 +255,37 @@ function GlossaryDialog({
                 <span className="font-medium text-red-700">Failed recon</span> —
                 Python code executed but output did not match the SAS reference
                 data.
+              </li>
+            </ul>
+          </div>
+          <div>
+            <p className="font-semibold mb-1">Criticality</p>
+            <p className="text-xs text-muted-foreground mb-1.5">
+              A post-translation signal that combines translation strategy,
+              confidence, reconciliation outcome, and how many other files
+              depend on this block. Unlike Risk (which is assessed before
+              translation), Criticality reflects what actually needs human
+              attention now.
+            </p>
+            <ul className="space-y-1 text-muted-foreground text-xs">
+              <li>
+                <span className="font-medium text-red-700">Critical</span> —
+                Strategy is manual, or LLM confidence was very low. Requires
+                human authoring or rewrite.
+              </li>
+              <li>
+                <span className="font-medium text-orange-700">High</span> —
+                Confidence was low, reconciliation failed, or this block feeds
+                three or more downstream files. Human review required.
+              </li>
+              <li>
+                <span className="font-medium text-amber-700">Medium</span> —
+                Translation ran with medium confidence. Worth a spot check.
+              </li>
+              <li>
+                <span className="font-medium text-green-700">Low</span> —
+                High confidence, reconciliation passed, minimal downstream
+                impact. Safe to accept.
               </li>
             </ul>
           </div>
@@ -487,6 +519,9 @@ export default function BlockPlanTable({
                 Risk
               </th>
               <th className="px-3 py-2 font-medium text-muted-foreground text-xs w-20">
+                Criticality
+              </th>
+              <th className="px-3 py-2 font-medium text-muted-foreground text-xs w-20">
                 Confidence
               </th>
               <th className="px-3 py-2 font-medium text-muted-foreground text-xs w-[120px] text-center">
@@ -507,7 +542,7 @@ export default function BlockPlanTable({
                     className="bg-muted/20 cursor-pointer hover:bg-muted/40 select-none"
                     onClick={() => toggleGroup(key)}
                   >
-                    <td colSpan={7} className="px-3 py-1.5">
+                    <td colSpan={8} className="px-3 py-1.5">
                       <div className="flex items-center gap-2">
                         {collapsedGroups.has(key) ? (
                           <ChevronRight
@@ -618,11 +653,29 @@ export default function BlockPlanTable({
 
                         {/* Risk */}
                         <td className="px-3 py-2 text-xs">
-                          <span
-                            className={`font-semibold ${RISK_COLOR[bp.risk] ?? ""}`}
-                          >
-                            {RISK_LABELS[bp.risk] ?? bp.risk}
-                          </span>
+                          {(() => {
+                            const riskCls: Record<string, string> = {
+                              low: "text-green-700 bg-green-50 border border-green-200",
+                              medium: "text-amber-700 bg-amber-50 border border-amber-200",
+                              high: "text-red-700 bg-red-50 border border-red-200",
+                            };
+                            return (
+                              <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${riskCls[bp.risk] ?? "text-muted-foreground bg-muted border border-border"}`}>
+                                {RISK_LABELS[bp.risk] ?? bp.risk}
+                              </span>
+                            );
+                          })()}
+                        </td>
+
+                        {/* Criticality */}
+                        <td className="px-3 py-2 text-xs">
+                          {trust?.criticality ? (
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${CRITICALITY_CLASSES[trust.criticality] ?? "text-muted-foreground bg-muted border border-border"}`}>
+                              {trust.criticality}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
                         </td>
 
                         {/* Confidence */}

@@ -275,6 +275,8 @@ export interface TrustReportBlock {
   needs_attention: boolean;
   blast_radius: number | null;
   effective_confidence_band?: string;
+  criticality: "critical" | "high" | "medium" | "low";
+  human_review_required: boolean;
 }
 
 export interface TrustReportFile {

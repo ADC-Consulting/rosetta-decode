@@ -241,8 +241,21 @@
 - [x] #30 (part): Write `docs/personas.md` persona-to-view mapping (tech lead vs PO); file separate issue for UX implementation → PR #37
 - [ ] #32: Write `docs/reports-spec.md` before implementing F25 — ideally after #23 (Danske Bank review) delivers findings
 - [x] #33 (part): Document input prerequisites in `docs/input-prerequisites.md` → PR #37
-- [ ] #18: Write `docs/confidence-metric.md` — what the confidence score means and how it is computed; user-facing explanation + internal tech note (unblocks #17 tooltip)
-- [ ] #35: Discuss Lasse's agent pipeline proposal before planning any dev work — may overlap with product scope
+- [x] #18: Write `docs/confidence-metric.md` — what the confidence score means and how it is computed → PR #38 (tooltip link pending #17)
+- [ ] #35: Parked — answered on issue; revisit after current milestones
+
+**F25 — Evaluation Tab (`docs/plans/latest/F25-evaluation-tab.md`) — complete**
+- [x] F25 S-A: Add `criticality` + `human_review_required` to `TrustReportBlock` schema → `src/backend/api/schemas.py`
+- [x] F25 S-B: Fix `_blast_radius_map` (source_file → source_block_id bug) + compute criticality → `src/backend/api/routes/jobs.py`
+- [x] F25 S-C: Tests for criticality computation → `tests/test_changelog_trust_report.py`
+- [x] F25 S-D: Update frontend `TrustReportBlock` type → `src/frontend/src/api/types.ts`
+- [x] F25 S-E: Build `EvaluationTab` component → `src/frontend/src/components/JobDetail/EvaluationTab.tsx`
+- [x] F25 S-F: Wire Evaluation tab into `JobDetailPage` → `src/frontend/src/pages/JobDetailPage.tsx`
+- [x] F25 S-G: `make test` exits 0
+
+**F26 — Criticality column on Plan tab block table (`docs/plans/latest/F26-criticality-plan-tab.md`) — complete**
+- [x] F26 S-A: Add Criticality column to `BlockPlanTable` → `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
+- [x] F26 S-B: `make test` exits 0
 
 - [ ] F2: Code Explanation Assistant page (chat UI — explain SAS/Python snippets)
 - [ ] F7: Side-by-side SAS vs Python diff view
