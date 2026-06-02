@@ -418,7 +418,7 @@ def test_criticality_human_review_required() -> None:
 
     assert _criticality("manual", "high", None, None) == "critical"
     assert _criticality("translate", "low", None, None) == "high"
-    assert _criticality("translate", "medium", None, None) == "normal"
+    assert _criticality("translate", "medium", None, None) == "medium"
     assert _criticality("translate", "high", None, 0) == "low"
 
 
@@ -446,7 +446,7 @@ async def test_trust_report_blocks_have_criticality_fields(
     data = response.json()
     for block in data["blocks"]:
         assert "criticality" in block
-        assert block["criticality"] in ("critical", "high", "normal", "low")
+        assert block["criticality"] in ("critical", "high", "medium", "low")
         assert "human_review_required" in block
         assert isinstance(block["human_review_required"], bool)
     manual_blocks = [b for b in data["blocks"] if b["strategy"] == "manual"]

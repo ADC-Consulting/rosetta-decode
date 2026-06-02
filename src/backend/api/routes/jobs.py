@@ -1813,7 +1813,7 @@ def _criticality(
     ):
         return "high"
     if effective_band in ("medium", "unknown"):
-        return "normal"
+        return "medium"
     return "low"
 
 

@@ -418,7 +418,7 @@ class TrustReportBlock(BaseModel):
     needs_attention: bool
     blast_radius: int | None  # null if lineage unavailable
     effective_confidence_band: str = "unknown"
-    criticality: str = "normal"  # critical | high | normal | low
+    criticality: str = "medium"  # critical | high | medium | low
     human_review_required: bool = False
 
 
