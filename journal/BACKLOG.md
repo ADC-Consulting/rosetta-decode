@@ -150,13 +150,13 @@
 - [x] fix(backend): PROC IMPORT output_var naming — removed `_file_io_types` exclusion from `all_block_outputs`; `normalise_output_var` + `normalise_output_var_in_code` shared utilities in `agents/shared.py`
 - [x] fix(backend): file_count off-by-one — counts per-path `__ref_*__` sentinels; excludes canonical aliases and `__refine_context__`
 - [ ] refactor(backend): consolidate job statuses — backend statuses (queued/running/proposed/under_review/accepted/done/failed) should be reduced; proposed and under_review are internal pipeline concepts that leak into the UI; frontend currently maps them to "Processing" and "Needs Review" as a workaround; backend statuses should be simplified when safe to do so without breaking DB queries or worker logic
-**F27 — Trust report bug fixes (`docs/plans/latest/F27-trust-report-bug-fixes.md`) — in-progress**
-- [ ] F27 S-A: Fix `auto_verified` counter — `reconciliation_status != "fail"` instead of `== "pass"` → see `docs/plans/latest/F27-trust-report-bug-fixes.md`
-- [ ] F27 S-B: Fix `needs_attention` — add `translated_with_review` to condition → see `docs/plans/latest/F27-trust-report-bug-fixes.md`
-- [ ] F27 S-C: Remove `translate_best_effort` from backend enum + schemas → see `docs/plans/latest/F27-trust-report-bug-fixes.md`
-- [ ] F27 S-D: Remove `translate_best_effort` from frontend label map → see `docs/plans/latest/F27-trust-report-bug-fixes.md`
-- [ ] F27 S-E: Update trust report tests → see `docs/plans/latest/F27-trust-report-bug-fixes.md`
-- [ ] F27 S-F: `make test` exits 0 → see `docs/plans/latest/F27-trust-report-bug-fixes.md`
+**F27 — Trust report bug fixes (`docs/plans/latest/F27-trust-report-bug-fixes.md`) — complete**
+- [x] F27 S-A: Fix `auto_verified` counter — `reconciliation_status != "fail"` instead of `== "pass"` → see `docs/plans/latest/F27-trust-report-bug-fixes.md`
+- [x] F27 S-B: Fix `needs_attention` — add `translated_with_review` to condition → see `docs/plans/latest/F27-trust-report-bug-fixes.md`
+- [x] F27 S-C: Remove `translate_best_effort` from backend enum + schemas → see `docs/plans/latest/F27-trust-report-bug-fixes.md`
+- [x] F27 S-D: Remove `translate_best_effort` from frontend label map → see `docs/plans/latest/F27-trust-report-bug-fixes.md`
+- [x] F27 S-E: Update trust report tests → see `docs/plans/latest/F27-trust-report-bug-fixes.md`
+- [x] F27 S-F: `make test` exits 0 → see `docs/plans/latest/F27-trust-report-bug-fixes.md`
 - [x] fix(tests): coverage raised from 86% → 95% — comprehensive test additions across all agent factories, router, reconciliation, worker/main, jobs routes, explain routes, codegen, macro_expander
 - [x] feat(backend): folder-aware agent context — `DataFileInfo` + `data_files` + `libname_map` on `JobContext`; `_sniff_file()` helper; `build_context_section()` shared utility; all 4 agents prepend context section
 - [x] UX: history pane ordering — v1 at top, descending to latest; "Latest" badge on last entry (`VersionHistoryRail` + `EditorTab`)

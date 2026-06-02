@@ -2,7 +2,7 @@
 
 **Phase:** 3
 **Area:** Backend / API + Frontend
-**Status:** in-progress
+**Status:** complete
 
 ## Goal
 
@@ -24,41 +24,41 @@ Fix three bugs in the trust report that cause the Evaluation tab to display misl
 **Depends on:** none
 **Done when:** both `auto_verified` sum expressions (job-level line ~2003, file-level line ~1849) use `reconciliation_status != "fail"` instead of `reconciliation_status == "pass"`, with confidence band check unchanged
 
-- [ ] done
+- [x] done
 
 ### S-B: Fix `needs_attention` condition
 **File:** `src/backend/api/routes/jobs.py`
 **Depends on:** none
 **Done when:** `needs_attention` also triggers when `strategy == "translated_with_review"`, so planner-flagged blocks always appear in the review queue
 
-- [ ] done
+- [x] done
 
 ### S-C: Remove `translate_best_effort` from backend
 **Files:** `src/worker/engine/models.py`, `src/backend/api/schemas.py`
 **Depends on:** none
 **Done when:** `TRANSLATE_BEST_EFFORT` removed from `TranslationStrategy` enum; `"translate_best_effort"` removed from the allowed strategy list in `schemas.py`; router comment updated
 
-- [ ] done
+- [x] done
 
 ### S-D: Remove `translate_best_effort` from frontend
 **File:** `src/frontend/src/components/LiveTraceDialog.tsx`
 **Depends on:** S-C
 **Done when:** `translate_best_effort: "Best-effort"` entry removed from the strategy label map
 
-- [ ] done
+- [x] done
 
 ### S-E: Update tests
 **File:** `tests/test_changelog_trust_report.py`
 **Depends on:** S-A, S-B
 **Done when:** test cases for `auto_verified` and `needs_attention` reflect the corrected logic; any test asserting `auto_verified == 0` on a job without ref CSV is updated to expect a non-zero count where confidence is high/medium
 
-- [ ] done
+- [x] done
 
 ### S-F: `make test` exits 0
 **Depends on:** S-A, S-B, S-C, S-D, S-E
 **Done when:** ruff, mypy, tsc, frontend-lint, frontend-build, and pytest all pass
 
-- [ ] done
+- [x] done
 
 ## Dependencies on other features
 
