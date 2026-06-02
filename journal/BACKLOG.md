@@ -257,6 +257,18 @@
 - [x] F26 S-A: Add Criticality column to `BlockPlanTable` → `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
 - [x] F26 S-B: `make test` exits 0
 
+**5-tab chevron restructure (issues #39–47) — see DECISIONS.md 2026-06-02**
+- [ ] #39: Audit SAS metadata extraction — verify parser extracts LIBNAME/table inventory; close if complete, file gap issue if not (unblocked, research task)
+- [ ] #44: BI tab placeholder — empty state in chevron shell (unblocked once #40 lands)
+- [ ] #45: AI tab placeholder — empty state in chevron shell (unblocked once #40 lands)
+- [ ] #40: Scaffold 5-step chevron tab shell (Plan → ETL → Data Storage → BI → AI) — **blocked: wireframe pending**
+- [ ] #41: Plan tab — block table + criticality review queue (collapsible) + report (collapsed) — **blocked: wireframe pending**
+- [ ] #42: ETL tab — Lineage DAG as primary canvas, code editor as click-through panel — **blocked: wireframe pending**
+- [ ] #43: Data Storage tab — SAS table inventory, DW mapping — **blocked: wireframe pending**
+- [ ] #46: Remove legacy tab components (Plan/Editor/Report/Lineage/History/Evaluation) — blocked: depends on #40–45
+- [ ] #47: Remove legacy standalone pages and routes — blocked: depends on #46
+- [ ] #17: Close — delivered by F25 + F26 (Evaluation tab with criticality)
+
 - [ ] F2: Code Explanation Assistant page (chat UI — explain SAS/Python snippets)
 - [ ] F7: Side-by-side SAS vs Python diff view
 - [ ] F12: Auto-generated technical docs + lineage metadata (backend data layer for F5)

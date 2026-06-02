@@ -6,6 +6,16 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-06-02 — 5-tab chevron UI restructure (issues #40–47)
+
+- **New tab structure: Plan → ETL → Data Storage → BI → AI:** Replaces current Plan / Editor / Report / Lineage / History / Evaluation tabs; chevron shape from wireframe (pending on #40) · rationale: aligns UI with the migration pipeline stages rather than tool functions · revisit if wireframe changes scope
+- **Plan tab absorbs Evaluation + Report:** Block table (with Criticality column) is primary content; Criticality review queue sits above as a collapsible panel expanded by default; Report is a collapsible panel collapsed by default; EvaluationTab summary cards fold into the existing job summary header · revisit never
+- **ETL tab repurposes Lineage as primary canvas:** Lineage DAG is the main view; clicking a node opens the block's SAS↔Python code editor in a slide-in panel; standalone Editor tab is retired · rationale: keeps spatial/dependency context visible while editing; unifies "where does this block fit" with "what does it do" · revisit if DAG performance is poor on large jobs
+- **BI and AI tabs are placeholders:** No functional content until scope is defined; empty state only · revisit when stakeholder requirements land
+- **Implementation blocked on wireframes:** #40 (chevron shell), #41 (Plan tab), #42 (ETL tab) must not be started until wireframes are attached to the issues · revisit when dev X uploads wireframes
+
+---
+
 ## 2026-06-01 — F25 criticality design
 
 - **`_blast_radius_map` bug fixed — source_block_id not source_file:** `cross_file_edges` dicts produced by the lineage enricher use `source_block_id` / `target_block_id` / `shared_dataset` keys; the old function read `source_file` so blast_radius was always `None`; fixed to key on `source_block_id` giving block-level counts · revisit never
