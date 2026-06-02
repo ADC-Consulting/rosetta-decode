@@ -14,6 +14,13 @@ Format: date · decision · rationale · revisit?
 - **BI and AI tabs are placeholders:** No functional content until scope is defined; empty state only · revisit when stakeholder requirements land
 - **Implementation blocked on wireframes:** #40 (chevron shell), #41 (Plan tab), #42 (ETL tab) must not be started until wireframes are attached to the issues · revisit when dev X uploads wireframes
 
+## 2026-06-02 — 5-tab chevron implementation approach
+
+- **Tab routing uses query params (`/jobs/:id?tab=plan`):** One route handles all 5 tabs; deep-linking and back-button work without defining 5 path segments; syncs shadcn Tabs `value` with `useSearchParams` · rationale: path segments require router restructure; in-memory loses deep-linking entirely; query params are minimal change with full capability · revisit never
+- **Migration strategy: additive then remove:** New chevron shell (#40–45) is built and verified first; legacy tab bar is hidden (not deleted) once shell is wired; legacy components removed in #46 as a separate PR · rationale: issues are already sequenced this way; keeps rollback to a one-line change if the shell breaks; avoids a single enormous PR · revisit never
+- **History tab folds into Plan tab as a collapsed panel:** Job-level audit timeline moves to a collapsible "Migration history" panel at the bottom of Plan tab (collapsed by default), consistent with the Report panel pattern; per-block revision history (clock icon in BlockPlanTable) remains in place · rationale: history is most relevant alongside the plan it reflects; dropping it loses audit trail visibility important for regulated enterprise migrations · revisit never
+- **#39 audit gates #43 scope:** Data Storage tab (#43) must not be planned until #39 (SAS metadata audit) confirms what the parser already extracts; avoids writing a frontend plan that depends on non-existent backend data · revisit never
+
 ---
 
 ## 2026-06-01 — F25 criticality design
