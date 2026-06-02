@@ -121,6 +121,13 @@ const CONFIDENCE_BAND_TEXT_COLOR: Record<string, string> = {
   unknown: "text-muted-foreground",
 };
 
+const CRITICALITY_CLASSES: Record<string, string> = {
+  critical: "text-red-700 bg-red-50 border border-red-200",
+  high: "text-orange-700 bg-orange-50 border border-orange-200",
+  normal: "text-amber-700 bg-amber-50 border border-amber-200",
+  low: "text-green-700 bg-green-50 border border-green-200",
+};
+
 // ---------------------------------------------------------------------------
 // Glossary dialog content
 // ---------------------------------------------------------------------------
@@ -487,6 +494,9 @@ export default function BlockPlanTable({
                 Risk
               </th>
               <th className="px-3 py-2 font-medium text-muted-foreground text-xs w-20">
+                Criticality
+              </th>
+              <th className="px-3 py-2 font-medium text-muted-foreground text-xs w-20">
                 Confidence
               </th>
               <th className="px-3 py-2 font-medium text-muted-foreground text-xs w-[120px] text-center">
@@ -507,7 +517,7 @@ export default function BlockPlanTable({
                     className="bg-muted/20 cursor-pointer hover:bg-muted/40 select-none"
                     onClick={() => toggleGroup(key)}
                   >
-                    <td colSpan={7} className="px-3 py-1.5">
+                    <td colSpan={8} className="px-3 py-1.5">
                       <div className="flex items-center gap-2">
                         {collapsedGroups.has(key) ? (
                           <ChevronRight
@@ -623,6 +633,17 @@ export default function BlockPlanTable({
                           >
                             {RISK_LABELS[bp.risk] ?? bp.risk}
                           </span>
+                        </td>
+
+                        {/* Criticality */}
+                        <td className="px-3 py-2 text-xs">
+                          {trust?.criticality ? (
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${CRITICALITY_CLASSES[trust.criticality] ?? "text-muted-foreground bg-muted border border-border"}`}>
+                              {trust.criticality}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
                         </td>
 
                         {/* Confidence */}

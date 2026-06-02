@@ -2,7 +2,7 @@
 
 **Phase:** 3
 **Area:** Frontend
-**Status:** in-progress
+**Status:** complete
 
 ## Goal
 
@@ -10,10 +10,10 @@ Surface the `criticality` value (computed by F25 and present in `trustBlocks`) a
 
 ## Acceptance Criteria
 
-- [ ] Each row in the Plan tab block table shows a Criticality badge (`critical` / `high` / `normal` / `low`) using the same colour palette as `EvaluationTab`
-- [ ] Badge renders `—` when `trustBlocks` has no entry for the block (trust report not yet loaded)
-- [ ] `make test` exits 0
-- [ ] ruff and mypy pass
+- [x] Each row in the Plan tab block table shows a Criticality badge (`critical` / `high` / `normal` / `low`) using the same colour palette as `EvaluationTab`
+- [x] Badge renders `—` when `trustBlocks` has no entry for the block (trust report not yet loaded)
+- [x] `make test` exits 0
+- [x] ruff and mypy pass
 
 ## Subtasks
 
@@ -21,12 +21,12 @@ Surface the `criticality` value (computed by F25 and present in `trustBlocks`) a
 **File:** `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
 **Depends on:** none
 **Done when:** table header has a `Criticality` column; each row reads `trust?.criticality` and renders a coloured badge (or `—` if absent), positioned between Risk and Confidence
-- [ ] done
+- [x] done
 
 ### S-B: `make test` exits 0
 **Depends on:** S-A
 **Done when:** ruff, mypy, tsc, frontend-lint, frontend-build all pass
-- [ ] done
+- [x] done
 
 ## Dependencies on other features
 

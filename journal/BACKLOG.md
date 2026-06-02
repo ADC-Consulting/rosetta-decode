@@ -253,9 +253,9 @@
 - [x] F25 S-F: Wire Evaluation tab into `JobDetailPage` → `src/frontend/src/pages/JobDetailPage.tsx`
 - [x] F25 S-G: `make test` exits 0
 
-**F26 — Criticality column on Plan tab block table (`docs/plans/latest/F26-criticality-plan-tab.md`) — planned**
-- [ ] F26 S-A: Add Criticality column to `BlockPlanTable` → `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
-- [ ] F26 S-B: `make test` exits 0
+**F26 — Criticality column on Plan tab block table (`docs/plans/latest/F26-criticality-plan-tab.md`) — complete**
+- [x] F26 S-A: Add Criticality column to `BlockPlanTable` → `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
+- [x] F26 S-B: `make test` exits 0
 
 - [ ] F2: Code Explanation Assistant page (chat UI — explain SAS/Python snippets)
 - [ ] F7: Side-by-side SAS vs Python diff view
