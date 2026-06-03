@@ -233,10 +233,10 @@ async def test_patch_plan_translated_with_review_strategy(
 
 
 @pytest.mark.asyncio
-async def test_patch_plan_translate_best_effort_strategy(
+async def test_patch_plan_translate_best_effort_rejected(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:
-    """translate_best_effort strategy is persisted in block_overrides."""
+    """translate_best_effort is no longer a valid strategy and returns 422."""
     job_id = await _insert_job(db_session, status="proposed")
     payload = {
         "block_overrides": [
@@ -249,8 +249,4 @@ async def test_patch_plan_translate_best_effort_strategy(
         ]
     }
     response = await client.patch(f"/jobs/{job_id}/plan", json=payload)
-    assert response.status_code == 200
-    body = response.json()
-    overrides = body["user_overrides"]["block_overrides"]
-    assert len(overrides) == 1
-    assert overrides[0]["strategy"] == "translate_best_effort"
+    assert response.status_code == 422

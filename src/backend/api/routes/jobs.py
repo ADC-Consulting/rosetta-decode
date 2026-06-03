@@ -1846,13 +1846,7 @@ def _aggregate_file_metrics(
             TrustReportFile(
                 source_file=source_file,
                 total_blocks=len(file_blocks),
-                auto_verified=sum(
-                    1
-                    for b in file_blocks
-                    if b.strategy not in _MANUAL_STRATEGIES
-                    and b.reconciliation_status == "pass"
-                    and (b.confidence_band or "unknown") in ("high", "medium")
-                ),
+                auto_verified=sum(1 for b in file_blocks if not b.needs_attention),
                 needs_review=sum(
                     1
                     for b in file_blocks
@@ -1970,6 +1964,7 @@ async def get_job_trust_report(
 
         needs_attention: bool = (
             strategy in _MANUAL_STRATEGIES
+            or strategy == "translated_with_review"
             or reconciliation_status == "fail"
             or (confidence_band or "unknown") in ("low", "very_low", "unknown")
         )
@@ -2000,13 +1995,7 @@ async def get_job_trust_report(
     blocks.sort(key=_block_sort_key)
 
     total = len(blocks)
-    auto_verified = sum(
-        1
-        for b in blocks
-        if b.strategy not in _MANUAL_STRATEGIES
-        and b.reconciliation_status == "pass"
-        and (b.confidence_band or "unknown") in ("high", "medium")
-    )
+    auto_verified = sum(1 for b in blocks if not b.needs_attention)
     manual_todo = sum(1 for b in blocks if b.strategy in _MANUAL_STRATEGIES)
     failed_reconciliation = sum(1 for b in blocks if b.reconciliation_status == "fail")
     needs_review = sum(

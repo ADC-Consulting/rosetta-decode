@@ -285,7 +285,7 @@ class TranslationRouter:
                 case TranslationStrategy.MANUAL:
                     return self._stub_generator
                 case _:
-                    pass  # translated / translated_with_review / translate_best_effort fall through
+                    pass  # translated / translated_with_review fall through
 
         match block.block_type:
             case BlockType.DATA_STEP:

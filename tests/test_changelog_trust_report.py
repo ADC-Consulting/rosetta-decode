@@ -452,3 +452,114 @@ async def test_trust_report_blocks_have_criticality_fields(
     manual_blocks = [b for b in data["blocks"] if b["strategy"] == "manual"]
     assert all(b["criticality"] == "critical" for b in manual_blocks)
     assert all(b["human_review_required"] is True for b in manual_blocks)
+
+
+# ── F27 bug-fix tests ─────────────────────────────────────────────────────────
+
+
+_HIGH_CONFIDENCE_PLAN: dict[str, Any] = {
+    "summary": "test",
+    "overall_risk": "low",
+    "recommended_review_blocks": [],
+    "cross_file_dependencies": [],
+    "block_plans": [
+        {
+            "block_id": "a.sas:1",
+            "source_file": "a.sas",
+            "start_line": 1,
+            "block_type": "DATA_STEP",
+            "strategy": "translated",
+            "risk": "low",
+            "rationale": "simple",
+            "confidence_band": "high",
+        },
+        {
+            "block_id": "a.sas:10",
+            "source_file": "a.sas",
+            "start_line": 10,
+            "block_type": "PROC",
+            "strategy": "translated",
+            "risk": "low",
+            "rationale": "simple",
+            "confidence_band": "high",
+        },
+        {
+            "block_id": "a.sas:20",
+            "source_file": "a.sas",
+            "start_line": 20,
+            "block_type": "PROC",
+            "strategy": "translated_with_review",
+            "risk": "medium",
+            "rationale": "needs check",
+            "confidence_band": "high",
+        },
+    ],
+}
+
+
+@pytest.mark.asyncio
+async def test_auto_verified_counts_high_confidence_without_recon(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Blocks with high confidence and no reconciliation failure count as auto_verified."""
+    job = _make_job(status="proposed", migration_plan=_HIGH_CONFIDENCE_PLAN)
+    db_session.add(job)
+    await db_session.commit()
+
+    response = await client.get(f"/jobs/{job.id}/trust-report")
+    assert response.status_code == 200
+    data = response.json()
+    # Two translated/high-confidence blocks have needs_attention=False → auto_verified
+    # translated_with_review is always needs_attention → not auto_verified
+    assert data["auto_verified"] == 2
+
+
+@pytest.mark.asyncio
+async def test_auto_verified_excludes_recon_fail(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """A high-confidence block with reconciliation_status=fail is not auto_verified."""
+    job = _make_job(status="proposed", migration_plan=_HIGH_CONFIDENCE_PLAN)
+    db_session.add(job)
+    await db_session.flush()
+
+    rev = BlockRevision(
+        id=str(uuid.uuid4()),
+        job_id=job.id,
+        block_id="a.sas:1",
+        revision_number=1,
+        python_code="pass",
+        strategy="translated",
+        confidence="high",
+        uncertainty_notes=[],
+        reconciliation_status="fail",
+        trigger="agent",
+        created_at=datetime.now(UTC),
+    )
+    db_session.add(rev)
+    await db_session.commit()
+
+    response = await client.get(f"/jobs/{job.id}/trust-report")
+    assert response.status_code == 200
+    data = response.json()
+    # a.sas:1 has recon fail → excluded; a.sas:10 still auto_verified
+    assert data["auto_verified"] == 1
+
+
+@pytest.mark.asyncio
+async def test_needs_attention_flags_translated_with_review(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """translated_with_review blocks are always needs_attention regardless of confidence."""
+    job = _make_job(status="proposed", migration_plan=_HIGH_CONFIDENCE_PLAN)
+    db_session.add(job)
+    await db_session.commit()
+
+    response = await client.get(f"/jobs/{job.id}/trust-report")
+    assert response.status_code == 200
+    data = response.json()
+
+    review_block = next(b for b in data["blocks"] if b["block_id"] == "a.sas:20")
+    assert review_block["strategy"] == "translated_with_review"
+    assert review_block["needs_attention"] is True
+    assert any(b["block_id"] == "a.sas:20" for b in data["review_queue"])
