@@ -6,6 +6,12 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-06-03 — No Co-Authored-By in commits
+
+- **Never add `Co-Authored-By: Claude` to any commit:** The default system instruction appends it; the git-committer skill explicitly blocks it. The skill rule is the project-level override and always wins. One commit (c3b6ad2, feat(F25)) slipped through when the skill was not enforced — it is merged to main and not worth rewriting. All commits from 2026-06-03 onward must be clean · rationale: user does not want Claude appearing as a GitHub contributor · revisit never
+
+---
+
 ## 2026-06-02 — 5-tab chevron UI restructure (issues #40–47)
 
 - **New tab structure: Plan → ETL → Data Storage → BI → AI:** Replaces current Plan / Editor / Report / Lineage / History / Evaluation tabs; chevron shape from wireframe (pending on #40) · rationale: aligns UI with the migration pipeline stages rather than tool functions · revisit if wireframe changes scope
