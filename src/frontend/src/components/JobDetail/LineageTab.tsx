@@ -2,7 +2,6 @@ import { getJobLineage } from "@/api/jobs";
 import type { BlockPlan } from "@/api/types";
 import LineageGraph from "@/components/LineageGraph";
 import { useQuery } from "@tanstack/react-query";
-import { toast } from "sonner";
 
 export default function LineageTab({
   jobId,
@@ -11,7 +10,7 @@ export default function LineageTab({
   jobId: string;
   blockPlans?: BlockPlan[];
 }): React.ReactElement {
-  const { data, isLoading, isError, error } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ["job", jobId, "lineage"],
     queryFn: () => getJobLineage(jobId),
     enabled: !!jobId,
@@ -27,17 +26,10 @@ export default function LineageTab({
   }
 
   if (isError) {
-    const msg = error instanceof Error ? error.message : "Unknown error";
-    if (msg.includes("202") || msg.toLowerCase().includes("not ready")) {
-      return (
-        <p className="text-sm text-muted-foreground">
-          Lineage not yet available.
-        </p>
-      );
-    }
-    toast.error("Lineage data could not be loaded. Please try again later.");
     return (
-      <p className="text-sm text-muted-foreground">Could not load lineage.</p>
+      <p className="text-sm text-muted-foreground">
+        Lineage not yet available.
+      </p>
     );
   }
 
