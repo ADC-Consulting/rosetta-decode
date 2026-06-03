@@ -279,12 +279,15 @@
   - [ ] `PROC FORMAT` block content — block node exists, inner pairs unparsed (duplicate of Tier 1 but specifically for the BI semantic layer use-case)
   - [ ] `PROC CONTENTS` output dataset target — output `OUT=` dataset not captured
   - [ ] `PROC EXPORT` output file path — `OUTFILE=` not captured; needed to trace data lineage to downstream consumers
-- [ ] #44: BI tab placeholder — empty state in chevron shell (unblocked once #40 lands)
-- [ ] #45: AI tab placeholder — empty state in chevron shell (unblocked once #40 lands)
-- [ ] #40: Scaffold 5-step chevron tab shell (Plan → ETL → Data Storage → BI → AI) — **blocked: wireframe pending**
-- [ ] #41: Plan tab — block table + criticality review queue (collapsible) + report (collapsed) — **blocked: wireframe pending**
-- [ ] #42: ETL tab — Lineage DAG as primary canvas, code editor as click-through panel — **blocked: wireframe pending**
-- [ ] #43: Data Storage tab — SAS table inventory, DW mapping — **blocked: wireframe pending**
+- [ ] F28 S-A: URL-synced routing + new tab keys in JobDetailPage → see `docs/plans/latest/F28-chevron-tab-shell.md`
+- [ ] F28 S-B: ChevronTabBar component (chevron shape via CSS clip-path) → see `docs/plans/latest/F28-chevron-tab-shell.md`
+- [ ] F28 S-C: Wire existing components into new tab slots → see `docs/plans/latest/F28-chevron-tab-shell.md`
+- [ ] F28 S-D: `make test` exits 0 → see `docs/plans/latest/F28-chevron-tab-shell.md`
+- [ ] #41: Plan tab — block table + criticality review queue (collapsible) + report (collapsed) — wireframe will refine; depends on F28
+- [ ] #42: ETL tab — Lineage DAG as primary canvas, code editor as click-through panel — wireframe will refine; depends on F28
+- [ ] #43: Data Storage tab — SAS table inventory, DW mapping — wireframe will refine; depends on F28
+- [ ] #44: BI tab placeholder — empty state (included in F28 S-C)
+- [ ] #45: AI tab placeholder — empty state (included in F28 S-C)
 - [ ] #46: Remove legacy tab components (Plan/Editor/Report/Lineage/History/Evaluation) — blocked: depends on #40–45
 - [ ] #47: Remove legacy standalone pages and routes — blocked: depends on #46
 - [ ] #17: Close — delivered by F25 + F26 (Evaluation tab with criticality)
