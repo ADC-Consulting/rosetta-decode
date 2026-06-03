@@ -33,7 +33,7 @@ export default function LineageTab({
     );
   }
 
-  if (!data) {
+  if (!data?.nodes) {
     return (
       <p className="text-sm text-muted-foreground">
         Lineage not yet available.
