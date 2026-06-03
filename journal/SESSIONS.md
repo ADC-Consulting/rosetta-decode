@@ -22,14 +22,11 @@ Most recent session on top. Each entry should answer:
 - none new (F27 logic is rule clarification, not new design)
 
 ### Open Questions
-- PR #37 (docs sprint) and PR #38 (confidence-metric) still blocked by org billing issue — CI cannot run; need admin to unblock
-- PR #34 (F22) still open
 - #40–47 (5-tab chevron restructure) blocked on wireframes — must not start until wireframes attached to issues
 
 ### Next Session — Start Here
-1. Check if PRs #37 / #38 / #34 are unblocked — merge if CI is green
-2. If #40 wireframe is attached, read it and plan-feature the chevron shell scaffold
-3. Otherwise, pick up F20 Stream B: `ExecutionOutputPanel` improvements + Trust tab in `EditorTab` — see `docs/plans/latest/F20-live-trace-popup.md`
+1. If #40 wireframe is attached, read it and plan-feature the chevron shell scaffold
+2. Otherwise, pick up F20 Stream B: `ExecutionOutputPanel` improvements + Trust tab in `EditorTab` — see `docs/plans/latest/F20-live-trace-popup.md`
 
 ### Files Touched
 - `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
