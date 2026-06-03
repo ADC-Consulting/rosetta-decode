@@ -17,16 +17,19 @@ const STEPS: Step[] = [
   { key: "ai", label: "AI" },
 ];
 
-const CLIP_FIRST = "polygon(0 0, calc(100% - 16px) 0, 100% 50%, calc(100% - 16px) 100%, 0 100%)";
+const CLIP_FIRST = "polygon(0 0, calc(100% - 20px) 0, 100% 50%, calc(100% - 20px) 100%, 0 100%)";
 const CLIP_MIDDLE =
-  "polygon(0 0, calc(100% - 16px) 0, 100% 50%, calc(100% - 16px) 100%, 0 100%, 16px 50%)";
-const CLIP_LAST = "polygon(0 0, 100% 0, 100% 100%, 0 100%, 16px 50%)";
+  "polygon(0 0, calc(100% - 20px) 0, 100% 50%, calc(100% - 20px) 100%, 0 100%, 20px 50%)";
+const CLIP_LAST = "polygon(0 0, 100% 0, 100% 100%, 0 100%, 20px 50%)";
 
 export default function ChevronTabBar({ activeTab }: ChevronTabBarProps): React.ReactElement {
   const activeIndex = STEPS.findIndex((s) => s.key === activeTab);
 
+  // z-index decreases left to right so left tabs render their arrow tip on top of the next tab
+  const zIndexMap = [5, 4, 3, 2, 1];
+
   return (
-    <TabsList className="h-auto p-0 bg-transparent gap-0 rounded-none">
+    <TabsList className="h-auto p-0 bg-transparent gap-0 rounded-none overflow-visible">
       {STEPS.map((step, i) => {
         const isActive = step.key === activeTab;
         const isVisited = i < activeIndex;
@@ -41,16 +44,16 @@ export default function ChevronTabBar({ activeTab }: ChevronTabBarProps): React.
         const stateClasses = isActive
           ? "bg-primary text-primary-foreground"
           : isVisited
-            ? "bg-muted text-foreground hover:bg-muted/80"
-            : "bg-background text-muted-foreground hover:bg-muted/40";
-        const overlapClass = i === 0 ? "" : "ml-[-8px]";
+            ? "bg-muted/70 text-foreground hover:bg-muted/80"
+            : "bg-muted/30 text-muted-foreground hover:bg-muted/50";
+        const overlapClass = i === 0 ? "" : "-ml-3";
 
         return (
           <TabsTrigger
             key={step.key}
             value={step.key}
             className={`${baseClasses} ${stateClasses} ${overlapClass}`}
-            style={{ clipPath }}
+            style={{ clipPath, zIndex: zIndexMap[i] }}
             aria-label={step.label}
           >
             {step.label}
