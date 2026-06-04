@@ -6,6 +6,35 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-04 — F28 PR opened; merge conflict resolved; sidebar UX discussion
+**Duration:** ~1h | **Focus:** PR hygiene, UX review
+
+### Done
+- **F28 implementation reviewed:** all acceptance criteria confirmed met, no TODOs or stale references in diff
+- **PR #51 opened:** `feat/F28-chevron-tab-shell → main` with full description
+- **Merge conflict resolved:** F27 was merged to main after F28 branched, causing SESSIONS.md conflict; resolved by merging main into F28 as a dedicated commit (`21d068d`) — original F28 commit SHAs preserved, no force-push
+- **Sidebar UX discussion:** reviewed current nav (Migrations, Lineage, Docs, Explain) against product intent; identified that nav was built feature-by-feature rather than persona-driven; confirmed user personas (tech lead, PM, code owner) are not yet validated
+- **Issue #52 opened:** "UX: revisit sidebar navigation — align with confirmed user personas" — blocks any sidebar implementation until personas are confirmed
+
+### Decisions
+- none new
+
+### Open Questions
+- PR #51 CI running — check for green before merging
+- PR #34 (F22) still open, CI green — merge decision outstanding
+- Issue #52 gates any sidebar changes — persona validation needed first
+
+### Next Session — Start Here
+1. Check PR #51 CI — merge if green
+2. Merge PR #34 if approved
+3. Pick up F20 Stream B (`ExecutionOutputPanel` improvements + Trust tab in `EditorTab`) — see `docs/plans/latest/F20-live-trace-popup.md`
+
+### Files Touched
+- `journal/BACKLOG.md`
+- `journal/SESSIONS.md`
+
+---
+
 ## 2026-06-03 — F28 chevron tab shell complete; git author fixed; PR #50 opened
 **Duration:** ~5h | **Focus:** F28 implementation, verification, git housekeeping
 

@@ -300,6 +300,7 @@
 - [ ] #46: Remove legacy tab components (Plan/Editor/Report/Lineage/History/Evaluation) — blocked: depends on #40–45
 - [ ] #47: Remove legacy standalone pages and routes — blocked: depends on #46
 - [ ] #17: Close — delivered by F25 + F26 (Evaluation tab with criticality)
+- [ ] #52: Revisit sidebar navigation — align with confirmed user personas before implementing changes
 
 - [ ] F2: Code Explanation Assistant page (chat UI — explain SAS/Python snippets)
 - [ ] F7: Side-by-side SAS vs Python diff view
