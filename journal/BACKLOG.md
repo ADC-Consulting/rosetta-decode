@@ -279,13 +279,17 @@
   - [ ] `PROC FORMAT` block content — block node exists, inner pairs unparsed (duplicate of Tier 1 but specifically for the BI semantic layer use-case)
   - [ ] `PROC CONTENTS` output dataset target — output `OUT=` dataset not captured
   - [ ] `PROC EXPORT` output file path — `OUTFILE=` not captured; needed to trace data lineage to downstream consumers
-- [ ] F28 S-A: URL-synced routing + new tab keys in JobDetailPage → see `docs/plans/latest/F28-chevron-tab-shell.md`
-- [ ] F28 S-B: ChevronTabBar component (chevron shape via CSS clip-path) → see `docs/plans/latest/F28-chevron-tab-shell.md`
-- [ ] F28 S-C: Wire existing components into new tab slots → see `docs/plans/latest/F28-chevron-tab-shell.md`
-- [ ] F28 S-D: `make test` exits 0 → see `docs/plans/latest/F28-chevron-tab-shell.md`
-- [ ] #41: Plan tab — block table + criticality review queue (collapsible) + report (collapsed) — wireframe will refine; depends on F28
-- [ ] #42: ETL tab — Lineage DAG as primary canvas, code editor as click-through panel — wireframe will refine; depends on F28
-- [ ] #43: Data Storage tab — SAS table inventory, DW mapping — wireframe will refine; depends on F28
+**F28 — 5-tab chevron shell (`docs/plans/latest/F28-chevron-tab-shell.md`) — complete**
+- [x] F28 S-A: URL-synced routing + new tab keys in JobDetailPage → see `docs/plans/latest/F28-chevron-tab-shell.md`
+- [x] F28 S-B: ChevronTabBar component (chevron shape via CSS clip-path) → see `docs/plans/latest/F28-chevron-tab-shell.md`
+- [x] F28 S-C: Wire existing components into new tab slots → see `docs/plans/latest/F28-chevron-tab-shell.md`
+- [x] F28 S-D: `make test` exits 0 → see `docs/plans/latest/F28-chevron-tab-shell.md`
+- [x] fix(F28): EvaluationTab removed from Plan tab; failed-reconciliation pill + collapsible review queue added to PlanTab
+- [x] fix(F28): LineageGraph crash on undefined nodes guarded in LineageTab
+- [x] fix(F28): LineageTab toast.error removed — silent inline message instead
+- [ ] #41: Plan tab refinement — ReportTab restored as collapsible panel, History panel at bottom — wireframe pending
+- [ ] #42: ETL tab — Lineage DAG as primary canvas, editor as click-through panel — wireframe pending
+- [ ] #43: Data Storage tab — SAS table inventory, DW mapping — wireframe pending
 - [ ] #44: BI tab placeholder — empty state (included in F28 S-C)
 - [ ] #45: AI tab placeholder — empty state (included in F28 S-C)
 - [ ] #46: Remove legacy tab components (Plan/Editor/Report/Lineage/History/Evaluation) — blocked: depends on #40–45

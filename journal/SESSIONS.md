@@ -6,6 +6,50 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-03 — F28 chevron tab shell complete; git author fixed; PR #50 opened
+**Duration:** ~5h | **Focus:** F28 implementation, verification, git housekeeping
+
+### Done
+- **Session journal backfilled:** backdated 2026-06-02 entry for F26 + F27 work; corrected stale PR blocker note
+- **PR status check:** PRs #37/#38 confirmed already merged; PR #34 (F22) open with CI green
+- **GitHub issues reviewed:** 18 open issues triaged; chevron cluster (#40–47) unblocked from wireframe gate for implementation
+- **F28 plan written:** `docs/plans/latest/F28-chevron-tab-shell.md`; issue #40 updated with implementation approach comment
+- **F28 S-A:** URL-synced routing in `JobDetailPage.tsx` — `setSearchParams` on tab change, new 5-tab keys
+- **F28 S-B:** `ChevronTabBar.tsx` — CSS clip-path chevron arrows, active/visited/unvisited states, z-index stacking; fixed `style` prop not forwarded by `TabsTrigger` (was silently dropped)
+- **F28 S-C:** Content mapped — `plan`→PlanTab, `etl`→EditorTab+LineageTab, Data Storage/BI/AI→placeholder; legacy TabsList commented out
+- **F28 fixes:** `LineageTab` toast.error removed; `LineageGraph` crash on `undefined nodes` guarded; ETL tab crash resolved
+- **Plan tab cleanup:** `EvaluationTab` removed from Plan tab; failed-reconciliation pill added to PlanTab ribbon; collapsible "Review queue" section added (top risky blocks from trust report)
+- **PR #50 opened:** F27 trust report bug fixes
+- **Git author fixed:** commits were authored with phantom `eld@damvad.com`; updated to `emilie-adc / emilie.ld@adc-consulting.com`; F28 commits rewritten + force-pushed
+- **No Co-Authored-By rule logged:** DECISIONS.md + memory updated; enforcement failure (F25 commit) documented
+
+### Decisions
+- **EvaluationTab removed from Plan tab:** redundant stacking; replaced by failed-reconciliation pill + review queue table in PlanTab — revisit when #41 wireframe arrives
+- **ChevronTabBar uses clip-path + z-index:** 20px arrows, 12px overlap, descending z-index (Plan=5→AI=1) · revisit if wireframe specifies different shape
+- **LineageGraph crash guard in LineageTab:** `!data?.nodes` prevents crash on partial API response — pre-existing bug exposed by ETL tab always mounting LineageTab · revisit never
+
+### Open Questions
+- PR #34 (F22 assessment UX) — CI green, needs merge decision
+- #41/#42/#43 content refinement — blocked on wireframes
+- EvaluationTab now unused in tab shell — keep for now, delete in #46
+
+### Next Session — Start Here
+1. Open PR for F28, merge PR #34 if approved
+2. Wait for wireframes on #41/#42/#43 before starting those
+3. Otherwise pick up F20 Stream B (`ExecutionOutputPanel` improvements + Trust tab in `EditorTab`) — see `docs/plans/latest/F20-live-trace-popup.md`
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/ChevronTabBar.tsx` (new)
+- `src/frontend/src/components/ui/tabs.tsx`
+- `src/frontend/src/components/JobDetail/LineageTab.tsx`
+- `src/frontend/src/pages/JobDetailPage.tsx`
+- `src/frontend/src/components/JobDetail/PlanTab.tsx`
+- `docs/plans/latest/F28-chevron-tab-shell.md`
+- `journal/BACKLOG.md`
+- `journal/DECISIONS.md`
+
+---
+
 ## 2026-06-01 — F25 Evaluation tab: criticality, blast_radius fix, PR ready
 **Duration:** ~3h | **Focus:** F25 implementation + browser test
 

@@ -2,7 +2,7 @@
 
 **Phase:** 3
 **Area:** Frontend
-**Status:** in-progress
+**Status:** complete
 
 ## Goal
 
@@ -10,49 +10,44 @@ Replace the current tab bar in `JobDetailPage` (Plan / Editor / Report / Lineage
 
 ## Acceptance Criteria
 
-- [ ] ChevronTabBar renders with 5 steps: Plan, ETL, Data Storage, BI, AI
-- [ ] Active, visited, and unvisited states are visually distinct
-- [ ] URL reflects active tab on every change; direct linking to a tab works
-- [ ] `plan` tab shows PlanTab + EvaluationTab
-- [ ] `etl` tab shows EditorTab + LineageTab
-- [ ] `data-storage`, `bi`, `ai` tabs show a placeholder empty state
-- [ ] Legacy TabsList is hidden (not deleted)
-- [ ] `make test` exits 0
-- [ ] ruff and mypy pass (no backend changes — frontend tsc + lint only)
+- [x] ChevronTabBar renders with 5 steps: Plan, ETL, Data Storage, BI, AI
+- [x] Active, visited, and unvisited states are visually distinct
+- [x] URL reflects active tab on every change; direct linking to a tab works
+- [x] `plan` tab shows PlanTab only (EvaluationTab removed; failed-reconciliation pill + review queue added to PlanTab)
+- [x] `etl` tab shows EditorTab + LineageTab
+- [x] `data-storage`, `bi`, `ai` tabs show a placeholder empty state
+- [x] Legacy TabsList is hidden (not deleted)
+- [x] `make test` exits 0
+- [x] ruff and mypy pass (no backend changes — frontend tsc + lint only)
 
 ## Subtasks
 
 ### S-A: URL-synced routing + new tab keys
 **File:** `src/frontend/src/pages/JobDetailPage.tsx`
 **Depends on:** none
-**Done when:** `setSearchParams({ tab: v })` is called on every tab change; old tab key references (`editor`, `report`, `lineage`, `evaluation`) replaced with new keys (`etl`, `data-storage`, `bi`, `ai`) throughout; `saveVersionMutation` branching updated to match new keys
+**Done when:** `setSearchParams({ tab: v })` is called on every tab change; old tab key references replaced with new keys; `saveVersionMutation` branching updated
 
-- [ ] done
+- [x] done
 
 ### S-B: ChevronTabBar component
 **File:** `src/frontend/src/components/JobDetail/ChevronTabBar.tsx`
 **Depends on:** S-A
-**Done when:** component renders 5 `TabsTrigger` items inside a `TabsList` with chevron arrow shapes via CSS clip-path; active tab uses primary fill, visited uses muted, unvisited uses grey; component slots into `JobDetailPage` in place of the old `TabsList`
+**Done when:** component renders 5 `TabsTrigger` items with chevron arrow shapes via CSS clip-path; active/visited/unvisited states distinct; slots into `JobDetailPage`
 
-- [ ] done
+- [x] done
 
 ### S-C: Wire existing components into new tab slots
 **File:** `src/frontend/src/pages/JobDetailPage.tsx`
 **Depends on:** S-A, S-B
-**Done when:**
-- `plan` `TabsContent` renders PlanTab followed by EvaluationTab
-- `etl` `TabsContent` renders EditorTab (top) and LineageTab (below) in a flex-col layout
-- `data-storage`, `bi`, `ai` each render a centred placeholder ("Coming soon")
-- ReportTab is commented out (restored in #41)
-- Old `TabsList` is commented out
+**Done when:** plan/etl/placeholder tabs wired; legacy TabsList commented out
 
-- [ ] done
+- [x] done
 
 ### S-D: `make test` exits 0
 **Depends on:** S-A, S-B, S-C
 **Done when:** tsc, ESLint, frontend build, and pytest all pass with exit code 0
 
-- [ ] done
+- [x] done
 
 ## Dependencies on other features
 
