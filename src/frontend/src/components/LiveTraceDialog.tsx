@@ -499,7 +499,6 @@ function PlanDetailPanel({
         translated: "Auto",
         translated_with_review: "Review",
         manual: "Manual",
-        translate_best_effort: "Best-effort",
       } as Record<string, string>
     )[s] ?? s;
 

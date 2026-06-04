@@ -50,6 +50,45 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-02 — F26 Criticality column + F27 trust report bug fixes complete
+**Duration:** ~3h | **Focus:** F26 + F27 implementation, PR #49 merge
+
+### Done
+- **F26 S-A/S-B:** Added Criticality column to `BlockPlanTable.tsx` — badge reuses `CRITICALITY_CLASSES` colour map from `EvaluationTab.tsx`; `—` fallback when trust data absent; `make test` exits 0; plan marked complete
+- **PR #49 merged:** 5-tab chevron restructure decisions + backlog items #39–47 merged into main; `docs/input-prerequisites.md` updated with #39 audit findings (Tier 1/2/3 gaps)
+- **F27 S-A:** Fixed `auto_verified` counter — uses `needs_attention == False` instead of `reconciliation_status == "pass"` so jobs without a reference CSV get a non-zero count
+- **F27 S-B:** Fixed `needs_attention` — `translated_with_review` added to the condition so planner-flagged blocks always appear in the review queue regardless of confidence band
+- **F27 S-C:** Removed `translate_best_effort` from `TranslationStrategy` enum (`models.py`), `StrategyLiteral` (`schemas.py`), and router comment — dead value never assigned by any agent prompt
+- **F27 S-D:** Removed `translate_best_effort: "Best-effort"` label from `LiveTraceDialog.tsx`
+- **F27 S-E/S-F:** Added 4 new trust report tests (auto_verified with/without recon fail, 422 on best_effort schema, translated_with_review always needs_attention); `make test` exits 0; plan created and marked complete
+
+### Decisions
+- none new (F27 logic is rule clarification, not new design)
+
+### Open Questions
+- #40–47 (5-tab chevron restructure) blocked on wireframes — must not start until wireframes attached to issues
+
+### Next Session — Start Here
+1. If #40 wireframe is attached, read it and plan-feature the chevron shell scaffold
+2. Otherwise, pick up F20 Stream B: `ExecutionOutputPanel` improvements + Trust tab in `EditorTab` — see `docs/plans/latest/F20-live-trace-popup.md`
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
+- `src/backend/api/routes/jobs.py`
+- `src/backend/api/schemas.py`
+- `src/worker/engine/models.py`
+- `src/worker/engine/router.py`
+- `src/frontend/src/components/LiveTraceDialog.tsx`
+- `tests/test_changelog_trust_report.py`
+- `tests/test_plan_interaction_routes.py`
+- `docs/plans/latest/F26-criticality-plan-tab.md`
+- `docs/plans/latest/F27-trust-report-bug-fixes.md`
+- `journal/BACKLOG.md`
+- `journal/DECISIONS.md`
+- `docs/input-prerequisites.md`
+
+---
+
 ## 2026-06-01 — F25 Evaluation tab: criticality, blast_radius fix, PR ready
 **Duration:** ~3h | **Focus:** F25 implementation + browser test
 
