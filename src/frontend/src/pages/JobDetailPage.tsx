@@ -16,7 +16,6 @@ import PlanTab from "@/components/JobDetail/PlanTab";
 // import ReportTab from "@/components/JobDetail/ReportTab"; // restored in #41
 import { StatusBadge } from "@/components/JobDetail/StatusBadge";
 // import VersionHistoryRail from "@/components/VersionHistoryRail"; // restored in #41
-import EvaluationTab from "@/components/JobDetail/EvaluationTab";
 import {
   POLLING_STATUSES,
   TAB_CONTENT_HEIGHT,
@@ -230,22 +229,19 @@ export default function JobDetailPage(): React.ReactElement {
           style={{ height: TAB_CONTENT_HEIGHT }}
         >
           <div className="flex-1 min-w-0 flex flex-col min-h-0">
-            {/* plan tab: PlanTab (top) + EvaluationTab (below) */}
+            {/* plan tab */}
             <TabsContent value="plan" className="mt-0 flex-1 min-h-0">
-              <div className="flex flex-col gap-4 h-full min-h-0">
-                <PlanTab
-                  jobId={id}
-                  isReviewable={isReviewable}
-                  jobStatus={job?.status ?? "queued"}
-                  report={job?.report ?? null}
-                  overrides={planOverrides}
-                  setOverrides={setPlanOverrides}
-                  onBlockRefineSuccess={() => setEditorCode(null)}
-                  jobPythonCode={job?.python_code ?? undefined}
-                  generatedFiles={job?.generated_files ?? undefined}
-                />
-                <EvaluationTab jobId={id} jobStatus={job?.status ?? "queued"} />
-              </div>
+              <PlanTab
+                jobId={id}
+                isReviewable={isReviewable}
+                jobStatus={job?.status ?? "queued"}
+                report={job?.report ?? null}
+                overrides={planOverrides}
+                setOverrides={setPlanOverrides}
+                onBlockRefineSuccess={() => setEditorCode(null)}
+                jobPythonCode={job?.python_code ?? undefined}
+                generatedFiles={job?.generated_files ?? undefined}
+              />
             </TabsContent>
 
             {/* etl tab: EditorTab (top) + LineageTab (below) */}

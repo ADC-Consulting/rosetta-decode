@@ -139,6 +139,7 @@ export default function PlanTab({
 
   const isProposed = jobStatus === "proposed";
   const [blocksCollapsed, setBlocksCollapsed] = useState(true);
+  const [reviewCollapsed, setReviewCollapsed] = useState(true);
 
   if (!isReviewable) {
     return (
@@ -275,6 +276,13 @@ export default function PlanTab({
                     dotClass="bg-border"
                     tooltip="Blocks the migration planner marked as manual, manual_ingestion, or skip — constructs that cannot be auto-translated. A developer must write the Python equivalent by hand."
                   />
+                  <StatPill
+                    count={trustReport.failed_reconciliation}
+                    label="Failed reconciliation"
+                    colorClass="text-red-700"
+                    dotClass="bg-red-500"
+                    tooltip="Blocks where the generated Python was executed but the output did not match the SAS reference. These blocks need inspection."
+                  />
                 </>
               )}
             </div>
@@ -318,6 +326,82 @@ export default function PlanTab({
                 generatedFiles={generatedFiles}
               />
             )}
+          </div>
+        )}
+
+        {trustReport?.review_queue && trustReport.review_queue.length > 0 && (
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => setReviewCollapsed((v) => !v)}
+              className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+            >
+              {reviewCollapsed ? (
+                <ChevronRight size={14} className="text-muted-foreground shrink-0" />
+              ) : (
+                <ChevronDown size={14} className="text-muted-foreground shrink-0" />
+              )}
+              <h2 className="text-sm font-semibold text-foreground">Review queue</h2>
+              <Badge variant="secondary" className="text-xs font-mono">
+                {trustReport.review_queue.length}
+              </Badge>
+            </button>
+            {!reviewCollapsed && (() => {
+              const CRIT_ORDER: Record<string, number> = {
+                critical: 0, high: 1, medium: 2, low: 3,
+              };
+              const STRAT_COLOR: Record<string, string> = {
+                translated: "bg-green-100 text-green-800",
+                translated_with_review: "bg-amber-100 text-amber-800",
+                manual: "bg-red-100 text-red-800",
+              };
+              const STRAT_LABEL: Record<string, string> = {
+                translated: "Translated",
+                translated_with_review: "Review needed",
+                manual: "Manual",
+              };
+              const CRIT_COLOR: Record<string, string> = {
+                critical: "text-red-700 bg-red-50 border border-red-200",
+                high: "text-orange-700 bg-orange-50 border border-orange-200",
+                medium: "text-amber-700 bg-amber-50 border border-amber-200",
+                low: "text-green-700 bg-green-50 border border-green-200",
+              };
+              const sorted = [...trustReport.review_queue]
+                .sort((a, b) => (CRIT_ORDER[a.criticality] ?? 99) - (CRIT_ORDER[b.criticality] ?? 99))
+                .slice(0, 10);
+              return (
+                <div className="overflow-x-auto rounded-lg border border-border">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-muted/50 text-xs text-muted-foreground">
+                        <th className="px-3 py-2 text-left font-medium">Block ID</th>
+                        <th className="px-3 py-2 text-left font-medium">Strategy</th>
+                        <th className="px-3 py-2 text-left font-medium">Criticality</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sorted.map((block) => (
+                        <tr key={block.block_id} className="border-t border-border">
+                          <td className="px-3 py-2 font-mono text-xs text-muted-foreground max-w-[200px] truncate">
+                            {block.block_id}
+                          </td>
+                          <td className="px-3 py-2">
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${STRAT_COLOR[block.strategy] ?? "bg-muted text-muted-foreground"}`}>
+                              {STRAT_LABEL[block.strategy] ?? block.strategy}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2">
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${CRIT_COLOR[block.criticality] ?? "text-muted-foreground bg-muted border border-border"}`}>
+                              {block.criticality}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>
