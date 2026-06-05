@@ -295,12 +295,24 @@
 - [ ] #41: Plan tab refinement — ReportTab restored as collapsible panel, History panel at bottom — wireframe pending
 - [ ] #42: ETL tab — Lineage DAG as primary canvas, editor as click-through panel — wireframe pending
 - [ ] #43: Data Storage tab — SAS table inventory, DW mapping — wireframe pending
-- [ ] #44: BI tab placeholder — empty state (included in F28 S-C)
-- [ ] #45: AI tab placeholder — empty state (included in F28 S-C)
-- [ ] #46: Remove legacy tab components (Plan/Editor/Report/Lineage/History/Evaluation) — blocked: depends on #40–45
+- [x] #40: Chevron tab shell — delivered by F28, issue closed
+- [x] #44: BI tab placeholder — empty state delivered in F28 S-C, issue closed
+- [x] #45: AI tab placeholder — empty state delivered in F28 S-C, issue closed
+- [ ] #46: Remove legacy tab components (Plan/Editor/Report/Lineage/History/Evaluation) — blocked: depends on #41–45
 - [ ] #47: Remove legacy standalone pages and routes — blocked: depends on #46
-- [ ] #17: Close — delivered by F25 + F26 (Evaluation tab with criticality)
-- [ ] #52: Revisit sidebar navigation — align with confirmed user personas before implementing changes
+- [ ] #41: Plan tab refinement — blocked on wireframe
+- [ ] #42: ETL tab — blocked on wireframe
+- [ ] #43: Data Storage tab — blocked on wireframe
+- [ ] #52: Revisit sidebar navigation — blocked on persona validation
+- [x] fix(frontend): PlanTab review queue — removed `.slice(0, 10)` cap; all items now render sorted by criticality
+
+**GitHub issue priority queue (unblocked — source of truth is GitHub)**
+- [ ] #19: Runbook for high-risk / non-convertible blocks → generate per-block remediation view
+- [ ] #25: Token usage + bill-of-materials / scoping summary
+- [ ] #21: Consolidate lineage into a single primary view — `backlog` label
+- [ ] #20: Rollback / versioning based on lineage — `backlog` label
+- [ ] #32: Specify decision-ready reports (technical + PO) — `backlog` label, deferred
+- [ ] #24: Implement decision-ready reports — `backlog` label, deferred
 
 - [ ] F2: Code Explanation Assistant page (chat UI — explain SAS/Python snippets)
 - [ ] F7: Side-by-side SAS vs Python diff view
