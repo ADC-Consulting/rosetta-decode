@@ -6,6 +6,38 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-05 — Issue triage, backlog label, pharma test, review queue fix
+**Duration:** ~1.5h | **Focus:** Issue hygiene, prioritisation, frontend testing
+
+### Done
+- PR #51 (`feat/F28-chevron-tab-shell`) merged; local `main` fast-forwarded
+- Issue #40 closed (F28 chevron shell delivered)
+- Stale issues closed: #14, #23, #35, #44, #45
+- All open issues reviewed and prioritised; GitHub issue queue established as priority source over local backlog
+- `backlog` GitHub label created (light blue); applied to #20, #21, #24, #32
+- Reports (#32, #24) deferred — not mission-critical yet
+- Submitted `pharma-sandbox-medium` test job (12 SAS files + 6 CSVs, clinical trial pipeline)
+- Tested Plan tab with complex job: summary card, 26-block table, review queue all render correctly
+- **fix(frontend):** removed `.slice(0, 10)` cap in review queue — was showing 10 of 20 items; now shows all, sorted by criticality
+
+### Decisions
+- **GitHub issue queue is the priority source:** Open GitHub issues take precedence over items in `journal/BACKLOG.md` · revisit never
+- **Reports (#32, #24) deferred:** Not mission-critical at this stage · revisit when product milestones warrant
+
+### Open Questions
+- Which of #19, #25 to pick up next? (#19 = runbook, #25 = token usage / BOM)
+
+### Next Session — Start Here
+1. Commit journal + review queue fix (`src/frontend/src/components/JobDetail/PlanTab.tsx`)
+2. Pick up #19 (runbook for high-risk / non-convertible blocks) or #25 (token usage + BOM)
+
+### Files Touched
+- `journal/SESSIONS.md`
+- `journal/BACKLOG.md`
+- `src/frontend/src/components/JobDetail/PlanTab.tsx`
+
+---
+
 ## 2026-06-04 — F28 PR opened; merge conflict resolved; sidebar UX discussion
 **Duration:** ~1h | **Focus:** PR hygiene, UX review
 

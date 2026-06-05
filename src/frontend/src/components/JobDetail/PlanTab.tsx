@@ -367,8 +367,7 @@ export default function PlanTab({
                 low: "text-green-700 bg-green-50 border border-green-200",
               };
               const sorted = [...trustReport.review_queue]
-                .sort((a, b) => (CRIT_ORDER[a.criticality] ?? 99) - (CRIT_ORDER[b.criticality] ?? 99))
-                .slice(0, 10);
+                .sort((a, b) => (CRIT_ORDER[a.criticality] ?? 99) - (CRIT_ORDER[b.criticality] ?? 99));
               return (
                 <div className="overflow-x-auto rounded-lg border border-border">
                   <table className="w-full text-sm">
