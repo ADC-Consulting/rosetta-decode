@@ -53,15 +53,15 @@ function TabsList({ children, className }: { children: React.ReactNode; classNam
   );
 }
 
-function TabsTrigger({
-  value,
-  children,
-  className,
-}: {
+interface TabsTriggerProps {
   value: string;
   children: React.ReactNode;
   className?: string;
-}) {
+  style?: React.CSSProperties;
+  "aria-label"?: string;
+}
+
+function TabsTrigger({ value, children, className, style, "aria-label": ariaLabel }: TabsTriggerProps) {
   const { active, setActive } = useTabsCtx();
   const isActive = active === value;
   return (
@@ -69,7 +69,9 @@ function TabsTrigger({
       type="button"
       role="tab"
       aria-selected={isActive}
+      aria-label={ariaLabel}
       onClick={() => setActive(value)}
+      style={style}
       className={cn(
         "inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium transition-all cursor-pointer",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",

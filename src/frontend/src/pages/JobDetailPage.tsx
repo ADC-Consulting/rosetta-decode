@@ -1,7 +1,7 @@
 import {
   acceptJob,
   getJob,
-  getJobDoc,
+  // getJobDoc, // restored in #41 with ReportTab
   getJobPlan,
   getJobTrustReport,
   refineJob,
@@ -9,20 +9,20 @@ import {
 } from "@/api/jobs";
 import type { BlockOverride, JobStatusValue } from "@/api/types";
 // import ChangelogFeed from "@/components/JobDetail/ChangelogFeed";
+import ChevronTabBar from "@/components/JobDetail/ChevronTabBar";
 import EditorTab from "@/components/JobDetail/EditorTab";
 import LineageTab from "@/components/JobDetail/LineageTab";
 import PlanTab from "@/components/JobDetail/PlanTab";
-import ReportTab from "@/components/JobDetail/ReportTab";
+// import ReportTab from "@/components/JobDetail/ReportTab"; // restored in #41
 import { StatusBadge } from "@/components/JobDetail/StatusBadge";
-import VersionHistoryRail from "@/components/VersionHistoryRail";
-import EvaluationTab from "@/components/JobDetail/EvaluationTab";
+// import VersionHistoryRail from "@/components/VersionHistoryRail"; // restored in #41
 import {
   POLLING_STATUSES,
   TAB_CONTENT_HEIGHT,
 } from "@/components/JobDetail/constants";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import { useRef, useState } from "react";
@@ -34,15 +34,14 @@ export { StatusBadge } from "@/components/JobDetail/StatusBadge";
 export default function JobDetailPage(): React.ReactElement {
   const { id = "" } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState(searchParams.get("tab") ?? "plan");
   const [editorCode, setEditorCode] = useState<string | null>(null);
   const [overrideGeneratedFiles, setOverrideGeneratedFiles] = useState<Record<
     string,
     string
   > | null>(null);
-  const [overrideDoc, setOverrideDoc] = useState<string | null>(null);
-  const [reportRestoreKey, setReportRestoreKey] = useState(0);
+  // overrideDoc / reportRestoreKey removed — restored in #41 with ReportTab
   const [planOverrides, setPlanOverrides] = useState<
     Record<string, BlockOverride>
   >({});
@@ -76,26 +75,21 @@ export default function JobDetailPage(): React.ReactElement {
 
   const displayedEditorCode = editorCode ?? job?.python_code ?? "";
 
-  const { data: docData } = useQuery({
-    queryKey: ["job", id, "doc"],
-    queryFn: () => getJobDoc(id),
-    enabled: !!id && (job?.status === "proposed" || job?.status === "accepted"),
-  });
-
-  const currentDoc = overrideDoc ?? docData?.doc ?? null;
+  // docData query and currentDoc removed — restored in #41 with ReportTab
 
   const saveVersionMutation = useMutation({
     mutationFn: async () => {
       const tabContent =
         activeTab === "plan"
           ? { block_overrides: Object.values(planOverrides) }
-          : activeTab === "editor"
+          : activeTab === "etl"
             ? {
                 python_code: displayedEditorCode,
                 generated_files:
                   overrideGeneratedFiles ?? job?.generated_files ?? {},
               }
-            : { doc: currentDoc ?? "" };
+            : null;
+      if (tabContent === null) return;
       const hash = contentHash(tabContent);
       if (hash === lastSavedHashRef.current[activeTab]) return;
       pendingHashRef.current = hash;
@@ -103,17 +97,13 @@ export default function JobDetailPage(): React.ReactElement {
         return saveVersion(id, "plan", {
           content: { block_overrides: Object.values(planOverrides) },
         });
-      } else if (activeTab === "editor") {
+      } else if (activeTab === "etl") {
         return saveVersion(id, "editor", {
           content: {
             python_code: displayedEditorCode,
             generated_files:
               overrideGeneratedFiles ?? job?.generated_files ?? {},
           },
-        });
-      } else if (activeTab === "report") {
-        return saveVersion(id, "report", {
-          content: { doc: currentDoc ?? "" },
         });
       }
     },
@@ -179,6 +169,7 @@ export default function JobDetailPage(): React.ReactElement {
         value={activeTab}
         onValueChange={(v) => {
           setActiveTab(v);
+          setSearchParams({ tab: v });
         }}
       >
         <div className="sticky top-0 z-20 bg-background border-border border-b pb-2">
@@ -202,26 +193,7 @@ export default function JobDetailPage(): React.ReactElement {
 
           {/* Row 2: tabs bar + right-aligned action cluster */}
           <div className="flex items-center">
-            <TabsList>
-              <TabsTrigger value="plan" className="cursor-pointer">
-                Plan
-              </TabsTrigger>
-              <TabsTrigger value="editor" className="cursor-pointer">
-                Editor
-              </TabsTrigger>
-              <TabsTrigger value="report" className="cursor-pointer">
-                Report
-              </TabsTrigger>
-              <TabsTrigger value="lineage" className="cursor-pointer">
-                Lineage
-              </TabsTrigger>
-              <TabsTrigger value="evaluation" className="cursor-pointer">
-                Evaluation
-              </TabsTrigger>
-              {/* <TabsTrigger value="history" className="cursor-pointer">
-              History
-            </TabsTrigger> */}
-            </TabsList>
+            <ChevronTabBar activeTab={activeTab} />
 
             <div className="ml-auto flex items-center gap-2">
               {(job?.status === "proposed" || job?.status === "under_review") && (
@@ -257,6 +229,7 @@ export default function JobDetailPage(): React.ReactElement {
           style={{ height: TAB_CONTENT_HEIGHT }}
         >
           <div className="flex-1 min-w-0 flex flex-col min-h-0">
+            {/* plan tab */}
             <TabsContent value="plan" className="mt-0 flex-1 min-h-0">
               <PlanTab
                 jobId={id}
@@ -271,27 +244,33 @@ export default function JobDetailPage(): React.ReactElement {
               />
             </TabsContent>
 
-            <TabsContent value="editor" className="mt-0 flex-1 min-h-0">
-              <div className={isEditorFullScreen ? "fixed inset-0 z-50 bg-background p-2 flex flex-col" : "h-full"}>
-                <EditorTab
-                  jobId={id}
-                  generatedFiles={
-                    overrideGeneratedFiles ?? job?.generated_files ?? null
-                  }
-                  onGeneratedFilesChange={setOverrideGeneratedFiles}
-                  code={displayedEditorCode}
-                  setCode={(v) => setEditorCode(v)}
-                  blockPlans={planData?.block_plans}
-                  onSave={() => saveVersionMutation.mutate()}
-                  isSaving={saveVersionMutation.isPending}
-                  isFullPage={isEditorFullScreen}
-                  onExpand={() => setIsEditorFullScreen((v) => !v)}
-                  trustReport={trustReportData}
-                />
+            {/* etl tab: EditorTab (top) + LineageTab (below) */}
+            <TabsContent value="etl" className="mt-0 flex-1 min-h-0">
+              <div className="flex flex-col gap-0 h-full min-h-0">
+                <div className={isEditorFullScreen ? "fixed inset-0 z-50 bg-background p-2 flex flex-col" : "flex-1 min-h-0"}>
+                  <EditorTab
+                    jobId={id}
+                    generatedFiles={
+                      overrideGeneratedFiles ?? job?.generated_files ?? null
+                    }
+                    onGeneratedFilesChange={setOverrideGeneratedFiles}
+                    code={displayedEditorCode}
+                    setCode={(v) => setEditorCode(v)}
+                    blockPlans={planData?.block_plans}
+                    onSave={() => saveVersionMutation.mutate()}
+                    isSaving={saveVersionMutation.isPending}
+                    isFullPage={isEditorFullScreen}
+                    onExpand={() => setIsEditorFullScreen((v) => !v)}
+                    trustReport={trustReportData}
+                  />
+                </div>
+                <div className="border-t border-border" />
+                <LineageTab jobId={id} blockPlans={planData?.block_plans} />
               </div>
             </TabsContent>
 
-            <TabsContent value="report" className="mt-0 flex-1 min-h-0">
+            {/* report tab: commented out — will be restored in #41 */}
+            {/* <TabsContent value="report" className="mt-0 flex-1 min-h-0">
               <div className="flex gap-3 h-full min-h-0">
                 <div className="flex-1 min-w-0 min-h-0">
                   <ReportTab
@@ -319,14 +298,30 @@ export default function JobDetailPage(): React.ReactElement {
                   />
                 )}
               </div>
+            </TabsContent> */}
+
+            {/* data-storage tab: placeholder */}
+            <TabsContent value="data-storage" className="mt-0 flex-1 min-h-0">
+              <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2">
+                <span className="text-sm font-medium">Data Storage</span>
+                <span className="text-xs">Coming soon</span>
+              </div>
             </TabsContent>
 
-            <TabsContent value="lineage" className="mt-0 flex-1 min-h-0">
-              <LineageTab jobId={id} blockPlans={planData?.block_plans} />
+            {/* bi tab: placeholder */}
+            <TabsContent value="bi" className="mt-0 flex-1 min-h-0">
+              <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2">
+                <span className="text-sm font-medium">BI</span>
+                <span className="text-xs">Coming soon</span>
+              </div>
             </TabsContent>
 
-            <TabsContent value="evaluation" className="mt-0 flex-1 min-h-0">
-              <EvaluationTab jobId={id} jobStatus={job?.status ?? "queued"} />
+            {/* ai tab: placeholder */}
+            <TabsContent value="ai" className="mt-0 flex-1 min-h-0">
+              <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2">
+                <span className="text-sm font-medium">AI</span>
+                <span className="text-xs">Coming soon</span>
+              </div>
             </TabsContent>
 
             {/* <TabsContent value="history" className="mt-0 flex-1 min-h-0 overflow-y-auto">
