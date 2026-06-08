@@ -6,6 +6,15 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-06-08 — F29 Plan tab layout and PR #34 repurposing
+
+- **PR #34 not merged; design repurposed into F29:** MigrationPreviewPage (pre-migration assessment) is superseded; verdict strip, attention cards, scope summary, and sticky accept footer are absorbed into Plan tab (F29) using only existing API data · revisit never
+- **Reads/produces, missing deps, PII deferred:** All three require backend schema additions not in F29 scope; deferred to a follow-on backend feature · revisit when sprint capacity allows
+- **Single "Needs attention" section with Cards/Table toggle:** Replaces separate attention card list + review queue table — serves PM (card view) and tech lead (table view) without redundancy · revisit never
+- **Sticky accept footer:** Accept button pinned to bottom of Plan tab content area — always accessible while user reviews evidence; verdict strip at top states the recommendation, sticky footer closes the loop · revisit never
+
+---
+
 ## 2026-06-05 — Plan tab as single decision surface (F29)
 
 - **EvaluationTab content absorbed into Plan tab:** Summary cards, full review queue columns (source file, self-confidence, verified confidence, reconciliation, human review required, blast radius), per-file breakdown, and confidence info dialog all move into Plan tab — EvaluationTab becomes a deletion candidate in #46 · rationale: the user must be able to make a confident accept/reject migration decision without navigating away from the Plan tab · revisit never

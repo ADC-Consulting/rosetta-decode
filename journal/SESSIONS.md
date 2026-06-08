@@ -6,6 +6,41 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-08 — F29 branch set up; plan expanded with PR #34 design repurposing
+**Duration:** ~2h | **Focus:** F29 planning, UX design, layout iteration
+
+### Done
+- `feat/F29-plan-tab-refinement` branch created off latest main (docs/session branch folded in manually after SESSIONS.md conflict)
+- Reviewed PR #34 (F22 assessment UX) in full — verdict strip, attention blocks, scope summary, sticky accept, reads/produces, missing deps, PII
+- Data availability analysis: verdict strip / scope / attention blocks can be derived from existing API data (frontend-only); reads/produces, missing deps, PII need backend schema changes (deferred)
+- Three rounds of Plan tab layout iteration (v1 → v2 → v3):
+  - v1: initial sketch from F29 plan
+  - v2: accept button moved inline with verdict; attention + review queue merged; re-translate to section header; stat card auto-expands blocks
+  - v3: accept button → sticky footer; scope → page header; description → free-standing prose; Cards/Table toggle replaces sub-expander; "N more · Show all" pattern; empty/all-pass state
+- F29 plan updated with 5 new subtasks (S-J → S-N), updated acceptance criteria, revised out-of-scope section
+
+### Decisions
+- **PR #34 will not be merged:** Pre-migration assessment workflow (MigrationPreviewPage) is superseded; verdict strip, attention cards, scope summary, and sticky accept from PR #34 are repurposed into F29 instead · revisit never
+- **Reads/produces, missing deps, PII deferred to backend follow-on:** All three require API schema changes not in scope for F29's frontend-only assembly · revisit when backend capacity available
+- **Cards/Table toggle replaces separate attention + review queue sections:** One "Needs attention" section serves PM (cards) and tech lead (table) — eliminates reading same data twice · revisit never
+- **Sticky accept footer:** Accept button pinned to bottom of Plan tab, always visible while user scrolls evidence · revisit never
+
+### Open Questions
+- None blocking F29
+
+### Next Session — Start Here
+1. Approve this journal entry and commit
+2. Delegate S-A through S-O to `frontend-builder` — plan at `docs/plans/latest/F29-plan-tab-refinement.md`
+3. Reference v3 layout sketch in this session entry when briefing frontend-builder
+
+### Files Touched
+- `docs/plans/latest/F29-plan-tab-refinement.md`
+- `journal/BACKLOG.md`
+- `journal/DECISIONS.md`
+- `journal/SESSIONS.md`
+
+---
+
 ## 2026-06-05 — Issue triage, backlog label, pharma test, review queue fix
 **Duration:** ~1.5h | **Focus:** Issue hygiene, prioritisation, frontend testing
 
