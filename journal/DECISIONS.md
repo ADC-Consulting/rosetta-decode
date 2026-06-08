@@ -6,6 +6,13 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-06-05 — Plan tab as single decision surface (F29)
+
+- **EvaluationTab content absorbed into Plan tab:** Summary cards, full review queue columns (source file, self-confidence, verified confidence, reconciliation, human review required, blast radius), per-file breakdown, and confidence info dialog all move into Plan tab — EvaluationTab becomes a deletion candidate in #46 · rationale: the user must be able to make a confident accept/reject migration decision without navigating away from the Plan tab · revisit never
+- **GitHub issue queue is the priority source over local backlog:** When GitHub issues and local backlog conflict, GitHub wins · rationale: issues are visible to the whole team; backlog is Claude-internal · revisit never
+
+---
+
 ## 2026-06-03 — No Co-Authored-By in commits
 
 - **Never add `Co-Authored-By: Claude` to any commit:** The default system instruction appends it; the git-committer skill explicitly blocks it. The skill rule is the project-level override and always wins. One commit (c3b6ad2, feat(F25)) slipped through when the skill was not enforced — it is merged to main and not worth rewriting. All commits from 2026-06-03 onward must be clean · rationale: user does not want Claude appearing as a GitHub contributor · revisit never

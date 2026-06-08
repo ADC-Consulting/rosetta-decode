@@ -292,7 +292,17 @@
 - [x] fix(F28): EvaluationTab removed from Plan tab; failed-reconciliation pill + collapsible review queue added to PlanTab
 - [x] fix(F28): LineageGraph crash on undefined nodes guarded in LineageTab
 - [x] fix(F28): LineageTab toast.error removed — silent inline message instead
-- [ ] #41: Plan tab refinement — ReportTab restored as collapsible panel, History panel at bottom — wireframe pending
+**F29 — Plan tab refinement (#41) → see `docs/plans/latest/F29-plan-tab-refinement.md`**
+- [ ] F29 S-A: Fix review queue expanded by default
+- [ ] F29 S-B: Replace stat pills with clickable summary cards + stat filter
+- [ ] F29 S-C: Upgrade review queue to full columns (source file, confidence, recon, blast radius)
+- [ ] F29 S-D: Add confidence info dialog
+- [ ] F29 S-E: Add lineage unavailable notice
+- [ ] F29 S-F: Add per-file breakdown section
+- [ ] F29 S-G: Bulk re-translate button
+- [ ] F29 S-H: Restore doc state in JobDetailPage + Report collapsible panel
+- [ ] F29 S-I: Migration history collapsible panel
+- [ ] F29 S-J: make test exits 0
 - [ ] #42: ETL tab — Lineage DAG as primary canvas, editor as click-through panel — wireframe pending
 - [ ] #43: Data Storage tab — SAS table inventory, DW mapping — wireframe pending
 - [x] #40: Chevron tab shell — delivered by F28, issue closed
@@ -300,7 +310,6 @@
 - [x] #45: AI tab placeholder — empty state delivered in F28 S-C, issue closed
 - [ ] #46: Remove legacy tab components (Plan/Editor/Report/Lineage/History/Evaluation) — blocked: depends on #41–45
 - [ ] #47: Remove legacy standalone pages and routes — blocked: depends on #46
-- [ ] #41: Plan tab refinement — blocked on wireframe
 - [ ] #42: ETL tab — blocked on wireframe
 - [ ] #43: Data Storage tab — blocked on wireframe
 - [ ] #52: Revisit sidebar navigation — blocked on persona validation
