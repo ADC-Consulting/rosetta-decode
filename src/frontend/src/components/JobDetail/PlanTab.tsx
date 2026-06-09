@@ -11,15 +11,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import BlockPlanTable from "./BlockPlanTable";
 
 // ---------------------------------------------------------------------------
@@ -51,43 +46,60 @@ const RISK_BAR: Record<string, { color: string; label: string }> = {
 };
 
 // ---------------------------------------------------------------------------
-// StatPill
+// StatCard
 // ---------------------------------------------------------------------------
 
-function StatPill({
+type StatFilterKey =
+  | "auto_verified"
+  | "needs_review"
+  | "manual_todo"
+  | "failed_reconciliation";
+
+function StatCard({
+  filterKey,
   count,
+  total,
   label,
-  colorClass,
-  dotClass,
-  tooltip,
+  colorClasses,
+  activeFilter,
+  onFilterChange,
 }: {
+  filterKey: StatFilterKey;
   count: number | undefined;
+  total: number | undefined;
   label: string;
-  colorClass: string;
-  dotClass: string;
-  tooltip: string;
+  colorClasses: string;
+  activeFilter: StatFilterKey | null;
+  onFilterChange: (key: StatFilterKey | null) => void;
 }): React.ReactElement | null {
   if (count === undefined) return null;
+  const isActive = activeFilter === filterKey;
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <div className="flex items-center gap-1.5 cursor-default select-none" />
-        }
-      >
-        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotClass}`} />
-        <span className={`text-xs font-semibold tabular-nums ${colorClass}`}>
-          {count}
+    <button
+      type="button"
+      aria-pressed={isActive}
+      onClick={() => onFilterChange(isActive ? null : filterKey)}
+      className={[
+        "flex flex-col items-center justify-center gap-0.5 rounded-lg border p-3 min-w-[80px]",
+        "cursor-pointer select-none transition-all",
+        colorClasses,
+        isActive
+          ? "ring-2 ring-offset-1 ring-current shadow-sm"
+          : "hover:opacity-80",
+      ].join(" ")}
+    >
+      <span className="text-2xl font-bold tabular-nums leading-none">
+        {count}
+      </span>
+      {total !== undefined && (
+        <span className="text-xs text-muted-foreground leading-none">
+          of {total}
         </span>
-        <span className="text-xs text-muted-foreground">{label}</span>
-      </TooltipTrigger>
-      <TooltipContent
-        side="bottom"
-        className="max-w-65 text-xs leading-relaxed whitespace-normal text-center"
-      >
-        {tooltip}
-      </TooltipContent>
-    </Tooltip>
+      )}
+      <span className="text-xs font-medium mt-0.5 leading-tight text-center">
+        {label}
+      </span>
+    </button>
   );
 }
 
@@ -140,6 +152,9 @@ export default function PlanTab({
   const isProposed = jobStatus === "proposed";
   const [blocksCollapsed, setBlocksCollapsed] = useState(true);
   const [reviewCollapsed, setReviewCollapsed] = useState(true);
+  const [activeStatFilter, setActiveStatFilter] =
+    useState<StatFilterKey | null>(null);
+  const blocksRef = useRef<HTMLDivElement>(null);
 
   if (!isReviewable) {
     return (
@@ -248,41 +263,116 @@ export default function PlanTab({
                 </span>
               </div>
 
-              {/* Stat pills */}
+              {/* Stat cards */}
               {trustReport && (
                 <>
                   <Separator
                     orientation="vertical"
                     className="h-4 hidden sm:block"
                   />
-                  <StatPill
-                    count={trustReport.auto_verified}
-                    label="Auto-verified"
-                    colorClass="text-green-700"
-                    dotClass="bg-green-500"
-                    tooltip="The generated Python was executed against the same input data as the SAS and the outputs matched — schema, row count, and aggregates all pass. Safe to accept without manual review."
-                  />
-                  <StatPill
-                    count={trustReport.needs_review}
-                    label="Needs review"
-                    colorClass="text-amber-700"
-                    dotClass="bg-amber-500"
-                    tooltip="Translation ran but reconciliation flagged differences, and the LLM's own confidence was low. A human should inspect these blocks before accepting the migration."
-                  />
-                  <StatPill
-                    count={trustReport.manual_todo}
-                    label="Manual TODO"
-                    colorClass="text-muted-foreground"
-                    dotClass="bg-border"
-                    tooltip="Blocks the migration planner marked as manual, manual_ingestion, or skip — constructs that cannot be auto-translated. A developer must write the Python equivalent by hand."
-                  />
-                  <StatPill
-                    count={trustReport.failed_reconciliation}
-                    label="Failed reconciliation"
-                    colorClass="text-red-700"
-                    dotClass="bg-red-500"
-                    tooltip="Blocks where the generated Python was executed but the output did not match the SAS reference. These blocks need inspection."
-                  />
+                  <div className="flex flex-col gap-2 w-full">
+                    <div className="grid grid-cols-4 gap-3">
+                      <StatCard
+                        filterKey="auto_verified"
+                        count={trustReport.auto_verified}
+                        total={trustReport.total_blocks}
+                        label="Auto-verified"
+                        colorClasses="text-green-700 bg-green-50 border-green-200"
+                        activeFilter={activeStatFilter}
+                        onFilterChange={(key) => {
+                          setActiveStatFilter(key);
+                          if (key !== null) {
+                            setBlocksCollapsed(false);
+                            setTimeout(
+                              () =>
+                                blocksRef.current?.scrollIntoView({
+                                  behavior: "smooth",
+                                  block: "start",
+                                }),
+                              50,
+                            );
+                          }
+                        }}
+                      />
+                      <StatCard
+                        filterKey="needs_review"
+                        count={trustReport.needs_review}
+                        total={trustReport.total_blocks}
+                        label="Needs review"
+                        colorClasses="text-amber-700 bg-amber-50 border-amber-200"
+                        activeFilter={activeStatFilter}
+                        onFilterChange={(key) => {
+                          setActiveStatFilter(key);
+                          if (key !== null) {
+                            setBlocksCollapsed(false);
+                            setTimeout(
+                              () =>
+                                blocksRef.current?.scrollIntoView({
+                                  behavior: "smooth",
+                                  block: "start",
+                                }),
+                              50,
+                            );
+                          }
+                        }}
+                      />
+                      <StatCard
+                        filterKey="manual_todo"
+                        count={trustReport.manual_todo}
+                        total={trustReport.total_blocks}
+                        label="Manual TODO"
+                        colorClasses="text-muted-foreground bg-muted border-border"
+                        activeFilter={activeStatFilter}
+                        onFilterChange={(key) => {
+                          setActiveStatFilter(key);
+                          if (key !== null) {
+                            setBlocksCollapsed(false);
+                            setTimeout(
+                              () =>
+                                blocksRef.current?.scrollIntoView({
+                                  behavior: "smooth",
+                                  block: "start",
+                                }),
+                              50,
+                            );
+                          }
+                        }}
+                      />
+                      <StatCard
+                        filterKey="failed_reconciliation"
+                        count={trustReport.failed_reconciliation}
+                        total={trustReport.total_blocks}
+                        label="Failed reconciliation"
+                        colorClasses="text-red-700 bg-red-50 border-red-200"
+                        activeFilter={activeStatFilter}
+                        onFilterChange={(key) => {
+                          setActiveStatFilter(key);
+                          if (key !== null) {
+                            setBlocksCollapsed(false);
+                            setTimeout(
+                              () =>
+                                blocksRef.current?.scrollIntoView({
+                                  behavior: "smooth",
+                                  block: "start",
+                                }),
+                              50,
+                            );
+                          }
+                        }}
+                      />
+                    </div>
+                    {activeStatFilter && (
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setActiveStatFilter(null)}
+                          className="text-[11px] text-muted-foreground hover:text-foreground underline underline-offset-2 cursor-pointer"
+                        >
+                          Clear filter ×
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </>
               )}
             </div>
@@ -291,7 +381,7 @@ export default function PlanTab({
 
         {/* Block plan section */}
         {planData?.block_plans && planData.block_plans.length > 0 && (
-          <div className="space-y-2">
+          <div ref={blocksRef} className="space-y-2">
             <button
               type="button"
               onClick={() => setBlocksCollapsed((v) => !v)}
@@ -324,6 +414,8 @@ export default function PlanTab({
                 onBlockRefineSuccess={onBlockRefineSuccess}
                 jobPythonCode={jobPythonCode}
                 generatedFiles={generatedFiles}
+                activeStatFilter={activeStatFilter}
+                onClearStatFilter={() => setActiveStatFilter(null)}
               />
             )}
           </div>

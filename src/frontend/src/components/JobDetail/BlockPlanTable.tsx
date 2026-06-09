@@ -55,6 +55,12 @@ import { registerSasLanguage } from "./registerSasLanguage";
 // Types
 // ---------------------------------------------------------------------------
 
+type StatFilterKey =
+  | "auto_verified"
+  | "needs_review"
+  | "manual_todo"
+  | "failed_reconciliation";
+
 interface BlockPlanTableProps {
   blockPlans: BlockPlan[];
   isProposed: boolean;
@@ -65,6 +71,8 @@ interface BlockPlanTableProps {
   onBlockRefineSuccess?: () => void;
   jobPythonCode?: string;
   generatedFiles?: Record<string, string>;
+  activeStatFilter?: StatFilterKey | null;
+  onClearStatFilter?: () => void;
 }
 
 type GroupBy = "none" | "file" | "folder";
@@ -315,6 +323,13 @@ function extractBlockSection(fullCode: string, blockId: string): string {
 // Main component
 // ---------------------------------------------------------------------------
 
+const STAT_FILTER_LABELS: Record<StatFilterKey, string> = {
+  auto_verified: "Auto-verified",
+  needs_review: "Needs review",
+  manual_todo: "Manual TODO",
+  failed_reconciliation: "Failed reconciliation",
+};
+
 export default function BlockPlanTable({
   blockPlans,
   trustBlocks = {},
@@ -324,6 +339,8 @@ export default function BlockPlanTable({
   onBlockRefineSuccess,
   jobPythonCode,
   generatedFiles,
+  activeStatFilter,
+  onClearStatFilter,
 }: BlockPlanTableProps): React.ReactElement {
   const queryClient = useQueryClient();
   const isLive = jobStatus === "running" || jobStatus === "queued";
@@ -417,10 +434,26 @@ export default function BlockPlanTable({
     });
   }
 
-  const filtered =
+  function matchesStatFilter(bp: BlockPlan): boolean {
+    if (!activeStatFilter) return true;
+    const trust = trustBlocks[bp.block_id];
+    switch (activeStatFilter) {
+      case "auto_verified":
+        return !trust?.needs_attention;
+      case "needs_review":
+        return !!(trust?.needs_attention && bp.strategy !== "manual");
+      case "manual_todo":
+        return bp.strategy === "manual";
+      case "failed_reconciliation":
+        return trust?.reconciliation_status === "fail";
+    }
+  }
+
+  const filtered = (
     activeStrategies.size === 0
       ? blockPlans
-      : blockPlans.filter((b) => activeStrategies.has(b.strategy));
+      : blockPlans.filter((b) => activeStrategies.has(b.strategy))
+  ).filter(matchesStatFilter);
 
   const groups = groupBlocks(filtered, groupBy);
 
@@ -486,6 +519,40 @@ export default function BlockPlanTable({
             </button>
           )}
         </div>
+
+        {/* Active stat filter chip */}
+        {activeStatFilter && (
+          <>
+            <Separator orientation="vertical" className="h-4" />
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground shrink-0">
+                Stat filter
+              </span>
+              <span
+                className={cn(
+                  "h-6 px-2 inline-flex items-center gap-1 rounded-full text-[11px] font-medium border",
+                  activeStatFilter === "auto_verified" &&
+                    "text-green-700 bg-green-50 border-green-200",
+                  activeStatFilter === "needs_review" &&
+                    "text-amber-700 bg-amber-50 border-amber-200",
+                  activeStatFilter === "manual_todo" &&
+                    "text-muted-foreground bg-muted border-border",
+                  activeStatFilter === "failed_reconciliation" &&
+                    "text-red-700 bg-red-50 border-red-200",
+                )}
+              >
+                {STAT_FILTER_LABELS[activeStatFilter]}
+                <button
+                  onClick={onClearStatFilter}
+                  aria-label="Clear stat filter"
+                  className="ml-0.5 hover:opacity-70 cursor-pointer leading-none"
+                >
+                  ×
+                </button>
+              </span>
+            </div>
+          </>
+        )}
 
         {/* Glossary button */}
         <Button
