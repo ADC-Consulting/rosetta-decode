@@ -13,7 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronRight, XCircle } from "lucide-react";
 import { useRef, useState } from "react";
 import BlockPlanTable from "./BlockPlanTable";
 
@@ -458,34 +458,117 @@ export default function PlanTab({
                 medium: "text-amber-700 bg-amber-50 border border-amber-200",
                 low: "text-green-700 bg-green-50 border border-green-200",
               };
-              const sorted = [...trustReport.review_queue]
-                .sort((a, b) => (CRIT_ORDER[a.criticality] ?? 99) - (CRIT_ORDER[b.criticality] ?? 99));
+              const CONF_COLOR: Record<string, string> = {
+                high: "text-green-700 bg-green-50 border border-green-200",
+                medium: "text-amber-700 bg-amber-50 border border-amber-200",
+                low: "text-red-700 bg-red-50 border border-red-200",
+                very_low: "text-red-700 bg-red-50 border border-red-200",
+              };
+
+              function ConfBadge({ value }: { value: string | null }): React.ReactElement {
+                if (!value) return <span className="text-muted-foreground text-xs">—</span>;
+                const cls =
+                  CONF_COLOR[value] ?? "text-muted-foreground bg-muted border border-border";
+                return (
+                  <span
+                    className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${cls}`}
+                  >
+                    {value}
+                  </span>
+                );
+              }
+
+              function ReconIcon({
+                value,
+              }: {
+                value: "pass" | "fail" | null;
+              }): React.ReactElement {
+                if (!value)
+                  return <span className="text-muted-foreground text-xs">—</span>;
+                if (value === "pass")
+                  return <CheckCircle2 size={14} className="text-green-600" />;
+                return <XCircle size={14} className="text-red-600" />;
+              }
+
+              const showBlastRadius = trustReport.lineage_available === true;
+
+              const sorted = [...trustReport.review_queue].sort((a, b) => {
+                const cDiff =
+                  (CRIT_ORDER[a.criticality] ?? 99) -
+                  (CRIT_ORDER[b.criticality] ?? 99);
+                if (cDiff !== 0) return cDiff;
+                const aBlast = a.blast_radius ?? -1;
+                const bBlast = b.blast_radius ?? -1;
+                return bBlast - aBlast;
+              });
+
               return (
                 <div className="overflow-x-auto rounded-lg border border-border">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-muted/50 text-xs text-muted-foreground">
                         <th className="px-3 py-2 text-left font-medium">Block ID</th>
+                        <th className="px-3 py-2 text-left font-medium">Source file</th>
                         <th className="px-3 py-2 text-left font-medium">Strategy</th>
+                        <th className="px-3 py-2 text-left font-medium">Self confidence</th>
+                        <th className="px-3 py-2 text-left font-medium">Verified confidence</th>
+                        <th className="px-3 py-2 text-left font-medium">Reconciliation</th>
                         <th className="px-3 py-2 text-left font-medium">Criticality</th>
+                        <th className="px-3 py-2 text-left font-medium">Human review</th>
+                        {showBlastRadius && (
+                          <th className="px-3 py-2 text-left font-medium">Blast radius</th>
+                        )}
                       </tr>
                     </thead>
                     <tbody>
                       {sorted.map((block) => (
                         <tr key={block.block_id} className="border-t border-border">
-                          <td className="px-3 py-2 font-mono text-xs text-muted-foreground max-w-[200px] truncate">
+                          <td className="px-3 py-2 font-mono text-xs text-muted-foreground max-w-[160px] truncate">
                             {block.block_id}
                           </td>
+                          <td className="px-3 py-2 font-mono text-xs text-muted-foreground max-w-[160px] truncate">
+                            {block.source_file}
+                          </td>
                           <td className="px-3 py-2">
-                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${STRAT_COLOR[block.strategy] ?? "bg-muted text-muted-foreground"}`}>
+                            <span
+                              className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
+                                STRAT_COLOR[block.strategy] ?? "bg-muted text-muted-foreground"
+                              }`}
+                            >
                               {STRAT_LABEL[block.strategy] ?? block.strategy}
                             </span>
                           </td>
                           <td className="px-3 py-2">
-                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${CRIT_COLOR[block.criticality] ?? "text-muted-foreground bg-muted border border-border"}`}>
+                            <ConfBadge value={block.self_confidence} />
+                          </td>
+                          <td className="px-3 py-2">
+                            <ConfBadge value={block.verified_confidence} />
+                          </td>
+                          <td className="px-3 py-2">
+                            <ReconIcon value={block.reconciliation_status} />
+                          </td>
+                          <td className="px-3 py-2">
+                            <span
+                              className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
+                                CRIT_COLOR[block.criticality] ??
+                                "text-muted-foreground bg-muted border border-border"
+                              }`}
+                            >
                               {block.criticality}
                             </span>
                           </td>
+                          <td className="px-3 py-2">
+                            {block.human_review_required ? (
+                              <CheckCircle2 size={14} className="text-red-600" />
+                            ) : (
+                              <span className="text-muted-foreground text-xs">—</span>
+                            )}
+                          </td>
+                          {showBlastRadius && (
+                            <td className="px-3 py-2 text-xs tabular-nums text-muted-foreground">
+                              {block.blast_radius ?? "—"}
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
