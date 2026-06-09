@@ -151,7 +151,7 @@ export default function PlanTab({
 
   const isProposed = jobStatus === "proposed";
   const [blocksCollapsed, setBlocksCollapsed] = useState(true);
-  const [reviewCollapsed, setReviewCollapsed] = useState(true);
+  const [reviewCollapsed, setReviewCollapsed] = useState(false);
   const [activeStatFilter, setActiveStatFilter] =
     useState<StatFilterKey | null>(null);
   const blocksRef = useRef<HTMLDivElement>(null);
