@@ -436,6 +436,13 @@ export default function PlanTab({
           </CardContent>
         </Card>
 
+        {/* Lineage unavailable notice */}
+        {trustReport && !trustReport.lineage_available && (
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+            Blast radius unavailable — lineage enrichment did not run for this job.
+          </div>
+        )}
+
         {/* Block plan section */}
         {planData?.block_plans && planData.block_plans.length > 0 && (
           <div ref={blocksRef} className="space-y-2">
