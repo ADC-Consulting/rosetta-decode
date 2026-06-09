@@ -8,12 +8,19 @@ import type {
 } from "@/api/types";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, ChevronDown, ChevronRight, XCircle } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronRight, Info, XCircle } from "lucide-react";
 import { useRef, useState } from "react";
 import BlockPlanTable from "./BlockPlanTable";
 
@@ -44,6 +51,37 @@ const RISK_BAR: Record<string, { color: string; label: string }> = {
   medium: { color: "#f59e0b", label: "Medium" },
   high: { color: "#ef4444", label: "High" },
 };
+
+// ---------------------------------------------------------------------------
+// Confidence help content
+// ---------------------------------------------------------------------------
+
+const CONFIDENCE_HELP = `What the confidence score tells you:
+
+• High (≥ 85%) — The translation agent was confident and, where a reference output was available, the Python output matched the SAS output exactly. Safe to treat as verified.
+
+• Medium (65–84%) — The translation is likely correct but has not been fully verified, or the agent had some uncertainty. Worth a quick review.
+
+• Low (40–64%) — The agent flagged uncertainty, or the output did not match the reference. Requires human review before the block can be trusted.
+
+• Very Low (< 40%) — The agent had very low confidence, or the block failed reconciliation and was already low confidence. Likely needs manual rewrite.
+
+What it does not guarantee:
+
+A High confidence score does not mean the output is semantically correct in all edge cases — it means the automated checks passed and the LLM was confident. A human reviewer should still check any block that is business-critical.
+
+Confidence is computed per block (DATA step, PROC, etc.), not per column or per row.
+
+If no reference CSV was uploaded, there is no reconciliation to validate against — the score reflects LLM self-assessment only.
+
+What criticality means:
+
+Criticality is a post-translation signal that combines strategy, confidence, reconciliation outcome, and blast radius (how many downstream files depend on this block). It differs from Risk, which is a static pre-translation assessment of SAS construct complexity.
+
+• Critical — Strategy is manual, or confidence was very low. Block needs human authoring or rewrite.
+• High — Confidence was low, reconciliation failed, or this block feeds 3+ downstream files.
+• Medium — Translation ran with medium confidence. Worth a spot check before accepting.
+• Low — High confidence, reconciliation passed, minimal downstream impact.`;
 
 // ---------------------------------------------------------------------------
 // StatCard
@@ -223,7 +261,7 @@ export default function PlanTab({
               {/* Confidence bar */}
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground shrink-0">
-                  Confidence
+                  LLM confidence
                 </span>
                 <Progress
                   value={confidencePct}
@@ -238,6 +276,25 @@ export default function PlanTab({
                 >
                   {confidencePct}%
                 </span>
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <button
+                      type="button"
+                      className="text-muted-foreground hover:text-foreground transition-colors ml-1"
+                      aria-label="What does confidence mean?"
+                    >
+                      <Info size={14} />
+                    </button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+                    <DialogHeader>
+                      <DialogTitle>Confidence &amp; criticality</DialogTitle>
+                    </DialogHeader>
+                    <pre className="text-sm text-foreground whitespace-pre-wrap font-sans leading-relaxed">
+                      {CONFIDENCE_HELP}
+                    </pre>
+                  </DialogContent>
+                </Dialog>
               </div>
 
               <Separator
