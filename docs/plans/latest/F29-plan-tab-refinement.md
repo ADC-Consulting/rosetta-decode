@@ -12,17 +12,17 @@ Make the Plan tab the single place where a user gets everything they need to mak
 ## Acceptance Criteria
 
 - [ ] Scope summary ("N files · M blocks") shown as subtitle in job header
-- [ ] Verdict strip renders in three states (green/amber/red) with plain-English consequence text derived from trustReport
-- [ ] Description text is free-standing prose between verdict and metrics card
-- [ ] Stat cards are large and clickable; clicking filters the block table and auto-expands the Blocks section; clicking again clears the filter
+- [ ] Description text renders **above** the verdict strip (context before conclusion)
+- [ ] Verdict strip renders in three states: green (no issues), red (manual_todo > 0), amber (everything else); each with icon + headline + consequence sentence
+- [ ] Confidence bar is labelled "LLM confidence"; stat cards show "N of total" denominators
+- [ ] Stat cards are clickable; clicking filters the block table, auto-expands Blocks, and scrolls it into view; clicking again clears the filter
 - [ ] Confidence info dialog (ℹ️) opens with explanation of confidence bands, criticality, and blast radius
 - [ ] Amber notice shown when lineage is unavailable (blast radius column suppressed)
-- [ ] "Needs attention" section replaces separate attention cards + review queue; has Cards/Table toggle; Cards view shows top 5 plain-English items with "N more · Show all"; Table view shows full 9-column review table; section hidden when no blocks need attention
+- [ ] "Needs attention" section has Cards/Table toggle; Cards view shows explicit strategy label, rationale fallback, "View code →" link per card, manual-block action hint when manual_todo > 0; green success state (visible) when all blocks pass
 - [ ] "Re-translate all failed blocks" button in Needs attention header; fires `refineBlock` sequentially; disabled while in flight
-- [ ] Per-file breakdown section present, collapsible, collapsed by default
-- [ ] Report collapsible panel present, collapsed by default, renders full ReportTab content
-- [ ] Migration history collapsible panel present, collapsed by default, renders ChangelogFeed
-- [ ] Sticky accept footer pinned to bottom of Plan tab; shows verdict summary + Accept button; hidden when accepted
+- [ ] Report section expanded by default when doc is available; collapsed with placeholder message when not
+- [ ] Section order: Blocks → Report → By file → Migration history
+- [ ] Sticky accept footer: button label varies by verdict state; shares existing `showAcceptConfirm` dialog; `pb-16` padding prevents overlap; hidden when accepted
 - [ ] `make test` exits 0
 - [ ] ruff and mypy pass
 
@@ -39,7 +39,7 @@ Make the Plan tab the single place where a user gets everything they need to mak
 - `src/frontend/src/components/JobDetail/PlanTab.tsx`
 - `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
 **Depends on:** none
-**Done when:** The four metrics render as large summary cards (big number + label, styled by status colour); clicking a card sets `activeStatFilter` in PlanTab and filters the block table; clicking the active card clears the filter; `BlockPlanTable` accepts `activeStatFilter` prop and applies it after the existing strategy filter using `trustBlocks[bp.block_id]` to categorise rows
+**Done when:** The four metrics render as large summary cards (big number + label, styled by status colour); each card shows the count as a large number with a secondary "of N" denominator in smaller text derived from `trustReport.total_blocks` (e.g. "6" with "of 26" beneath); clicking a card sets `activeStatFilter` in PlanTab, filters the block table, auto-expands the Blocks section, AND scrolls the Blocks section into view; clicking the active card clears the filter; `BlockPlanTable` accepts `activeStatFilter` prop and applies it after the existing strategy filter using `trustBlocks[bp.block_id]` to categorise rows
 - [ ] done
 
 ### S-C: Upgrade review queue to full columns
@@ -63,7 +63,7 @@ Make the Plan tab the single place where a user gets everything they need to mak
 ### S-F: Add per-file breakdown section
 **File:** `src/frontend/src/components/JobDetail/PlanTab.tsx`
 **Depends on:** none
-**Done when:** A collapsible "By file" section (collapsed by default) renders one `FileSection` per `trustReport.files` entry, each showing total_blocks / auto_verified / needs_review / manual_todo / failed_reconciliation for that source file; section hidden when `trustReport.files` is empty
+**Done when:** A collapsible "By file" section (collapsed by default) renders one `FileSection` per `trustReport.files` entry, each showing total_blocks / auto_verified / needs_review / manual_todo / failed_reconciliation for that source file; section hidden when `trustReport.files` is empty; section appears after Report (order: Blocks → Report → By file → Migration history)
 - [ ] done
 
 ### S-G: Bulk re-translate button
@@ -77,7 +77,7 @@ Make the Plan tab the single place where a user gets everything they need to mak
 - `src/frontend/src/pages/JobDetailPage.tsx`
 - `src/frontend/src/components/JobDetail/PlanTab.tsx`
 **Depends on:** none
-**Done when:** `getJobDoc` import, `docData` query, `overrideDoc`, `reportRestoreKey` state are restored in JobDetailPage (all have "restored in #41" stub comments); new props `doc`, `nonTechnicalDoc`, `isDone`, `onDocChange`, `onSave`, `isSaving`, `restoreKey` added to PlanTab and passed from JobDetailPage; `ReportTab` rendered inside a collapsible section in PlanTab, collapsed by default
+**Done when:** `getJobDoc` import, `docData` query, `overrideDoc`, `reportRestoreKey` state are restored in JobDetailPage (all have "restored in #41" stub comments); new props `doc`, `nonTechnicalDoc`, `isDone`, `onDocChange`, `onSave`, `isSaving`, `restoreKey` added to PlanTab and passed from JobDetailPage; `ReportTab` rendered inside a collapsible section in PlanTab; section is **expanded by default when `doc` is non-null** (the PM's primary question after reading the verdict is "what does this pipeline produce?" — the report answers it); collapsed with "No documentation generated yet" message when `doc` is null; Report section appears immediately after Blocks (order: Blocks → Report → By file → Migration history)
 - [ ] done
 
 ### S-I: Migration history collapsible panel
@@ -89,7 +89,7 @@ Make the Plan tab the single place where a user gets everything they need to mak
 ### S-J: Verdict strip
 **File:** `src/frontend/src/components/JobDetail/PlanTab.tsx`
 **Depends on:** none
-**Done when:** A full-width strip below the scope summary shows one of three states derived from `trustReport` — green "✓ Ready to accept" (all blocks auto-verified), amber "⚠ Review recommended" (needs_review > 0 or failed_reconciliation > 0), red "⚠ Not ready to accept" (manual_todo > 0 and failed_reconciliation > 0); each state has a plain-English consequence sentence; strip has a coloured left border matching the state
+**Done when:** A full-width strip below the scope summary shows one of three states derived from `trustReport`; state logic: green = `needs_review === 0 && failed_reconciliation === 0 && manual_todo === 0`; red = `manual_todo > 0` (pipeline is structurally incomplete regardless of recon); amber = everything else (recon failures or needs_review without manual gaps); each state has icon + headline + one plain-English consequence sentence (green: "All blocks verified — safe to accept"; amber: "N blocks need review before accepting"; red: "N blocks cannot be auto-converted — manual implementation required before this pipeline will run"); strip has a coloured left border (green/amber/red) matching the state
 - [ ] done
 
 ### S-K: Scope summary in page header
@@ -101,13 +101,13 @@ Make the Plan tab the single place where a user gets everything they need to mak
 ### S-L: Merge attention cards + review queue into single section with card/table toggle
 **File:** `src/frontend/src/components/JobDetail/PlanTab.tsx`
 **Depends on:** S-A, S-C
-**Done when:** The separate "Review queue" section is replaced by a single "Needs attention" section with a Cards/Table segmented toggle; Cards view shows plain-English cards (top 5, manual first then critical, with "N more · Show all" link that switches to table view); Table view shows the full 9-column review table from S-C; "Re-translate failed blocks" button (S-G) lives in this section header; section is expanded by default; hidden entirely when no blocks need attention (renders green "All blocks verified" message instead)
+**Done when:** The separate "Review queue" section is replaced by a single "Needs attention" section with a Cards/Table segmented toggle; Cards view shows top 5 blocks (manual first, then by criticality desc); each card shows: block ID + source file, explicit strategy label in text ("Manual — cannot auto-convert" or "Reconciliation failed" or "Needs review"), plain-English rationale (fallback: "A {block_type} block that {failed reconciliation/requires manual implementation}" if `rationale` is empty), affected downstream datasets if available, and a "View code →" subtle link that opens the View Code dialog for that block directly; when `manual_todo > 0` an amber info line appears at the top of the cards view: "Manual blocks require code edits in the ETL tab before this pipeline will run"; "N more · Show all" link at the bottom switches to table view; Table view shows the full 9-column review table from S-C; "Re-translate failed blocks" button (S-G) lives in this section header (only visible when `failed_reconciliation > 0`); section expanded by default; when no blocks need attention, section stays visible but renders a green "✓ All N blocks verified — nothing needs attention" state (not hidden)
 - [ ] done
 
-### S-M: Description text as free-standing prose
+### S-M: Description text above verdict strip + label confidence bar
 **File:** `src/frontend/src/components/JobDetail/PlanTab.tsx`
 **Depends on:** none
-**Done when:** `planData.summary` text renders as a plain paragraph between the verdict strip and the metrics card — not inside the metrics card; metrics card contains only confidence bar + risk bar + stat cards
+**Done when:** `planData.summary` text renders as a plain paragraph **above** the verdict strip (not between verdict and metrics); this ensures users read what the pipeline does before reading the verdict — context before conclusion; metrics card contains only confidence bar + risk bar + stat cards; the confidence bar label reads "LLM confidence" (not just "Confidence") to distinguish it from the reconciliation-based stat cards
 - [ ] done
 
 ### S-N: Sticky accept footer
@@ -115,7 +115,7 @@ Make the Plan tab the single place where a user gets everything they need to mak
 - `src/frontend/src/components/JobDetail/PlanTab.tsx`
 - `src/frontend/src/pages/JobDetailPage.tsx`
 **Depends on:** S-J
-**Done when:** A sticky bar is pinned to the bottom of the Plan tab content area showing the verdict summary text on the left and the Accept migration button on the right; bar state mirrors the verdict strip (green/amber/red text); hidden when job is already accepted; the existing Accept button in the page header remains for discoverability
+**Done when:** A sticky bar is pinned to the bottom of the Plan tab content area (not the full page — scoped to the plan tab scroll container so it doesn't overlap other tabs); left side shows verdict summary text styled by state (green/amber/red); right side shows Accept button with label that varies by verdict state: green → "Accept migration", amber → "Accept anyway", red → "Accept (not recommended)"; clicking triggers the existing `showAcceptConfirm` dialog already wired in `JobDetailPage` — the footer button must share this state, not open a second dialog; the existing Accept button in the page header remains; entire footer hidden when `job.status === "accepted"`; content area has `pb-16` padding so collapsed sections are not obscured by the sticky bar
 - [ ] done
 
 ### S-O: make test exits 0
