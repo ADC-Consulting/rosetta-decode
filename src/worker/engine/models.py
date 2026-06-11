@@ -253,6 +253,15 @@ class MissingDependency(BaseModel):
     reference_count: int
 
 
+class SensitiveDataFinding(BaseModel):
+    """A column name that matches a known PII/sensitive data signal."""
+
+    column: str
+    matched_signal: str
+    source_type: Literal["file", "block"]
+    source: str  # file path (if source_type=="file") or block_id (if source_type=="block")
+
+
 class MigrationPlan(BaseModel):
     """Overall migration plan produced by the planning agent.
 
@@ -272,6 +281,7 @@ class MigrationPlan(BaseModel):
     cross_file_dependencies: list[str]
     risk_explanation: str = ""
     missing_dependencies: list[MissingDependency] = Field(default_factory=list)
+    sensitive_data_findings: list[SensitiveDataFinding] = Field(default_factory=list)
 
 
 class ColumnFlow(BaseModel):

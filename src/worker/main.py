@@ -39,6 +39,7 @@ from src.worker.engine.models import (
     SASBlock,
 )
 from src.worker.engine.parser import SASParser, extract_lineage
+from src.worker.engine.pii_scanner import scan_for_pii
 from src.worker.engine.router import TranslationRouter
 from src.worker.engine.stub_generator import StubGenerator
 from src.worker.engine.trace import JobCancelledError, TraceEmitter
@@ -515,6 +516,9 @@ class JobOrchestrator:
         if context.migration_plan is not None:
             context.migration_plan.missing_dependencies = detect_missing_dependencies(
                 parse_result, files
+            )
+            context.migration_plan.sensitive_data_findings = scan_for_pii(
+                parse_result.blocks, context.data_files
             )
 
         if tracer:

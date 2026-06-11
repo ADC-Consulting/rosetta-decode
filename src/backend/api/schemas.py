@@ -245,6 +245,15 @@ class MissingDependency(BaseModel):
     reference_count: int
 
 
+class SensitiveDataFinding(BaseModel):
+    """A column-level sensitive data signal detected in the SAS source."""
+
+    column: str
+    matched_signal: str
+    source_type: Literal["file", "block"]
+    source: str
+
+
 class JobPlanResponse(BaseModel):
     """Response body for GET /jobs/{id}/plan."""
 
@@ -256,6 +265,7 @@ class JobPlanResponse(BaseModel):
     cross_file_dependencies: list[str]
     risk_explanation: str = ""
     missing_dependencies: list[MissingDependency] = []
+    sensitive_data_findings: list[SensitiveDataFinding] = []
 
 
 class AcceptJobRequest(BaseModel):
