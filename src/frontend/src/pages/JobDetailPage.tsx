@@ -1,7 +1,7 @@
 import {
   acceptJob,
   getJob,
-  // getJobDoc, // restored in #41 with ReportTab
+  getJobDoc,
   getJobPlan,
   getJobTrustReport,
   refineJob,
@@ -41,7 +41,8 @@ export default function JobDetailPage(): React.ReactElement {
     string,
     string
   > | null>(null);
-  // overrideDoc / reportRestoreKey removed — restored in #41 with ReportTab
+  const [overrideDoc, setOverrideDoc] = useState<string | null>(null);
+  const [reportRestoreKey] = useState(0);
   const [planOverrides, setPlanOverrides] = useState<
     Record<string, BlockOverride>
   >({});
@@ -75,7 +76,16 @@ export default function JobDetailPage(): React.ReactElement {
 
   const displayedEditorCode = editorCode ?? job?.python_code ?? "";
 
-  // docData query and currentDoc removed — restored in #41 with ReportTab
+  const { data: docData } = useQuery({
+    queryKey: ["job", id, "doc"],
+    queryFn: () => getJobDoc(id),
+    enabled:
+      !!id &&
+      (job?.status === "proposed" ||
+        job?.status === "accepted" ||
+        job?.status === "under_review"),
+  });
+  const currentDoc = overrideDoc ?? docData?.doc ?? null;
 
   const saveVersionMutation = useMutation({
     mutationFn: async () => {
@@ -241,6 +251,13 @@ export default function JobDetailPage(): React.ReactElement {
                 onBlockRefineSuccess={() => setEditorCode(null)}
                 jobPythonCode={job?.python_code ?? undefined}
                 generatedFiles={job?.generated_files ?? undefined}
+                doc={currentDoc}
+                nonTechnicalDoc={docData?.non_technical_doc ?? null}
+                isDone={isReviewable}
+                onDocChange={setOverrideDoc}
+                onSave={() => saveVersionMutation.mutate()}
+                isSaving={saveVersionMutation.isPending}
+                restoreKey={reportRestoreKey}
               />
             </TabsContent>
 

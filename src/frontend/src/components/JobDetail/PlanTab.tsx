@@ -25,6 +25,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, ChevronDown, ChevronRight, Info, Loader2, XCircle } from "lucide-react";
 import { useRef, useState } from "react";
 import BlockPlanTable from "./BlockPlanTable";
+import ReportTab from "./ReportTab";
 
 // ---------------------------------------------------------------------------
 // Colour maps
@@ -190,6 +191,13 @@ export default function PlanTab({
   onBlockRefineSuccess,
   jobPythonCode,
   generatedFiles,
+  doc,
+  nonTechnicalDoc,
+  isDone,
+  onDocChange,
+  onSave,
+  isSaving,
+  restoreKey,
 }: {
   jobId: string;
   isReviewable: boolean;
@@ -202,6 +210,13 @@ export default function PlanTab({
   onBlockRefineSuccess?: () => void;
   jobPythonCode?: string;
   generatedFiles?: Record<string, string>;
+  doc?: string | null;
+  nonTechnicalDoc?: string | null;
+  isDone?: boolean;
+  onDocChange?: (doc: string) => void;
+  onSave?: () => void;
+  isSaving?: boolean;
+  restoreKey?: number;
 }): React.ReactElement {
   const trustReportEnabled =
     !!jobId &&
@@ -227,6 +242,7 @@ export default function PlanTab({
 
   const isProposed = jobStatus === "proposed";
   const [blocksCollapsed, setBlocksCollapsed] = useState(true);
+  const [reportCollapsed, setReportCollapsed] = useState(() => doc == null);
   const [byFileCollapsed, setByFileCollapsed] = useState(true);
   const [reviewCollapsed, setReviewCollapsed] = useState(false);
   const [activeStatFilter, setActiveStatFilter] =
@@ -541,6 +557,35 @@ export default function PlanTab({
             )}
           </div>
         )}
+
+        {/* Report panel */}
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={() => setReportCollapsed((v) => !v)}
+            className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+          >
+            {reportCollapsed
+              ? <ChevronRight size={14} className="text-muted-foreground shrink-0" />
+              : <ChevronDown size={14} className="text-muted-foreground shrink-0" />}
+            <h2 className="text-sm font-semibold text-foreground">Report</h2>
+          </button>
+          {!reportCollapsed && (
+            isDone ? (
+              <ReportTab
+                isDone={isDone ?? false}
+                doc={doc ?? null}
+                nonTechnicalDoc={nonTechnicalDoc ?? null}
+                onDocChange={onDocChange}
+                onSave={onSave}
+                isSaving={isSaving ?? false}
+                restoreKey={restoreKey ?? 0}
+              />
+            ) : (
+              <p className="text-sm text-muted-foreground px-1">No documentation generated yet.</p>
+            )
+          )}
+        </div>
 
         {trustReport?.files && trustReport.files.length > 0 && (
           <div className="space-y-2">
