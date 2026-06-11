@@ -3,6 +3,7 @@ import {
   getJob,
   getJobDoc,
   getJobPlan,
+  getJobSources,
   getJobTrustReport,
   refineJob,
   saveVersion,
@@ -10,8 +11,7 @@ import {
 import type { BlockOverride, JobStatusValue } from "@/api/types";
 // import ChangelogFeed from "@/components/JobDetail/ChangelogFeed";
 import ChevronTabBar from "@/components/JobDetail/ChevronTabBar";
-import EditorTab from "@/components/JobDetail/EditorTab";
-import LineageTab from "@/components/JobDetail/LineageTab";
+import ETLTab from "@/components/JobDetail/ETLTab";
 import PlanTab from "@/components/JobDetail/PlanTab";
 // import ReportTab from "@/components/JobDetail/ReportTab"; // restored in #41
 import { StatusBadge } from "@/components/JobDetail/StatusBadge";
@@ -37,7 +37,7 @@ export default function JobDetailPage(): React.ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState(searchParams.get("tab") ?? "plan");
   const [editorCode, setEditorCode] = useState<string | null>(null);
-  const [overrideGeneratedFiles, setOverrideGeneratedFiles] = useState<Record<
+  const [overrideGeneratedFiles] = useState<Record<
     string,
     string
   > | null>(null);
@@ -51,8 +51,6 @@ export default function JobDetailPage(): React.ReactElement {
   const [showAcceptConfirm, setShowAcceptConfirm] = useState(false);
   const [showRefineDialog, setShowRefineDialog] = useState(false);
   const [refineHint, setRefineHint] = useState("");
-  const [isEditorFullScreen, setIsEditorFullScreen] = useState(false);
-
   const lastSavedHashRef = useRef<Record<string, string>>({});
   const pendingHashRef = useRef("");
 
@@ -173,6 +171,13 @@ export default function JobDetailPage(): React.ReactElement {
     enabled: !!id && isReviewable,
   });
 
+  const { data: jobSourcesData } = useQuery({
+    queryKey: ["job", id, "sources"],
+    queryFn: () => getJobSources(id),
+    enabled: !!id && isReviewable,
+  });
+  const jobSources = jobSourcesData?.sources ?? undefined;
+
   return (
     <div className="px-6 py-2 overflow-y-auto flex-1 h-full">
       <Tabs
@@ -271,29 +276,15 @@ export default function JobDetailPage(): React.ReactElement {
               />
             </TabsContent>
 
-            {/* etl tab: EditorTab (top) + LineageTab (below) */}
-            <TabsContent value="etl" className="mt-0 flex-1 min-h-0">
-              <div className="flex flex-col gap-0 h-full min-h-0">
-                <div className={isEditorFullScreen ? "fixed inset-0 z-50 bg-background p-2 flex flex-col" : "flex-1 min-h-0"}>
-                  <EditorTab
-                    jobId={id}
-                    generatedFiles={
-                      overrideGeneratedFiles ?? job?.generated_files ?? null
-                    }
-                    onGeneratedFilesChange={setOverrideGeneratedFiles}
-                    code={displayedEditorCode}
-                    setCode={(v) => setEditorCode(v)}
-                    blockPlans={planData?.block_plans}
-                    onSave={() => saveVersionMutation.mutate()}
-                    isSaving={saveVersionMutation.isPending}
-                    isFullPage={isEditorFullScreen}
-                    onExpand={() => setIsEditorFullScreen((v) => !v)}
-                    trustReport={trustReportData}
-                  />
-                </div>
-                <div className="border-t border-border" />
-                <LineageTab jobId={id} blockPlans={planData?.block_plans} />
-              </div>
+            {/* etl tab: ETL orchestration review */}
+            <TabsContent value="etl" className="mt-0 flex-1 min-h-0 flex flex-col">
+              <ETLTab
+                jobId={id}
+                blockPlans={planData?.block_plans ?? []}
+                trustReport={trustReportData}
+                jobSources={jobSources}
+                isReviewable={isReviewable}
+              />
             </TabsContent>
 
             {/* report tab: commented out — will be restored in #41 */}
