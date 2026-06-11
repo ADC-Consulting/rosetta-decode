@@ -604,21 +604,17 @@ export default function PlanTab({
   return (
     <TooltipProvider>
       <div className="h-full min-h-0 overflow-y-auto space-y-4 pb-6">
-        {/* Single summary card */}
-        <Card className="border-border bg-muted/30">
-          <CardContent className="p-0 flex flex-col divide-y divide-border">
-            {/* Top — summary text, full width */}
-            <div className="flex items-center px-5 py-2">
-              <p className="text-sm text-foreground leading-relaxed w-full">
-                {planData.summary ?? (
-                  <span className="italic text-muted-foreground">
-                    No summary available.
-                  </span>
-                )}
-              </p>
-            </div>
+        {/* Pipeline description — above verdict strip */}
+        {planData.summary && (
+          <p className="text-sm text-foreground leading-relaxed">
+            {planData.summary}
+          </p>
+        )}
 
-            {/* Bottom — stats centered */}
+        {/* Metrics card — confidence/risk/stat cards only */}
+        <Card className="border-border bg-muted/30">
+          <CardContent className="p-0">
+            {/* Stats centered */}
             <div className="flex items-center justify-center gap-4 px-5 py-2 flex-wrap">
               {/* Confidence bar */}
               <div className="flex items-center gap-2">
