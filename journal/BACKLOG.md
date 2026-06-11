@@ -324,12 +324,12 @@
 - [ ] #19: Runbook for high-risk / non-convertible blocks → generate per-block remediation view
 - [ ] #25: Token usage + bill-of-materials / scoping summary
 **F30 — Reads/Produces row (#60) → see `docs/plans/latest/F30-reads-produces-row.md`**
-- [ ] F30 S-A: Add input/output_datasets to BlockPlan model
-- [ ] F30 S-B: Populate in _build_migration_plan()
-- [ ] F30 S-C: Add to BlockPlanResponse schema
-- [ ] F30 S-D: Update BlockPlan TypeScript type
-- [ ] F30 S-E: Render Reads/Produces row on Plan tab
-- [ ] F30 S-F: make test exits 0
+- [x] F30 S-A: Add input/output_datasets to BlockPlan model
+- [x] F30 S-B: Populate in _build_migration_plan()
+- [x] F30 S-C: Add to BlockPlanResponse schema
+- [x] F30 S-D: Update BlockPlan TypeScript type
+- [x] F30 S-E: Render Reads/Produces row on Plan tab
+- [x] F30 S-F: make test exits 0
 
 **F31 — Missing dependencies callout (#61) → see `docs/plans/latest/F31-missing-dependencies-callout.md`**
 - [ ] F31 S-A: Add macro invocation extraction to parser
