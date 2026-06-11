@@ -4,6 +4,7 @@ import type {
   JobPlanResponse,
   JobStatusValue,
   TrustReportBlock,
+  TrustReportFile,
   TrustReportResponse,
 } from "@/api/types";
 import { Badge } from "@/components/ui/badge";
@@ -142,6 +143,42 @@ function StatCard({
 }
 
 // ---------------------------------------------------------------------------
+// FileSection
+// ---------------------------------------------------------------------------
+
+function FileSection({ file }: { file: TrustReportFile }): React.ReactElement {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-lg border border-border">
+      <button
+        type="button"
+        className="w-full flex items-center justify-between px-4 py-3 text-left text-sm font-medium
+          hover:bg-muted/40 transition-colors cursor-pointer"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+      >
+        <span className="font-mono text-xs truncate">{file.source_file}</span>
+        <span className="text-muted-foreground ml-2 shrink-0">{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div className="border-t border-border px-4 py-3 grid grid-cols-2 gap-x-8 gap-y-1 text-sm">
+          <span className="text-muted-foreground">Total blocks</span>
+          <span>{file.total_blocks}</span>
+          <span className="text-muted-foreground">Auto-verified</span>
+          <span className="text-green-700">{file.auto_verified}</span>
+          <span className="text-muted-foreground">Needs review</span>
+          <span className="text-amber-700">{file.needs_review}</span>
+          <span className="text-muted-foreground">Manual TODO</span>
+          <span className="text-muted-foreground">{file.manual_todo}</span>
+          <span className="text-muted-foreground">Failed reconciliation</span>
+          <span className="text-red-700">{file.failed_reconciliation}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // PlanTab
 // ---------------------------------------------------------------------------
 
@@ -189,6 +226,7 @@ export default function PlanTab({
 
   const isProposed = jobStatus === "proposed";
   const [blocksCollapsed, setBlocksCollapsed] = useState(true);
+  const [byFileCollapsed, setByFileCollapsed] = useState(true);
   const [reviewCollapsed, setReviewCollapsed] = useState(false);
   const [activeStatFilter, setActiveStatFilter] =
     useState<StatFilterKey | null>(null);
@@ -481,6 +519,33 @@ export default function PlanTab({
                 activeStatFilter={activeStatFilter}
                 onClearStatFilter={() => setActiveStatFilter(null)}
               />
+            )}
+          </div>
+        )}
+
+        {trustReport?.files && trustReport.files.length > 0 && (
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => setByFileCollapsed((v) => !v)}
+              className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+            >
+              {byFileCollapsed ? (
+                <ChevronRight size={14} className="text-muted-foreground shrink-0" />
+              ) : (
+                <ChevronDown size={14} className="text-muted-foreground shrink-0" />
+              )}
+              <h2 className="text-sm font-semibold text-foreground">By file</h2>
+              <Badge variant="secondary" className="text-xs font-mono">
+                {trustReport.files.length}
+              </Badge>
+            </button>
+            {!byFileCollapsed && (
+              <div className="space-y-2">
+                {trustReport.files.map((file) => (
+                  <FileSection key={file.source_file} file={file} />
+                ))}
+              </div>
             )}
           </div>
         )}
