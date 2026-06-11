@@ -22,7 +22,15 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, ChevronDown, ChevronRight, Info, Loader2, XCircle } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  Info,
+  Loader2,
+  XCircle,
+} from "lucide-react";
 import { useRef, useState } from "react";
 import BlockPlanTable from "./BlockPlanTable";
 import ChangelogFeed from "./ChangelogFeed";
@@ -54,6 +62,51 @@ const RISK_BAR: Record<string, { color: string; label: string }> = {
   low: { color: "#22c55e", label: "Low" },
   medium: { color: "#f59e0b", label: "Medium" },
   high: { color: "#ef4444", label: "High" },
+};
+
+// ---------------------------------------------------------------------------
+// Verdict strip
+// ---------------------------------------------------------------------------
+
+type VerdictState = "green" | "amber" | "red";
+
+function getVerdict(trustReport: TrustReportResponse): VerdictState {
+  if (trustReport.manual_todo > 0) return "red";
+  if (trustReport.needs_review > 0 || trustReport.failed_reconciliation > 0) return "amber";
+  return "green";
+}
+
+const VERDICT_STYLES: Record<
+  VerdictState,
+  {
+    border: string;
+    iconColor: string;
+    headlineColor: string;
+    textColor: string;
+    Icon: React.ElementType;
+  }
+> = {
+  green: {
+    border: "border-l-4 border-l-green-500 bg-green-50",
+    iconColor: "text-green-600",
+    headlineColor: "text-green-800",
+    textColor: "text-green-700",
+    Icon: CheckCircle2,
+  },
+  amber: {
+    border: "border-l-4 border-l-amber-500 bg-amber-50",
+    iconColor: "text-amber-600",
+    headlineColor: "text-amber-800",
+    textColor: "text-amber-700",
+    Icon: AlertTriangle,
+  },
+  red: {
+    border: "border-l-4 border-l-red-500 bg-red-50",
+    iconColor: "text-red-600",
+    headlineColor: "text-red-800",
+    textColor: "text-red-700",
+    Icon: XCircle,
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -510,6 +563,36 @@ export default function PlanTab({
             </div>
           </CardContent>
         </Card>
+
+        {/* Verdict strip */}
+        {trustReport && (() => {
+          const verdict = getVerdict(trustReport);
+          const style = VERDICT_STYLES[verdict];
+          const { Icon } = style;
+          const attentionCount = trustReport.needs_review + trustReport.failed_reconciliation;
+          const manualCount = trustReport.manual_todo;
+          const consequence =
+            verdict === "green"
+              ? "All blocks verified — safe to accept."
+              : verdict === "amber"
+              ? `${attentionCount} block${attentionCount !== 1 ? "s" : ""} need review before accepting.`
+              : `${manualCount} block${manualCount !== 1 ? "s" : ""} cannot be auto-converted — manual implementation required before this pipeline will run.`;
+          const headline =
+            verdict === "green"
+              ? "Ready to accept"
+              : verdict === "amber"
+              ? "Review recommended"
+              : "Not ready to accept";
+          return (
+            <div className={`rounded-lg border ${style.border} px-4 py-3 flex items-start gap-3`}>
+              <Icon size={18} className={`${style.iconColor} shrink-0 mt-0.5`} />
+              <div>
+                <p className={`text-sm font-semibold ${style.headlineColor}`}>{headline}</p>
+                <p className={`text-sm ${style.textColor}`}>{consequence}</p>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Lineage unavailable notice */}
         {trustReport && !trustReport.lineage_available && (
