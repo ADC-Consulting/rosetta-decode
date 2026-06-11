@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class FileRejection(BaseModel):
@@ -385,6 +385,26 @@ class BlockPythonEditRequest(BaseModel):
 
     python_code: str
     notes: str | None = None
+    trigger: str = "human"
+
+    @field_validator("trigger")
+    @classmethod
+    def validate_trigger(cls, v: str) -> str:
+        """Restrict trigger to the human-initiated allowlist.
+
+        Args:
+            v: The trigger value supplied by the caller.
+
+        Returns:
+            The validated trigger string.
+
+        Raises:
+            ValueError: If v is not in the allowed set.
+        """
+        allowed = {"human", "human-verify", "human-refine"}
+        if v not in allowed:
+            raise ValueError(f"trigger must be one of {allowed}")
+        return v
 
 
 class BlockPythonEditResponse(BaseModel):

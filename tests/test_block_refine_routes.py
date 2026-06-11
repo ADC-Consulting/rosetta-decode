@@ -403,6 +403,69 @@ async def test_refine_block_404_block_not_in_parse_result(
     assert response.status_code == 404
 
 
+# ─── BlockPythonEditRequest.trigger validation ───────────────────────────────
+
+# SAS: tests/test_block_refine_routes.py:407
+
+
+def test_block_python_edit_request_trigger_defaults_to_human() -> None:
+    """BlockPythonEditRequest.trigger defaults to 'human' when omitted."""
+    from src.backend.api.schemas import BlockPythonEditRequest
+
+    req = BlockPythonEditRequest(python_code="x = 1")
+    assert req.trigger == "human"
+
+
+def test_block_python_edit_request_trigger_accepts_all_allowed_values() -> None:
+    """BlockPythonEditRequest.trigger accepts every value in the allowlist."""
+    from src.backend.api.schemas import BlockPythonEditRequest
+
+    for value in ("human", "human-verify", "human-refine"):
+        req = BlockPythonEditRequest(python_code="x = 1", trigger=value)
+        assert req.trigger == value
+
+
+def test_block_python_edit_request_trigger_rejects_unknown_value() -> None:
+    """BlockPythonEditRequest.trigger raises ValueError for unknown triggers."""
+    import pytest
+    from pydantic import ValidationError
+    from src.backend.api.schemas import BlockPythonEditRequest
+
+    with pytest.raises(ValidationError):
+        BlockPythonEditRequest(python_code="x = 1", trigger="agent")
+
+
+# ─── PATCH /jobs/{job_id}/blocks/{block_id}/python — trigger forwarded ────────
+
+
+@pytest.mark.asyncio
+async def test_save_block_python_forwards_trigger_to_revision(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """PATCH python with trigger='human-verify' stores that value on the revision."""
+    job = await _insert_proposed_job(db_session)
+
+    response = await client.patch(
+        f"/jobs/{job.id}/blocks/test.sas%3A1/python",
+        json={
+            "python_code": "out = in_.copy()  # verified",
+            "notes": "Verified by reviewer",
+            "trigger": "human-verify",
+        },
+    )
+    assert response.status_code == 200
+
+    from sqlalchemy import select
+    from src.backend.db.models import BlockRevision
+
+    stmt = select(BlockRevision).where(BlockRevision.job_id == str(job.id))
+    result = await db_session.execute(stmt)
+    revision = result.scalars().first()
+    assert revision is not None
+    assert revision.trigger == "human-verify"
+
+
 @pytest.mark.asyncio
 async def test_refine_block_second_refine_increments_revision(
     client: AsyncClient,
