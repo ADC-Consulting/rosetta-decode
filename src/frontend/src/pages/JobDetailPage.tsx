@@ -193,11 +193,20 @@ export default function JobDetailPage(): React.ReactElement {
             >
               <ArrowLeft size={18} />
             </button>
-            <div className="flex items-center gap-3">
-              <span className="text-xl font-semibold text-foreground truncate">
-                {job?.name ?? shortId}
-              </span>
-              {job && <StatusBadge status={job.status} />}
+            <div className="flex flex-col items-center gap-0.5">
+              <div className="flex items-center gap-3">
+                <span className="text-xl font-semibold text-foreground truncate">
+                  {job?.name ?? shortId}
+                </span>
+                {job && <StatusBadge status={job.status} />}
+              </div>
+              {planData && (
+                <span className="text-xs text-muted-foreground">
+                  {new Set(planData.block_plans.map((b) => b.source_file)).size} files
+                  {" · "}
+                  {planData.block_plans.length} blocks
+                </span>
+              )}
             </div>
           </div>
 
