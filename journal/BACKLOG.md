@@ -342,13 +342,13 @@
 - [x] F31 S-H: make test exits 0
 
 **F32 — PII warning (#62) → see `docs/plans/latest/F32-pii-sensitive-data-warning.md`**
-- [ ] F32 S-A: Create pii_scanner.py
-- [ ] F32 S-B: Add sensitive_data_findings to MigrationPlan model
-- [ ] F32 S-C: Call PII scanner in worker pipeline
-- [ ] F32 S-D: Add to JobPlanResponse schema
-- [ ] F32 S-E: Update TypeScript type
-- [ ] F32 S-F: Render warning banner on Plan tab
-- [ ] F32 S-G: make test exits 0
+- [x] F32 S-A: Create pii_scanner.py
+- [x] F32 S-B: Add sensitive_data_findings to MigrationPlan model
+- [x] F32 S-C: Call PII scanner in worker pipeline
+- [x] F32 S-D: Add to JobPlanResponse schema
+- [x] F32 S-E: Update TypeScript type
+- [x] F32 S-F: Render warning banner on Plan tab
+- [x] F32 S-G: make test exits 0
 - [ ] #56: Post-run risk + rationale enrichment (rule-based, already designed)
 - [ ] #57: Macro definition + call expansion (%MACRO/%MEND)
 - [ ] #58: Record-level reconciliation (row-by-row diff)
