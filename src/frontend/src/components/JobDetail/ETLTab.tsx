@@ -71,6 +71,25 @@ export default function ETLTab({
     enabled: isReviewable,
   });
 
+  // Filter lineage to .sas files only — excludes CSV/data file nodes from ETL graph
+  const etlLineage = useMemo(() => {
+    if (!lineageData) return undefined;
+    const sasFilenames = new Set(
+      (lineageData.file_nodes ?? [])
+        .filter((fn) => fn.filename.toLowerCase().endsWith('.sas'))
+        .map((fn) => fn.filename),
+    );
+    return {
+      ...lineageData,
+      file_nodes: (lineageData.file_nodes ?? []).filter((fn) =>
+        fn.filename.toLowerCase().endsWith('.sas'),
+      ),
+      file_edges: (lineageData.file_edges ?? []).filter(
+        (fe) => sasFilenames.has(fe.source_file) && sasFilenames.has(fe.target_file),
+      ),
+    };
+  }, [lineageData]);
+
   // ── Changelog → humanVerifiedBlocks ──────────────────────────────────────
   const { data: changelog } = useQuery({
     queryKey: ["job", jobId, "changelog"],
@@ -145,16 +164,18 @@ export default function ETLTab({
         <div className={selectedFile ? "flex-1 min-w-0" : "w-full"}>
           {isLineageLoading ? (
             <Skeleton className="h-full w-full rounded" />
-          ) : !lineageData || lineageData.nodes.length === 0 ? (
+          ) : !etlLineage || etlLineage.nodes.length === 0 ? (
             <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
               No lineage data available for this job.
             </div>
           ) : (
             <LineageGraph
-              lineage={lineageData}
+              key={selectedFile ? "with-panel" : "full"}
+              lineage={etlLineage}
               blockPlans={blockPlans}
               trustFiles={trustReport?.files}
               onFileNodeClick={handleFileNodeClick}
+              initialView="files"
             />
           )}
         </div>

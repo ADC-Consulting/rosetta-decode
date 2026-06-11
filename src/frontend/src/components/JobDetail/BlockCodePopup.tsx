@@ -10,7 +10,7 @@ import {
 import { Editor } from "@monaco-editor/react";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
-import { Suspense, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { registerSasLanguage } from "./registerSasLanguage";
 
 // ---------------------------------------------------------------------------
@@ -40,14 +40,6 @@ export interface BlockCodePopupProps {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/** Extract lines startLine..endLine (1-based, inclusive) from full file content. */
-function extractLines(source: string, startLine: number, endLine: number): string {
-  const lines = source.split("\n");
-  const start = Math.max(0, startLine - 1);
-  const end = Math.min(lines.length, endLine);
-  return lines.slice(start, end).join("\n");
-}
 
 /** Derive a display-friendly basename: filename + line, e.g. "05_build_adam_adsl.sas:42". */
 function blockDisplayId(sourceFile: string, startLine: number): string {
@@ -118,7 +110,12 @@ export default function BlockCodePopup({
   });
 
   // Derived values
-  const sasBlock = extractLines(sasSource, startLine, endLine);
+  const extractedSas = useMemo(() => {
+    if (!sasSource) return "";
+    const lines = sasSource.split('\n');
+    return lines.slice(Math.max(0, startLine - 1), endLine).join('\n');
+  }, [sasSource, startLine, endLine]);
+
   const displayId = blockDisplayId(sourceFile, startLine);
   const statusConfig = STATUS_CONFIG[status];
 
@@ -213,34 +210,40 @@ export default function BlockCodePopup({
               )}
             </div>
             <div className="flex-1 min-h-0">
-              <Suspense
-                fallback={
-                  <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
-                    Loading…
-                  </div>
-                }
-              >
-                <Editor
-                  key={`block-sas-${blockId}`}
-                  height="100%"
-                  defaultValue={sasBlock}
-                  language="sas"
-                  theme="sas-light"
-                  beforeMount={registerSasLanguage}
-                  loading={
+              {extractedSas ? (
+                <Suspense
+                  fallback={
                     <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
                       Loading…
                     </div>
                   }
-                  options={{
-                    readOnly: true,
-                    fontSize: 13,
-                    minimap: { enabled: false },
-                    scrollBeyondLastLine: false,
-                    lineNumbers: "on",
-                  }}
-                />
-              </Suspense>
+                >
+                  <Editor
+                    key={`block-sas-${blockId}`}
+                    height="100%"
+                    defaultValue={extractedSas}
+                    language="sas"
+                    theme="sas-light"
+                    beforeMount={registerSasLanguage}
+                    loading={
+                      <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+                        Loading…
+                      </div>
+                    }
+                    options={{
+                      readOnly: true,
+                      fontSize: 13,
+                      minimap: { enabled: false },
+                      scrollBeyondLastLine: false,
+                      lineNumbers: "on",
+                    }}
+                  />
+                </Suspense>
+              ) : (
+                <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+                  SAS source not available
+                </div>
+              )}
             </div>
           </div>
 

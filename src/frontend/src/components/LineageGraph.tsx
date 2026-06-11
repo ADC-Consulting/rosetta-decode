@@ -46,6 +46,7 @@ interface LineageGraphProps {
   blockPlans?: BlockPlan[];
   onFileNodeClick?: (file: FileNode) => void;
   trustFiles?: TrustReportFile[];
+  initialView?: "blocks" | "files" | "pipeline";
 }
 
 type NodeData = {
@@ -623,6 +624,7 @@ function LineageGraphInner({
   blockPlans = [],
   onFileNodeClick,
   trustFiles,
+  initialView,
 }: LineageGraphProps): React.ReactElement {
   const { fitView } = useReactFlow();
   const [nodes, setNodes, onNodesChange] = useNodesState<NodeData>([]);
@@ -632,7 +634,7 @@ function LineageGraphInner({
     hoveredIdRef.current = id;
   };
 
-  const [view, setView] = useState<ViewMode>("blocks");
+  const [view, setView] = useState<ViewMode>(initialView ?? "blocks");
   const [selectedFile, setSelectedFile] = useState<FileNode | null>(null);
 
   // Undo/redo history — store {id → position} maps only
@@ -1197,6 +1199,7 @@ export default function LineageGraph({
   blockPlans,
   onFileNodeClick,
   trustFiles,
+  initialView,
 }: LineageGraphProps): React.ReactElement {
   return (
     <ReactFlowProvider>
@@ -1205,6 +1208,7 @@ export default function LineageGraph({
         blockPlans={blockPlans}
         onFileNodeClick={onFileNodeClick}
         trustFiles={trustFiles}
+        initialView={initialView}
       />
     </ReactFlowProvider>
   );
