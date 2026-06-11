@@ -292,7 +292,22 @@
 - [x] fix(F28): EvaluationTab removed from Plan tab; failed-reconciliation pill + collapsible review queue added to PlanTab
 - [x] fix(F28): LineageGraph crash on undefined nodes guarded in LineageTab
 - [x] fix(F28): LineageTab toast.error removed — silent inline message instead
-- [ ] #41: Plan tab refinement — ReportTab restored as collapsible panel, History panel at bottom — wireframe pending
+**F29 — Plan tab refinement (#41) → see `docs/plans/latest/F29-plan-tab-refinement.md`**
+- [x] F29 S-A: Fix review queue expanded by default
+- [x] F29 S-B: Replace stat pills with clickable summary cards + stat filter (auto-expands Blocks)
+- [x] F29 S-C: Upgrade review queue to full columns (source file, confidence, recon, blast radius)
+- [x] F29 S-D: Add confidence info dialog
+- [x] F29 S-E: Add lineage unavailable notice
+- [x] F29 S-F: Add per-file breakdown section
+- [x] F29 S-G: Bulk re-translate button (moves into Needs attention header)
+- [x] F29 S-H: Restore doc state in JobDetailPage + Report collapsible panel
+- [x] F29 S-I: Migration history collapsible panel
+- [x] F29 S-J: Verdict strip (3-state, derived from trustReport)
+- [x] F29 S-K: Scope summary in page header subtitle
+- [x] F29 S-L: Merge attention cards + review queue → single section with Cards/Table toggle
+- [x] F29 S-M: Description text as free-standing prose (separate from metrics card)
+- [x] F29 S-N: Sticky accept footer (verdict summary + Accept button)
+- [x] F29 S-O: make test exits 0
 - [ ] #42: ETL tab — Lineage DAG as primary canvas, editor as click-through panel — wireframe pending
 - [ ] #43: Data Storage tab — SAS table inventory, DW mapping — wireframe pending
 - [x] #40: Chevron tab shell — delivered by F28, issue closed
@@ -300,7 +315,6 @@
 - [x] #45: AI tab placeholder — empty state delivered in F28 S-C, issue closed
 - [ ] #46: Remove legacy tab components (Plan/Editor/Report/Lineage/History/Evaluation) — blocked: depends on #41–45
 - [ ] #47: Remove legacy standalone pages and routes — blocked: depends on #46
-- [ ] #41: Plan tab refinement — blocked on wireframe
 - [ ] #42: ETL tab — blocked on wireframe
 - [ ] #43: Data Storage tab — blocked on wireframe
 - [ ] #52: Revisit sidebar navigation — blocked on persona validation
@@ -309,6 +323,36 @@
 **GitHub issue priority queue (unblocked — source of truth is GitHub)**
 - [ ] #19: Runbook for high-risk / non-convertible blocks → generate per-block remediation view
 - [ ] #25: Token usage + bill-of-materials / scoping summary
+**F30 — Reads/Produces row (#60) → see `docs/plans/latest/F30-reads-produces-row.md`**
+- [ ] F30 S-A: Add input/output_datasets to BlockPlan model
+- [ ] F30 S-B: Populate in _build_migration_plan()
+- [ ] F30 S-C: Add to BlockPlanResponse schema
+- [ ] F30 S-D: Update BlockPlan TypeScript type
+- [ ] F30 S-E: Render Reads/Produces row on Plan tab
+- [ ] F30 S-F: make test exits 0
+
+**F31 — Missing dependencies callout (#61) → see `docs/plans/latest/F31-missing-dependencies-callout.md`**
+- [ ] F31 S-A: Add macro invocation extraction to parser
+- [ ] F31 S-B: Create dependency_checker module
+- [ ] F31 S-C: Add missing_dependencies to MigrationPlan model
+- [ ] F31 S-D: Call dependency checker in worker pipeline
+- [ ] F31 S-E: Add to JobPlanResponse schema
+- [ ] F31 S-F: Update TypeScript type
+- [ ] F31 S-G: Render amber callout on Plan tab
+- [ ] F31 S-H: make test exits 0
+
+**F32 — PII warning (#62) → see `docs/plans/latest/F32-pii-sensitive-data-warning.md`**
+- [ ] F32 S-A: Create pii_scanner.py
+- [ ] F32 S-B: Add sensitive_data_findings to MigrationPlan model
+- [ ] F32 S-C: Call PII scanner in worker pipeline
+- [ ] F32 S-D: Add to JobPlanResponse schema
+- [ ] F32 S-E: Update TypeScript type
+- [ ] F32 S-F: Render warning banner on Plan tab
+- [ ] F32 S-G: make test exits 0
+- [ ] #56: Post-run risk + rationale enrichment (rule-based, already designed)
+- [ ] #57: Macro definition + call expansion (%MACRO/%MEND)
+- [ ] #58: Record-level reconciliation (row-by-row diff)
+- [ ] #59: Artefact versioning — group jobs by input_hash
 - [ ] #21: Consolidate lineage into a single primary view — `backlog` label
 - [ ] #20: Rollback / versioning based on lineage — `backlog` label
 - [ ] #32: Specify decision-ready reports (technical + PO) — `backlog` label, deferred
