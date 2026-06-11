@@ -309,14 +309,14 @@
 - [x] F29 S-N: Sticky accept footer (verdict summary + Accept button)
 - [x] F29 S-O: make test exits 0
 **F33 — ETL tab (#42) → see `docs/plans/latest/F33-etl-tab.md`**
-- [ ] F33 S-A: Backend Option A+ — add trigger field to BlockPythonEditRequest
-- [ ] F33 S-B: Extend LineageGraph with onFileNodeClick + trustFiles status
-- [ ] F33 S-C: Update saveBlockPython to accept trigger
-- [ ] F33 S-D: Build BlockInspectorPanel component
-- [ ] F33 S-E: Build BlockCodePopup component
-- [ ] F33 S-F: Build ETLTab orchestrating component
-- [ ] F33 S-G: Wire ETLTab into JobDetailPage
-- [ ] F33 S-H: make test exits 0
+- [x] F33 S-A: Backend Option A+ — add trigger field to BlockPythonEditRequest
+- [x] F33 S-B: Extend LineageGraph with onFileNodeClick + trustFiles status
+- [x] F33 S-C: Update saveBlockPython to accept trigger
+- [x] F33 S-D: Build BlockInspectorPanel component
+- [x] F33 S-E: Build BlockCodePopup component
+- [x] F33 S-F: Build ETLTab orchestrating component
+- [x] F33 S-G: Wire ETLTab into JobDetailPage
+- [x] F33 S-H: make test exits 0
 - [ ] #43: Data Storage tab — SAS table inventory, DW mapping — wireframe pending
 - [x] #40: Chevron tab shell — delivered by F28, issue closed
 - [x] #44: BI tab placeholder — empty state delivered in F28 S-C, issue closed

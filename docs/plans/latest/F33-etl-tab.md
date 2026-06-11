@@ -2,7 +2,7 @@
 
 **Phase:** 3
 **Area:** Both (Backend / API + Frontend)
-**Status:** in-progress
+**Status:** complete
 **GitHub issue:** #42
 
 ## Goal
@@ -35,48 +35,48 @@ Verification (Option A+): clicking "Mark as verified" calls the existing `PATCH 
 - `src/backend/api/routes/jobs.py`
 **Depends on:** none
 **Done when:** `BlockPythonEditRequest` has `trigger: str = "human"` field; handler at `save_block_python` uses `request.trigger` instead of hardcoded `"human"` when constructing `BlockRevision`; `trigger` value validated to allowlist `{"human", "human-verify", "human-refine"}`; no Alembic migration needed (existing `trigger` column already accepts strings)
-- [ ] done
+- [x] done
 
 ### S-B: Extend LineageGraph with onFileNodeClick callback and trustFiles status override
 **File:** `src/frontend/src/components/LineageGraph.tsx`
 **Depends on:** none
 **Done when:** `LineageGraphProps` accepts two new optional props: `onFileNodeClick?: (file: FileNode) => void` which fires when a file node is clicked in files view (instead of setting internal `selectedFile` state — or in addition to it, since LineageDetailPanel inside the graph may still be needed for the lineage-only page); `trustFiles?: TrustReportFile[]` which overrides `FileNode.status`-based colouring with trustReport-derived aggregate status (`failed_reconciliation > 0` → red, `manual_todo > 0 || needs_review > 0` → amber, else green); `TrustReportFile` already imported from `@/api/types`; existing `LineageTab` usage is unaffected (props are optional with defaults)
-- [ ] done
+- [x] done
 
 ### S-C: Update saveBlockPython API client to accept trigger
 **File:** `src/frontend/src/api/jobs.ts`
 **Depends on:** S-A
 **Done when:** `saveBlockPython(jobId, blockId, pythonCode, options?)` accepts an optional `trigger?: string` param and includes it in the request body; default remains `"human"` if not supplied; TypeScript types updated in `types.ts`
-- [ ] done
+- [x] done
 
 ### S-D: Build BlockInspectorPanel component
 **File:** `src/frontend/src/components/JobDetail/BlockInspectorPanel.tsx` (new)
 **Depends on:** none
 **Done when:** A panel component that takes `sourceFile: string`, `blockPlans: BlockPlan[]`, `trustBlocks: Record<string, TrustReportBlock>`, `humanVerifiedBlocks: Set<string>`, `onBlockClick: (blockId: string) => void`, `onClose: () => void`; renders a header with the source file basename and a close button; lists all blocks filtered by `bp.source_file === sourceFile`, each showing block type badge, line number, and status badge (auto-verified=green, human-verified=teal, needs-review=amber, manual=red, not-run=grey); clicking a row fires `onBlockClick(bp.block_id)`; note: check if `LineageDetailPanel` can be adapted before building from scratch
-- [ ] done
+- [x] done
 
 ### S-E: Build BlockCodePopup component
 **File:** `src/frontend/src/components/JobDetail/BlockCodePopup.tsx` (new)
 **Depends on:** S-C
 **Done when:** A modal Dialog that takes `jobId`, `blockId`, `sourceFile`, `blockType`, `status` (needs-review/manual/verified/auto-verified), `onClose`, `onVerified`; fetches SAS source via `getJobSources` (one call per ETLTab mount, passed as prop) and Python via `getBlockRevisions` (falls back to extracting from `job.python_code` using `# SAS: <file>:<line>` provenance marker if no revisions); left pane: SAS source Monaco editor with `sas-light`/`sas-dark` theme (read-only, highlights the block's start–end lines); right pane: Python Monaco editor (read-only for auto-verified/human-verified, editable for needs-review and manual); footer: "Mark as verified" button visible for needs-review and manual blocks, fires `saveBlockPython(jobId, blockId, pythonCode, {trigger: "human-verify"})` then calls `onVerified(blockId)`; status context banner shown between panes when recon failed
-- [ ] done
+- [x] done
 
 ### S-F: Build ETLTab component
 **File:** `src/frontend/src/components/JobDetail/ETLTab.tsx` (new)
 **Depends on:** S-B, S-D, S-E
 **Done when:** Component takes `jobId`, `blockPlans`, `trustReport`, `jobSources` (pre-fetched SAS source map); manages three states: `selectedFile: string | null`, `selectedBlock: string | null`; derives `humanVerifiedBlocks: Set<string>` from `getJobChangelog` filtering entries where `trigger === "human-verify"`; renders: (1) summary bar ("N files · M blocks · X verified · Y review · Z manual"), (2) `LineageGraph` with `onFileNodeClick` and `trustFiles` props, (3) `BlockInspectorPanel` as a side panel when `selectedFile` is set, (4) `BlockCodePopup` as a modal when `selectedBlock` is set; `onVerified` callback adds the block to `humanVerifiedBlocks` and invalidates trust-report + changelog queries; upstream risk shading: pass a `riskHighlight` set to LineageGraph marking file nodes whose blocks include unverified manual blocks
-- [ ] done
+- [x] done
 
 ### S-G: Wire ETLTab into JobDetailPage and add jobSources query
 **File:** `src/frontend/src/pages/JobDetailPage.tsx`
 **Depends on:** S-F
 **Done when:** ETL `TabsContent` replaces the `EditorTab + LineageTab` stack with `<ETLTab>`; a `useQuery` for `getJobSources(id)` is added at JobDetailPage level (enabled when `isReviewable`); `EditorTab` and `LineageTab` imports retained until #46 removes legacy components; `isEditorFullScreen` state and related props may be simplified or removed
-- [ ] done
+- [x] done
 
 ### S-H: make test exits 0
 **Depends on:** S-A through S-G
 **Done when:** All 7 gates green
-- [ ] done
+- [x] done
 
 ## Dependencies on other features
 
