@@ -267,6 +267,7 @@ export default function JobDetailPage(): React.ReactElement {
                 onSave={() => saveVersionMutation.mutate()}
                 isSaving={saveVersionMutation.isPending}
                 restoreKey={reportRestoreKey}
+                onAccept={() => setShowAcceptConfirm(true)}
               />
             </TabsContent>
 
