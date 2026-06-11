@@ -110,6 +110,12 @@ export interface JobPlanResponse {
   cross_file_dependencies: string[];
   risk_explanation: string;
   missing_dependencies?: Array<{name: string; type: "macro" | "include"; reference_count: number}>;
+  sensitive_data_findings?: Array<{
+    column: string;
+    matched_signal: string;
+    source_type: "file" | "block";
+    source: string;
+  }>;
 }
 
 export interface ColumnFlow {

@@ -667,6 +667,28 @@ export default function PlanTab({
           </div>
         )}
 
+        {/* Sensitive data warning banner */}
+        {(() => {
+          const piiSignals = planData.sensitive_data_findings
+            ? [...new Set(planData.sensitive_data_findings.map(f => f.matched_signal))].sort()
+            : [];
+          const piiColumnCount = planData.sensitive_data_findings?.length ?? 0;
+          return piiSignals.length > 0 && (
+            <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 flex items-start gap-3">
+              <AlertTriangle size={14} className="text-red-600 shrink-0 mt-0.5" />
+              <div className="space-y-0.5">
+                <p className="text-sm font-medium text-red-800">
+                  Sensitive data detected ({piiColumnCount} column{piiColumnCount !== 1 ? "s" : ""})
+                </p>
+                <p className="text-xs text-red-700">
+                  Signals matched: {piiSignals.join(", ")}. Ensure data handling complies with applicable
+                  regulations before accepting.
+                </p>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Metrics card — confidence/risk/stat cards only */}
         <Card className="border-border bg-muted/30">
           <CardContent className="p-0">

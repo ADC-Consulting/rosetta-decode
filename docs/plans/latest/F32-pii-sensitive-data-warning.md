@@ -2,7 +2,7 @@
 
 **Phase:** 2
 **Area:** Both (Backend / Worker + Frontend)
-**Status:** in-progress
+**Status:** complete
 **GitHub issue:** #62
 
 ## Goal
@@ -25,42 +25,42 @@ Detect column names and SAS variable references that suggest personal data using
 **File:** `src/worker/engine/models.py`
 **Depends on:** none
 **Done when:** A `SensitiveDataFinding` Pydantic model is defined with fields `column: str`, `matched_signal: str`, `source_type: Literal["file", "block"]`, `source: str` (file path or block_id respectively); and `MigrationPlan` has `sensitive_data_findings: list[SensitiveDataFinding] = Field(default_factory=list)`
-- [ ] done
+- [x] done
 
 ### S-B: Create PII scanner with word-boundary matching
 **File:** `src/worker/engine/pii_scanner.py` (new file)
 **Depends on:** S-A
 **Done when:** A function `scan_for_pii(blocks: list[SASBlock], data_files: dict[str, DataFileInfo]) -> list[SensitiveDataFinding]` is implemented; column names sourced from: (1) `data_files[path].columns` for uploaded data files, (2) SAS block hint fields (`var_cols`, `class_vars`, `by_vars`, `table_vars`, `id_cols`, `rank_cols`, `keep_cols`, `drop_cols`) for SAS source blocks; matching uses **word-boundary splitting**: column name is split on `_`, spaces, and CamelCase boundaries then matched token-by-token against the signal list (e.g. `SOCIAL_SECURITY_NUMBER` → tokens `[social, security, number]`; `DateOfBirth` → tokens `[date, of, birth]`) — this prevents `TOPZIP` matching `zip` or `DOBERMAN` matching `dob`; signal list covers common PII patterns relevant to European financial/pharma/insurance clients: `ssn`, `social_security`, `nin`, `national_id`, `cpr`, `personnummer`, `cvr`, `passport`, `dob`, `birth_date`, `birthdate`, `date_of_birth`, `age`, `email`, `phone`, `mobile`, `address`, `street`, `postcode`, `zip`, `ip`, `credit_card`, `iban`, `account_number`, `bank_account`, `tax_id`, `bsn`, `nino`, `pps`; findings deduplicated by `(column, matched_signal, source)` triple; unit tests cover: obvious PII column matches, non-PII false-positive candidates (`topzip`, `doberman`, `phone_confirmed`, `address_flag`), CamelCase splitting, underscore splitting, data file source vs block source labelling
-- [ ] done
+- [x] done
 
 ### S-C: Call PII scanner in worker pipeline
 **File:** `src/worker/main.py`
 **Depends on:** S-A, S-B
 **Done when:** `scan_for_pii(parse_result.blocks, context.data_files)` is called after the data_file assembly step (when `context.data_files` is populated) AND after `MigrationPlannerAgent` has constructed the plan; result assigned to `context.migration_plan.sensitive_data_findings` before `job.migration_plan` is persisted; skipped gracefully if `context.migration_plan` is None
-- [ ] done
+- [x] done
 
 ### S-D: Add sensitive_data_findings to JobPlanResponse API schema
 **File:** `src/backend/api/schemas.py`
 **Depends on:** S-A
 **Done when:** `JobPlanResponse` has `sensitive_data_findings: list[SensitiveDataFinding] = []`; `SensitiveDataFinding` duplicated as a matching Pydantic model in `schemas.py` (avoid cross-service import)
-- [ ] done
+- [x] done
 
 ### S-E: Update JobPlanResponse TypeScript type
 **File:** `src/frontend/src/api/types.ts`
 **Depends on:** S-D
 **Done when:** `JobPlanResponse` interface has `sensitive_data_findings?: Array<{column: string; matched_signal: string; source_type: "file" | "block"; source: string}>`
-- [ ] done
+- [x] done
 
 ### S-F: Render PII warning banner on Plan tab
 **File:** `src/frontend/src/components/JobDetail/PlanTab.tsx`
 **Depends on:** S-E
 **Done when:** A red-bordered warning banner renders above the verdict strip when `planData.sensitive_data_findings` is non-empty; shows unique matched signal names as a comma-separated list (e.g. "email, dob, ssn") with total affected column count; distinguishes data file sources from SAS source hints in the detail; hidden when list is empty
-- [ ] done
+- [x] done
 
 ### S-G: make test exits 0
 **Depends on:** S-A through S-F
 **Done when:** All 7 gates green; unit tests for `scan_for_pii()` passing including false-positive regression cases
-- [ ] done
+- [x] done
 
 ## Known limitation
 
