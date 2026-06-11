@@ -6,6 +6,14 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-06-11 — F30/F31/F32 implementation approach
+
+- **PII scanner uses token-based word-boundary matching (not substring):** Column names split on underscore and CamelCase boundaries then matched token-by-token against a PII signal frozenset — prevents `TOPZIP` → `zip`, `DOBERMAN` → `dob` false positives that substring matching produces · revisit if real client data surfaces false negatives or positives
+- **Missing dependency detection uses allowlist (not blocklist):** Extract all `%word` tokens, filter out a comprehensive SAS built-in frozenset; what remains is assumed user-defined macro — allowlist is safer because the SAS built-in set is finite and enumerable, while user macro names are unknown · revisit never
+- **No Alembic migrations for F30/F31/F32:** All three features store new data in the existing `job.migration_plan` JSON column — no schema change needed; old jobs silently return empty lists/arrays via Pydantic defaults · revisit if performance at scale becomes a concern
+
+---
+
 ## 2026-06-08 — F29 Plan tab layout and PR #34 repurposing
 
 - **PR #34 not merged; design repurposed into F29:** MigrationPreviewPage (pre-migration assessment) is superseded; verdict strip, attention cards, scope summary, and sticky accept footer are absorbed into Plan tab (F29) using only existing API data · revisit never

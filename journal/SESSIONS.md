@@ -6,6 +6,48 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-11 — F30/F31/F32 planned and implemented; PRs #63/#64/#65 opened
+**Duration:** ~3h | **Focus:** Plan tab data enrichment — reads/produces, missing deps, PII
+
+### Done
+- F30/F31/F32 plans written, critically reviewed, revised, and approved
+- F30 (#60 — Reads/Produces row): 5 subtasks, threads `input_datasets`/`output_datasets` from `SASBlock` through `BlockPlan` → API → Plan tab; PR #63 opened
+- F31 (#61 — Missing dependencies callout): 8 subtasks + 9 unit tests, allowlist-based macro detection, basename include matching, amber callout on Plan tab; PR #64 opened
+- F32 (#62 — PII/sensitive data warning): 7 subtasks + 14 unit tests, token-based word-boundary PII scanner, red warning banner on Plan tab; PR #65 opened
+- PR #55 (F29) confirmed already merged
+- All three PRs branch in sequence (F30 → F31 → F32) due to shared files; must merge in order
+
+### Decisions
+- **PII scanner uses token-based word-boundary matching:** Column names split on underscore/CamelCase boundaries then matched token-by-token — prevents `TOPZIP` matching `zip`, `DOBERMAN` matching `dob` etc.; pure regex, no LLM · revisit if false-positive reports come in from real client data
+- **Missing dependency detection uses allowlist (not blocklist):** Extract all `%word` tokens, keep only those not in a comprehensive SAS built-in frozenset — safer than blocklist which is inherently incomplete · revisit never
+
+### Open Questions
+- PR #63/#64/#65 CI — check before merging in sequence
+
+### Next Session — Start Here
+1. Check CI on PR #63, merge it, then merge #64, then #65 (in order — shared files)
+2. Next issue from queue: #56 (post-run risk enrichment) or #19 (runbook) or #25 (token usage/BOM)
+
+### Files Touched
+- `src/worker/engine/models.py`
+- `src/worker/engine/agents/migration_planner.py`
+- `src/worker/engine/dependency_checker.py` (new)
+- `src/worker/engine/pii_scanner.py` (new)
+- `src/worker/main.py`
+- `src/backend/api/schemas.py`
+- `src/frontend/src/api/types.ts`
+- `src/frontend/src/components/JobDetail/PlanTab.tsx`
+- `tests/test_dependency_checker.py` (new)
+- `tests/test_pii_scanner.py` (new)
+- `docs/plans/latest/F30-reads-produces-row.md`
+- `docs/plans/latest/F31-missing-dependencies-callout.md`
+- `docs/plans/latest/F32-pii-sensitive-data-warning.md`
+- `journal/SESSIONS.md`
+- `journal/BACKLOG.md`
+- `journal/DECISIONS.md`
+
+---
+
 ## 2026-06-11 — F29 complete; PR #55 opened; backend issue backlog created
 **Duration:** ~4h | **Focus:** F29 implementation completion, issue hygiene
 
