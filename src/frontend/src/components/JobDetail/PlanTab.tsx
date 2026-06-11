@@ -1,6 +1,7 @@
 import { getJobPlan, getJobTrustReport, refineBlock } from "@/api/jobs";
 import type {
   BlockOverride,
+  BlockPlan,
   JobPlanResponse,
   JobStatusValue,
   TrustReportBlock,
@@ -235,6 +236,234 @@ function FileSection({ file }: { file: TrustReportFile }): React.ReactElement {
 }
 
 // ---------------------------------------------------------------------------
+// AttentionCards
+// ---------------------------------------------------------------------------
+
+function AttentionCards({
+  queue,
+  blockPlanMap,
+  manualTodo,
+  onShowAll,
+  onViewBlocks,
+}: {
+  queue: TrustReportBlock[];
+  blockPlanMap: Record<string, BlockPlan>;
+  manualTodo: number;
+  onShowAll: () => void;
+  onViewBlocks: () => void;
+}): React.ReactElement {
+  const CRIT_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+  const top5 = [...queue]
+    .sort((a, b) => {
+      if (a.strategy === "manual" && b.strategy !== "manual") return -1;
+      if (b.strategy === "manual" && a.strategy !== "manual") return 1;
+      return (CRIT_ORDER[a.criticality] ?? 99) - (CRIT_ORDER[b.criticality] ?? 99);
+    })
+    .slice(0, 5);
+  const remaining = queue.length - top5.length;
+
+  const strategyLabel = (strategy: string, reconciliation: string | null): string => {
+    if (strategy === "manual") return "Manual — cannot auto-convert";
+    if (reconciliation === "fail") return "Reconciliation failed";
+    return "Needs review";
+  };
+
+  const strategyColor = (strategy: string, reconciliation: string | null): string => {
+    if (strategy === "manual") return "text-red-700 bg-red-50 border border-red-200";
+    if (reconciliation === "fail") return "text-orange-700 bg-orange-50 border border-orange-200";
+    return "text-amber-700 bg-amber-50 border border-amber-200";
+  };
+
+  const getRationale = (block: TrustReportBlock): string => {
+    const bp = blockPlanMap[block.block_id];
+    if (bp?.rationale) return bp.rationale;
+    if (block.strategy === "manual") return `A ${block.block_type} block that requires manual implementation.`;
+    if (block.reconciliation_status === "fail") return `A ${block.block_type} block that failed reconciliation.`;
+    return `A ${block.block_type} block that needs review.`;
+  };
+
+  return (
+    <div className="space-y-2">
+      {manualTodo > 0 && (
+        <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+          <AlertTriangle size={14} className="text-amber-600 shrink-0 mt-0.5" />
+          <p className="text-xs text-amber-700">
+            Manual blocks require code edits in the ETL tab before this pipeline will run.
+          </p>
+        </div>
+      )}
+      {top5.map(block => (
+        <div key={block.block_id} className="rounded-lg border border-border bg-card px-4 py-3 space-y-1.5">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="font-mono text-xs text-foreground truncate">{block.block_id}</p>
+              <p className="font-mono text-xs text-muted-foreground truncate">{block.source_file}</p>
+            </div>
+            <span
+              className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium shrink-0 ${strategyColor(block.strategy, block.reconciliation_status)}`}
+            >
+              {strategyLabel(block.strategy, block.reconciliation_status)}
+            </span>
+          </div>
+          <p className="text-xs text-muted-foreground leading-relaxed">{getRationale(block)}</p>
+          <button
+            type="button"
+            onClick={onViewBlocks}
+            className="text-xs text-primary hover:underline"
+          >
+            View in blocks table →
+          </button>
+        </div>
+      ))}
+      {remaining > 0 && (
+        <button type="button" onClick={onShowAll} className="text-xs text-primary hover:underline px-1">
+          + {remaining} more · Show all →
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AttentionTable
+// ---------------------------------------------------------------------------
+
+function AttentionTable({
+  queue,
+  lineageAvailable,
+}: {
+  queue: TrustReportBlock[];
+  lineageAvailable: boolean;
+}): React.ReactElement {
+  const CRIT_ORDER: Record<string, number> = {
+    critical: 0, high: 1, medium: 2, low: 3,
+  };
+  const STRAT_COLOR: Record<string, string> = {
+    translated: "bg-green-100 text-green-800",
+    translated_with_review: "bg-amber-100 text-amber-800",
+    manual: "bg-red-100 text-red-800",
+  };
+  const STRAT_LABEL: Record<string, string> = {
+    translated: "Translated",
+    translated_with_review: "Review needed",
+    manual: "Manual",
+  };
+  const CRIT_COLOR: Record<string, string> = {
+    critical: "text-red-700 bg-red-50 border border-red-200",
+    high: "text-orange-700 bg-orange-50 border border-orange-200",
+    medium: "text-amber-700 bg-amber-50 border border-amber-200",
+    low: "text-green-700 bg-green-50 border border-green-200",
+  };
+  const CONF_COLOR: Record<string, string> = {
+    high: "text-green-700 bg-green-50 border border-green-200",
+    medium: "text-amber-700 bg-amber-50 border border-amber-200",
+    low: "text-red-700 bg-red-50 border border-red-200",
+    very_low: "text-red-700 bg-red-50 border border-red-200",
+  };
+
+  function ConfBadge({ value }: { value: string | null }): React.ReactElement {
+    if (!value) return <span className="text-muted-foreground text-xs">—</span>;
+    const cls = CONF_COLOR[value] ?? "text-muted-foreground bg-muted border border-border";
+    return (
+      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${cls}`}>
+        {value}
+      </span>
+    );
+  }
+
+  function ReconIcon({ value }: { value: "pass" | "fail" | null }): React.ReactElement {
+    if (!value) return <span className="text-muted-foreground text-xs">—</span>;
+    if (value === "pass") return <CheckCircle2 size={14} className="text-green-600" />;
+    return <XCircle size={14} className="text-red-600" />;
+  }
+
+  const showBlastRadius = lineageAvailable === true;
+
+  const sorted = [...queue].sort((a, b) => {
+    const cDiff =
+      (CRIT_ORDER[a.criticality] ?? 99) - (CRIT_ORDER[b.criticality] ?? 99);
+    if (cDiff !== 0) return cDiff;
+    const aBlast = a.blast_radius ?? -1;
+    const bBlast = b.blast_radius ?? -1;
+    return bBlast - aBlast;
+  });
+
+  return (
+    <div className="overflow-x-auto rounded-lg border border-border">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="bg-muted/50 text-xs text-muted-foreground">
+            <th className="px-3 py-2 text-left font-medium">Block ID</th>
+            <th className="px-3 py-2 text-left font-medium">Source file</th>
+            <th className="px-3 py-2 text-left font-medium">Strategy</th>
+            <th className="px-3 py-2 text-left font-medium">Self confidence</th>
+            <th className="px-3 py-2 text-left font-medium">Verified confidence</th>
+            <th className="px-3 py-2 text-left font-medium">Reconciliation</th>
+            <th className="px-3 py-2 text-left font-medium">Criticality</th>
+            <th className="px-3 py-2 text-left font-medium">Human review</th>
+            {showBlastRadius && (
+              <th className="px-3 py-2 text-left font-medium">Blast radius</th>
+            )}
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((block) => (
+            <tr key={block.block_id} className="border-t border-border">
+              <td className="px-3 py-2 font-mono text-xs text-muted-foreground max-w-[160px] truncate">
+                {block.block_id}
+              </td>
+              <td className="px-3 py-2 font-mono text-xs text-muted-foreground max-w-[160px] truncate">
+                {block.source_file}
+              </td>
+              <td className="px-3 py-2">
+                <span
+                  className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
+                    STRAT_COLOR[block.strategy] ?? "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {STRAT_LABEL[block.strategy] ?? block.strategy}
+                </span>
+              </td>
+              <td className="px-3 py-2">
+                <ConfBadge value={block.self_confidence} />
+              </td>
+              <td className="px-3 py-2">
+                <ConfBadge value={block.verified_confidence} />
+              </td>
+              <td className="px-3 py-2">
+                <ReconIcon value={block.reconciliation_status} />
+              </td>
+              <td className="px-3 py-2">
+                <span
+                  className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
+                    CRIT_COLOR[block.criticality] ??
+                    "text-muted-foreground bg-muted border border-border"
+                  }`}
+                >
+                  {block.criticality}
+                </span>
+              </td>
+              <td className="px-3 py-2">
+                {block.human_review_required ? (
+                  <CheckCircle2 size={14} className="text-red-600" />
+                ) : (
+                  <span className="text-muted-foreground text-xs">—</span>
+                )}
+              </td>
+              {showBlastRadius && (
+                <td className="px-3 py-2 text-xs tabular-nums text-muted-foreground">
+                  {block.blast_radius ?? "—"}
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // PlanTab
 // ---------------------------------------------------------------------------
 
@@ -299,11 +528,16 @@ export default function PlanTab({
   const [reportCollapsed, setReportCollapsed] = useState(() => doc == null);
   const [byFileCollapsed, setByFileCollapsed] = useState(true);
   const [historyCollapsed, setHistoryCollapsed] = useState(true);
-  const [reviewCollapsed, setReviewCollapsed] = useState(false);
+  const [attentionView, setAttentionView] = useState<"cards" | "table">("cards");
+  const [attentionCollapsed, setAttentionCollapsed] = useState(false);
   const [activeStatFilter, setActiveStatFilter] =
     useState<StatFilterKey | null>(null);
   const blocksRef = useRef<HTMLDivElement>(null);
   const [isRefiningAll, setIsRefiningAll] = useState(false);
+
+  const blockPlanMap: Record<string, BlockPlan> = planData
+    ? Object.fromEntries(planData.block_plans.map(bp => [bp.block_id, bp]))
+    : {};
 
   const handleRefineAllFailed = async () => {
     if (!trustReport || isRefiningAll) return;
@@ -716,29 +950,61 @@ export default function PlanTab({
           )}
         </div>
 
-        {trustReport?.review_queue && trustReport.review_queue.length > 0 && (
+        {/* Needs attention section */}
+        {trustReport && (
           <div className="space-y-2">
+            {/* Header row */}
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setReviewCollapsed((v) => !v)}
+                onClick={() => setAttentionCollapsed(v => !v)}
                 className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
               >
-                {reviewCollapsed ? (
+                {attentionCollapsed ? (
                   <ChevronRight size={14} className="text-muted-foreground shrink-0" />
                 ) : (
                   <ChevronDown size={14} className="text-muted-foreground shrink-0" />
                 )}
-                <h2 className="text-sm font-semibold text-foreground">Review queue</h2>
-                <Badge variant="secondary" className="text-xs font-mono">
-                  {trustReport.review_queue.length}
-                </Badge>
+                <h2 className="text-sm font-semibold text-foreground">Needs attention</h2>
+                {trustReport.review_queue.length > 0 && (
+                  <Badge variant="secondary" className="text-xs font-mono">
+                    {trustReport.review_queue.length}
+                  </Badge>
+                )}
               </button>
-              {trustReport && trustReport.failed_reconciliation > 0 && jobStatus !== "accepted" && (
+              {/* Cards/Table toggle — only when there are items */}
+              {!attentionCollapsed && trustReport.review_queue.length > 0 && (
+                <div className="flex rounded-md border border-border overflow-hidden text-xs ml-1">
+                  <button
+                    type="button"
+                    onClick={() => setAttentionView("cards")}
+                    className={`px-2 py-1 transition-colors ${
+                      attentionView === "cards"
+                        ? "bg-foreground text-background"
+                        : "bg-background text-muted-foreground hover:bg-muted"
+                    }`}
+                  >
+                    Cards
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAttentionView("table")}
+                    className={`px-2 py-1 transition-colors ${
+                      attentionView === "table"
+                        ? "bg-foreground text-background"
+                        : "bg-background text-muted-foreground hover:bg-muted"
+                    }`}
+                  >
+                    Table
+                  </button>
+                </div>
+              )}
+              {/* Re-translate button (moved from Review queue header) */}
+              {trustReport.failed_reconciliation > 0 && jobStatus !== "accepted" && (
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={e => { e.stopPropagation(); void handleRefineAllFailed(); }}
+                  onClick={handleRefineAllFailed}
                   disabled={isRefiningAll}
                   className="ml-auto text-xs h-7"
                 >
@@ -750,144 +1016,34 @@ export default function PlanTab({
                 </Button>
               )}
             </div>
-            {!reviewCollapsed && (() => {
-              const CRIT_ORDER: Record<string, number> = {
-                critical: 0, high: 1, medium: 2, low: 3,
-              };
-              const STRAT_COLOR: Record<string, string> = {
-                translated: "bg-green-100 text-green-800",
-                translated_with_review: "bg-amber-100 text-amber-800",
-                manual: "bg-red-100 text-red-800",
-              };
-              const STRAT_LABEL: Record<string, string> = {
-                translated: "Translated",
-                translated_with_review: "Review needed",
-                manual: "Manual",
-              };
-              const CRIT_COLOR: Record<string, string> = {
-                critical: "text-red-700 bg-red-50 border border-red-200",
-                high: "text-orange-700 bg-orange-50 border border-orange-200",
-                medium: "text-amber-700 bg-amber-50 border border-amber-200",
-                low: "text-green-700 bg-green-50 border border-green-200",
-              };
-              const CONF_COLOR: Record<string, string> = {
-                high: "text-green-700 bg-green-50 border border-green-200",
-                medium: "text-amber-700 bg-amber-50 border border-amber-200",
-                low: "text-red-700 bg-red-50 border border-red-200",
-                very_low: "text-red-700 bg-red-50 border border-red-200",
-              };
 
-              function ConfBadge({ value }: { value: string | null }): React.ReactElement {
-                if (!value) return <span className="text-muted-foreground text-xs">—</span>;
-                const cls =
-                  CONF_COLOR[value] ?? "text-muted-foreground bg-muted border border-border";
-                return (
-                  <span
-                    className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${cls}`}
-                  >
-                    {value}
-                  </span>
-                );
-              }
-
-              function ReconIcon({
-                value,
-              }: {
-                value: "pass" | "fail" | null;
-              }): React.ReactElement {
-                if (!value)
-                  return <span className="text-muted-foreground text-xs">—</span>;
-                if (value === "pass")
-                  return <CheckCircle2 size={14} className="text-green-600" />;
-                return <XCircle size={14} className="text-red-600" />;
-              }
-
-              const showBlastRadius = trustReport.lineage_available === true;
-
-              const sorted = [...trustReport.review_queue].sort((a, b) => {
-                const cDiff =
-                  (CRIT_ORDER[a.criticality] ?? 99) -
-                  (CRIT_ORDER[b.criticality] ?? 99);
-                if (cDiff !== 0) return cDiff;
-                const aBlast = a.blast_radius ?? -1;
-                const bBlast = b.blast_radius ?? -1;
-                return bBlast - aBlast;
-              });
-
-              return (
-                <div className="overflow-x-auto rounded-lg border border-border">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="bg-muted/50 text-xs text-muted-foreground">
-                        <th className="px-3 py-2 text-left font-medium">Block ID</th>
-                        <th className="px-3 py-2 text-left font-medium">Source file</th>
-                        <th className="px-3 py-2 text-left font-medium">Strategy</th>
-                        <th className="px-3 py-2 text-left font-medium">Self confidence</th>
-                        <th className="px-3 py-2 text-left font-medium">Verified confidence</th>
-                        <th className="px-3 py-2 text-left font-medium">Reconciliation</th>
-                        <th className="px-3 py-2 text-left font-medium">Criticality</th>
-                        <th className="px-3 py-2 text-left font-medium">Human review</th>
-                        {showBlastRadius && (
-                          <th className="px-3 py-2 text-left font-medium">Blast radius</th>
-                        )}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sorted.map((block) => (
-                        <tr key={block.block_id} className="border-t border-border">
-                          <td className="px-3 py-2 font-mono text-xs text-muted-foreground max-w-[160px] truncate">
-                            {block.block_id}
-                          </td>
-                          <td className="px-3 py-2 font-mono text-xs text-muted-foreground max-w-[160px] truncate">
-                            {block.source_file}
-                          </td>
-                          <td className="px-3 py-2">
-                            <span
-                              className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
-                                STRAT_COLOR[block.strategy] ?? "bg-muted text-muted-foreground"
-                              }`}
-                            >
-                              {STRAT_LABEL[block.strategy] ?? block.strategy}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2">
-                            <ConfBadge value={block.self_confidence} />
-                          </td>
-                          <td className="px-3 py-2">
-                            <ConfBadge value={block.verified_confidence} />
-                          </td>
-                          <td className="px-3 py-2">
-                            <ReconIcon value={block.reconciliation_status} />
-                          </td>
-                          <td className="px-3 py-2">
-                            <span
-                              className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
-                                CRIT_COLOR[block.criticality] ??
-                                "text-muted-foreground bg-muted border border-border"
-                              }`}
-                            >
-                              {block.criticality}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2">
-                            {block.human_review_required ? (
-                              <CheckCircle2 size={14} className="text-red-600" />
-                            ) : (
-                              <span className="text-muted-foreground text-xs">—</span>
-                            )}
-                          </td>
-                          {showBlastRadius && (
-                            <td className="px-3 py-2 text-xs tabular-nums text-muted-foreground">
-                              {block.blast_radius ?? "—"}
-                            </td>
-                          )}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+            {/* Body */}
+            {!attentionCollapsed && (
+              trustReport.review_queue.length === 0 ? (
+                <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3">
+                  <CheckCircle2 size={16} className="text-green-600 shrink-0" />
+                  <p className="text-sm text-green-700">
+                    All {trustReport.total_blocks} blocks verified — nothing needs attention.
+                  </p>
                 </div>
-              );
-            })()}
+              ) : attentionView === "cards" ? (
+                <AttentionCards
+                  queue={trustReport.review_queue}
+                  blockPlanMap={blockPlanMap}
+                  manualTodo={trustReport.manual_todo}
+                  onShowAll={() => setAttentionView("table")}
+                  onViewBlocks={() => {
+                    setBlocksCollapsed(false);
+                    blocksRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }}
+                />
+              ) : (
+                <AttentionTable
+                  queue={trustReport.review_queue}
+                  lineageAvailable={trustReport.lineage_available}
+                />
+              )
+            )}
           </div>
         )}
       </div>
