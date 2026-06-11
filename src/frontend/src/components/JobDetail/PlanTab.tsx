@@ -1,4 +1,4 @@
-import { getJobPlan, getJobTrustReport } from "@/api/jobs";
+import { getJobPlan, getJobTrustReport, refineBlock } from "@/api/jobs";
 import type {
   BlockOverride,
   JobPlanResponse,
@@ -8,6 +8,7 @@ import type {
   TrustReportResponse,
 } from "@/api/types";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
@@ -21,7 +22,7 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, ChevronDown, ChevronRight, Info, XCircle } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronRight, Info, Loader2, XCircle } from "lucide-react";
 import { useRef, useState } from "react";
 import BlockPlanTable from "./BlockPlanTable";
 
@@ -231,6 +232,24 @@ export default function PlanTab({
   const [activeStatFilter, setActiveStatFilter] =
     useState<StatFilterKey | null>(null);
   const blocksRef = useRef<HTMLDivElement>(null);
+  const [isRefiningAll, setIsRefiningAll] = useState(false);
+
+  const handleRefineAllFailed = async () => {
+    if (!trustReport || isRefiningAll) return;
+    const failedBlocks = trustReport.blocks.filter(
+      b => b.reconciliation_status === "fail"
+    );
+    if (failedBlocks.length === 0) return;
+    setIsRefiningAll(true);
+    try {
+      for (const block of failedBlocks) {
+        await refineBlock(jobId, block.block_id, { notes: null, hint: null });
+      }
+      onBlockRefineSuccess?.();
+    } finally {
+      setIsRefiningAll(false);
+    }
+  };
 
   if (!isReviewable) {
     return (
@@ -552,21 +571,38 @@ export default function PlanTab({
 
         {trustReport?.review_queue && trustReport.review_queue.length > 0 && (
           <div className="space-y-2">
-            <button
-              type="button"
-              onClick={() => setReviewCollapsed((v) => !v)}
-              className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
-            >
-              {reviewCollapsed ? (
-                <ChevronRight size={14} className="text-muted-foreground shrink-0" />
-              ) : (
-                <ChevronDown size={14} className="text-muted-foreground shrink-0" />
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setReviewCollapsed((v) => !v)}
+                className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+              >
+                {reviewCollapsed ? (
+                  <ChevronRight size={14} className="text-muted-foreground shrink-0" />
+                ) : (
+                  <ChevronDown size={14} className="text-muted-foreground shrink-0" />
+                )}
+                <h2 className="text-sm font-semibold text-foreground">Review queue</h2>
+                <Badge variant="secondary" className="text-xs font-mono">
+                  {trustReport.review_queue.length}
+                </Badge>
+              </button>
+              {trustReport && trustReport.failed_reconciliation > 0 && jobStatus !== "accepted" && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={e => { e.stopPropagation(); void handleRefineAllFailed(); }}
+                  disabled={isRefiningAll}
+                  className="ml-auto text-xs h-7"
+                >
+                  {isRefiningAll ? (
+                    <><Loader2 size={14} className="animate-spin mr-1" />Re-translating…</>
+                  ) : (
+                    "Re-translate failed blocks"
+                  )}
+                </Button>
               )}
-              <h2 className="text-sm font-semibold text-foreground">Review queue</h2>
-              <Badge variant="secondary" className="text-xs font-mono">
-                {trustReport.review_queue.length}
-              </Badge>
-            </button>
+            </div>
             {!reviewCollapsed && (() => {
               const CRIT_ORDER: Record<string, number> = {
                 critical: 0, high: 1, medium: 2, low: 3,
