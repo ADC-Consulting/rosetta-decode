@@ -26,6 +26,7 @@ from src.worker.engine.agents.plain_english import PlainEnglishAgent
 from src.worker.engine.agents.proc import ProcAgent
 from src.worker.engine.block_executor import BlockExecutor
 from src.worker.engine.codegen import CodeGenerator
+from src.worker.engine.dependency_checker import detect_missing_dependencies
 from src.worker.engine.doc_generator import DocGenerator
 from src.worker.engine.llm_client import LLMClient, LLMTranslationError
 from src.worker.engine.macro_expander import CannotExpandError, MacroExpander
@@ -509,6 +510,12 @@ class JobOrchestrator:
         except Exception as exc:
             logger.error("Job %s: migration planning failed: %s", job.id, exc)
             raise RuntimeError(f"Migration planning failed: {exc}") from exc
+
+        # Attach missing-dependency findings to the plan (best-effort; never crashes pipeline)
+        if context.migration_plan is not None:
+            context.migration_plan.missing_dependencies = detect_missing_dependencies(
+                parse_result, files
+            )
 
         if tracer:
             await tracer.emit(
