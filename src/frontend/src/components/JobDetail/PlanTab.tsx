@@ -25,6 +25,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, ChevronDown, ChevronRight, Info, Loader2, XCircle } from "lucide-react";
 import { useRef, useState } from "react";
 import BlockPlanTable from "./BlockPlanTable";
+import ChangelogFeed from "./ChangelogFeed";
 import ReportTab from "./ReportTab";
 
 // ---------------------------------------------------------------------------
@@ -244,6 +245,7 @@ export default function PlanTab({
   const [blocksCollapsed, setBlocksCollapsed] = useState(true);
   const [reportCollapsed, setReportCollapsed] = useState(() => doc == null);
   const [byFileCollapsed, setByFileCollapsed] = useState(true);
+  const [historyCollapsed, setHistoryCollapsed] = useState(true);
   const [reviewCollapsed, setReviewCollapsed] = useState(false);
   const [activeStatFilter, setActiveStatFilter] =
     useState<StatFilterKey | null>(null);
@@ -613,6 +615,23 @@ export default function PlanTab({
             )}
           </div>
         )}
+
+        {/* Migration history section */}
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={() => setHistoryCollapsed(v => !v)}
+            className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+          >
+            {historyCollapsed
+              ? <ChevronRight size={14} className="text-muted-foreground shrink-0" />
+              : <ChevronDown size={14} className="text-muted-foreground shrink-0" />}
+            <h2 className="text-sm font-semibold text-foreground">Migration history</h2>
+          </button>
+          {!historyCollapsed && (
+            <ChangelogFeed jobId={jobId} />
+          )}
+        </div>
 
         {trustReport?.review_queue && trustReport.review_queue.length > 0 && (
           <div className="space-y-2">
