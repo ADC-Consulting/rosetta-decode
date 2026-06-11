@@ -6,6 +6,46 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-11 — F29 complete; PR #55 opened; backend issue backlog created
+**Duration:** ~4h | **Focus:** F29 implementation completion, issue hygiene
+
+### Done
+- F29 S-F through S-N implemented, tested, and committed (one commit per subtask)
+- S-F: per-file breakdown collapsible
+- S-G: bulk re-translate failed blocks button
+- S-H: doc state restored + Report collapsible panel (expanded when doc available)
+- S-I: Migration history collapsible
+- S-J: verdict strip (green/amber/red derived from trustReport)
+- S-K: scope subtitle in page header ("9 files · 26 blocks")
+- S-L: Needs attention section replacing Review queue (Cards/Table toggle, manual hint, all-pass state)
+- S-M: description text moved above verdict strip
+- S-N: sticky accept footer with verdict-aware button label
+- S-O: all 7 test gates green — F29 marked complete
+- PR #55 opened: `feat/F29-plan-tab-refinement → main` (closes #41)
+- Deferred backend work catalogued and 7 new GitHub issues created: #56–#62
+- Issues #56–#62 staged in SAS Converter project
+
+### Decisions
+- none new
+
+### Open Questions
+- PR #55 CI — check before merging
+- Which deferred backend issue to pick up next?
+
+### Next Session — Start Here
+1. Merge PR #55 if CI green
+2. Pick up next issue from GitHub priority queue — recommended: #56 (post-run risk enrichment, already designed, small scope) or #60/#61 (Plan tab data gaps)
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/PlanTab.tsx`
+- `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
+- `src/frontend/src/pages/JobDetailPage.tsx`
+- `docs/plans/latest/F29-plan-tab-refinement.md`
+- `journal/SESSIONS.md`
+- `journal/BACKLOG.md`
+
+---
+
 ## 2026-06-09 — F29 implementation: S-A through S-E complete
 **Duration:** ~2h | **Focus:** F29 Plan tab implementation
 

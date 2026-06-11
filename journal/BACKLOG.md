@@ -323,6 +323,13 @@
 **GitHub issue priority queue (unblocked — source of truth is GitHub)**
 - [ ] #19: Runbook for high-risk / non-convertible blocks → generate per-block remediation view
 - [ ] #25: Token usage + bill-of-materials / scoping summary
+- [ ] #60: Expose input/output datasets on BlockPlanResponse (Plan tab Reads/Produces row)
+- [ ] #61: Missing dependencies callout on Plan tab
+- [ ] #62: PII / sensitive data warning on Plan tab
+- [ ] #56: Post-run risk + rationale enrichment (rule-based, already designed)
+- [ ] #57: Macro definition + call expansion (%MACRO/%MEND)
+- [ ] #58: Record-level reconciliation (row-by-row diff)
+- [ ] #59: Artefact versioning — group jobs by input_hash
 - [ ] #21: Consolidate lineage into a single primary view — `backlog` label
 - [ ] #20: Rollback / versioning based on lineage — `backlog` label
 - [ ] #32: Specify decision-ready reports (technical + PO) — `backlog` label, deferred
