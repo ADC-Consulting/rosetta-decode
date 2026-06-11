@@ -293,11 +293,11 @@
 - [x] fix(F28): LineageGraph crash on undefined nodes guarded in LineageTab
 - [x] fix(F28): LineageTab toast.error removed — silent inline message instead
 **F29 — Plan tab refinement (#41) → see `docs/plans/latest/F29-plan-tab-refinement.md`**
-- [ ] F29 S-A: Fix review queue expanded by default
-- [ ] F29 S-B: Replace stat pills with clickable summary cards + stat filter (auto-expands Blocks)
-- [ ] F29 S-C: Upgrade review queue to full columns (source file, confidence, recon, blast radius)
-- [ ] F29 S-D: Add confidence info dialog
-- [ ] F29 S-E: Add lineage unavailable notice
+- [x] F29 S-A: Fix review queue expanded by default
+- [x] F29 S-B: Replace stat pills with clickable summary cards + stat filter (auto-expands Blocks)
+- [x] F29 S-C: Upgrade review queue to full columns (source file, confidence, recon, blast radius)
+- [x] F29 S-D: Add confidence info dialog
+- [x] F29 S-E: Add lineage unavailable notice
 - [ ] F29 S-F: Add per-file breakdown section
 - [ ] F29 S-G: Bulk re-translate button (moves into Needs attention header)
 - [ ] F29 S-H: Restore doc state in JobDetailPage + Report collapsible panel

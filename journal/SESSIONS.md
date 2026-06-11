@@ -6,6 +6,37 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-09 — F29 implementation: S-A through S-E complete
+**Duration:** ~2h | **Focus:** F29 Plan tab implementation
+
+### Done
+- F29 plan refined with v4 layout feedback: description above verdict, "of N" denominators on stat cards, explicit strategy labels + "View code →" in attention cards, manual block action hint, Report expanded by default when doc available
+- S-B: stat pills replaced with large clickable stat cards + stat filter (auto-expands + scrolls Blocks)
+- S-A: review queue expanded by default on load
+- S-C: review queue upgraded to 8-9 full columns (source file, confidence, recon icons, human review, blast radius)
+- S-D: confidence info dialog (ℹ️) added; confidence bar relabelled "LLM confidence"
+- S-E: amber lineage-unavailable notice added (conditional on `!trustReport.lineage_available`)
+- All 5 subtasks tested (7 gates green) and committed with individual commits
+
+### Decisions
+- none new
+
+### Open Questions
+- none
+
+### Next Session — Start Here
+1. Continue F29 — next subtask is S-F (per-file breakdown section) → `docs/plans/latest/F29-plan-tab-refinement.md`
+2. Remaining: S-F, S-G, S-H, S-I, S-J, S-K, S-L, S-M, S-N, S-O (10 subtasks)
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/PlanTab.tsx`
+- `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
+- `docs/plans/latest/F29-plan-tab-refinement.md`
+- `journal/SESSIONS.md`
+- `journal/BACKLOG.md`
+
+---
+
 ## 2026-06-08 — F29 branch set up; plan expanded with PR #34 design repurposing
 **Duration:** ~2h | **Focus:** F29 planning, UX design, layout iteration
 

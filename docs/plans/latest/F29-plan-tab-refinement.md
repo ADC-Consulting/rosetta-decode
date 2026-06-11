@@ -32,7 +32,7 @@ Make the Plan tab the single place where a user gets everything they need to mak
 **File:** `src/frontend/src/components/JobDetail/PlanTab.tsx`
 **Depends on:** none
 **Done when:** `reviewCollapsed` initialises to `false` so the review queue is expanded on load
-- [ ] done
+- [x] done
 
 ### S-B: Replace stat pills with clickable summary cards + stat filter
 **Files:**
@@ -40,25 +40,25 @@ Make the Plan tab the single place where a user gets everything they need to mak
 - `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
 **Depends on:** none
 **Done when:** The four metrics render as large summary cards (big number + label, styled by status colour); each card shows the count as a large number with a secondary "of N" denominator in smaller text derived from `trustReport.total_blocks` (e.g. "6" with "of 26" beneath); clicking a card sets `activeStatFilter` in PlanTab, filters the block table, auto-expands the Blocks section, AND scrolls the Blocks section into view; clicking the active card clears the filter; `BlockPlanTable` accepts `activeStatFilter` prop and applies it after the existing strategy filter using `trustBlocks[bp.block_id]` to categorise rows
-- [ ] done
+- [x] done
 
 ### S-C: Upgrade review queue to full columns
 **File:** `src/frontend/src/components/JobDetail/PlanTab.tsx`
 **Depends on:** S-A
 **Done when:** Review queue table renders 8 columns (9 when lineage available): Block ID, Source file, Strategy, Self confidence, Verified confidence, Reconciliation, Criticality, Human review required, Blast radius; secondary sort by blast_radius descending within criticality tier; blast radius column and value suppressed when `!trustReport.lineage_available`
-- [ ] done
+- [x] done
 
 ### S-D: Add confidence info dialog
 **File:** `src/frontend/src/components/JobDetail/PlanTab.tsx`
 **Depends on:** none
 **Done when:** An ℹ️ icon button sits next to the confidence bar in the summary card; clicking opens a Dialog with the `CONFIDENCE_HELP` text from `EvaluationTab.tsx` (explaining confidence bands, criticality definition, and blast radius)
-- [ ] done
+- [x] done
 
 ### S-E: Add lineage unavailable notice
 **File:** `src/frontend/src/components/JobDetail/PlanTab.tsx`
 **Depends on:** none
 **Done when:** When `trustReport.lineage_available === false`, an amber notice banner is shown below the summary card reading "Blast radius unavailable — lineage enrichment did not run for this job"
-- [ ] done
+- [x] done
 
 ### S-F: Add per-file breakdown section
 **File:** `src/frontend/src/components/JobDetail/PlanTab.tsx`
