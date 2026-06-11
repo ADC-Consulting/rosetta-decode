@@ -298,16 +298,16 @@
 - [x] F29 S-C: Upgrade review queue to full columns (source file, confidence, recon, blast radius)
 - [x] F29 S-D: Add confidence info dialog
 - [x] F29 S-E: Add lineage unavailable notice
-- [ ] F29 S-F: Add per-file breakdown section
-- [ ] F29 S-G: Bulk re-translate button (moves into Needs attention header)
-- [ ] F29 S-H: Restore doc state in JobDetailPage + Report collapsible panel
-- [ ] F29 S-I: Migration history collapsible panel
-- [ ] F29 S-J: Verdict strip (3-state, derived from trustReport)
-- [ ] F29 S-K: Scope summary in page header subtitle
-- [ ] F29 S-L: Merge attention cards + review queue → single section with Cards/Table toggle
-- [ ] F29 S-M: Description text as free-standing prose (separate from metrics card)
-- [ ] F29 S-N: Sticky accept footer (verdict summary + Accept button)
-- [ ] F29 S-O: make test exits 0
+- [x] F29 S-F: Add per-file breakdown section
+- [x] F29 S-G: Bulk re-translate button (moves into Needs attention header)
+- [x] F29 S-H: Restore doc state in JobDetailPage + Report collapsible panel
+- [x] F29 S-I: Migration history collapsible panel
+- [x] F29 S-J: Verdict strip (3-state, derived from trustReport)
+- [x] F29 S-K: Scope summary in page header subtitle
+- [x] F29 S-L: Merge attention cards + review queue → single section with Cards/Table toggle
+- [x] F29 S-M: Description text as free-standing prose (separate from metrics card)
+- [x] F29 S-N: Sticky accept footer (verdict summary + Accept button)
+- [x] F29 S-O: make test exits 0
 - [ ] #42: ETL tab — Lineage DAG as primary canvas, editor as click-through panel — wireframe pending
 - [ ] #43: Data Storage tab — SAS table inventory, DW mapping — wireframe pending
 - [x] #40: Chevron tab shell — delivered by F28, issue closed
