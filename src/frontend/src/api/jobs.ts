@@ -198,7 +198,7 @@ export async function saveBlockPython(
   jobId: string,
   blockId: string,
   pythonCode: string,
-  notes?: string,
+  options?: { notes?: string | null; trigger?: string },
 ): Promise<{ revision_number: number; block_id: string }> {
   const encodedBlockId = blockId.replace(/:/g, '%3A');
   const res = await fetch(
@@ -206,10 +206,14 @@ export async function saveBlockPython(
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ python_code: pythonCode, notes }),
+      body: JSON.stringify({
+        python_code: pythonCode,
+        notes: options?.notes ?? null,
+        trigger: options?.trigger ?? "human",
+      }),
     },
   );
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw new Error(await extractApiError(res));
   return res.json() as Promise<{ revision_number: number; block_id: string }>;
 }
 
