@@ -5,6 +5,7 @@ import type {
   JobLineageResponse,
   LineageNode,
   PipelineStep,
+  TrustReportFile,
 } from "@/api/types";
 import {
   FileNodeCard,
@@ -43,6 +44,8 @@ import "reactflow/dist/style.css";
 interface LineageGraphProps {
   lineage: JobLineageResponse;
   blockPlans?: BlockPlan[];
+  onFileNodeClick?: (file: FileNode) => void;
+  trustFiles?: TrustReportFile[];
 }
 
 type NodeData = {
@@ -419,6 +422,7 @@ function buildFileNodes(
   fileNodes: FileNode[],
   fileEdges: FileEdge[],
   selectedPath: string | null,
+  trustFiles?: TrustReportFile[],
 ): Node<FileNodeData>[] {
   const degree = new Map<string, number>();
   for (const fe of fileEdges) {
@@ -427,6 +431,28 @@ function buildFileNodes(
   }
   return fileNodes.map((fn) => {
     const basename = fn.filename.split("/").pop() ?? fn.filename;
+
+    let status = fn.status;
+
+    // If trustFiles provided, override status with trustReport-derived aggregate
+    if (trustFiles) {
+      const tf = trustFiles.find((f) => f.source_file === fn.filename);
+      if (tf) {
+        let overrideStatus: FileNode["status"];
+        if (tf.failed_reconciliation > 0) {
+          // red — use existing UNRECOGNIZED colour
+          overrideStatus = "UNRECOGNIZED";
+        } else if (tf.needs_review > 0 || tf.manual_todo > 0) {
+          // amber
+          overrideStatus = "ERROR_PRONE";
+        } else {
+          // green
+          overrideStatus = "OK";
+        }
+        status = overrideStatus;
+      }
+    }
+
     return {
       id: `file-${fn.filename}`,
       type: "fileNode",
@@ -435,7 +461,7 @@ function buildFileNodes(
         filename: basename,
         fullPath: fn.filename,
         file_type: fn.file_type,
-        status: fn.status,
+        status,
         blockCount: fn.blocks.length,
         connectionCount: degree.get(fn.filename) ?? 0,
         isSelected: fn.filename === selectedPath,
@@ -595,6 +621,8 @@ type ViewMode = "blocks" | "files" | "pipeline";
 function LineageGraphInner({
   lineage,
   blockPlans = [],
+  onFileNodeClick,
+  trustFiles,
 }: LineageGraphProps): React.ReactElement {
   const { fitView } = useReactFlow();
   const [nodes, setNodes, onNodesChange] = useNodesState<NodeData>([]);
@@ -642,6 +670,7 @@ function LineageGraphInner({
           lineage.file_nodes,
           lineage.file_edges ?? [],
           selectedFile?.filename ?? null,
+          trustFiles,
         ),
         fEdges,
         NODE_FILE_W,
@@ -855,6 +884,9 @@ function LineageGraphInner({
         lineage.file_nodes?.find((fn) => `file-${fn.filename}` === node.id) ??
         null;
       setSelectedFile(fileNode);
+      if (fileNode) {
+        onFileNodeClick?.(fileNode);
+      }
       setNodes((prev) =>
         prev.map((n) => ({
           ...n,
@@ -862,7 +894,7 @@ function LineageGraphInner({
         })),
       );
     },
-    [view, lineage.file_nodes, setNodes],
+    [view, lineage.file_nodes, onFileNodeClick, setNodes],
   );
 
   if (lineage.nodes.length === 0 && view === "blocks") {
@@ -1154,10 +1186,17 @@ function LineageGraphInner({
 export default function LineageGraph({
   lineage,
   blockPlans,
+  onFileNodeClick,
+  trustFiles,
 }: LineageGraphProps): React.ReactElement {
   return (
     <ReactFlowProvider>
-      <LineageGraphInner lineage={lineage} blockPlans={blockPlans} />
+      <LineageGraphInner
+        lineage={lineage}
+        blockPlans={blockPlans}
+        onFileNodeClick={onFileNodeClick}
+        trustFiles={trustFiles}
+      />
     </ReactFlowProvider>
   );
 }
