@@ -245,6 +245,14 @@ class BlockPlan(BaseModel):
         return self
 
 
+class MissingDependency(BaseModel):
+    """A macro call or %INCLUDE path that is referenced but not found in the uploaded files."""
+
+    name: str
+    type: Literal["macro", "include"]
+    reference_count: int
+
+
 class MigrationPlan(BaseModel):
     """Overall migration plan produced by the planning agent.
 
@@ -254,6 +262,7 @@ class MigrationPlan(BaseModel):
         overall_risk: Aggregate risk level for the full migration.
         recommended_review_blocks: Block IDs that require human review.
         cross_file_dependencies: Dataset/macro names shared across files.
+        missing_dependencies: Macro calls and %INCLUDE paths with no matching definition.
     """
 
     summary: str
@@ -262,6 +271,7 @@ class MigrationPlan(BaseModel):
     recommended_review_blocks: list[str]
     cross_file_dependencies: list[str]
     risk_explanation: str = ""
+    missing_dependencies: list[MissingDependency] = Field(default_factory=list)
 
 
 class ColumnFlow(BaseModel):

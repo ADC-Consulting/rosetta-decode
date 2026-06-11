@@ -237,6 +237,14 @@ class BlockPlanResponse(BaseModel):
     output_datasets: list[str] = []
 
 
+class MissingDependency(BaseModel):
+    """A SAS macro or include file referenced but not present in the uploaded files."""
+
+    name: str
+    type: Literal["macro", "include"]
+    reference_count: int
+
+
 class JobPlanResponse(BaseModel):
     """Response body for GET /jobs/{id}/plan."""
 
@@ -247,6 +255,7 @@ class JobPlanResponse(BaseModel):
     recommended_review_blocks: list[str]
     cross_file_dependencies: list[str]
     risk_explanation: str = ""
+    missing_dependencies: list[MissingDependency] = []
 
 
 class AcceptJobRequest(BaseModel):

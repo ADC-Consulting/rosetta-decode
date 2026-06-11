@@ -332,14 +332,14 @@
 - [x] F30 S-F: make test exits 0
 
 **F31 — Missing dependencies callout (#61) → see `docs/plans/latest/F31-missing-dependencies-callout.md`**
-- [ ] F31 S-A: Add macro invocation extraction to parser
-- [ ] F31 S-B: Create dependency_checker module
-- [ ] F31 S-C: Add missing_dependencies to MigrationPlan model
-- [ ] F31 S-D: Call dependency checker in worker pipeline
-- [ ] F31 S-E: Add to JobPlanResponse schema
-- [ ] F31 S-F: Update TypeScript type
-- [ ] F31 S-G: Render amber callout on Plan tab
-- [ ] F31 S-H: make test exits 0
+- [x] F31 S-A: Add macro invocation extraction to parser
+- [x] F31 S-B: Create dependency_checker module
+- [x] F31 S-C: Add missing_dependencies to MigrationPlan model
+- [x] F31 S-D: Call dependency checker in worker pipeline
+- [x] F31 S-E: Add to JobPlanResponse schema
+- [x] F31 S-F: Update TypeScript type
+- [x] F31 S-G: Render amber callout on Plan tab
+- [x] F31 S-H: make test exits 0
 
 **F32 — PII warning (#62) → see `docs/plans/latest/F32-pii-sensitive-data-warning.md`**
 - [ ] F32 S-A: Create pii_scanner.py

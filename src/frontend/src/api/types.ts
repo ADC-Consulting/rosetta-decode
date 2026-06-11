@@ -109,6 +109,7 @@ export interface JobPlanResponse {
   recommended_review_blocks: string[];
   cross_file_dependencies: string[];
   risk_explanation: string;
+  missing_dependencies?: Array<{name: string; type: "macro" | "include"; reference_count: number}>;
 }
 
 export interface ColumnFlow {
