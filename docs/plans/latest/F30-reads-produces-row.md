@@ -2,7 +2,7 @@
 
 **Phase:** 2
 **Area:** Both (Backend / Worker + Frontend)
-**Status:** in-progress
+**Status:** complete
 **GitHub issue:** #60
 
 ## Goal
@@ -25,36 +25,36 @@ Expose `input_datasets` and `output_datasets` per block via the plan API and ren
 **File:** `src/worker/engine/models.py`
 **Depends on:** none
 **Done when:** `BlockPlan` has `input_datasets: list[str] = Field(default_factory=list)` and `output_datasets: list[str] = Field(default_factory=list)`
-- [ ] done
+- [x] done
 
 ### S-B: Populate fields in _build_migration_plan()
 **File:** `src/worker/engine/agents/migration_planner.py`
 **Depends on:** S-A
 **Done when:** `_build_migration_plan()` builds a `block_lookup: dict[str, SASBlock]` from the `blocks` argument and copies `input_datasets` and `output_datasets` onto each constructed `BlockPlan`
-- [ ] done
+- [x] done
 
 ### S-C: Add fields to BlockPlanResponse API schema
 **File:** `src/backend/api/schemas.py`
 **Depends on:** S-A
 **Done when:** `BlockPlanResponse` has `input_datasets: list[str] = []` and `output_datasets: list[str] = []`
-- [ ] done
+- [x] done
 
 ### S-D: Update BlockPlan TypeScript type
 **File:** `src/frontend/src/api/types.ts`
 **Depends on:** S-C
 **Done when:** `BlockPlan` interface has `input_datasets: string[]` and `output_datasets: string[]`
-- [ ] done
+- [x] done
 
 ### S-E: Render Reads/Produces row on Plan tab
 **File:** `src/frontend/src/components/JobDetail/PlanTab.tsx`
 **Depends on:** S-D
 **Done when:** A "Reads / Produces" line renders between the description paragraph and the verdict strip; aggregation logic: `allInputs = union(block.input_datasets)`, `allOutputs = union(block.output_datasets)`, `externalInputs = allInputs - allOutputs` (datasets read but never produced = true external sources), `finalOutputs = allOutputs - allInputs` (datasets produced but never consumed = final outputs); max 4 items shown per side with "+ N more" text if list is longer; section hidden entirely when both `externalInputs` and `finalOutputs` are empty after filtering (handles jobs where parser couldn't extract dataset names)
-- [ ] done
+- [x] done
 
 ### S-F: make test exits 0
 **Depends on:** S-A through S-E
 **Done when:** All 7 gates green
-- [ ] done
+- [x] done
 
 ## Known limitation
 

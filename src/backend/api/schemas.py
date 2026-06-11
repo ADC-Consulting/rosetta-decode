@@ -233,6 +233,8 @@ class BlockPlanResponse(BaseModel):
     estimated_effort: str
     confidence_score: float = 0.0
     confidence_band: str = "unknown"
+    input_datasets: list[str] = []
+    output_datasets: list[str] = []
 
 
 class JobPlanResponse(BaseModel):

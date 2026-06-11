@@ -603,6 +603,16 @@ export default function PlanTab({
     label: planData.overall_risk,
   };
 
+  const allInputs = new Set(planData.block_plans.flatMap(b => b.input_datasets));
+  const allOutputs = new Set(planData.block_plans.flatMap(b => b.output_datasets));
+  const externalInputs = [...allInputs].filter(d => !allOutputs.has(d)).sort();
+  const finalOutputs = [...allOutputs].filter(d => !allInputs.has(d)).sort();
+
+  function truncateList(items: string[], max = 4): string {
+    if (items.length <= max) return items.join(", ");
+    return `${items.slice(0, max).join(", ")} +${items.length - max} more`;
+  }
+
   return (
     <TooltipProvider>
       <div className="h-full min-h-0 overflow-y-auto space-y-4 pb-16">
@@ -610,6 +620,21 @@ export default function PlanTab({
         {planData.summary && (
           <p className="text-sm text-foreground leading-relaxed">
             {planData.summary}
+          </p>
+        )}
+
+        {/* Reads / Produces row */}
+        {(externalInputs.length > 0 || finalOutputs.length > 0) && (
+          <p className="text-xs text-muted-foreground">
+            {externalInputs.length > 0 && (
+              <span><span className="font-medium text-foreground">Reads:</span> {truncateList(externalInputs)}</span>
+            )}
+            {externalInputs.length > 0 && finalOutputs.length > 0 && (
+              <span className="mx-2">·</span>
+            )}
+            {finalOutputs.length > 0 && (
+              <span><span className="font-medium text-foreground">Produces:</span> {truncateList(finalOutputs)}</span>
+            )}
           </p>
         )}
 
