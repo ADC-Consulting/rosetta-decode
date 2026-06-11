@@ -323,9 +323,32 @@
 **GitHub issue priority queue (unblocked — source of truth is GitHub)**
 - [ ] #19: Runbook for high-risk / non-convertible blocks → generate per-block remediation view
 - [ ] #25: Token usage + bill-of-materials / scoping summary
-- [ ] #60: Expose input/output datasets on BlockPlanResponse (Plan tab Reads/Produces row)
-- [ ] #61: Missing dependencies callout on Plan tab
-- [ ] #62: PII / sensitive data warning on Plan tab
+**F30 — Reads/Produces row (#60) → see `docs/plans/latest/F30-reads-produces-row.md`**
+- [ ] F30 S-A: Add input/output_datasets to BlockPlan model
+- [ ] F30 S-B: Populate in _build_migration_plan()
+- [ ] F30 S-C: Add to BlockPlanResponse schema
+- [ ] F30 S-D: Update BlockPlan TypeScript type
+- [ ] F30 S-E: Render Reads/Produces row on Plan tab
+- [ ] F30 S-F: make test exits 0
+
+**F31 — Missing dependencies callout (#61) → see `docs/plans/latest/F31-missing-dependencies-callout.md`**
+- [ ] F31 S-A: Add macro invocation extraction to parser
+- [ ] F31 S-B: Create dependency_checker module
+- [ ] F31 S-C: Add missing_dependencies to MigrationPlan model
+- [ ] F31 S-D: Call dependency checker in worker pipeline
+- [ ] F31 S-E: Add to JobPlanResponse schema
+- [ ] F31 S-F: Update TypeScript type
+- [ ] F31 S-G: Render amber callout on Plan tab
+- [ ] F31 S-H: make test exits 0
+
+**F32 — PII warning (#62) → see `docs/plans/latest/F32-pii-sensitive-data-warning.md`**
+- [ ] F32 S-A: Create pii_scanner.py
+- [ ] F32 S-B: Add sensitive_data_findings to MigrationPlan model
+- [ ] F32 S-C: Call PII scanner in worker pipeline
+- [ ] F32 S-D: Add to JobPlanResponse schema
+- [ ] F32 S-E: Update TypeScript type
+- [ ] F32 S-F: Render warning banner on Plan tab
+- [ ] F32 S-G: make test exits 0
 - [ ] #56: Post-run risk + rationale enrichment (rule-based, already designed)
 - [ ] #57: Macro definition + call expansion (%MACRO/%MEND)
 - [ ] #58: Record-level reconciliation (row-by-row diff)
