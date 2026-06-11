@@ -881,20 +881,29 @@ function LineageGraphInner({
     (_: React.MouseEvent, node: Node) => {
       if (view !== "files") return;
       const fileNode =
-        lineage.file_nodes?.find((fn) => `file-${fn.filename}` === node.id) ??
-        null;
-      setSelectedFile(fileNode);
-      if (fileNode) {
-        onFileNodeClick?.(fileNode);
+        lineage.file_nodes?.find((fn) => `file-${fn.filename}` === node.id) ?? null;
+
+      if (onFileNodeClick && fileNode) {
+        // External handler provided — fire callback only, don't open internal panel
+        onFileNodeClick(fileNode);
+        setNodes((prev) =>
+          prev.map((n) => ({
+            ...n,
+            data: { ...n.data, isSelected: n.id === node.id },
+          })),
+        );
+      } else {
+        // No external handler — use internal panel as before
+        setSelectedFile(fileNode);
+        setNodes((prev) =>
+          prev.map((n) => ({
+            ...n,
+            data: { ...n.data, isSelected: n.id === node.id },
+          })),
+        );
       }
-      setNodes((prev) =>
-        prev.map((n) => ({
-          ...n,
-          data: { ...n.data, isSelected: n.id === node.id },
-        })),
-      );
     },
-    [view, lineage.file_nodes, onFileNodeClick, setNodes],
+    [view, lineage.file_nodes, setNodes, onFileNodeClick],
   );
 
   if (lineage.nodes.length === 0 && view === "blocks") {
