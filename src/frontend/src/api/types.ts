@@ -97,6 +97,8 @@ export interface BlockPlan {
   estimated_effort: "low" | "medium" | "high";
   confidence_score: number;
   confidence_band: string;
+  input_datasets: string[];
+  output_datasets: string[];
 }
 
 export interface JobPlanResponse {

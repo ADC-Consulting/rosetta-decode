@@ -310,6 +310,7 @@ def _build_migration_plan(result: PlannerResult, blocks: list[SASBlock]) -> Migr
     parsed_type_by_id: dict[str, str] = {
         f"{b.source_file}:{b.start_line}": b.block_type for b in blocks
     }
+    block_lookup: dict[str, SASBlock] = {f"{b.source_file}:{b.start_line}": b for b in blocks}
     block_plans: list[BlockPlan] = []
     for bp in result.block_plans:
         source_file = bp.get("source_file", "")
@@ -317,6 +318,7 @@ def _build_migration_plan(result: PlannerResult, blocks: list[SASBlock]) -> Migr
         block_id = bp.get("block_id", f"{source_file}:{start_line}")
         confidence_score = float(bp.get("confidence_score", 0.5))
         confidence_band = _score_to_band(confidence_score)
+        sas_block = block_lookup.get(block_id)
         block_plans.append(
             BlockPlan(
                 block_id=block_id,
@@ -331,6 +333,8 @@ def _build_migration_plan(result: PlannerResult, blocks: list[SASBlock]) -> Migr
                 confidence_score=confidence_score,
                 confidence_band=confidence_band,
                 detected_features=bp.get("detected_features", []),
+                input_datasets=sas_block.input_datasets if sas_block is not None else [],
+                output_datasets=sas_block.output_datasets if sas_block is not None else [],
             )
         )
 

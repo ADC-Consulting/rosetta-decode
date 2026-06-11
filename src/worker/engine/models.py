@@ -232,6 +232,8 @@ class BlockPlan(BaseModel):
     confidence_score: float = 0.5
     confidence_band: str = "unknown"
     detected_features: list[str] = Field(default_factory=list)
+    input_datasets: list[str] = Field(default_factory=list)
+    output_datasets: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _require_features_for_manual(self) -> "BlockPlan":
