@@ -5,6 +5,7 @@ import type {
   JobLineageResponse,
   LineageNode,
   PipelineStep,
+  TrustReportBlock,
   TrustReportFile,
 } from "@/api/types";
 import {
@@ -46,6 +47,7 @@ interface LineageGraphProps {
   blockPlans?: BlockPlan[];
   onFileNodeClick?: (file: FileNode) => void;
   trustFiles?: TrustReportFile[];
+  trustBlocks?: Record<string, TrustReportBlock>;
   initialView?: "blocks" | "files" | "pipeline";
 }
 
@@ -66,7 +68,7 @@ const STATUS_STYLE: Record<
 > = {
   migrated: { background: "#f5f5f5", border: "#22c55e", color: "#1a1a1a" },
   manual_review: { background: "#f5f5f5", border: "#f59e0b", color: "#1a1a1a" },
-  untranslatable: {
+  unrecognized: {
     background: "#f5f5f5",
     border: "#ef4444",
     color: "#1a1a1a",
@@ -75,8 +77,8 @@ const STATUS_STYLE: Record<
 
 const STATUS_LABEL: Record<LineageNode["status"], string> = {
   migrated: "Migrated",
-  manual_review: "Manual review",
-  unrecognized: "Unrecognized",
+  manual_review: "Human review",
+  unrecognized: "Manual",
 };
 
 const STATUS_SYMBOL: Record<
@@ -305,19 +307,36 @@ function buildDataFileNode(n: LineageNode): Node<NodeData> {
   };
 }
 
-function buildInitialNodes(lineageNodes: LineageNode[]): Node<NodeData>[] {
+function buildInitialNodes(
+  lineageNodes: LineageNode[],
+  blockPlanMap?: Map<string, BlockPlan>,
+  trustBlocks?: Record<string, TrustReportBlock>,
+): Node<NodeData>[] {
   return lineageNodes.map((n) => {
     if (n.node_type === "DATA_FILE") return buildDataFileNode(n);
 
-    const style = STATUS_STYLE[n.status];
-    const sym = STATUS_SYMBOL[n.status];
+    // Derive status from plan + trust data; lineage node status is a fallback
+    let resolvedStatus = n.status;
+    if (blockPlanMap) {
+      const bp = blockPlanMap.get(n.id);
+      if (bp?.strategy === "manual") resolvedStatus = "unrecognized";
+    }
+    if (trustBlocks && resolvedStatus !== "unrecognized") {
+      // block_id in trustBlocks uses single ":" but node id uses "::"
+      const singleColonId = n.id.replace("::", ":");
+      const tb = trustBlocks[singleColonId];
+      if (tb?.needs_attention) resolvedStatus = "manual_review";
+    }
+
+    const style = STATUS_STYLE[resolvedStatus] ?? STATUS_STYLE["manual_review"];
+    const sym = STATUS_SYMBOL[resolvedStatus] ?? STATUS_SYMBOL["unrecognized"];
     return {
       id: n.id,
       type: "default",
       data: {
         rawLabel: n.label,
         block_type: n.block_type ?? "",
-        status: n.status,
+        status: resolvedStatus,
         label: (
           <div
             style={{ position: "relative", lineHeight: 1.35, paddingRight: 14 }}
@@ -571,24 +590,24 @@ function getRelated(nodeId: string, edges: Edge[]): Set<string> {
 // Legend
 // ---------------------------------------------------------------------------
 
+const LEGEND_BOX_STYLE: React.CSSProperties = {
+  position: "absolute",
+  top: 10,
+  right: 10,
+  zIndex: 10,
+  background: "rgba(245,245,245,0.92)",
+  backdropFilter: "blur(6px)",
+  borderRadius: 8,
+  border: "1px solid rgba(0,0,0,0.1)",
+  padding: "8px 12px",
+  display: "flex",
+  flexDirection: "column",
+  gap: 5,
+};
+
 function Legend(): React.ReactElement {
   return (
-    <div
-      style={{
-        position: "absolute",
-        top: 10,
-        right: 10,
-        zIndex: 10,
-        background: "rgba(245,245,245,0.92)",
-        backdropFilter: "blur(6px)",
-        borderRadius: 8,
-        border: "1px solid rgba(0,0,0,0.1)",
-        padding: "8px 12px",
-        display: "flex",
-        flexDirection: "column",
-        gap: 5,
-      }}
-    >
+    <div style={LEGEND_BOX_STYLE}>
       {(Object.keys(STATUS_STYLE) as LineageNode["status"][]).map((s) => (
         <div key={s} style={{ display: "flex", alignItems: "center", gap: 7 }}>
           <div
@@ -613,6 +632,33 @@ function Legend(): React.ReactElement {
   );
 }
 
+function FilesLegend(): React.ReactElement {
+  const entries: [string, string][] = [
+    ...Object.entries(REASON_COLORS),
+    ["other", "#64748b"],
+  ];
+  return (
+    <div style={LEGEND_BOX_STYLE}>
+      {entries.map(([reason, color]) => (
+        <div key={reason} style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <div
+            style={{
+              width: 20,
+              height: 3,
+              borderRadius: 2,
+              background: color,
+              flexShrink: 0,
+            }}
+          />
+          <span style={{ fontSize: 11, color: "#444", fontWeight: 500 }}>
+            {reason.replace(/_/g, " ")}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Inner graph
 // ---------------------------------------------------------------------------
@@ -624,6 +670,7 @@ function LineageGraphInner({
   blockPlans = [],
   onFileNodeClick,
   trustFiles,
+  trustBlocks,
   initialView,
 }: LineageGraphProps): React.ReactElement {
   const { fitView } = useReactFlow();
@@ -693,7 +740,11 @@ function LineageGraphInner({
     } else {
       // blocks view (default)
       if (lineage.nodes.length === 0) return;
-      const rawNodes = buildInitialNodes(lineage.nodes);
+      // Lineage node IDs use "::" separator; BlockPlan.block_id uses ":"
+      const bpMap = blockPlans.length
+        ? new Map(blockPlans.map((bp) => [bp.block_id.replace(":", "::"), bp]))
+        : undefined;
+      const rawNodes = buildInitialNodes(lineage.nodes, bpMap, trustBlocks);
       const rawEdges = buildInitialEdges(lineage.edges, lineage.column_flows);
       newNodes = applyDagreLayout(rawNodes, rawEdges, NODE_W, NODE_H);
       newEdges = rawEdges;
@@ -1067,87 +1118,7 @@ function LineageGraphInner({
       {view === "blocks" && <Legend />}
 
       {/* Files view: edge type color legend */}
-      {view === "files" && (
-        <div
-          style={{
-            position: "absolute",
-            bottom: 50,
-            left: 10,
-            zIndex: 10,
-            background: "rgba(255,255,255,0.93)",
-            backdropFilter: "blur(6px)",
-            borderRadius: 8,
-            border: "1px solid #e2e8f0",
-            padding: "7px 10px",
-            boxShadow: "0 1px 6px rgba(0,0,0,0.08)",
-          }}
-        >
-          <div
-            style={{
-              fontSize: 9.5,
-              fontWeight: 700,
-              color: "#94a3b8",
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-              marginBottom: 5,
-            }}
-          >
-            Edge types
-          </div>
-          {(Object.entries(REASON_COLORS) as [string, string][]).map(
-            ([reason, color]) => (
-              <div
-                key={reason}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  marginBottom: 3,
-                }}
-              >
-                <div
-                  style={{
-                    width: 18,
-                    height: 2.5,
-                    background: color,
-                    borderRadius: 2,
-                    flexShrink: 0,
-                  }}
-                />
-                <span
-                  style={{
-                    fontSize: 10,
-                    color: "#475569",
-                    fontFamily: "ui-monospace, monospace",
-                  }}
-                >
-                  {reason.replace(/_/g, " ")}
-                </span>
-              </div>
-            ),
-          )}
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <div
-              style={{
-                width: 18,
-                height: 2.5,
-                background: "#64748b",
-                borderRadius: 2,
-                flexShrink: 0,
-              }}
-            />
-            <span
-              style={{
-                fontSize: 10,
-                color: "#475569",
-                fontFamily: "ui-monospace, monospace",
-              }}
-            >
-              other
-            </span>
-          </div>
-        </div>
-      )}
+      {view === "files" && <FilesLegend />}
 
       {/* Dense graph notice — appears when edges outnumber nodes */}
       {(view === "files" || view === "pipeline") &&
@@ -1199,6 +1170,7 @@ export default function LineageGraph({
   blockPlans,
   onFileNodeClick,
   trustFiles,
+  trustBlocks,
   initialView,
 }: LineageGraphProps): React.ReactElement {
   return (
@@ -1208,6 +1180,7 @@ export default function LineageGraph({
         blockPlans={blockPlans}
         onFileNodeClick={onFileNodeClick}
         trustFiles={trustFiles}
+        trustBlocks={trustBlocks}
         initialView={initialView}
       />
     </ReactFlowProvider>
