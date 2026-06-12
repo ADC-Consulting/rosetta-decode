@@ -6,6 +6,34 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-12 — F34 Phase 2 plan expanded; SAS source column extraction scoped
+**Duration:** ~30min | **Focus:** F34 Phase 2 planning
+
+### Done
+- Identified that SAS types and formats are not showing in Data Storage tab
+- Root cause: CSV files have no SAS type metadata; all columns incorrectly default to "Number"; derived datasets (sdtm_dm, adsl_output) have no column data at all
+- Expanded Phase 2 plan with 3 new subtasks: P2-B (CSV type fix), P2-C (SAS source column schema extraction from LENGTH/FORMAT/ATTRIB), P2-D (surface in frontend)
+- Updated BACKLOG.md with new P2 subtasks
+
+### Decisions
+- **Phase 2 must include SAS source parsing for column schema:** Derived datasets only get column types from SAS source declarations (LENGTH, FORMAT, ATTRIB statements); pyreadstat only covers uploaded .sas7bdat files; this is required for the Data Storage tab to be useful · revisit never
+- **CSV columns should show "Unknown" not "Number":** Defaulting to "Number" when no SAS type is available is semantically wrong (USUBJID is not a number); "Unknown" is honest · revisit never
+
+### Open Questions
+- None blocking Phase 2
+
+### Next Session — Start Here
+1. Implement P2-B (quick fix: CSV type default) and P2-C (SAS source LENGTH/FORMAT/ATTRIB extraction) — plan at `docs/plans/latest/F34-data-storage-tab.md`
+2. Then P2-D (surface in frontend) + open PR for all of Phase 1 + Phase 2
+
+### Files Touched
+- `docs/plans/latest/F34-data-storage-tab.md`
+- `journal/BACKLOG.md`
+- `journal/SESSIONS.md`
+- `journal/DECISIONS.md`
+
+---
+
 ## 2026-06-12 — F34 Phase 1 complete; Data Storage tab live end-to-end
 **Duration:** ~5h | **Focus:** F34 full Phase 1 implementation + Docker rebuild + browser verification
 

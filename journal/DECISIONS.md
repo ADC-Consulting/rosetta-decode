@@ -6,6 +6,13 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-06-12 — F34 Phase 2 column schema
+
+- **Phase 2 must include SAS source parsing for column schema:** pyreadstat covers uploaded `.sas7bdat` files; derived datasets (sdtm_dm, adsl_output) only get column types from SAS source declarations (LENGTH, FORMAT, ATTRIB statements); without this, derived tables show no column data at all · revisit never
+- **CSV columns must show "Unknown" not "Number":** Defaulting to "Number" when `sas_type` is empty string is wrong — USUBJID, ARM, SEX etc. are clearly strings; "Unknown" is the honest fallback when no SAS metadata is available · revisit never
+
+---
+
 ## 2026-06-12 — F34 Phase 1 implementation
 
 - **Backend changes require `make docker-build`:** Backend container does not have a bind-mount volume override in `docker-compose.override.yml` (only the worker does). New routes added to `src/backend/` will not be visible in the running container without a rebuild. Consider adding `./src/backend:/app/src/backend` to the backend service in override file to match worker dev experience · revisit when this causes friction again
