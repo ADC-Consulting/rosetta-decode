@@ -6,6 +6,55 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-12 — F34 Data Storage tab — Phase 1 backend complete; P1-F pending
+**Duration:** ~3h | **Focus:** F34 planning, backend implementation, PR #66 merged
+
+### Done
+- PR #66 (F33 ETL tab) merged; main synced
+- F34 Data Storage tab designed: single feature covering 3 dev phases (schema browser, column types, ERD + DDL)
+- Target-agnostic ANSI SQL for DDL; user-selectable target platform deferred to backlog
+- F34 planned (16 subtasks), branch `feat/F34-data-storage-tab` created
+- P1-A: `_sniff_file` extended to return 5-tuple with column_types/labels/formats; `DataFileInfo` extended; all test call sites updated
+- P1-B: `libname_map` and `data_schema` added to `MigrationPlan`; worker pipeline populates them
+- P2-A: `schema_utils.map_sas_to_semantic_type` (DATETIME checked before DATE to prevent prefix match bug); 8 unit tests
+- P1-C: `GET /jobs/{id}/schema` route with `ColumnSchema`, `TableSchema`, `JobSchemaResponse`; 8 integration tests
+- P1-D: `PATCH /jobs/{id}/schema` for libname + column type overrides; 2 tests
+- P1-E: `getJobSchema` + `patchJobSchema` API client; TypeScript types
+- Session hit org spend limit before P1-F (DataStorageTab component) could be delegated
+
+### Decisions
+- **F34 is a single feature covering all 3 phases:** Table browser (Phase 1), column type extraction (Phase 2), ERD + DDL (Phase 3) are built together — phased only for development sequencing · revisit never
+- **Target-agnostic ANSI SQL DDL first:** User-selectable platform (Databricks, Snowflake) tracked in backlog · revisit after first client feedback
+- **Schema overrides stored in user_overrides JSON column:** `libname_map` (machine-generated) in `migration_plan`; `schema_overrides` (user edits) in `user_overrides` — consistent with existing pattern for human vs machine data · revisit never
+
+### Open Questions
+- None blocking next session
+
+### Next Session — Start Here
+1. Implement P1-F: `DataStorageTab.tsx` component (LIBNAME tree + schema panel) — plan at `docs/plans/latest/F34-data-storage-tab.md`
+2. Then P1-G: wire into `JobDetailPage`
+3. Then Phase 3 (P3-A through P3-H): parser relationship extraction + ERD + DDL
+
+### Files Touched
+- `src/worker/engine/models.py`
+- `src/worker/main.py`
+- `src/backend/api/schema_utils.py` (new)
+- `src/backend/api/schemas.py`
+- `src/backend/api/routes/jobs.py`
+- `src/frontend/src/api/types.ts`
+- `src/frontend/src/api/jobs.ts`
+- `tests/test_schema_utils.py` (new)
+- `tests/test_schema_route.py` (new)
+- `tests/test_worker_main_comprehensive.py`
+- `tests/test_worker_main.py`
+- `tests/test_context_improvements.py`
+- `docs/plans/latest/F34-data-storage-tab.md`
+- `journal/SESSIONS.md`
+- `journal/BACKLOG.md`
+- `journal/DECISIONS.md`
+
+---
+
 ## 2026-06-11 — F33 ETL tab complete; Plan tab sticky footer removed; PR #66 opened
 **Duration:** ~5h | **Focus:** F33 ETL tab design, implementation, browser verification
 

@@ -6,6 +6,15 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-06-12 — F34 Data Storage tab design
+
+- **F34 is a single feature covering all 3 phases:** Schema browser + column type extraction + ERD + DDL are one feature with 3 internal dev phases — not separate features; coherent design from the start · revisit never
+- **Target-agnostic ANSI SQL DDL first:** DDL generation uses generic SQL types (TEXT, DATE, TIMESTAMP, DECIMAL, DOUBLE PRECISION, BIGINT); user-selectable platform (Databricks Delta, Snowflake) deferred to backlog · revisit after first client feedback
+- **Schema overrides in user_overrides, machine data in migration_plan:** `libname_map` and `data_schema` are worker-generated and stored in `migration_plan`; user edits (target schema names, column type overrides) stored under `schema_overrides` key in `user_overrides` — consistent with existing human/machine data separation · revisit never
+- **DATETIME format checked before DATE in semantic type mapping:** SAS `DATETIME` format starts with `DATE`, so DATETIME regex must be tested first to prevent false Date matches · revisit never
+
+---
+
 ## 2026-06-11 — F33 ETL tab design
 
 - **ETL tab is review-only, no execution controls:** Run migration / pipeline stages are execution concepts; the ETL tab shows the proposed migration state for human review only — mixing execution and review would confuse users about what they're doing · revisit never

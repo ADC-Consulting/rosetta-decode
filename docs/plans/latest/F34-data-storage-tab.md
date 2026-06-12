@@ -31,31 +31,31 @@ Three internal development phases:
 **File:** `src/worker/main.py`, `src/worker/engine/models.py`
 **Depends on:** none
 **Done when:** `_sniff_file` returns a 5-tuple `(columns, row_count, column_types, column_labels, column_formats)` for `.sas7bdat` files (using `pyreadstat.read_sas7bdat` with `metadataonly=True`); `DataFileInfo` carries `column_types: dict[str, str]`, `column_labels: dict[str, str]`, `column_formats: dict[str, str]` all with `default_factory=dict`; the single call site in `main.py` updated to unpack the 5-tuple
-- [ ] done
+- [x] done
 
 ### P1-B: Persist libname_map and data_schema in MigrationPlan
 **File:** `src/worker/engine/models.py`, `src/worker/main.py`
 **Depends on:** P1-A
 **Done when:** `MigrationPlan` has `libname_map: dict[str, str] = Field(default_factory=dict)` and `data_schema: dict[str, dict] = Field(default_factory=dict)`; worker pipeline populates both after parse step (step 7a); `data_schema` keyed by normalised file path, value is `{columns, column_types, column_labels, column_formats, row_count}`; no Alembic migration needed (stored in existing `job.migration_plan` JSON column)
-- [ ] done
+- [x] done
 
 ### P1-C: Add GET /jobs/{id}/schema backend route
 **Files:** `src/backend/api/schemas.py`, `src/backend/api/routes/jobs.py`
 **Depends on:** P1-B
 **Done when:** New Pydantic schemas `ColumnSchema`, `TableSchema`, `JobSchemaResponse`; `GET /jobs/{id}/schema` route reads `job.migration_plan.data_schema` and `job.migration_plan.libname_map` plus `job.user_overrides.schema_overrides` (if present), assembles `JobSchemaResponse`; Phase 2 semantic_type derived at serve time from `sas_type` + `sas_format`; `ddl` field is empty string for now (Phase 3); `relationships` is empty list (Phase 3); unit tests for the route
-- [ ] done
+- [x] done
 
 ### P1-D: Add PATCH /jobs/{id}/schema for user overrides
 **Files:** `src/backend/api/schemas.py`, `src/backend/api/routes/jobs.py`
 **Depends on:** P1-C
 **Done when:** `PATCH /jobs/{id}/schema` accepts `{libname_overrides: dict[str, str], column_type_overrides: dict[str, dict[str, str]]}` and merges into `job.user_overrides` under a `schema_overrides` key; returns updated `JobSchemaResponse`
-- [ ] done
+- [x] done
 
 ### P1-E: Add getJobSchema API client function
 **Files:** `src/frontend/src/api/jobs.ts`, `src/frontend/src/api/types.ts`
 **Depends on:** P1-C
 **Done when:** `getJobSchema(jobId)` function added; `JobSchemaResponse`, `TableSchema`, `ColumnSchema` TypeScript types added; `patchJobSchema(jobId, overrides)` function added
-- [ ] done
+- [x] done
 
 ### P1-F: Build DataStorageTab component — table browser + schema panel
 **File:** `src/frontend/src/components/JobDetail/DataStorageTab.tsx` (new)

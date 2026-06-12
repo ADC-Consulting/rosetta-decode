@@ -319,15 +319,15 @@
 - [x] F33 S-H: make test exits 0
 **F34 — Data Storage tab (#43) → see `docs/plans/latest/F34-data-storage-tab.md`**
 Phase 1 — Schema hierarchy + table browser + LIBNAME editing:
-- [ ] F34 P1-A: Extend _sniff_file and DataFileInfo with column metadata
-- [ ] F34 P1-B: Persist libname_map and data_schema in MigrationPlan
-- [ ] F34 P1-C: Add GET /jobs/{id}/schema backend route
-- [ ] F34 P1-D: Add PATCH /jobs/{id}/schema for user overrides
-- [ ] F34 P1-E: Add getJobSchema API client + TypeScript types
-- [ ] F34 P1-F: Build DataStorageTab component
+- [x] F34 P1-A: Extend _sniff_file and DataFileInfo with column metadata
+- [x] F34 P1-B: Persist libname_map and data_schema in MigrationPlan
+- [x] F34 P1-C: Add GET /jobs/{id}/schema backend route
+- [x] F34 P1-D: Add PATCH /jobs/{id}/schema for user overrides
+- [x] F34 P1-E: Add getJobSchema API client + TypeScript types
+- [ ] F34 P1-F: Build DataStorageTab component ← next
 - [ ] F34 P1-G: Wire into JobDetailPage
 Phase 2 — Column types + semantic type mapping:
-- [ ] F34 P2-A: Semantic type mapping function
+- [x] F34 P2-A: Semantic type mapping function (done alongside P1-C)
 Phase 3 — Relationships + ERD + DDL:
 - [ ] F34 P3-A: Add merge_by_vars and join_on_keys to SASBlock
 - [ ] F34 P3-B: Extract MERGE BY and JOIN ON in parser
