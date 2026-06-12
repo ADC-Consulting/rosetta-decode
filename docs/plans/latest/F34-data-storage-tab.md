@@ -61,13 +61,13 @@ Three internal development phases:
 **File:** `src/frontend/src/components/JobDetail/DataStorageTab.tsx` (new)
 **Depends on:** P1-E
 **Done when:** Left panel: LIBNAME tree grouping all datasets; each LIBNAME shows editable target schema name inline; `work.*` datasets shown in a muted "Temporary (not migrated)" group; clicking a dataset opens the schema panel; Right/main area: column table showing `name`, `sas_type`, `sas_format`, `semantic_type`, `label`; "—" shown for missing fields with an info note "Full metadata available for uploaded .sas7bdat files only"; derived datasets without column data show "Schema not yet extracted"; Phase 2 columns populated once P1-A data flows through
-- [ ] done
+- [x] done
 
 ### P1-G: Wire DataStorageTab into JobDetailPage
 **File:** `src/frontend/src/pages/JobDetailPage.tsx`
 **Depends on:** P1-F
 **Done when:** `data-storage` TabsContent replaced with `<DataStorageTab>`; `getJobSchema` query added at page level (enabled when `isReviewable`); "Coming soon" placeholder removed
-- [ ] done
+- [x] done
 
 ## Phase 2 Subtasks
 

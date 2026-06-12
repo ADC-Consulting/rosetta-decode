@@ -6,6 +6,42 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-12 — F34 Phase 1 complete; Data Storage tab live end-to-end
+**Duration:** ~5h | **Focus:** F34 full Phase 1 implementation + Docker rebuild + browser verification
+
+### Done
+- F34 P1-F: `DataStorageTab.tsx` — LIBNAME tree left panel + column schema detail right panel; auto-selects first table via useMemo (not useEffect)
+- F34 P1-G: `DataStorageTab` wired into `JobDetailPage` replacing "Coming soon" placeholder
+- Fixed: `data_schema`/`libname_map` always persisted regardless of LLM planner outcome (fallback MigrationPlan created when planner fails); 4 unit tests
+- Fixed: `libname_map` key/value order in schema route path matching (was `{path: libname}`, should be `{libname: path}`)
+- Docker rebuild required (`make docker-build`) to pick up new backend route — `GET /jobs/{id}/schema` was not registering via bind mount
+- Browser verified: Data Storage tab renders 6 tables with column names and row counts for pharma-sandbox-v3 job
+- All 7 test gates green; pushed to `feat/F34-data-storage-tab`
+
+### Decisions
+- **Backend changes require `make docker-build`:** Backend does not have a bind-mount override in `docker-compose.override.yml` (only worker does); new routes/code require image rebuild · revisit when adding backend bind mount to override file
+
+### Open Questions
+- Phase 3 (relationships + ERD + DDL) is next — should we open a PR for Phase 1 first?
+
+### Next Session — Start Here
+1. Open PR for F34 Phase 1 (all P1 subtasks + P2-A complete)
+2. Begin Phase 3: P3-A (SASBlock fields) → P3-B (parser extraction) → P3-C (relationships) → P3-D (DDL) → P3-E/F/G (frontend ERD + DDL panel)
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/DataStorageTab.tsx` (new)
+- `src/frontend/src/pages/JobDetailPage.tsx`
+- `src/backend/api/routes/jobs.py`
+- `src/worker/main.py`
+- `tests/test_worker_main_coverage.py`
+- `tests/test_schema_route.py`
+- `docs/plans/latest/F34-data-storage-tab.md`
+- `journal/SESSIONS.md`
+- `journal/BACKLOG.md`
+- `journal/DECISIONS.md`
+
+---
+
 ## 2026-06-12 — F34 Data Storage tab — Phase 1 backend complete; P1-F pending
 **Duration:** ~3h | **Focus:** F34 planning, backend implementation, PR #66 merged
 

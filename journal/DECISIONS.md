@@ -6,6 +6,13 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-06-12 — F34 Phase 1 implementation
+
+- **Backend changes require `make docker-build`:** Backend container does not have a bind-mount volume override in `docker-compose.override.yml` (only the worker does). New routes added to `src/backend/` will not be visible in the running container without a rebuild. Consider adding `./src/backend:/app/src/backend` to the backend service in override file to match worker dev experience · revisit when this causes friction again
+- **`libname_map` is `{libname: path}` not `{path: libname}`:** The worker stores `{"rawdir": "./data/raw"}`, keys are libref names, values are folder paths. The schema route iterates correctly as `for lib_name, lib_path in libname_map.items()` · revisit never
+
+---
+
 ## 2026-06-12 — F34 Data Storage tab design
 
 - **F34 is a single feature covering all 3 phases:** Schema browser + column type extraction + ERD + DDL are one feature with 3 internal dev phases — not separate features; coherent design from the start · revisit never
