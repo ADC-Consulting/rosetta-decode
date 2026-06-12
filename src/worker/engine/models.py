@@ -1,7 +1,7 @@
 """Pydantic models shared across the migration engine (parser → LLM → codegen)."""
 
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -282,6 +282,11 @@ class MigrationPlan(BaseModel):
     risk_explanation: str = ""
     missing_dependencies: list[MissingDependency] = Field(default_factory=list)
     sensitive_data_findings: list[SensitiveDataFinding] = Field(default_factory=list)
+    libname_map: dict[str, str] = Field(default_factory=dict)
+    # e.g. {"rawdir": "/data/raw", "outdir": "/data/out"}
+    data_schema: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    # keyed by normalised file path e.g. "sas_pharma_sandbox/data/raw/dm_raw.csv"
+    # value: {columns, column_types, column_labels, column_formats, row_count}
 
 
 class ColumnFlow(BaseModel):

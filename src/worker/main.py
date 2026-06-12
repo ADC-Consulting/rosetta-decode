@@ -587,6 +587,24 @@ class JobOrchestrator:
                 parse_result.blocks, context.data_files
             )
 
+        # Persist libname_map and data_schema into the plan so the frontend can
+        # display schema context without a separate API call.  # SAS: main.py:589
+        if context.migration_plan is not None:
+            # Persist libname_map
+            context.migration_plan.libname_map = dict(context.libname_map or {})
+
+            # Persist data_schema from context.data_files
+            data_schema: dict[str, dict[str, Any]] = {}
+            for path, info in (context.data_files or {}).items():
+                data_schema[path] = {
+                    "columns": info.columns,
+                    "column_types": info.column_types,
+                    "column_labels": info.column_labels,
+                    "column_formats": info.column_formats,
+                    "row_count": info.row_count,
+                }
+            context.migration_plan.data_schema = data_schema
+
         if tracer:
             await tracer.emit(
                 "plan_result",
