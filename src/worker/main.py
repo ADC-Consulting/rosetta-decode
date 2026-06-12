@@ -32,9 +32,11 @@ from src.worker.engine.llm_client import LLMClient, LLMTranslationError
 from src.worker.engine.macro_expander import CannotExpandError, MacroExpander
 from src.worker.engine.models import (
     BlockPlan,
+    BlockRisk,
     DataFileInfo,
     GeneratedBlock,
     JobContext,
+    MigrationPlan,
     ReconciliationReport,
     SASBlock,
 )
@@ -588,22 +590,42 @@ class JobOrchestrator:
             )
 
         # Persist libname_map and data_schema into the plan so the frontend can
-        # display schema context without a separate API call.  # SAS: main.py:589
-        if context.migration_plan is not None:
-            # Persist libname_map
-            context.migration_plan.libname_map = dict(context.libname_map or {})
-
-            # Persist data_schema from context.data_files
-            data_schema: dict[str, dict[str, Any]] = {}
-            for path, info in (context.data_files or {}).items():
-                data_schema[path] = {
-                    "columns": info.columns,
-                    "column_types": info.column_types,
-                    "column_labels": info.column_labels,
-                    "column_formats": info.column_formats,
-                    "row_count": info.row_count,
+        # display schema context without a separate API call.  # SAS: main.py:592
+        # Guarantee these fields are always written regardless of whether the LLM
+        # planner succeeded.  If migration_plan is None (planner failed or was
+        # skipped), create a minimal fallback so the schema metadata is never lost.
+        if context.migration_plan is None:  # SAS: main.py:597
+            context = context.model_copy(
+                update={
+                    "migration_plan": MigrationPlan(
+                        summary="",
+                        overall_risk=BlockRisk.MEDIUM,
+                        block_plans=[],
+                        recommended_review_blocks=[],
+                        cross_file_dependencies=[],
+                        risk_explanation="",
+                    )
                 }
-            context.migration_plan.data_schema = data_schema
+            )
+
+        # Narrow type for mypy — guard above guarantees non-None  # SAS: main.py:612
+        migration_plan = context.migration_plan
+        assert migration_plan is not None  # guaranteed by guard above
+
+        # Persist libname_map
+        migration_plan.libname_map = dict(context.libname_map or {})
+
+        # Persist data_schema from context.data_files
+        data_schema: dict[str, dict[str, Any]] = {}
+        for path, info in (context.data_files or {}).items():
+            data_schema[path] = {
+                "columns": info.columns,
+                "column_types": info.column_types,
+                "column_labels": info.column_labels,
+                "column_formats": info.column_formats,
+                "row_count": info.row_count,
+            }
+        migration_plan.data_schema = data_schema
 
         if tracer:
             await tracer.emit(
