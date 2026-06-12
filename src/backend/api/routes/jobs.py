@@ -29,6 +29,7 @@ from src.backend.api.schemas import (
     BlockRevisionListResponse,
     BlockRevisionResponse,
     ChangelogEntry,
+    ColumnSchema,
     ExecuteRequest,
     ExecuteResponse,
     JobAttachmentsResponse,
@@ -39,6 +40,7 @@ from src.backend.api.schemas import (
     JobLineageResponse,
     JobListResponse,
     JobPlanResponse,
+    JobSchemaResponse,
     JobSourcesResponse,
     JobStatusResponse,
     JobSummary,
@@ -47,8 +49,10 @@ from src.backend.api.schemas import (
     PatchPlanRequest,
     RefineRequest,
     RefineResponse,
+    RelationshipSchema,
     SaveVersionRequest,
     SaveVersionResponse,
+    TableSchema,
     TrustReportBlock,
     TrustReportFile,
     TrustReportResponse,
@@ -487,6 +491,115 @@ async def get_job_plan(
             },
         )
     return JobPlanResponse(**job.migration_plan, job_id=job.id)
+
+
+@router.get("/jobs/{job_id}/schema", response_model=JobSchemaResponse)
+async def get_job_schema(
+    job_id: uuid.UUID,
+    session: AsyncSession = Depends(get_async_session),
+) -> JobSchemaResponse:
+    """Return the data schema for a job — LIBNAME map, table list, column metadata.
+
+    Reads ``migration_plan.data_schema`` and ``migration_plan.libname_map`` to build
+    a structured description of every SAS dataset referenced by the job. Column semantic
+    types are derived from the SAS type and format via :func:`map_sas_to_semantic_type`.
+
+    Args:
+        job_id: UUID of the migration job.
+        session: Injected async database session.
+
+    Returns:
+        JobSchemaResponse with libname_map, tables, and relationships.
+
+    Raises:
+        HTTPException: 404 if the job does not exist.
+    """
+    from src.backend.api.schema_utils import map_sas_to_semantic_type  # SAS: schema_utils.py:1
+
+    result = await session.execute(select(Job).where(Job.id == str(job_id)))
+    job = result.scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+
+    plan: dict[str, Any] = job.migration_plan or {}
+    overrides: dict[str, Any] = (job.user_overrides or {}).get("schema_overrides", {})
+
+    libname_map: dict[str, str] = plan.get("libname_map", {})
+    data_schema: dict[str, dict[str, Any]] = plan.get("data_schema", {})
+    relationships_raw: list[dict[str, Any]] = plan.get("relationships", [])
+
+    tables: list[TableSchema] = []
+    for path, schema_info in data_schema.items():
+        columns_raw: list[str] = schema_info.get("columns", [])
+        col_types: dict[str, str] = schema_info.get("column_types", {})
+        col_labels: dict[str, str] = schema_info.get("column_labels", {})
+        col_formats: dict[str, str] = schema_info.get("column_formats", {})
+        row_count: int | None = schema_info.get("row_count")
+
+        # Determine libname from path prefix match
+        libname: str | None = None
+        for lib_path, lib_name in libname_map.items():
+            if path.startswith(lib_path.rstrip("/") + "/") or lib_path in path:
+                libname = lib_name
+                break
+
+        # Determine target_schema from per-path override or libname
+        path_overrides: dict[str, Any] = overrides.get(path, {})
+        target_schema: str = path_overrides.get("target_schema", libname or "public")
+
+        # Build column list
+        col_type_overrides: dict[str, str] = path_overrides.get("column_type_overrides", {})
+        columns: list[ColumnSchema] = []
+        for col_name in columns_raw:
+            sas_type = col_types.get(col_name, "")
+            sas_format: str | None = col_formats.get(col_name)
+            label: str | None = col_labels.get(col_name)
+            semantic_type = map_sas_to_semantic_type(sas_type, sas_format)
+            override_type: str | None = col_type_overrides.get(col_name)
+            columns.append(
+                ColumnSchema(
+                    name=col_name,
+                    sas_type=sas_type,
+                    sas_format=sas_format,
+                    label=label,
+                    semantic_type=semantic_type,
+                    override_type=override_type,
+                )
+            )
+
+        dataset_name = os.path.splitext(os.path.basename(path))[0]
+        tables.append(
+            TableSchema(
+                path=path,
+                dataset_name=dataset_name,
+                libname=libname,
+                target_schema=target_schema,
+                columns=columns,
+                row_count=row_count,
+            )
+        )
+
+    relationships: list[RelationshipSchema] = [
+        RelationshipSchema(**r)
+        for r in relationships_raw
+        if all(
+            k in r
+            for k in (
+                "left_table",
+                "right_table",
+                "key_column",
+                "via_block_id",
+                "relationship_type",
+            )
+        )
+    ]
+
+    return JobSchemaResponse(
+        job_id=job_id,
+        libname_map=libname_map,
+        tables=tables,
+        relationships=relationships,
+    )
 
 
 _REVIEW_STATUSES = frozenset({"proposed", "accepted", "under_review"})

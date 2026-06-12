@@ -254,6 +254,48 @@ class SensitiveDataFinding(BaseModel):
     source: str
 
 
+class ColumnSchema(BaseModel):
+    """Column-level metadata for a SAS dataset."""
+
+    name: str
+    sas_type: str  # "character" | "double" | ""
+    sas_format: str | None = None  # e.g. "DATE9.", "$40."
+    label: str | None = None  # human-readable label from pyreadstat
+    semantic_type: str = "String"  # derived by map_sas_to_semantic_type
+    override_type: str | None = None  # user-set override (from schema_overrides)
+
+
+class TableSchema(BaseModel):
+    """Schema metadata for a single SAS dataset table."""
+
+    path: str  # normalised file path key
+    dataset_name: str  # basename without extension
+    libname: str | None = None  # e.g. "rawdir"
+    target_schema: str = "public"  # user-editable, defaults to libname or "public"
+    columns: list[ColumnSchema] = []
+    row_count: int | None = None
+    ddl: str = ""  # generated DDL — empty until Phase 3
+
+
+class RelationshipSchema(BaseModel):
+    """A detected relationship between two SAS datasets."""
+
+    left_table: str
+    right_table: str
+    key_column: str
+    via_block_id: str
+    relationship_type: str  # "merge" | "join"
+
+
+class JobSchemaResponse(BaseModel):
+    """Response body for GET /jobs/{id}/schema."""
+
+    job_id: uuid.UUID
+    libname_map: dict[str, str] = {}
+    tables: list[TableSchema] = []
+    relationships: list[RelationshipSchema] = []
+
+
 class JobPlanResponse(BaseModel):
     """Response body for GET /jobs/{id}/plan."""
 
