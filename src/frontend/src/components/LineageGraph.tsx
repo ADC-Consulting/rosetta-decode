@@ -119,15 +119,26 @@ const NODE_PIPELINE_H = 86;
 // ---------------------------------------------------------------------------
 
 const REASON_COLORS: Record<string, string> = {
-  dataset_use: "#3b82f6",
+  reads_dataset: "#3b82f6",
+  writes_dataset: "#ef4444",
   include: "#8b5cf6",
   macro_call: "#f59e0b",
-  proc_use: "#10b981",
-  output_use: "#06b6d4",
+};
+
+// Distinct dash patterns per edge reason so type is readable even in greyscale
+const REASON_DASH: Record<string, string | undefined> = {
+  reads_dataset: undefined,     // solid
+  writes_dataset: "8 4",        // long-dash
+  include: "6 3",               // dashed
+  macro_call: "2 3",            // dotted
 };
 
 function reasonColor(reason: string): string {
-  return REASON_COLORS[reason.toLowerCase().replace(/ /g, "_")] ?? "#64748b";
+  return REASON_COLORS[normalizeReason(reason)] ?? "#64748b";
+}
+
+function reasonDash(reason: string): string | undefined {
+  return REASON_DASH[normalizeReason(reason)];
 }
 
 // ---------------------------------------------------------------------------
@@ -490,8 +501,12 @@ function buildFileNodes(
   });
 }
 
+function normalizeReason(r: string): string {
+  return r.toLowerCase().replace(/ /g, "_");
+}
+
 function humanizeReason(r: string): string {
-  return r.toLowerCase().replace(/_/g, " ");
+  return normalizeReason(r).replace(/_/g, " ");
 }
 
 function buildFileEdges(fileEdges: FileEdge[]): Edge[] {
@@ -505,13 +520,14 @@ function buildFileEdges(fileEdges: FileEdge[]): Edge[] {
   return Array.from(grouped.entries()).map(([key, reasons]) => {
     const [src, tgt] = key.split("||");
     const color = reasonColor(reasons[0]);
+    const dash = reasonDash(reasons[0]);
     return {
       id: `fe-${src}-${tgt}`,
       source: `file-${src}`,
       target: `file-${tgt}`,
       type: "hover",
       data: { label: reasons.join(", ") },
-      style: { stroke: color, strokeWidth: 1.5 },
+      style: { stroke: color, strokeWidth: 1.5, ...(dash ? { strokeDasharray: dash } : {}) },
       markerEnd: { type: MarkerType.ArrowClosed, color },
     };
   });
@@ -632,24 +648,71 @@ function Legend(): React.ReactElement {
   );
 }
 
+const SECTION_LABEL_STYLE: React.CSSProperties = {
+  fontSize: 9,
+  fontWeight: 700,
+  color: "#94a3b8",
+  letterSpacing: "0.07em",
+  textTransform: "uppercase",
+  marginBottom: 4,
+  marginTop: 2,
+};
+
+const FILE_STATUS_ENTRIES: { color: string; label: string }[] = [
+  { color: "#22c55e", label: "All migrated" },
+  { color: "#f59e0b", label: "Needs review" },
+  { color: "#ef4444", label: "Has failures" },
+];
+
+const EDGE_ENTRIES: { reason: string; color: string; dash?: string }[] = [
+  ...Object.entries(REASON_COLORS).map(([reason, color]) => ({
+    reason,
+    color,
+    dash: REASON_DASH[reason],
+  })),
+];
+
 function FilesLegend(): React.ReactElement {
-  const entries: [string, string][] = [
-    ...Object.entries(REASON_COLORS),
-    ["other", "#64748b"],
-  ];
   return (
     <div style={LEGEND_BOX_STYLE}>
-      {entries.map(([reason, color]) => (
-        <div key={reason} style={{ display: "flex", alignItems: "center", gap: 7 }}>
+      {/* Files section */}
+      <div style={SECTION_LABEL_STYLE}>Files</div>
+      {FILE_STATUS_ENTRIES.map(({ color, label }) => (
+        <div key={label} style={{ display: "flex", alignItems: "center", gap: 7 }}>
           <div
             style={{
               width: 20,
-              height: 3,
-              borderRadius: 2,
-              background: color,
+              height: 14,
+              borderRadius: 3,
+              background: "#e8e8e8",
+              borderTop: "1.5px solid transparent",
+              borderLeft: "1.5px solid transparent",
+              borderRight: "1.5px solid transparent",
+              borderBottom: `3px solid ${color}`,
               flexShrink: 0,
             }}
           />
+          <span style={{ fontSize: 11, color: "#444", fontWeight: 500 }}>
+            {label}
+          </span>
+        </div>
+      ))}
+
+      {/* Divider */}
+      <div style={{ height: 1, background: "rgba(0,0,0,0.08)", margin: "5px 0" }} />
+
+      {/* Connections section */}
+      <div style={SECTION_LABEL_STYLE}>Connections</div>
+      {EDGE_ENTRIES.map(({ reason, color, dash }) => (
+        <div key={reason} style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <svg width={20} height={10} style={{ flexShrink: 0 }}>
+            <line
+              x1={0} y1={5} x2={20} y2={5}
+              stroke={color}
+              strokeWidth={2}
+              strokeDasharray={dash}
+            />
+          </svg>
           <span style={{ fontSize: 11, color: "#444", fontWeight: 500 }}>
             {reason.replace(/_/g, " ")}
           </span>
