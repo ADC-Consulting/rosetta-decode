@@ -114,7 +114,7 @@ async def test_schema_route_single_table(client: AsyncClient, db_session: AsyncS
     migration_plan: dict[str, Any] = {
         "summary": "test",
         "block_plans": [],
-        "libname_map": {"/data/raw": "rawdir"},
+        "libname_map": {"rawdir": "/data/raw"},
         "data_schema": {
             "/data/raw/patients.sas7bdat": {
                 "columns": ["id", "dob", "amount"],
@@ -259,7 +259,7 @@ async def test_patch_schema_libname_override_reflected_in_get(
     migration_plan: dict[str, Any] = {
         "summary": "test",
         "block_plans": [],
-        "libname_map": {"/data/raw": "rawdir"},
+        "libname_map": {"rawdir": "/data/raw"},
         "data_schema": {
             path: {
                 "columns": ["id"],

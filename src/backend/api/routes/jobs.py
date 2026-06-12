@@ -538,9 +538,13 @@ async def get_job_schema(
         row_count: int | None = schema_info.get("row_count")
 
         # Determine libname from path prefix match
+        # libname_map is {libname_key: folder_path} e.g. {"raw": "./data/raw"}
+        # Normalise lib_path by stripping leading "./" and trailing "/" for comparison
         libname: str | None = None
-        for lib_path, lib_name in libname_map.items():
-            if path.startswith(lib_path.rstrip("/") + "/") or lib_path in path:
+        norm_path = path.lstrip("./")
+        for lib_name, lib_path in libname_map.items():
+            norm_lib = lib_path.lstrip("./").rstrip("/")
+            if norm_path.startswith(norm_lib + "/") or norm_lib in norm_path:
                 libname = lib_name
                 break
 
