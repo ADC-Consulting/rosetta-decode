@@ -317,6 +317,26 @@
 - [x] F33 S-F: Build ETLTab orchestrating component
 - [x] F33 S-G: Wire ETLTab into JobDetailPage
 - [x] F33 S-H: make test exits 0
+
+**F34 — Token usage & BOM scoping summary (#25) → see `docs/plans/latest/F34-token-usage-scoping.md`**
+- [x] F34 S-A: Alembic migration 018 + Job model column
+- [x] F34 S-B: UsageTracker + contextvars module
+- [x] F34 S-C: Tracker unit tests
+- [x] F34 S-D: Instrument 12 LLM call sites
+- [x] F34 S-E: Orchestrator activate/set_phase/persist
+- [x] F34 S-F: Worker integration test
+- [x] F34 S-G: Pricing module (LiteLLM fetch + static fallback)
+- [x] F34 S-H: Pricing unit tests
+- [x] F34 S-I: API schemas (PhaseTokens, TokenUsageStats, CostEstimate, BomSummary, ScopingSummaryResponse)
+- [x] F34 S-J: Extract _build_trust_blocks() helper
+- [x] F34 S-K: Markdown renderer + tests
+- [x] F34 S-L: GET /jobs/{id}/scoping route
+- [x] F34 S-M: Route tests
+- [x] F34 S-N: Frontend API client types + getJobScopingSummary
+- [x] F34 S-O: ScopingSummaryPanel component
+- [x] F34 S-P: Wire panel into PlanTab
+- [x] F34 S-Q: make test exits 0 + close-out
+
 - [ ] #43: Data Storage tab — SAS table inventory, DW mapping — wireframe pending
 - [x] #40: Chevron tab shell — delivered by F28, issue closed
 - [x] #44: BI tab placeholder — empty state delivered in F28 S-C, issue closed

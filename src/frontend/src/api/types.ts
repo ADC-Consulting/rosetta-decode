@@ -420,3 +420,48 @@ export type TraceEvent =
   | ParseResultEvent
   | PlanResultEvent
   | EnrichmentItemDoneEvent;
+
+// ── F34: Scoping summary ──────────────────────────────────────────────────────
+
+export interface PhaseTokens {
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
+  requests: number;
+}
+
+export interface TokenUsageStats {
+  phases: Record<string, PhaseTokens>;
+  total: PhaseTokens;
+}
+
+export interface CostEstimate {
+  total_usd: number;
+  per_phase_usd: Record<string, number>;
+  prices: { input_usd_per_mtok: number; output_usd_per_mtok: number };
+  price_source: string;
+}
+
+export interface BomSummary {
+  total_blocks: number;
+  data_steps: number;
+  procs: number;
+  macros: number;
+  untranslatable: number;
+  proc_counts: Record<string, number>;
+  risk_buckets: Record<string, number>;
+  criticality_buckets: Record<string, number>;
+  strategy_counts: Record<string, number>;
+  human_review_required: number;
+}
+
+export interface ScopingSummaryResponse {
+  job_id: string;
+  job_name: string;
+  llm_model: string;
+  token_usage: TokenUsageStats | null;
+  cost: CostEstimate | null;
+  bom: BomSummary;
+  markdown: string;
+}

@@ -28,6 +28,7 @@ from src.worker.engine.agents.shared import (
     normalise_output_var_in_code,
 )
 from src.worker.engine.models import GeneratedBlock, JobContext, SASBlock
+from src.worker.engine.usage import record_usage
 
 logger = logging.getLogger("src.worker.engine.agents.generic_proc")
 
@@ -501,6 +502,7 @@ class GenericProcAgent:
                 prompt,
                 model_settings={"max_tokens": 8000},
             )
+            record_usage(result.usage())
         except Exception as exc:
             logger.exception("GenericProcAgent LLM call failed for %s", block.block_type)
             raise GenericProcError(

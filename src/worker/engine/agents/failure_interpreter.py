@@ -15,6 +15,7 @@ from pydantic_ai.providers.azure import AzureProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 from src.worker.core.config import worker_settings
 from src.worker.engine.models import JobContext
+from src.worker.engine.usage import record_usage
 
 logger = logging.getLogger("src.worker.engine.agents.failure_interpreter")
 
@@ -152,6 +153,7 @@ class FailureInterpreterAgent:
         prompt = _build_prompt(diff, generated_code, context)
         try:
             result = await self._agent.run(prompt)
+            record_usage(result.usage())
         except Exception as exc:
             raise FailureInterpreterError(
                 f"FailureInterpreterAgent LLM call failed: {exc}", cause=exc

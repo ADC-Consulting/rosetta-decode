@@ -43,6 +43,7 @@ from src.worker.engine.pii_scanner import scan_for_pii
 from src.worker.engine.router import TranslationRouter
 from src.worker.engine.stub_generator import StubGenerator
 from src.worker.engine.trace import JobCancelledError, TraceEmitter
+from src.worker.engine.usage import UsageTracker, activate, set_phase
 from src.worker.validation.reconciliation import ReconciliationService, RemoteReconciliationService
 
 logging.basicConfig(
@@ -319,7 +320,15 @@ class JobOrchestrator:
                 await tracer.emit("job_done", {"job_id": str(job.id), "final_status": job.status})
         except JobCancelledError as exc:
             logger.info("Job %s cancelled: %s", job.id, exc)
-            await session.execute(update(Job).where(Job.id == job.id).values(status="cancelled"))
+            _tracker = getattr(self, "_usage_tracker", None)
+            await session.execute(
+                update(Job)
+                .where(Job.id == job.id)
+                .values(
+                    status="cancelled",
+                    token_usage=_tracker.snapshot() if _tracker is not None else None,
+                )
+            )
             await session.commit()
             if tracer is not None and self._active_phase:
                 await tracer.emit(
@@ -336,6 +345,7 @@ class JobOrchestrator:
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 429:
                 logger.warning("Job %s: circuit breaker tripped (HTTP 429)", job.id)
+                _tracker = getattr(self, "_usage_tracker", None)
                 await session.execute(
                     update(Job)
                     .where(Job.id == job.id)
@@ -343,6 +353,7 @@ class JobOrchestrator:
                         status="failed",
                         error="circuit_breaker_tripped",
                         error_detail={"error": "circuit_breaker_tripped"},
+                        token_usage=_tracker.snapshot() if _tracker is not None else None,
                     )
                 )
                 await session.commit()
@@ -351,8 +362,15 @@ class JobOrchestrator:
         except Exception as exc:
             logger.warning("Job %s failed: %s", job.id, exc)
             await session.rollback()
+            _tracker = getattr(self, "_usage_tracker", None)
             await session.execute(
-                update(Job).where(Job.id == job.id).values(status="failed", error=str(exc)[:500])
+                update(Job)
+                .where(Job.id == job.id)
+                .values(
+                    status="failed",
+                    error=str(exc)[:500],
+                    token_usage=_tracker.snapshot() if _tracker is not None else None,
+                )
             )
             await session.commit()
             if tracer is not None and self._active_phase:
@@ -368,6 +386,9 @@ class JobOrchestrator:
 
     async def _execute(self, session: AsyncSession, job: Job) -> None:
         """Inner pipeline — raises on unhandled errors."""
+        _usage_tracker = UsageTracker()
+        self._usage_tracker = _usage_tracker
+        activate(_usage_tracker)
         files: dict[str, str] = {
             k: v
             for k, v in job.files.items()
@@ -431,6 +452,7 @@ class JobOrchestrator:
         if tracer:
             await tracer.emit("phase_start", {"phase": "parse_analysis"})
             self._active_phase = "parse_analysis"
+            set_phase("parse_analysis")
 
         # Step 1: Parse
         parse_result = SASParser().parse(files)
@@ -503,6 +525,7 @@ class JobOrchestrator:
         if tracer:
             await tracer.emit("phase_start", {"phase": "migration_planning"})
             self._active_phase = "migration_planning"
+            set_phase("migration_planning")
 
         # Step 3.5: Migration planning (best-effort with fallback)
         try:
@@ -564,6 +587,7 @@ class JobOrchestrator:
         if tracer:
             await tracer.emit("phase_start", {"phase": "translation"})
             self._active_phase = "translation"
+            set_phase("translation")
 
         generated, recon_failed = await self._translate_two_phase(
             expanded_blocks,
@@ -592,6 +616,7 @@ class JobOrchestrator:
         if tracer:
             await tracer.emit("phase_start", {"phase": "assembly_recon"})
             self._active_phase = "assembly_recon"
+            set_phase("assembly_recon")
 
         # Step 5: Assemble — dict form for generated_files, flat str for python_code column
         generated_files: dict[str, str] = self._codegen.assemble(
@@ -627,6 +652,7 @@ class JobOrchestrator:
         if tracer:
             await tracer.emit("phase_start", {"phase": "enrichment"})
             self._active_phase = "enrichment"
+            set_phase("enrichment")
 
         # Step 7.5: Lineage enrichment (best-effort)
         try:
@@ -714,6 +740,7 @@ class JobOrchestrator:
                     context.migration_plan.model_dump() if context.migration_plan else None
                 ),
                 llm_model=worker_settings.llm_model,
+                token_usage=_usage_tracker.snapshot(),
             )
         )
         await session.commit()

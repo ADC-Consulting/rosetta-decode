@@ -15,6 +15,7 @@ from pydantic_ai.providers.azure import AzureProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 from src.worker.core.config import worker_settings
 from src.worker.engine.models import JobContext
+from src.worker.engine.usage import record_usage
 
 logger = logging.getLogger("src.worker.engine.agents.documentation")
 
@@ -166,6 +167,7 @@ class DocumentationAgent:
         prompt = _build_prompt(context, generated_code, validation_result)
         try:
             result = await self._agent.run(prompt)
+            record_usage(result.usage())
         except Exception as exc:
             raise DocumentationError(
                 f"DocumentationAgent LLM call failed: {exc}", cause=exc

@@ -17,6 +17,7 @@ from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.azure import AzureProvider
 from src.worker.core.config import worker_settings
 from src.worker.engine.models import BlockType, GeneratedBlock, SASBlock
+from src.worker.engine.usage import record_usage
 
 logger = logging.getLogger("src.worker.engine.llm_client")
 
@@ -208,6 +209,7 @@ class LLMClient:
         for attempt, delay in enumerate(_RETRY_DELAYS, start=1):
             try:
                 result = self._agent.run_sync(user_message)
+                record_usage(result.usage())
                 generated = cast(GeneratedBlock, result.output)
                 return GeneratedBlock(
                     source_block=block,
@@ -269,6 +271,7 @@ class LLMClient:
 
         def _run() -> str:
             result = self._text_agent.run_sync(prompt)
+            record_usage(result.usage())
             return result.output
 
         return await asyncio.to_thread(_run)

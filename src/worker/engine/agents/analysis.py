@@ -14,6 +14,7 @@ from pydantic_ai.providers.azure import AzureProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 from src.worker.core.config import worker_settings
 from src.worker.engine.models import JobContext, MacroVar, SASBlock
+from src.worker.engine.usage import record_usage
 
 logger = logging.getLogger("src.worker.engine.agents.analysis")
 
@@ -171,6 +172,7 @@ class AnalysisAgent:
                 prompt,
                 model_settings={"max_tokens": 8000},
             )
+            record_usage(result.usage())
         except Exception as exc:
             logger.exception("AnalysisAgent LLM call failed")
             raise AnalysisError(f"AnalysisAgent failed: {exc}", cause=exc) from exc

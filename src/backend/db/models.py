@@ -43,6 +43,7 @@ class Job(Base):
     migration_plan: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     generated_files: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     user_overrides: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    token_usage: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True, default=None)
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     skip_llm: Mapped[bool] = mapped_column(
         sa.Boolean, nullable=False, default=False, server_default=sa.text("false")

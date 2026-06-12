@@ -36,6 +36,7 @@ import { useRef, useState } from "react";
 import BlockPlanTable from "./BlockPlanTable";
 import ChangelogFeed from "./ChangelogFeed";
 import ReportTab from "./ReportTab";
+import { ScopingSummaryPanel } from "./ScopingSummaryPanel";
 
 // ---------------------------------------------------------------------------
 // Colour maps
@@ -1021,6 +1022,9 @@ export default function PlanTab({
             <ChangelogFeed jobId={jobId} />
           )}
         </div>
+
+        {/* Scoping summary section */}
+        <ScopingSummaryPanel jobId={jobId} />
 
         {/* Needs attention section */}
         {trustReport && (
