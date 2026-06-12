@@ -481,7 +481,6 @@ export default function PlanTab({
   onSave,
   isSaving,
   restoreKey,
-  onAccept,
 }: {
   jobId: string;
   isReviewable: boolean;
@@ -501,7 +500,6 @@ export default function PlanTab({
   onSave?: () => void;
   isSaving?: boolean;
   restoreKey?: number;
-  onAccept?: () => void;
 }): React.ReactElement {
   const trustReportEnabled =
     !!jobId &&
@@ -615,7 +613,7 @@ export default function PlanTab({
 
   return (
     <TooltipProvider>
-      <div className="h-full min-h-0 overflow-y-auto space-y-4 pb-16">
+      <div className="h-full min-h-0 overflow-y-auto space-y-4 pb-6">
         {/* Pipeline description — above verdict strip */}
         {planData.summary && (
           <p className="text-sm text-foreground leading-relaxed">
@@ -1121,41 +1119,7 @@ export default function PlanTab({
           </div>
         )}
 
-        {/* Sticky accept footer */}
-        {(jobStatus === "proposed" || jobStatus === "under_review") && trustReport && onAccept && (
-          (() => {
-            const verdict = getVerdict(trustReport);
-            const style = VERDICT_STYLES[verdict];
-            const attentionCount = trustReport.needs_review + trustReport.failed_reconciliation;
-            const summaryText =
-              verdict === "green"
-                ? "All blocks verified"
-                : verdict === "amber"
-                ? `${attentionCount} block${attentionCount !== 1 ? "s" : ""} need review`
-                : `${trustReport.manual_todo} block${trustReport.manual_todo !== 1 ? "s" : ""} require manual implementation`;
-            const buttonLabel =
-              verdict === "green"
-                ? "Accept migration"
-                : verdict === "amber"
-                ? "Accept anyway"
-                : "Accept (not recommended)";
-            const buttonVariant: "default" | "outline" =
-              verdict === "green" ? "default" : "outline";
-            return (
-              <div className="sticky bottom-0 bg-background border-t border-border px-4 py-3 flex items-center justify-between gap-4">
-                <p className={`text-sm font-medium ${style.textColor}`}>{summaryText}</p>
-                <Button
-                  size="sm"
-                  variant={buttonVariant}
-                  onClick={onAccept}
-                  className={verdict === "red" ? "border-red-300 text-red-700 hover:bg-red-50" : ""}
-                >
-                  {buttonLabel}
-                </Button>
-              </div>
-            );
-          })()
-        )}
+
       </div>
     </TooltipProvider>
   );

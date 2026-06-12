@@ -308,15 +308,21 @@
 - [x] F29 S-M: Description text as free-standing prose (separate from metrics card)
 - [x] F29 S-N: Sticky accept footer (verdict summary + Accept button)
 - [x] F29 S-O: make test exits 0
-- [ ] #42: ETL tab — Lineage DAG as primary canvas, editor as click-through panel — wireframe pending
+**F33 — ETL tab (#42) → see `docs/plans/latest/F33-etl-tab.md`**
+- [x] F33 S-A: Backend Option A+ — add trigger field to BlockPythonEditRequest
+- [x] F33 S-B: Extend LineageGraph with onFileNodeClick + trustFiles status
+- [x] F33 S-C: Update saveBlockPython to accept trigger
+- [x] F33 S-D: Build BlockInspectorPanel component
+- [x] F33 S-E: Build BlockCodePopup component
+- [x] F33 S-F: Build ETLTab orchestrating component
+- [x] F33 S-G: Wire ETLTab into JobDetailPage
+- [x] F33 S-H: make test exits 0
 - [ ] #43: Data Storage tab — SAS table inventory, DW mapping — wireframe pending
 - [x] #40: Chevron tab shell — delivered by F28, issue closed
 - [x] #44: BI tab placeholder — empty state delivered in F28 S-C, issue closed
 - [x] #45: AI tab placeholder — empty state delivered in F28 S-C, issue closed
-- [ ] #46: Remove legacy tab components (Plan/Editor/Report/Lineage/History/Evaluation) — blocked: depends on #41–45
+- [ ] #46: Remove legacy tab components — blocked: depends on #41–45
 - [ ] #47: Remove legacy standalone pages and routes — blocked: depends on #46
-- [ ] #42: ETL tab — blocked on wireframe
-- [ ] #43: Data Storage tab — blocked on wireframe
 - [ ] #52: Revisit sidebar navigation — blocked on persona validation
 - [x] fix(frontend): PlanTab review queue — removed `.slice(0, 10)` cap; all items now render sorted by criticality
 

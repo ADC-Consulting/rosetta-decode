@@ -6,6 +6,57 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-11 — F33 ETL tab complete; Plan tab sticky footer removed; PR #66 opened
+**Duration:** ~5h | **Focus:** F33 ETL tab design, implementation, browser verification
+
+### Done
+- PRs #63/#64/#65 (F30/F31/F32) confirmed merged; main synced
+- F33 planned through 3 layout iterations: files overview → block list panel → code popup
+- Key design decisions: ETL tab shows proposed migration only (no execution), Files view default, CSV nodes filtered, single Accept CTA in header
+- F33 implemented — 8 subtasks, all committed separately:
+  - S-A: `trigger` field on `BlockPythonEditRequest` (backend, allowlist validator, 4 tests)
+  - S-B: `onFileNodeClick`, `trustFiles`, `initialView` props on `LineageGraph`
+  - S-C: `saveBlockPython` accepts trigger param
+  - S-D: `BlockInspectorPanel` — file block list side panel
+  - S-E: `BlockCodePopup` — SAS/Python split modal with verify action
+  - S-F: `ETLTab` — three-state orchestrator
+  - S-G: `JobDetailPage` wiring + `getJobSources` query
+- Browser verification: fixed 5 issues (SAS pane empty, CSV nodes, default Files view, fitView on panel open, rationale text in inspector)
+- Removed sticky accept footer from Plan tab — two accept buttons with different labels was confusing; single CTA in header
+- PR #66 opened: `feat/F33-etl-tab → main` (closes #42)
+
+### Decisions
+- **ETL tab is review-only (no execution controls):** Run migration / pipeline execution stages do not belong on a "proposed migration" review tab · revisit never
+- **Files view is the ETL tab default:** Users need the overview before drilling into blocks · revisit never
+- **CSV/data files filtered from ETL graph:** Data files belong on Data Storage tab (#43); ETL shows `.sas` orchestration only · revisit never
+- **Sticky accept footer removed from Plan tab:** Single "Accept migration" CTA in header; footer was redundant and showed a different label than the header button · revisit never
+- **Accept button gating deferred:** No hard gate preventing acceptance before all blocks reviewed — deferred pending real usage data on whether clients use Mark as verified before accepting · revisit after first client feedback
+
+### Open Questions
+- PR #66 CI — check before merging
+
+### Next Session — Start Here
+1. Merge PR #66 if CI green
+2. Next issues from queue: #19 (runbook), #25 (token usage/BOM), or #56 (post-run risk enrichment)
+
+### Files Touched
+- `src/backend/api/schemas.py`
+- `src/backend/api/routes/jobs.py`
+- `src/frontend/src/api/jobs.ts`
+- `src/frontend/src/components/JobDetail/BlockCodePopup.tsx` (new)
+- `src/frontend/src/components/JobDetail/BlockInspectorPanel.tsx` (new)
+- `src/frontend/src/components/JobDetail/ETLTab.tsx` (new)
+- `src/frontend/src/components/JobDetail/PlanTab.tsx`
+- `src/frontend/src/components/LineageGraph.tsx`
+- `src/frontend/src/pages/JobDetailPage.tsx`
+- `tests/test_block_refine_routes.py`
+- `docs/plans/latest/F33-etl-tab.md`
+- `journal/SESSIONS.md`
+- `journal/BACKLOG.md`
+- `journal/DECISIONS.md`
+
+---
+
 ## 2026-06-11 — F30/F31/F32 planned and implemented; PRs #63/#64/#65 opened
 **Duration:** ~3h | **Focus:** Plan tab data enrichment — reads/produces, missing deps, PII
 

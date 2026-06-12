@@ -6,6 +6,15 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-06-11 — F33 ETL tab design
+
+- **ETL tab is review-only, no execution controls:** Run migration / pipeline stages are execution concepts; the ETL tab shows the proposed migration state for human review only — mixing execution and review would confuse users about what they're doing · revisit never
+- **ETL graph filters to .sas nodes:** Data/CSV files belong on the Data Storage tab; ETL orchestration view shows only SAS source files · revisit never
+- **Sticky accept footer removed from Plan tab:** Two accept buttons with different labels ("Accept migration" in header vs "Accept (not recommended)" in footer) caused confusion — removed the footer, single CTA in header · revisit never
+- **Accept gating deferred:** No programmatic gate preventing accept before all blocks reviewed — deferred until real client usage data shows whether the Mark as verified workflow is actually used before acceptance · revisit after first client feedback
+
+---
+
 ## 2026-06-11 — F30/F31/F32 implementation approach
 
 - **PII scanner uses token-based word-boundary matching (not substring):** Column names split on underscore and CamelCase boundaries then matched token-by-token against a PII signal frozenset — prevents `TOPZIP` → `zip`, `DOBERMAN` → `dob` false positives that substring matching produces · revisit if real client data surfaces false negatives or positives
