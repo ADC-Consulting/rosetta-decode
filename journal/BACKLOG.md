@@ -317,7 +317,27 @@
 - [x] F33 S-F: Build ETLTab orchestrating component
 - [x] F33 S-G: Wire ETLTab into JobDetailPage
 - [x] F33 S-H: make test exits 0
-- [ ] #43: Data Storage tab — SAS table inventory, DW mapping — wireframe pending
+**F34 — Data Storage tab (#43) → see `docs/plans/latest/F34-data-storage-tab.md`**
+Phase 1 — Schema hierarchy + table browser + LIBNAME editing:
+- [ ] F34 P1-A: Extend _sniff_file and DataFileInfo with column metadata
+- [ ] F34 P1-B: Persist libname_map and data_schema in MigrationPlan
+- [ ] F34 P1-C: Add GET /jobs/{id}/schema backend route
+- [ ] F34 P1-D: Add PATCH /jobs/{id}/schema for user overrides
+- [ ] F34 P1-E: Add getJobSchema API client + TypeScript types
+- [ ] F34 P1-F: Build DataStorageTab component
+- [ ] F34 P1-G: Wire into JobDetailPage
+Phase 2 — Column types + semantic type mapping:
+- [ ] F34 P2-A: Semantic type mapping function
+Phase 3 — Relationships + ERD + DDL:
+- [ ] F34 P3-A: Add merge_by_vars and join_on_keys to SASBlock
+- [ ] F34 P3-B: Extract MERGE BY and JOIN ON in parser
+- [ ] F34 P3-C: Build relationships list and persist to MigrationPlan
+- [ ] F34 P3-D: DDL generation module
+- [ ] F34 P3-E: Surface relationships and DDL in schema route
+- [ ] F34 P3-F: Build DataStorageERD component
+- [ ] F34 P3-G: Add DDL panel and ERD toggle to DataStorageTab
+- [ ] F34 P3-H: make test exits 0
+Backlog: user-selectable DDL target platform (Databricks Delta, Snowflake, etc.)
 - [x] #40: Chevron tab shell — delivered by F28, issue closed
 - [x] #44: BI tab placeholder — empty state delivered in F28 S-C, issue closed
 - [x] #45: AI tab placeholder — empty state delivered in F28 S-C, issue closed
