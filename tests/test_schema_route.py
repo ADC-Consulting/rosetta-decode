@@ -245,3 +245,96 @@ async def test_schema_route_character_column(client: AsyncClient, db_session: As
     col = response.json()["tables"][0]["columns"][0]
     assert col["semantic_type"] == "String"
     assert col["sas_format"] == "$50."
+
+
+# ── PATCH /jobs/{id}/schema ────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_patch_schema_libname_override_reflected_in_get(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """PATCH libname_overrides persists and is reflected in subsequent GET."""
+    path = "/data/raw/patients.sas7bdat"
+    migration_plan: dict[str, Any] = {
+        "summary": "test",
+        "block_plans": [],
+        "libname_map": {"/data/raw": "rawdir"},
+        "data_schema": {
+            path: {
+                "columns": ["id"],
+                "column_types": {"id": "double"},
+                "column_labels": {},
+                "column_formats": {},
+                "row_count": None,
+            }
+        },
+        "relationships": [],
+    }
+    job_id = await _insert_job(db_session, migration_plan=migration_plan)
+
+    # Confirm default target_schema before patch
+    pre = await client.get(f"/jobs/{job_id}/schema")
+    assert pre.status_code == 200
+    assert pre.json()["tables"][0]["target_schema"] == "rawdir"
+
+    # PATCH with libname override
+    patch_resp = await client.patch(
+        f"/jobs/{job_id}/schema",
+        json={"libname_overrides": {"rawdir": "raw_data"}, "column_type_overrides": {}},
+    )
+    assert patch_resp.status_code == 200
+    body = patch_resp.json()
+    # The updated GET response must reflect the new target_schema
+    assert body["tables"][0]["target_schema"] == "raw_data"
+
+    # Independent GET should also return the updated value
+    get_resp = await client.get(f"/jobs/{job_id}/schema")
+    assert get_resp.status_code == 200
+    assert get_resp.json()["tables"][0]["target_schema"] == "raw_data"
+
+
+@pytest.mark.asyncio
+async def test_patch_schema_column_type_override_reflected_in_get(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """PATCH column_type_overrides persists and override_type appears in GET response."""
+    path = "/data/raw/subjects.sas7bdat"
+    migration_plan: dict[str, Any] = {
+        "summary": "test",
+        "block_plans": [],
+        "libname_map": {},
+        "data_schema": {
+            path: {
+                "columns": ["AGE"],
+                "column_types": {"AGE": "double"},
+                "column_labels": {},
+                "column_formats": {},
+                "row_count": None,
+            }
+        },
+        "relationships": [],
+    }
+    job_id = await _insert_job(db_session, migration_plan=migration_plan)
+
+    # Confirm no override_type before patch
+    pre = await client.get(f"/jobs/{job_id}/schema")
+    assert pre.status_code == 200
+    assert pre.json()["tables"][0]["columns"][0]["override_type"] is None
+
+    # PATCH with column type override
+    patch_resp = await client.patch(
+        f"/jobs/{job_id}/schema",
+        json={"libname_overrides": {}, "column_type_overrides": {path: {"AGE": "Integer"}}},
+    )
+    assert patch_resp.status_code == 200
+    body = patch_resp.json()
+    col = body["tables"][0]["columns"][0]
+    assert col["override_type"] == "Integer"
+    # semantic_type is unaffected — still derived from sas_type/sas_format
+    assert col["semantic_type"] == "Number"
+
+    # Independent GET confirms persistence
+    get_resp = await client.get(f"/jobs/{job_id}/schema")
+    assert get_resp.status_code == 200
+    assert get_resp.json()["tables"][0]["columns"][0]["override_type"] == "Integer"

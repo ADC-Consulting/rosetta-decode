@@ -296,6 +296,16 @@ class JobSchemaResponse(BaseModel):
     relationships: list[RelationshipSchema] = []
 
 
+class PatchJobSchemaRequest(BaseModel):
+    """Request body for PATCH /jobs/{id}/schema."""
+
+    libname_overrides: dict[str, str] = {}
+    # e.g. {"rawdir": "raw_data", "outdir": "analytics"}
+
+    column_type_overrides: dict[str, dict[str, str]] = {}
+    # keyed by file path: {"sas_pharma.../dm_raw.csv": {"AGE": "Integer"}}
+
+
 class JobPlanResponse(BaseModel):
     """Response body for GET /jobs/{id}/plan."""
 

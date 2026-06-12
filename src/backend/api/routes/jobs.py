@@ -46,6 +46,7 @@ from src.backend.api.schemas import (
     JobSummary,
     JobVersionDetail,
     JobVersionSummary,
+    PatchJobSchemaRequest,
     PatchPlanRequest,
     RefineRequest,
     RefineResponse,
@@ -543,9 +544,14 @@ async def get_job_schema(
                 libname = lib_name
                 break
 
-        # Determine target_schema from per-path override or libname
+        # Determine target_schema from per-path override, libname override, or libname
         path_overrides: dict[str, Any] = overrides.get(path, {})
-        target_schema: str = path_overrides.get("target_schema", libname or "public")
+        libname_key = f"__libname__{libname}" if libname else None
+        libname_override_entry: dict[str, Any] = (
+            overrides.get(libname_key, {}) if libname_key else {}
+        )
+        default_schema = libname_override_entry.get("target_schema") or libname or "public"
+        target_schema: str = path_overrides.get("target_schema", default_schema)
 
         # Build column list
         col_type_overrides: dict[str, str] = path_overrides.get("column_type_overrides", {})
@@ -600,6 +606,75 @@ async def get_job_schema(
         tables=tables,
         relationships=relationships,
     )
+
+
+@router.patch("/jobs/{job_id}/schema", response_model=JobSchemaResponse)
+async def patch_job_schema(
+    job_id: uuid.UUID,
+    request: PatchJobSchemaRequest,
+    session: AsyncSession = Depends(get_async_session),
+) -> JobSchemaResponse:
+    """Save user overrides for LIBNAME target names and column type overrides.
+
+    Merges ``request.libname_overrides`` and ``request.column_type_overrides`` into
+    ``job.user_overrides["schema_overrides"]``. Libname overrides are stored under
+    a ``__libname__<name>`` sentinel key to avoid collision with file-path keys.
+
+    Args:
+        job_id: UUID of the migration job.
+        request: Libname and column type overrides to persist.
+        session: Injected async database session.
+
+    Returns:
+        Updated JobSchemaResponse reflecting all persisted overrides.
+
+    Raises:
+        HTTPException: 404 if the job does not exist.
+    """
+    job = await _get_job_or_404(job_id, session)
+
+    # Merge into user_overrides["schema_overrides"]
+    overrides: dict[str, Any] = dict(job.user_overrides or {})
+    schema_overrides: dict[str, Any] = dict(overrides.get("schema_overrides", {}))
+
+    # Apply libname target name overrides using __libname__<name> sentinel keys
+    for libname, target in request.libname_overrides.items():
+        lib_key = f"__libname__{libname}"
+        schema_overrides[lib_key] = {"target_schema": target}
+
+    # Apply column type overrides per file path
+    for path, col_overrides in request.column_type_overrides.items():
+        path_entry: dict[str, Any] = dict(schema_overrides.get(path, {}))
+        existing_col_overrides: dict[str, str] = dict(path_entry.get("column_type_overrides", {}))
+        existing_col_overrides.update(col_overrides)
+        path_entry["column_type_overrides"] = existing_col_overrides
+        schema_overrides[path] = path_entry
+
+    overrides["schema_overrides"] = schema_overrides
+    await session.execute(update(Job).where(Job.id == str(job_id)).values(user_overrides=overrides))
+    await session.commit()
+
+    return await get_job_schema(job_id=job_id, session=session)
+
+
+async def _get_job_or_404(job_id: uuid.UUID, session: AsyncSession) -> Job:
+    """Fetch a Job row by ID or raise HTTP 404.
+
+    Args:
+        job_id: UUID of the migration job.
+        session: Active async database session.
+
+    Returns:
+        The matching Job ORM instance.
+
+    Raises:
+        HTTPException: 404 if no job with that ID exists.
+    """
+    result = await session.execute(select(Job).where(Job.id == str(job_id)))
+    job = result.scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+    return job
 
 
 _REVIEW_STATUSES = frozenset({"proposed", "accepted", "under_review"})
