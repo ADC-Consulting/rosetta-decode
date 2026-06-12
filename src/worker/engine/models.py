@@ -387,6 +387,13 @@ class DataFileInfo(BaseModel):
         extension: File extension including the dot (e.g. ``".csv"``).
         columns: Column headers sniffed from the file; empty list if unreadable.
         row_count: Number of data rows, or ``None`` if not sniffable.
+        column_types: Mapping of column name to readstat type string (e.g. ``"character"``,
+            ``"double"``). Only populated for ``.sas7bdat`` files.
+        column_labels: Mapping of column name to human-readable SAS label.
+            Only populated for ``.sas7bdat`` files.
+        column_formats: Mapping of column name to SAS format string
+            (e.g. ``"DATE9."``, ``"$40."``, ``"COMMA12.2"``).
+            Only populated for ``.sas7bdat`` files.
     """
 
     path: str
@@ -394,6 +401,9 @@ class DataFileInfo(BaseModel):
     extension: str
     columns: list[str] = Field(default_factory=list)
     row_count: int | None = None
+    column_types: dict[str, str] = Field(default_factory=dict)
+    column_labels: dict[str, str] = Field(default_factory=dict)
+    column_formats: dict[str, str] = Field(default_factory=dict)
 
 
 class JobContext(BaseModel):

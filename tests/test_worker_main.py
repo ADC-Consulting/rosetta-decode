@@ -900,7 +900,7 @@ async def test_sniff_file_csv_succeeds(tmp_path: Any) -> None:
     df = pd.DataFrame({"col1": [1, 2, 3], "col2": ["a", "b", "c"]})
     df.to_csv(disk_path, index=False)
 
-    cols, row_count = _sniff_file(disk_path, ".csv")
+    cols, row_count, _ctypes, _clabels, _cfmts = _sniff_file(disk_path, ".csv")
     assert cols == ["col1", "col2"]
     assert row_count == 3
 
@@ -914,16 +914,19 @@ async def test_sniff_file_tsv_succeeds(tmp_path: Any) -> None:
     df = pd.DataFrame({"x": [10, 20], "y": [30, 40]})
     df.to_csv(disk_path, sep="\t", index=False)
 
-    cols, row_count = _sniff_file(disk_path, ".tsv")
+    cols, row_count, _ctypes, _clabels, _cfmts = _sniff_file(disk_path, ".tsv")
     assert cols == ["x", "y"]
     assert row_count == 2
 
 
 def test_sniff_file_returns_empty_on_missing() -> None:
-    """Test _sniff_file returns ([], None) for missing files."""
-    cols, row_count = _sniff_file("/nonexistent/path/file.csv", ".csv")
+    """Test _sniff_file returns ([], None, {}, {}, {}) for missing files."""
+    cols, row_count, ctypes, clabels, cfmts = _sniff_file("/nonexistent/path/file.csv", ".csv")
     assert cols == []
     assert row_count is None
+    assert ctypes == {}
+    assert clabels == {}
+    assert cfmts == {}
 
 
 def test_dict_to_recon_report_all_checks_pass() -> None:

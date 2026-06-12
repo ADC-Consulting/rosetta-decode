@@ -59,46 +59,107 @@ logging.getLogger("openai._base_client").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 
-def _sniff_file(disk_path: str, ext: str) -> tuple[list[str], int | None]:
+def _sniff_file(
+    disk_path: str, ext: str
+) -> tuple[list[str], int | None, dict[str, str], dict[str, str], dict[str, str]]:
     """Sniff column headers and row count from a data file.
 
     Supports ``.csv``, ``.tsv``, ``.xlsx``/``.xls``, and ``.sas7bdat``.
-    Any read error returns ``([], None)`` — this function is always non-blocking.
+    Any read error returns ``([], None, {}, {}, {})`` — this function is always non-blocking.
+
+    For ``.sas7bdat`` files, additional SAS metadata is extracted using
+    ``metadataonly=True`` (faster than ``row_limit=0`` — skips row decoding entirely).
 
     Args:
         disk_path: Absolute path to the data file on disk.
         ext: File extension including the dot (e.g. ``".csv"``).
 
     Returns:
-        A 2-tuple of ``(columns, row_count)``. ``columns`` is an empty list and
-        ``row_count`` is ``None`` when the file cannot be read.
+        A 5-tuple of ``(columns, row_count, column_types, column_labels, column_formats)``.
+        ``column_types`` maps column name to readstat type (``"character"`` / ``"double"``).
+        ``column_labels`` maps column name to human-readable SAS variable label.
+        ``column_formats`` maps column name to SAS format string (e.g. ``"DATE9."``).
+        Non-SAS file types return empty dicts for the last three elements.
+        All fields are empty / ``None`` when the file cannot be read.
     """
     import pandas as pd  # local import — pandas may not be installed in all envs
 
+    _empty: tuple[list[str], int | None, dict[str, str], dict[str, str], dict[str, str]] = (
+        [],
+        None,
+        {},
+        {},
+        {},
+    )
     try:
         if ext in (".csv", ".tsv"):
             sep = "\t" if ext == ".tsv" else ","
             header_df = pd.read_csv(disk_path, nrows=0, sep=sep)
             columns = list(header_df.columns)
             full_df = pd.read_csv(disk_path, sep=sep)
-            return columns, len(full_df)
+            return columns, len(full_df), {}, {}, {}
         if ext in (".xlsx", ".xls"):
             header_df = pd.read_excel(disk_path, nrows=0)
             columns = list(header_df.columns)
             full_df = pd.read_excel(disk_path)
-            return columns, len(full_df)
+            return columns, len(full_df), {}, {}, {}
         if ext == ".sas7bdat":
-            try:
-                import pyreadstat
-
-                _df, meta = pyreadstat.read_sas7bdat(disk_path, row_limit=0)
-                columns = list(meta.column_names)
-                return columns, None
-            except ImportError:
-                return [], None
+            return _sniff_sas7bdat(disk_path)
     except Exception:
         pass
-    return [], None
+    return _empty
+
+
+def _sniff_sas7bdat(
+    disk_path: str,
+) -> tuple[list[str], int | None, dict[str, str], dict[str, str], dict[str, str]]:
+    """Extract column metadata from a ``.sas7bdat`` file using metadata-only mode.
+
+    Uses ``metadataonly=True`` to avoid decoding any rows — significantly faster
+    than ``row_limit=0`` for large files.
+
+    Args:
+        disk_path: Absolute path to the ``.sas7bdat`` file.
+
+    Returns:
+        A 5-tuple of ``(columns, row_count, column_types, column_labels, column_formats)``.
+        Returns ``([], None, {}, {}, {})`` on any error, including missing pyreadstat.
+    """
+    try:
+        import pyreadstat
+    except ImportError:
+        return [], None, {}, {}, {}
+
+    try:
+        _df, meta = pyreadstat.read_sas7bdat(disk_path, metadataonly=True)
+        columns = list(meta.column_names)
+        row_count: int | None = getattr(meta, "number_rows", None)
+
+        # column_types: readstat type per column — "character" or "double"
+        raw_types: dict[str, str] = getattr(meta, "readstat_variable_types", None) or {}
+        column_types = {k: str(v) for k, v in raw_types.items()}
+
+        # column_labels: prefer column_names_to_labels dict; fall back to parallel list
+        names_to_labels: dict[str, str] = getattr(meta, "column_names_to_labels", None) or {}
+        if names_to_labels:
+            column_labels = {k: str(v) for k, v in names_to_labels.items()}
+        else:
+            raw_label_list: list[str] = getattr(meta, "column_labels", None) or []
+            column_labels = {
+                col: str(lbl)
+                for col, lbl in zip(columns, raw_label_list, strict=False)
+                if lbl  # skip empty labels
+            }
+
+        # column_formats: SAS format strings (e.g. "DATE9.", "$40.", "COMMA12.2")
+        # original_variable_types carries the raw SAS format name; prefer that over
+        # variable_display_width (which is an integer width, not a format string).
+        raw_formats: dict[str, object] = getattr(meta, "original_variable_types", None) or {}
+        column_formats = {k: str(v) for k, v in raw_formats.items() if v}
+
+        return columns, row_count, column_types, column_labels, column_formats
+    except Exception:
+        return [], None, {}, {}, {}
 
 
 def _make_session_factory() -> async_sessionmaker[AsyncSession]:
@@ -411,13 +472,18 @@ class JobOrchestrator:
             norm_path = inner[sep_idx + 1 :]
             if not norm_path:
                 continue
-            columns, row_count = _sniff_file(disk_path, file_ext)
+            columns, row_count, column_types, column_labels, column_formats = _sniff_file(
+                disk_path, file_ext
+            )
             data_files[norm_path] = DataFileInfo(
                 path=norm_path,
                 disk_path=disk_path,
                 extension=file_ext,
                 columns=columns,
                 row_count=row_count,
+                column_types=column_types,
+                column_labels=column_labels,
+                column_formats=column_formats,
             )
 
         if job.skip_llm:

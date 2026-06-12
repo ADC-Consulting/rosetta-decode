@@ -222,7 +222,7 @@ def test_sniff_file_csv() -> None:
     """_sniff_file returns columns and row count for .csv files."""
     pd_mock = _make_pandas_mock(["a", "b"], 5)
     with patch.dict("sys.modules", {"pandas": pd_mock}):
-        cols, rows = _sniff_file("/tmp/test.csv", ".csv")
+        cols, rows, _, _, _ = _sniff_file("/tmp/test.csv", ".csv")
     assert cols == ["a", "b"]
     assert rows == 5
 
@@ -231,7 +231,7 @@ def test_sniff_file_tsv() -> None:
     """_sniff_file uses tab separator for .tsv files."""
     pd_mock = _make_pandas_mock(["x", "y"], 3)
     with patch.dict("sys.modules", {"pandas": pd_mock}):
-        cols, rows = _sniff_file("/tmp/test.tsv", ".tsv")
+        cols, rows, _, _, _ = _sniff_file("/tmp/test.tsv", ".tsv")
     assert cols == ["x", "y"]
     assert rows == 3
     # Verify tab separator was used
@@ -245,7 +245,7 @@ def test_sniff_file_xlsx() -> None:
     """_sniff_file returns columns and row count for .xlsx files."""
     pd_mock = _make_pandas_mock(["col1", "col2"], 10)
     with patch.dict("sys.modules", {"pandas": pd_mock}):
-        cols, rows = _sniff_file("/tmp/test.xlsx", ".xlsx")
+        cols, rows, _, _, _ = _sniff_file("/tmp/test.xlsx", ".xlsx")
     assert cols == ["col1", "col2"]
     assert rows == 10
 
@@ -254,7 +254,7 @@ def test_sniff_file_xls() -> None:
     """_sniff_file returns columns and row count for .xls files."""
     pd_mock = _make_pandas_mock(["name"], 2)
     with patch.dict("sys.modules", {"pandas": pd_mock}):
-        cols, rows = _sniff_file("/tmp/test.xls", ".xls")
+        cols, rows, _, _, _ = _sniff_file("/tmp/test.xls", ".xls")
     assert cols == ["name"]
     assert rows == 2
 
@@ -263,13 +263,17 @@ def test_sniff_file_sas7bdat_with_pyreadstat() -> None:
     """_sniff_file returns columns and None row count for .sas7bdat via pyreadstat."""
     meta = MagicMock()
     meta.column_names = ["id", "value"]
+    meta.number_rows = None
+    meta.readstat_variable_types = {}
+    meta.column_names_to_labels = {}
+    meta.original_variable_types = {}
 
     pyreadstat_mock = MagicMock()
     pyreadstat_mock.read_sas7bdat.return_value = (MagicMock(), meta)
 
     pd_mock = MagicMock()
     with patch.dict("sys.modules", {"pandas": pd_mock, "pyreadstat": pyreadstat_mock}):
-        cols, rows = _sniff_file("/tmp/test.sas7bdat", ".sas7bdat")
+        cols, rows, _, _, _ = _sniff_file("/tmp/test.sas7bdat", ".sas7bdat")
     assert cols == ["id", "value"]
     assert rows is None
 
@@ -283,7 +287,7 @@ def test_sniff_file_sas7bdat_no_pyreadstat() -> None:
     original = sys.modules.pop("pyreadstat", None)
     try:
         with patch.dict("sys.modules", {"pandas": pd_mock, "pyreadstat": None}):
-            cols, rows = _sniff_file("/tmp/test.sas7bdat", ".sas7bdat")
+            cols, rows, _, _, _ = _sniff_file("/tmp/test.sas7bdat", ".sas7bdat")
         assert cols == []
         assert rows is None
     finally:
@@ -296,7 +300,7 @@ def test_sniff_file_exception_returns_empty() -> None:
     pd_mock = MagicMock()
     pd_mock.read_csv.side_effect = OSError("file not found")
     with patch.dict("sys.modules", {"pandas": pd_mock}):
-        cols, rows = _sniff_file("/tmp/missing.csv", ".csv")
+        cols, rows, _, _, _ = _sniff_file("/tmp/missing.csv", ".csv")
     assert cols == []
     assert rows is None
 
@@ -305,6 +309,6 @@ def test_sniff_file_unknown_extension_returns_empty() -> None:
     """_sniff_file returns ([], None) for unsupported extensions."""
     pd_mock = MagicMock()
     with patch.dict("sys.modules", {"pandas": pd_mock}):
-        cols, rows = _sniff_file("/tmp/data.parquet", ".parquet")
+        cols, rows, _, _, _ = _sniff_file("/tmp/data.parquet", ".parquet")
     assert cols == []
     assert rows is None
