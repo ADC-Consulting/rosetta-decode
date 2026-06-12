@@ -327,7 +327,10 @@ Phase 1 — Schema hierarchy + table browser + LIBNAME editing:
 - [x] F34 P1-F: Build DataStorageTab component
 - [x] F34 P1-G: Wire into JobDetailPage
 Phase 2 — Column types + semantic type mapping:
-- [x] F34 P2-A: Semantic type mapping function (done alongside P1-C)
+- [x] F34 P2-A: Semantic type mapping function
+- [ ] F34 P2-B: Fix semantic type default for CSV columns (Unknown not Number)
+- [ ] F34 P2-C: Extract column schema from SAS source (LENGTH/FORMAT/ATTRIB) for derived datasets
+- [ ] F34 P2-D: Surface source-derived column schema in Data Storage tab
 Phase 3 — Relationships + ERD + DDL:
 - [ ] F34 P3-A: Add merge_by_vars and join_on_keys to SASBlock
 - [ ] F34 P3-B: Extract MERGE BY and JOIN ON in parser

@@ -21,6 +21,9 @@ Three internal development phases:
 - [ ] LIBNAME → target schema name is editable inline and persisted
 - [ ] Column types extracted from `.sas7bdat` files via pyreadstat
 - [ ] SAS format → semantic type mapping: character→String, date format→Date, datetime format→Timestamp, numeric→Number
+- [ ] CSV columns show "Unknown" / "—" instead of wrong "Number" default
+- [ ] Derived dataset columns (sdtm_dm, adsl_output, etc.) show types extracted from SAS source LENGTH/FORMAT/ATTRIB declarations
+- [ ] Datasets with no schema info show "Column schema not available" message
 - [ ] Relationships (MERGE BY keys, PROC SQL JOIN ON) visualised as an ERD using ReactFlow
 - [ ] `CREATE TABLE` DDL rendered per table (ANSI SQL, target-agnostic)
 - [ ] `make test` exits 0
@@ -72,9 +75,31 @@ Three internal development phases:
 ## Phase 2 Subtasks
 
 ### P2-A: Semantic type mapping function
-**File:** `src/backend/api/routes/jobs.py` (or a new `src/backend/api/schema_utils.py`)
+**File:** `src/backend/api/schema_utils.py`
 **Depends on:** P1-C
-**Done when:** A pure function `map_sas_to_semantic_type(sas_type: str, sas_format: str) -> str` implements: `character` → `"String"`; `double` + format matching `DATE*` → `"Date"`; `double` + format matching `DATETIME*|DT*|DTDATE*` → `"Timestamp"`; `double` + format matching `COMMA*|DOLLAR*|E*|F*.` with decimals → `"Decimal"`; `double` otherwise → `"Number"`; function called in `GET /jobs/{id}/schema` when building `ColumnSchema.semantic_type`; unit tests for the mapping rules
+**Done when:** A pure function `map_sas_to_semantic_type(sas_type: str, sas_format: str) -> str` implements: `character` → `"String"`; `double` + format matching `DATE*` → `"Date"`; `double` + format matching `DATETIME*|DT*|DTDATE*` → `"Timestamp"`; `double` + format matching `COMMA*|DOLLAR*|E*|F*.` with decimals → `"Decimal"`; `double` otherwise → `"Number"`; function called in `GET /jobs/{id}/schema`; 8 unit tests
+- [x] done
+
+### P2-B: Fix semantic type default for CSV columns
+**File:** `src/backend/api/schema_utils.py`, `src/backend/api/routes/jobs.py`
+**Depends on:** P2-A
+**Done when:** When `sas_type` is empty (CSV/unknown files), `map_sas_to_semantic_type` returns `"Unknown"` instead of `"Number"`; `GET /jobs/{id}/schema` sets `semantic_type = "Unknown"` for columns with no SAS type metadata; frontend `DataStorageTab.tsx` displays "—" for "Unknown" type instead of the "Unknown" badge; unit tests updated
+- [ ] done
+
+### P2-C: Extract column schema from SAS source code (LENGTH, FORMAT, ATTRIB)
+**Files:** `src/worker/engine/parser.py`, `src/worker/engine/models.py`, `src/worker/main.py`
+**Depends on:** P1-A
+**Done when:** Parser extracts column-level declarations from SAS DATA step source:
+- `LENGTH col $40 age 8;` → `{col: "character($40)", age: "numeric(8)"}`
+- `FORMAT col date9. amount comma12.2;` → `{col: "DATE9.", amount: "COMMA12.2"}`
+- `ATTRIB col length=$40 format=$char40. label="Patient ID";` → combines all three
+New field on `SASBlock`: `column_schema: dict[str, dict[str, str]] = Field(default_factory=dict)` where each entry is `{col_name: {sas_type, sas_format, label}}`; worker pipeline merges source-derived column schema into `data_schema` for blocks that produce output datasets (output_datasets), filling in type/format/label for derived tables that have no `.sas7bdat` upload; unit tests covering LENGTH, FORMAT, ATTRIB extraction and at least one DATA step merge scenario
+- [ ] done
+
+### P2-D: Surface source-derived column schema in Data Storage tab
+**Files:** `src/backend/api/routes/jobs.py`, `src/frontend/src/components/JobDetail/DataStorageTab.tsx`
+**Depends on:** P2-B, P2-C
+**Done when:** `GET /jobs/{id}/schema` includes columns for derived datasets (sdtm_dm, adsl_output, etc.) using source-derived schema when no pyreadstat data is available; derived dataset columns show SAS type, format, and semantic type in the Data Storage tab; datasets with no column info at all show "Column schema not available — no .sas7bdat file or source declarations found"; unit tests for the route merging logic
 - [ ] done
 
 ## Phase 3 Subtasks
