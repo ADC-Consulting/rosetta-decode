@@ -762,8 +762,7 @@ function PhaseRow({
           {!isLast && <div className="w-px flex-1 bg-border mt-1" />}
         </div>
         <div className="flex-1 pb-4 min-w-0">
-          <CollapsibleTrigger asChild>
-            <button className="flex items-center gap-2 w-full text-left group">
+          <CollapsibleTrigger className="flex items-center gap-2 w-full text-left group">
               <span
                 className={cn(
                   "font-medium text-sm",
@@ -776,7 +775,9 @@ function PhaseRow({
                 <Badge variant="secondary" className="text-xs font-mono">
                   {elapsedMs < 1000
                     ? `${elapsedMs}ms`
-                    : `${(elapsedMs / 1000).toFixed(1)}s`}
+                    : elapsedMs < 60_000
+                      ? `${(elapsedMs / 1000).toFixed(1)}s`
+                      : `${Math.floor(elapsedMs / 60_000)}m ${Math.floor((elapsedMs % 60_000) / 1000)}s`}
                 </Badge>
               )}
               {children && (
@@ -787,7 +788,6 @@ function PhaseRow({
                   )}
                 />
               )}
-            </button>
           </CollapsibleTrigger>
           <CollapsibleContent>
             <div className="mt-2">{children}</div>
@@ -815,6 +815,7 @@ export default function LiveTraceDialog({
   const [elapsed, setElapsed] = useState(0);
   const [stopping, setStopping] = useState(false);
   const [finalStatus, setFinalStatus] = useState<string | null>(null);
+  const [finalElapsed, setFinalElapsed] = useState<number | null>(null);
   const lastItemRef = useRef<HTMLDivElement | null>(null);
   const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -826,6 +827,8 @@ export default function LiveTraceDialog({
     setConnectionStatus("connecting");
     setElapsed(0);
     setFinalStatus(null);
+    setFinalElapsed(null);
+    startMsRef.current = null;
 
     const es = openTraceStream(jobId);
     es.onopen = () => setConnectionStatus("streaming");
@@ -846,45 +849,31 @@ export default function LiveTraceDialog({
     return () => es.close();
   }, [open, jobId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Elapsed timer — anchored to first event ts, frozen at job_done ts
-  const startMsRef = useRef<number | null>(null);
-  const finalElapsedRef = useRef<number | null>(null);
+  // Derive start timestamp from first event (stable once events[0] exists)
+  const startMs = events.length > 0 ? new Date(events[0].ts).getTime() : null;
 
+  // Freeze final elapsed when job_done arrives
   useEffect(() => {
-    // Anchor start to first event (set once)
-    if (events.length > 0 && startMsRef.current === null) {
-      startMsRef.current = new Date(events[0].ts).getTime();
+    if (finalElapsed !== null || startMs === null) return;
+    const doneEv = events.find((e) => e.event_type === "job_done");
+    if (doneEv) {
+      const frozen = Math.floor((new Date(doneEv.ts).getTime() - startMs) / 1000);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setFinalElapsed(frozen);
+      if (elapsedRef.current) clearInterval(elapsedRef.current);
     }
-    // Freeze final elapsed when job_done arrives
-    if (finalElapsedRef.current === null) {
-      const doneEv = events.find((e) => e.event_type === "job_done");
-      if (doneEv && startMsRef.current !== null) {
-        finalElapsedRef.current = Math.floor(
-          (new Date(doneEv.ts).getTime() - startMsRef.current) / 1000
-        );
-        setElapsed(finalElapsedRef.current);
-        if (elapsedRef.current) clearInterval(elapsedRef.current);
-      }
-    }
-  }, [events]);
+  }, [events, finalElapsed, startMs]);
 
+  // Tick the live counter while the job is running
   useEffect(() => {
-    if (!open) return;
-    // Already finished — just show the frozen value, no interval needed
-    if (finalElapsedRef.current !== null) {
-      setElapsed(finalElapsedRef.current);
-      return;
-    }
-    if (startMsRef.current === null) return;
-    const startMs = startMsRef.current;
-    setElapsed(Math.floor((Date.now() - startMs) / 1000));
+    if (!open || finalElapsed !== null || startMs === null) return;
     elapsedRef.current = setInterval(() => {
       setElapsed(Math.floor((Date.now() - startMs) / 1000));
     }, 1000);
     return () => {
       if (elapsedRef.current) clearInterval(elapsedRef.current);
     };
-  }, [open]);
+  }, [open, finalElapsed, startMs]);
 
   // Auto-scroll
   useEffect(() => {
@@ -1122,7 +1111,7 @@ export default function LiveTraceDialog({
             className="text-xs text-muted-foreground font-mono tabular-nums"
             aria-label="Elapsed time"
           >
-            {elapsed}s
+            {(() => { const s = finalElapsed ?? elapsed; return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`; })()}
           </span>
           <div className="flex items-center gap-2">
             <Button
