@@ -6,6 +6,15 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-06-13 — F35 remediation runbook design
+
+- **Remediation guidance is rule-based, not LLM-generated:** `runbook_templates.py` maps block_type + strategy + detected_features to curated step lists; no new agent or token cost; honors the "same SAS input → same output" reproducibility rule · revisit if clients need block-specific tailored guidance (hybrid LLM option documented in plan)
+- **Runbook placed as a collapsible panel in Plan tab:** Follows the locked "Plan tab is the single decision surface" decision; mirrors the F34 ScopingSummaryPanel pattern (lazy-loaded, Copy-as-Markdown) · revisit never
+- **Runbook inclusion filter = criticality in (critical, high):** Equivalent to existing `human_review_required` flag; targets the ~20% that can't be safely auto-migrated; excludes translated_with_review and unknown-confidence blocks that are merely flagged for review · revisit if clients want a broader export
+- **detected_features with `&`-prefixed items are macro variable refs, not pattern names:** The MigrationPlannerAgent is instructed to put macro parameter names (e.g. `&in`, `&out`) into detected_features for manual-strategy blocks; `why_risky()` now detects the `&` prefix and renders "Block uses macro parameters as dataset/library names" rather than dumping raw identifiers · revisit never
+
+---
+
 ## 2026-06-11 — F33 ETL tab design
 
 - **ETL tab is review-only, no execution controls:** Run migration / pipeline stages are execution concepts; the ETL tab shows the proposed migration state for human review only — mixing execution and review would confuse users about what they're doing · revisit never
