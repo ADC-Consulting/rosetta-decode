@@ -1580,6 +1580,26 @@ async def test_execute_no_ref_data_skips_block_reconciliation() -> None:
     # Since no ref paths, _reconcile_initial_blocks should not have been called
     assert reconcile_called == []
 
+    # --- token_usage assertions ---
+    # Step-10a is the first session.execute call: update(Job).values(status=..., token_usage=...)
+    assert session.execute.called, "session.execute should have been called at least once"
+    step_10a_stmt = session.execute.call_args_list[0].args[0]
+    values = {k.key: v.value for k, v in step_10a_stmt._values.items()}
+    assert "token_usage" in values, "step-10a update must include token_usage"
+    token_usage = values["token_usage"]
+    assert token_usage is not None, "token_usage must not be None on successful job completion"
+    assert "phases" in token_usage, "token_usage must have a 'phases' key"
+    assert "total" in token_usage, "token_usage must have a 'total' key"
+    total = token_usage["total"]
+    for key in (
+        "input_tokens",
+        "output_tokens",
+        "cache_read_tokens",
+        "cache_write_tokens",
+        "requests",
+    ):
+        assert key in total, f"token_usage['total'] must contain '{key}'"
+
 
 @pytest.mark.asyncio
 async def test_reconcile_initial_blocks_skips_strategy_in_skip_set() -> None:
@@ -1721,3 +1741,50 @@ async def test_process_job_direct_call() -> None:
 
     assert session.execute.called
     assert session.commit.called
+
+
+# ─── token_usage persistence ──────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_execute_persists_token_usage_on_failure() -> None:
+    """except-Exception branch in run() writes non-None token_usage when _execute
+    sets self._usage_tracker before raising.
+
+    _execute always assigns self._usage_tracker at line 390 before any agent call,
+    so even a failure partway through the pipeline yields a real UsageTracker whose
+    snapshot() is a non-None dict with the required shape.
+    """
+    orchestrator = JobOrchestrator()
+    fake_job = _make_job(files={"main.sas": "data out; set in; run;"})
+    session = AsyncMock()
+
+    # Let _analysis_agent.analyse raise — _execute will have already set
+    # self._usage_tracker = UsageTracker() at line 390 before calling the agent.
+    with patch.object(orchestrator, "_analysis_agent") as mock_analysis:
+        mock_analysis.analyse = AsyncMock(side_effect=RuntimeError("analysis exploded"))
+        await orchestrator.run(session, fake_job)
+
+    # run() should have caught the exception and called session.execute to persist failed status
+    assert session.execute.called
+
+    # Find the update statement that writes the failed status (contains token_usage)
+    failed_stmt = session.execute.call_args_list[0].args[0]
+    failed_values = {k.key: v.value for k, v in failed_stmt._values.items()}
+
+    assert "token_usage" in failed_values, "failed-status update must include token_usage key"
+    token_usage = failed_values["token_usage"]
+    assert token_usage is not None, (
+        "token_usage must not be None — UsageTracker was created before the failure"
+    )
+    assert "phases" in token_usage, "token_usage must have a 'phases' key"
+    assert "total" in token_usage, "token_usage must have a 'total' key"
+    total = token_usage["total"]
+    for key in (
+        "input_tokens",
+        "output_tokens",
+        "cache_read_tokens",
+        "cache_write_tokens",
+        "requests",
+    ):
+        assert key in total, f"token_usage['total'] must contain '{key}'"

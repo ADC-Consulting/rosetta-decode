@@ -24,6 +24,7 @@ from src.worker.engine.models import (
     MacroUsage,
     PipelineStep,
 )
+from src.worker.engine.usage import record_usage
 
 logger = logging.getLogger("src.worker.engine.agents.lineage_enricher")
 
@@ -223,6 +224,7 @@ class LineageEnricherAgent:
                 prompt,
                 model_settings={"max_tokens": 16000},
             )
+            record_usage(result.usage())
         except Exception as exc:
             logger.exception("LineageEnricherAgent LLM call failed")
             raise LineageEnricherError(f"LineageEnricherAgent failed: {exc}", cause=exc) from exc

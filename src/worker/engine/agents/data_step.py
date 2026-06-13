@@ -20,6 +20,7 @@ from src.worker.engine.agents.shared import (
     normalise_output_var_in_code,
 )
 from src.worker.engine.models import GeneratedBlock, JobContext, SASBlock
+from src.worker.engine.usage import record_usage
 
 logger = logging.getLogger("src.worker.engine.agents.data_step")
 
@@ -288,6 +289,7 @@ class DataStepAgent:
             windowed = context.windowed_context(block)
             user_prompt = _build_prompt(block, windowed, context.blocks)
             result = await self._agent.run(user_prompt, model_settings={"max_tokens": 4000})
+            record_usage(result.usage())
             output: DataStepResult = result.output  # type: ignore[assignment]
             fixed_code = normalise_output_var_in_code(
                 output.python_code, block.output_datasets, "DataStepAgent"

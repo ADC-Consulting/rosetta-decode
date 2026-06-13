@@ -14,6 +14,7 @@ from pydantic_ai.providers.azure import AzureProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 from src.worker.core.config import worker_settings
 from src.worker.engine.models import JobContext
+from src.worker.engine.usage import record_usage
 
 logger = logging.getLogger("src.worker.engine.agents.plain_english")
 
@@ -200,6 +201,7 @@ class PlainEnglishAgent:
         prompt = _build_prompt(context, recon_summary)
         try:
             result = await self._agent.run(prompt)
+            record_usage(result.usage())
         except Exception as exc:
             raise PlainEnglishError(f"PlainEnglishAgent LLM call failed: {exc}", cause=exc) from exc
 

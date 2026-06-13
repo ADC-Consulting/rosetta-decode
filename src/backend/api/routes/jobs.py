@@ -10,7 +10,7 @@ import os
 import uuid
 import zipfile
 from collections.abc import AsyncGenerator
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 import httpx
@@ -28,7 +28,9 @@ from src.backend.api.schemas import (
     BlockRefineResponse,
     BlockRevisionListResponse,
     BlockRevisionResponse,
+    BomSummary,
     ChangelogEntry,
+    CostEstimate,
     ExecuteRequest,
     ExecuteResponse,
     JobAttachmentsResponse,
@@ -45,16 +47,21 @@ from src.backend.api.schemas import (
     JobVersionDetail,
     JobVersionSummary,
     PatchPlanRequest,
+    PhaseTokens,
     RefineRequest,
     RefineResponse,
     SaveVersionRequest,
     SaveVersionResponse,
+    ScopingSummaryResponse,
+    TokenUsageStats,
     TrustReportBlock,
     TrustReportFile,
     TrustReportResponse,
     UpdatePythonCodeRequest,
 )
 from src.backend.core.config import settings
+from src.backend.core.pricing import compute_cost
+from src.backend.core.scoping_markdown import render_scoping_markdown
 from src.backend.db.models import BlockRevision, Job, JobTrace, JobVersion
 from src.backend.db.session import AsyncSessionLocal, get_async_session
 from src.worker.compute.local import LocalBackend
@@ -1882,6 +1889,76 @@ def _overall_confidence(avg_score: float) -> str:
     return "very_low"
 
 
+def _build_trust_blocks(
+    block_plans: list[dict[str, Any]],
+    block_confidence: dict[str, Any],
+    blast_map: dict[str, int],
+    lineage: dict[str, Any],
+    latest_revision: dict[str, "BlockRevision"],
+) -> list[TrustReportBlock]:
+    """Build a list of TrustReportBlock from migration plan data.
+
+    Assembles per-block confidence, reconciliation status, blast radius, and
+    criticality for every block plan entry. Pure aggregation — no I/O.
+
+    Args:
+        block_plans: List of block plan dicts from ``migration_plan["block_plans"]``.
+        block_confidence: Map of block_id to confidence entry from lineage.
+        blast_map: Map of block_id to blast-radius integer.
+        lineage: Raw lineage dict (used to decide whether blast_radius is available).
+        latest_revision: Map of block_id to its most recent BlockRevision ORM row.
+
+    Returns:
+        Unsorted list of TrustReportBlock instances.
+    """
+    blocks: list[TrustReportBlock] = []
+
+    for bp in block_plans:
+        block_id: str = bp.get("block_id", "")
+        source_file: str = bp.get("source_file", "")
+        strategy: str = bp.get("strategy", "translate")
+
+        conf_entry: dict[str, Any] = block_confidence.get(block_id, {})
+        self_confidence: str = conf_entry.get("confidence", "unknown")
+        verified_confidence: str | None = conf_entry.get("verified_confidence")
+        confidence_band: str = bp.get("confidence_band", "unknown")
+
+        latest_rev: BlockRevision | None = latest_revision.get(block_id)
+        reconciliation_status: str | None = latest_rev.reconciliation_status if latest_rev else None
+
+        needs_attention: bool = (
+            strategy in _MANUAL_STRATEGIES
+            or strategy == "translated_with_review"
+            or reconciliation_status == "fail"
+            or (confidence_band or "unknown") in ("low", "very_low", "unknown")
+        )
+
+        radius: int | None = blast_map.get(block_id) if lineage else None
+        eff_band = _effective_confidence(confidence_band or "unknown", reconciliation_status)
+        crit = _criticality(strategy, eff_band, reconciliation_status, radius)
+
+        blocks.append(
+            TrustReportBlock(
+                block_id=block_id,
+                source_file=source_file,
+                start_line=bp.get("start_line", 0),
+                block_type=bp.get("block_type", ""),
+                strategy=strategy,
+                self_confidence=self_confidence,
+                verified_confidence=verified_confidence,
+                confidence_band=confidence_band,
+                reconciliation_status=reconciliation_status,
+                needs_attention=needs_attention,
+                blast_radius=radius,
+                effective_confidence_band=eff_band,
+                criticality=crit,
+                human_review_required=crit in ("critical", "high"),
+            )
+        )
+
+    return blocks
+
+
 @router.get("/jobs/{job_id}/trust-report", response_model=TrustReportResponse)
 async def get_job_trust_report(
     job_id: uuid.UUID,
@@ -1947,50 +2024,13 @@ async def get_job_trust_report(
 
     # Build TrustReportBlock list from migration_plan.block_plans.
     block_plans: list[dict[str, Any]] = job.migration_plan.get("block_plans", [])
-    blocks: list[TrustReportBlock] = []
-
-    for bp in block_plans:
-        block_id: str = bp.get("block_id", "")
-        source_file: str = bp.get("source_file", "")
-        strategy: str = bp.get("strategy", "translate")
-
-        conf_entry: dict[str, Any] = block_confidence.get(block_id, {})
-        self_confidence: str = conf_entry.get("confidence", "unknown")
-        verified_confidence: str | None = conf_entry.get("verified_confidence")
-        confidence_band: str = bp.get("confidence_band", "unknown")
-
-        latest_rev: BlockRevision | None = latest_revision.get(block_id)
-        reconciliation_status: str | None = latest_rev.reconciliation_status if latest_rev else None
-
-        needs_attention: bool = (
-            strategy in _MANUAL_STRATEGIES
-            or strategy == "translated_with_review"
-            or reconciliation_status == "fail"
-            or (confidence_band or "unknown") in ("low", "very_low", "unknown")
-        )
-
-        radius: int | None = blast_map.get(block_id) if lineage else None
-        eff_band = _effective_confidence(confidence_band or "unknown", reconciliation_status)
-        crit = _criticality(strategy, eff_band, reconciliation_status, radius)
-
-        blocks.append(
-            TrustReportBlock(
-                block_id=block_id,
-                source_file=source_file,
-                start_line=bp.get("start_line", 0),
-                block_type=bp.get("block_type", ""),
-                strategy=strategy,
-                self_confidence=self_confidence,
-                verified_confidence=verified_confidence,
-                confidence_band=confidence_band,
-                reconciliation_status=reconciliation_status,
-                needs_attention=needs_attention,
-                blast_radius=radius,
-                effective_confidence_band=eff_band,
-                criticality=crit,
-                human_review_required=crit in ("critical", "high"),
-            )
-        )
+    blocks: list[TrustReportBlock] = _build_trust_blocks(
+        block_plans=block_plans,
+        block_confidence=block_confidence,
+        blast_map=blast_map,
+        lineage=lineage,
+        latest_revision=latest_revision,
+    )
 
     blocks.sort(key=_block_sort_key)
 
@@ -2023,4 +2063,207 @@ async def get_job_trust_report(
         files=_aggregate_file_metrics(blocks),
         blocks=blocks,
         review_queue=[b for b in blocks if b.needs_attention],
+    )
+
+
+# ---------------------------------------------------------------------------
+# F34 S-L — Scoping summary endpoint
+# ---------------------------------------------------------------------------
+
+
+def _build_bom_summary(block_plans: list[dict[str, Any]]) -> BomSummary:
+    """Build a BomSummary from a list of raw block_plan dicts.
+
+    Counts block types, strategies, risk buckets, and proc names from the
+    migration plan's block_plans list. Pure computation — no I/O.
+
+    Args:
+        block_plans: List of block plan dicts from ``migration_plan["block_plans"]``.
+
+    Returns:
+        BomSummary with all counters populated.
+    """
+    total_blocks = len(block_plans)
+    data_steps = 0
+    procs = 0
+    macros = 0
+    untranslatable = 0
+    proc_counts: dict[str, int] = {}
+    risk_buckets: dict[str, int] = {}
+    strategy_counts: dict[str, int] = {}
+    human_review_required = 0
+
+    for bp in block_plans:
+        block_type: str = bp.get("block_type", "").lower()
+        strategy: str = bp.get("strategy", "")
+        risk: str = bp.get("risk", "")
+
+        if block_type == "data_step":
+            data_steps += 1
+        elif block_type.startswith("proc_") or block_type == "generic_proc":
+            procs += 1
+            # Derive a human-readable PROC label, e.g. "proc_sql" -> "PROC SQL"
+            raw = block_type[len("proc_") :] if block_type.startswith("proc_") else block_type
+            label = f"PROC {raw.upper()}" if raw else block_type.upper()
+            proc_counts[label] = proc_counts.get(label, 0) + 1
+        elif block_type == "macro":
+            macros += 1
+
+        # BlockType.UNTRANSLATABLE serialises as "UNRECOGNIZED"; also accept legacy
+        # "untranslatable" strategy value written by older worker versions.
+        if (
+            block_type == "unrecognized"
+            or strategy == "untranslatable"
+            or bp.get("untranslatable") is True
+        ):
+            untranslatable += 1
+
+        if risk:
+            risk_buckets[risk] = risk_buckets.get(risk, 0) + 1
+
+        if strategy:
+            strategy_counts[strategy] = strategy_counts.get(strategy, 0) + 1
+
+        if risk == "high" or strategy in ("manual_review", "untranslatable"):
+            human_review_required += 1
+
+    return BomSummary(
+        total_blocks=total_blocks,
+        data_steps=data_steps,
+        procs=procs,
+        macros=macros,
+        untranslatable=untranslatable,
+        proc_counts=proc_counts,
+        risk_buckets=risk_buckets,
+        criticality_buckets={},  # populated by caller after trust-block aggregation
+        strategy_counts=strategy_counts,
+        human_review_required=human_review_required,
+    )
+
+
+def _aggregate_criticality(trust_blocks: list[TrustReportBlock]) -> dict[str, int]:
+    """Count blocks per criticality label.
+
+    Args:
+        trust_blocks: List of TrustReportBlock instances.
+
+    Returns:
+        Dict mapping criticality label to block count.
+    """
+    buckets: dict[str, int] = {}
+    for tb in trust_blocks:
+        buckets[tb.criticality] = buckets.get(tb.criticality, 0) + 1
+    return buckets
+
+
+def _build_token_usage(raw: dict[str, Any]) -> TokenUsageStats:
+    """Deserialise a stored token_usage JSON dict into TokenUsageStats.
+
+    Args:
+        raw: Dict previously serialised from TokenUsageStats (must contain
+            ``phases`` and ``total`` keys).
+
+    Returns:
+        TokenUsageStats with nested PhaseTokens instances.
+    """
+    raw_by_block: dict[str, Any] = raw.get("translation_by_block", {})
+    return TokenUsageStats(
+        phases={k: PhaseTokens(**v) for k, v in raw["phases"].items()},
+        total=PhaseTokens(**raw["total"]),
+        translation_by_block={k: PhaseTokens(**v) for k, v in raw_by_block.items()},
+    )
+
+
+@router.get("/jobs/{job_id}/scoping", response_model=ScopingSummaryResponse)
+async def get_job_scoping(
+    job_id: uuid.UUID,
+    session: AsyncSession = Depends(get_async_session),
+) -> ScopingSummaryResponse:
+    """Return the scoping summary (BOM, token usage, cost estimate) for a job.
+
+    Builds a bill-of-materials from the migration plan's block_plans, aggregates
+    criticality from a lightweight trust-report computation, and computes a cost
+    estimate from stored token usage. Gracefully handles missing plan, missing
+    token usage, or an unknown LLM model.
+
+    Args:
+        job_id: UUID of the migration job.
+        session: Injected async database session.
+
+    Returns:
+        ScopingSummaryResponse with bom, token_usage, cost, and markdown fields.
+
+    Raises:
+        HTTPException: 404 if the job does not exist.
+    """
+    result = await session.execute(select(Job).where(Job.id == str(job_id)))
+    job = result.scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+
+    # --- BOM ---
+    block_plans: list[dict[str, Any]] = []
+    if job.migration_plan:
+        block_plans = job.migration_plan.get("block_plans") or []
+
+    bom = _build_bom_summary(block_plans)
+
+    # --- Criticality buckets via trust blocks ---
+    if block_plans:
+        lineage: dict[str, Any] = job.lineage or {}
+        block_confidence: dict[str, Any] = lineage.get("block_confidence", {})
+        cross_file_edges: list[dict[str, Any]] = lineage.get("cross_file_edges", [])
+        blast_map = _blast_radius_map(cross_file_edges)
+        trust_blocks = _build_trust_blocks(
+            block_plans=block_plans,
+            block_confidence=block_confidence,
+            blast_map=blast_map,
+            lineage=lineage,
+            latest_revision={},
+        )
+        criticality_buckets = _aggregate_criticality(trust_blocks)
+    else:
+        criticality_buckets = {}
+
+    bom = BomSummary(**{**bom.model_dump(), "criticality_buckets": criticality_buckets})
+
+    # --- Token usage ---
+    token_usage: TokenUsageStats | None = None
+    raw_usage: dict[str, Any] | None = job.token_usage
+    if raw_usage is not None:
+        try:
+            token_usage = _build_token_usage(raw_usage)
+        except (KeyError, TypeError) as exc:
+            logger.warning("Failed to deserialise token_usage for job %s: %s", job_id, exc)
+
+    # --- Cost estimate ---
+    cost: CostEstimate | None = None
+    llm_model: str = job.llm_model or ""
+    if token_usage is not None:
+        phases_dict = {k: v.model_dump() for k, v in token_usage.phases.items()}
+        total_dict = token_usage.total.model_dump()
+        cost_raw = compute_cost(llm_model, phases_dict, total_dict)
+        if cost_raw is not None:
+            cost = CostEstimate(**cost_raw)
+
+    # --- Markdown ---
+    run_date = date.today().isoformat()
+    job_name: str = job.name or str(job_id)
+    markdown = render_scoping_markdown(
+        job_name=job_name,
+        llm_model=llm_model,
+        run_date=run_date,
+        bom=bom,
+        token_usage=token_usage,
+        cost=cost,
+    )
+
+    return ScopingSummaryResponse(
+        job_id=str(job_id),
+        job_name=job_name,
+        llm_model=llm_model,
+        token_usage=token_usage,
+        cost=cost,
+        bom=bom,
+        markdown=markdown,
     )

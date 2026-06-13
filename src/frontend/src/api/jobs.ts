@@ -18,6 +18,7 @@ import type {
     PatchPlanRequest,
     SaveVersionRequest,
     SaveVersionResponse,
+    ScopingSummaryResponse,
     TrustReportResponse,
 } from "./types";
 
@@ -264,6 +265,14 @@ export async function executeJob(
 
 export function openTraceStream(jobId: string, sinceSeq = 0): EventSource {
   return new EventSource(`${BASE}/jobs/${jobId}/trace/stream?since_seq=${sinceSeq}`);
+}
+
+// ── F34: Scoping summary ──────────────────────────────────────────────────────
+
+export async function getJobScopingSummary(jobId: string): Promise<ScopingSummaryResponse> {
+  const res = await fetch(`${BASE}/jobs/${jobId}/scoping`);
+  if (!res.ok) throw new Error(await extractApiError(res));
+  return res.json() as Promise<ScopingSummaryResponse>;
 }
 
 export async function cancelJob(jobId: string): Promise<void> {
