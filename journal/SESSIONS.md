@@ -6,6 +6,22 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-13 — fix: cross-block input name mismatch + _SimpleCopyHelper Spark compat
+
+**Branch:** `fix/cross-block-input-names`
+
+**What we did:**
+- Diagnosed `NameError: name 'work_ex_dedup' is not defined` on `sas_pharma_sandbox` pipeline
+- Root cause 1: no post-processing normalizer for input variable names — LLM emitted `work_ex_dedup` instead of stem `ex_dedup`. Fixed by adding `build_block_output_stems` + `normalise_input_vars_in_code` to `shared.py` and calling them in DataStepAgent, ProcAgent, GenericProcAgent
+- Root cause 2: `_SimpleCopyHelper` (no-LLM shortcut) was also generating the wrong name AND emitting pandas `.copy()` on a Spark DataFrame. Fixed variable name resolution and replaced `.copy()` / `df[cols]` with PySpark `.select()` / `.drop()` / direct assignment
+- Fixed stale `startMsRef.current = null` in `LiveTraceDialog.tsx` (crash introduced by F35 merge) that was breaking the Migrate button
+- 12 tests added/updated; all green
+
+**Decisions:**
+- `_SimpleCopyHelper` is a maintenance liability (caused 2 bugs this session) — flagged for deletion; GH issue to be filed
+
+---
+
 ## 2026-06-13 — F35 remediation runbook implemented; #19 closed
 **Duration:** ~2h | **Focus:** F35 planning and full-stack implementation
 

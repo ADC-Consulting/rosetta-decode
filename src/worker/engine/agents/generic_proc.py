@@ -24,6 +24,8 @@ from pydantic_ai.providers.openai import OpenAIProvider
 from src.worker.core.config import worker_settings
 from src.worker.engine.agents.shared import (
     SHARED_TRANSLATION_RULES,
+    build_block_output_stems,
+    normalise_input_vars_in_code,
     normalise_output_var,
     normalise_output_var_in_code,
 )
@@ -523,6 +525,12 @@ class GenericProcAgent:
         is_untranslatable = proc_result.strategy_used == "manual"
         python_code = normalise_output_var_in_code(
             proc_result.python_code, block.output_datasets, "GenericProcAgent"
+        )
+        python_code = normalise_input_vars_in_code(
+            python_code,
+            block.input_datasets,
+            build_block_output_stems(context.blocks),
+            "GenericProcAgent",
         )
         python_code = _fix_workspace_paths(python_code)
         python_code = _fix_excel_spark_reads(python_code)
