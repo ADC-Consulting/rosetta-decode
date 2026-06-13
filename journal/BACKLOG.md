@@ -346,8 +346,20 @@
 - [ ] #52: Revisit sidebar navigation — blocked on persona validation
 - [x] fix(frontend): PlanTab review queue — removed `.slice(0, 10)` cap; all items now render sorted by criticality
 
+**F35 — Remediation runbook (#19) → see plan at .claude/plans/generate-runbook-for-high-risk-expressive-kernighan.md**
+- [x] F35 S-A: runbook_templates.py — rule-based remediation_outline() + why_risky()
+- [x] F35 S-B: RunbookEntry + RunbookResponse schemas
+- [x] F35 S-C: _build_runbook_entries() + _render_runbook_markdown() helpers
+- [x] F35 S-D: GET /jobs/{id}/runbook route
+- [x] F35 S-E: test_runbook_templates.py unit tests
+- [x] F35 S-F: test_runbook_routes.py async route tests
+- [x] F35 S-G: RunbookEntry / RunbookResponse TypeScript types + getJobRunbook()
+- [x] F35 S-H: RunbookPanel component — collapsible, lazy-loaded, Copy-as-Markdown
+- [x] F35 S-I: Wire RunbookPanel into PlanTab below ScopingSummaryPanel
+- [x] F35 S-J: make test exits 0
+
 **GitHub issue priority queue (unblocked — source of truth is GitHub)**
-- [ ] #19: Runbook for high-risk / non-convertible blocks → generate per-block remediation view
+- [x] #19: Runbook for high-risk / non-convertible blocks → delivered by F35
 - [ ] #25: Token usage + bill-of-materials / scoping summary
 **F30 — Reads/Produces row (#60) → see `docs/plans/latest/F30-reads-produces-row.md`**
 - [x] F30 S-A: Add input/output_datasets to BlockPlan model

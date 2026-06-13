@@ -466,3 +466,29 @@ export interface ScopingSummaryResponse {
   bom: BomSummary;
   markdown: string;
 }
+
+// ── F35: Remediation runbook ──────────────────────────────────────────────────
+
+export interface RunbookEntry {
+  block_id: string;
+  source_file: string;
+  start_line: number;
+  block_type: string;
+  strategy: string;
+  criticality: string;
+  effective_confidence_band: string;
+  reconciliation_status: string | null;
+  blast_radius: number | null;
+  input_datasets: string[];
+  output_datasets: string[];
+  description: string;
+  why_risky: string[];
+  remediation_outline: string[];
+}
+
+export interface RunbookResponse {
+  job_id: string;
+  total_entries: number;
+  entries: RunbookEntry[];
+  markdown: string;
+}

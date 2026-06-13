@@ -490,6 +490,37 @@ class TrustReportResponse(BaseModel):
     review_queue: list[TrustReportBlock]  # only needs_attention=True blocks
 
 
+# S8 — Remediation runbook schemas
+
+
+class RunbookEntry(BaseModel):
+    """One high-risk block entry in the remediation runbook."""
+
+    block_id: str
+    source_file: str
+    start_line: int
+    block_type: str
+    strategy: str
+    criticality: str  # "critical" | "high"
+    effective_confidence_band: str
+    reconciliation_status: str | None
+    blast_radius: int | None
+    input_datasets: list[str]
+    output_datasets: list[str]
+    description: str  # BlockPlan.rationale, or a fallback template string
+    why_risky: list[str]  # from runbook_templates.why_risky()
+    remediation_outline: list[str]  # from runbook_templates.remediation_outline()
+
+
+class RunbookResponse(BaseModel):
+    """Response body for GET /jobs/{id}/runbook."""
+
+    job_id: str
+    total_entries: int
+    entries: list[RunbookEntry]
+    markdown: str  # full pre-rendered Markdown for copy-paste export
+
+
 # Attachment schemas
 
 
