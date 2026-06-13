@@ -145,6 +145,31 @@ def _render_risk(bom: BomSummary) -> str:
     return "\n".join(lines)
 
 
+_BLOCK_DISPLAY_NAMES: dict[str, str] = {
+    "data_step": "Data step",
+    "proc_sql": "PROC SQL",
+    "macro": "Macro",
+    "generic_proc": "Generic PROC",
+}
+
+
+def _block_display_name(key: str) -> str:
+    """Return a human-readable display name for a block type key.
+
+    Args:
+        key: Raw block type key from translation_by_block (e.g. ``"proc_sql"``).
+
+    Returns:
+        Display name (e.g. ``"PROC SQL"``), falling back to stripping a
+        ``proc_`` prefix and title-casing.
+    """
+    if key in _BLOCK_DISPLAY_NAMES:
+        return _BLOCK_DISPLAY_NAMES[key]
+    if key.startswith("proc_"):
+        return "PROC " + key[len("proc_") :].upper()
+    return key.replace("_", " ").title()
+
+
 _PHASE_DISPLAY_NAMES: dict[str, str] = {
     "parse_analysis": "Parse & Analysis",
     "migration_planning": "Migration Planning",
@@ -204,6 +229,8 @@ def _render_usage(
     ]
 
     for phase_key, phase in token_usage.phases.items():
+        if phase.input_tokens == 0 and phase.output_tokens == 0:
+            continue
         display = _phase_display_name(phase_key)
         if include_cost:
             assert cost is not None  # narrowing for mypy
@@ -213,6 +240,30 @@ def _render_usage(
             )
         else:
             lines.append(f"| {display} | {phase.input_tokens} | {phase.output_tokens} |")
+
+        # Emit per-block sub-rows immediately after the translation phase row
+        if phase_key == "translation" and token_usage.translation_by_block:
+            input_price = (
+                cost.prices.get("input_usd_per_mtok", 0.0) if include_cost and cost else 0.0
+            )
+            output_price = (
+                cost.prices.get("output_usd_per_mtok", 0.0) if include_cost and cost else 0.0
+            )
+            for bt_key, bt_phase in token_usage.translation_by_block.items():
+                sub_display = f"↳ {_block_display_name(bt_key)}"
+                if include_cost:
+                    bt_cost = (
+                        bt_phase.input_tokens * input_price / 1_000_000
+                        + bt_phase.output_tokens * output_price / 1_000_000
+                    )
+                    lines.append(
+                        f"| {sub_display} | {bt_phase.input_tokens}"
+                        f" | {bt_phase.output_tokens} | ${bt_cost:.4f} |"
+                    )
+                else:
+                    lines.append(
+                        f"| {sub_display} | {bt_phase.input_tokens} | {bt_phase.output_tokens} |"
+                    )
 
     total = token_usage.total
     if include_cost:

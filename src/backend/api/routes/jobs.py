@@ -2160,9 +2160,11 @@ def _build_token_usage(raw: dict[str, Any]) -> TokenUsageStats:
     Returns:
         TokenUsageStats with nested PhaseTokens instances.
     """
+    raw_by_block: dict[str, Any] = raw.get("translation_by_block", {})
     return TokenUsageStats(
         phases={k: PhaseTokens(**v) for k, v in raw["phases"].items()},
         total=PhaseTokens(**raw["total"]),
+        translation_by_block={k: PhaseTokens(**v) for k, v in raw_by_block.items()},
     )
 
 

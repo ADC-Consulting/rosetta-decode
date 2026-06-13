@@ -594,6 +594,7 @@ class TokenUsageStats(BaseModel):
 
     phases: dict[str, PhaseTokens]
     total: PhaseTokens
+    translation_by_block: dict[str, PhaseTokens] = {}
 
 
 class CostEstimate(BaseModel):

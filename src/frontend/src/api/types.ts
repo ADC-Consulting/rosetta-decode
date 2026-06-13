@@ -434,6 +434,7 @@ export interface PhaseTokens {
 export interface TokenUsageStats {
   phases: Record<string, PhaseTokens>;
   total: PhaseTokens;
+  translation_by_block: Record<string, PhaseTokens>;
 }
 
 export interface CostEstimate {

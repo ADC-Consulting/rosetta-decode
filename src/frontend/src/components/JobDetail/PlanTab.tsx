@@ -712,14 +712,11 @@ export default function PlanTab({
                   {confidencePct}%
                 </span>
                 <Dialog>
-                  <DialogTrigger asChild>
-                    <button
-                      type="button"
-                      className="text-muted-foreground hover:text-foreground transition-colors ml-1"
-                      aria-label="What does confidence mean?"
-                    >
-                      <Info size={14} />
-                    </button>
+                  <DialogTrigger
+                    className="text-muted-foreground hover:text-foreground transition-colors ml-1"
+                    aria-label="What does confidence mean?"
+                  >
+                    <Info size={14} />
                   </DialogTrigger>
                   <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
                     <DialogHeader>

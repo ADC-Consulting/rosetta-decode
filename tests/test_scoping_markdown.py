@@ -362,6 +362,138 @@ def test_known_phase_keys_display_correctly(minimal_bom: BomSummary) -> None:
     assert "| Enrichment |" in result
 
 
+# ---------------------------------------------------------------------------
+# 11. Translation sub-rows for per-block breakdown
+# ---------------------------------------------------------------------------
+
+
+def test_translation_sub_rows_present_when_by_block_populated(
+    minimal_bom: BomSummary,
+) -> None:
+    """Sub-rows with ↳ prefix must appear under Translation when translation_by_block is set."""
+    from src.backend.api.schemas import PhaseTokens, TokenUsageStats
+
+    translation = PhaseTokens(
+        input_tokens=45000,
+        output_tokens=3200,
+        cache_read_tokens=0,
+        cache_write_tokens=0,
+        requests=2,
+    )
+    by_block = {
+        "data_step": PhaseTokens(
+            input_tokens=20000,
+            output_tokens=1500,
+            cache_read_tokens=0,
+            cache_write_tokens=0,
+            requests=1,
+        ),
+        "proc_sql": PhaseTokens(
+            input_tokens=25000,
+            output_tokens=1700,
+            cache_read_tokens=0,
+            cache_write_tokens=0,
+            requests=1,
+        ),
+    }
+    usage = TokenUsageStats(
+        phases={"translation": translation},
+        total=translation,
+        translation_by_block=by_block,
+    )
+
+    result = render_scoping_markdown(
+        job_name="j",
+        llm_model="m",
+        run_date="2026-01-01",
+        bom=minimal_bom,
+        token_usage=usage,
+        cost=None,
+    )
+    assert "| ↳ Data step | 20000 | 1500 |" in result
+    assert "| ↳ PROC SQL | 25000 | 1700 |" in result
+
+
+def test_translation_sub_rows_absent_when_by_block_empty(minimal_bom: BomSummary) -> None:
+    """No ↳ sub-rows must appear when translation_by_block is empty."""
+    from src.backend.api.schemas import PhaseTokens, TokenUsageStats
+
+    translation = PhaseTokens(
+        input_tokens=45000,
+        output_tokens=3200,
+        cache_read_tokens=0,
+        cache_write_tokens=0,
+        requests=2,
+    )
+    usage = TokenUsageStats(
+        phases={"translation": translation},
+        total=translation,
+        translation_by_block={},
+    )
+
+    result = render_scoping_markdown(
+        job_name="j",
+        llm_model="m",
+        run_date="2026-01-01",
+        bom=minimal_bom,
+        token_usage=usage,
+        cost=None,
+    )
+    assert "↳" not in result
+
+
+def test_translation_sub_rows_with_cost(
+    minimal_bom: BomSummary,
+    cost_estimate: CostEstimate,
+) -> None:
+    """Sub-rows must include inline cost column when cost is provided."""
+    from src.backend.api.schemas import PhaseTokens, TokenUsageStats
+
+    translation = PhaseTokens(
+        input_tokens=45000,
+        output_tokens=3200,
+        cache_read_tokens=0,
+        cache_write_tokens=0,
+        requests=2,
+    )
+    by_block = {
+        "data_step": PhaseTokens(
+            input_tokens=1_000_000,
+            output_tokens=1_000_000,
+            cache_read_tokens=0,
+            cache_write_tokens=0,
+            requests=1,
+        ),
+    }
+    usage = TokenUsageStats(
+        phases={"translation": translation},
+        total=translation,
+        translation_by_block=by_block,
+    )
+    # prices: input=3.0/Mtok, output=15.0/Mtok → cost = 3.0 + 15.0 = $18.0000
+    result = render_scoping_markdown(
+        job_name="j",
+        llm_model="m",
+        run_date="2026-01-01",
+        bom=minimal_bom,
+        token_usage=usage,
+        cost=cost_estimate,
+    )
+    assert "| ↳ Data step | 1000000 | 1000000 | $18.0000 |" in result
+
+
+def test_block_display_name_helper() -> None:
+    """_block_display_name must map known keys and fall back gracefully."""
+    from src.backend.core.scoping_markdown import _block_display_name
+
+    assert _block_display_name("data_step") == "Data step"
+    assert _block_display_name("proc_sql") == "PROC SQL"
+    assert _block_display_name("macro") == "Macro"
+    assert _block_display_name("generic_proc") == "Generic PROC"
+    assert _block_display_name("proc_means") == "PROC MEANS"
+    assert _block_display_name("custom_step") == "Custom Step"
+
+
 def test_unknown_phase_key_title_cases(minimal_bom: BomSummary) -> None:
     """An unrecognised phase key must be title-cased in the output table."""
     from src.backend.api.schemas import PhaseTokens, TokenUsageStats

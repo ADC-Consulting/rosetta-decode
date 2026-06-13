@@ -43,7 +43,7 @@ from src.worker.engine.pii_scanner import scan_for_pii
 from src.worker.engine.router import TranslationRouter
 from src.worker.engine.stub_generator import StubGenerator
 from src.worker.engine.trace import JobCancelledError, TraceEmitter
-from src.worker.engine.usage import UsageTracker, activate, set_phase
+from src.worker.engine.usage import UsageTracker, activate, set_block_type, set_phase
 from src.worker.validation.reconciliation import ReconciliationService, RemoteReconciliationService
 
 logging.basicConfig(
@@ -1124,6 +1124,7 @@ class JobOrchestrator:
 
         for block_idx, block in enumerate(blocks):
             block_id = f"{block.source_file}:{block.start_line}"
+            set_block_type(block.block_type.value.lower())
             block_plan = block_plan_map.get(block_id)
             translator = self._router.route(block, block_plan=block_plan)
 
@@ -1353,6 +1354,9 @@ class JobOrchestrator:
                     fresh = await _cs.get(Job, _job.id)
                     if fresh is not None and fresh.cancellation_requested:
                         raise JobCancelledError(f"Job {_job.id} cancelled by user")
+
+        # Clear block-type context after translation loop completes
+        set_block_type("")
 
         # Final full-pipeline recon — all blocks concatenated, no session cache
         if tracer is not None and generated and (ref_csv_path or ref_sas7bdat_path):

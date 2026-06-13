@@ -25,6 +25,7 @@ log = logging.getLogger(__name__)
 
 _tracker: ContextVar["UsageTracker | None"] = ContextVar("usage_tracker", default=None)
 _phase: ContextVar[str] = ContextVar("usage_phase", default="other")
+_block_type: ContextVar[str] = ContextVar("usage_block_type", default="")
 
 PHASES = (
     "parse_analysis",
@@ -54,6 +55,7 @@ class UsageTracker:
     def __init__(self) -> None:
         """Initialise empty phase buckets."""
         self._phases: dict[str, dict[str, int]] = {}
+        self._translation_by_block: dict[str, dict[str, int]] = {}
 
     def add(self, phase: str, usage: RunUsage) -> None:
         """Add a single :class:`~pydantic_ai.usage.RunUsage` reading to *phase*.
@@ -70,6 +72,19 @@ class UsageTracker:
         bucket["cache_read_tokens"] += usage.cache_read_tokens or 0
         bucket["cache_write_tokens"] += usage.cache_write_tokens or 0
         bucket["requests"] += usage.requests or 0
+
+        # Per-block attribution within translation phase
+        block_type = _block_type.get()
+        if phase == "translation" and block_type:
+            if block_type not in self._translation_by_block:
+                self._translation_by_block[block_type] = {k: 0 for k in _BUCKET_KEYS}
+            bt_bucket = self._translation_by_block[block_type]
+            bt_bucket["input_tokens"] += usage.input_tokens or 0
+            bt_bucket["output_tokens"] += usage.output_tokens or 0
+            bt_bucket["cache_read_tokens"] += usage.cache_read_tokens or 0
+            bt_bucket["cache_write_tokens"] += usage.cache_write_tokens or 0
+            bt_bucket["requests"] += usage.requests or 0
+
         log.debug(
             "usage recorded phase=%s input=%d output=%d cache_r=%d cache_w=%d req=%d",
             phase,
@@ -92,7 +107,12 @@ class UsageTracker:
             phases_copy[phase] = dict(bucket)
             for k in _BUCKET_KEYS:
                 total[k] += bucket[k]
-        return {"phases": phases_copy, "total": total}
+        translation_by_block_copy = {k: dict(v) for k, v in self._translation_by_block.items()}
+        return {
+            "phases": phases_copy,
+            "total": total,
+            "translation_by_block": translation_by_block_copy,
+        }
 
 
 def activate(tracker: UsageTracker) -> None:
@@ -103,6 +123,19 @@ def activate(tracker: UsageTracker) -> None:
             :func:`record_usage` calls will write to.
     """
     _tracker.set(tracker)
+
+
+def set_block_type(name: str) -> None:
+    """Set the current SAS block type label in the async context.
+
+    Used to attribute token usage to a specific block type during the
+    translation phase. Pass an empty string to clear the attribution.
+
+    Args:
+        name: Block type label (e.g. ``"data_step"``, ``"proc_sql"``).
+            Pass ``""`` to clear.
+    """
+    _block_type.set(name)
 
 
 def set_phase(name: str) -> None:

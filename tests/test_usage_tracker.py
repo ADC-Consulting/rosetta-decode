@@ -16,10 +16,12 @@ import asyncio
 from pydantic_ai.usage import Usage
 from src.worker.engine.usage import (
     UsageTracker,
+    _block_type,
     _phase,
     _tracker,
     activate,
     record_usage,
+    set_block_type,
     set_phase,
 )
 
@@ -48,6 +50,7 @@ def _reset_context() -> None:
     """Clear contextvars between tests."""
     _tracker.set(None)
     _phase.set("other")
+    _block_type.set("")
 
 
 # ---------------------------------------------------------------------------
@@ -191,3 +194,88 @@ async def test_contextvar_propagates_across_gather() -> None:
     # write to the same phase, so the sum must be 100.
     assert snap["phases"]["assembly_recon"]["input_tokens"] == 100
     assert snap["total"]["requests"] == 2
+
+
+# ---------------------------------------------------------------------------
+# 7. Per-block attribution during translation phase
+# ---------------------------------------------------------------------------
+
+
+def test_translation_by_block_populated_when_block_type_set() -> None:
+    """translation_by_block must accumulate tokens keyed by block type during translation."""
+    _reset_context()
+    tracker = UsageTracker()
+    activate(tracker)
+    set_phase("translation")
+
+    set_block_type("data_step")
+    record_usage(_make_usage(input_tokens=100, output_tokens=40, requests=1))
+    record_usage(_make_usage(input_tokens=50, output_tokens=20, requests=1))
+
+    set_block_type("proc_sql")
+    record_usage(_make_usage(input_tokens=200, output_tokens=80, requests=1))
+
+    snap = tracker.snapshot()
+    assert "translation_by_block" in snap
+    by_block = snap["translation_by_block"]
+
+    assert by_block["data_step"]["input_tokens"] == 150
+    assert by_block["data_step"]["output_tokens"] == 60
+    assert by_block["data_step"]["requests"] == 2
+
+    assert by_block["proc_sql"]["input_tokens"] == 200
+    assert by_block["proc_sql"]["output_tokens"] == 80
+    assert by_block["proc_sql"]["requests"] == 1
+
+
+def test_translation_by_block_empty_when_no_block_type_set() -> None:
+    """translation_by_block must be empty when no block type is set."""
+    _reset_context()
+    tracker = UsageTracker()
+    activate(tracker)
+    set_phase("translation")
+    record_usage(_make_usage(input_tokens=100, output_tokens=40, requests=1))
+
+    snap = tracker.snapshot()
+    assert snap["translation_by_block"] == {}
+
+
+def test_translation_by_block_not_populated_outside_translation_phase() -> None:
+    """Tokens recorded in non-translation phases must not appear in translation_by_block."""
+    _reset_context()
+    tracker = UsageTracker()
+    activate(tracker)
+    set_phase("enrichment")
+    set_block_type("data_step")
+    record_usage(_make_usage(input_tokens=100, output_tokens=40, requests=1))
+
+    snap = tracker.snapshot()
+    assert snap["translation_by_block"] == {}
+
+
+def test_translation_by_block_cleared_after_set_block_type_empty() -> None:
+    """After set_block_type(''), subsequent calls must not update translation_by_block."""
+    _reset_context()
+    tracker = UsageTracker()
+    activate(tracker)
+    set_phase("translation")
+
+    set_block_type("data_step")
+    record_usage(_make_usage(input_tokens=100, requests=1))
+
+    set_block_type("")
+    record_usage(_make_usage(input_tokens=50, requests=1))
+
+    snap = tracker.snapshot()
+    # Only data_step key should exist; the second call is unattributed
+    assert list(snap["translation_by_block"].keys()) == ["data_step"]
+    assert snap["translation_by_block"]["data_step"]["input_tokens"] == 100
+
+
+def test_snapshot_always_includes_translation_by_block_key() -> None:
+    """snapshot() must always include the translation_by_block key, even when empty."""
+    _reset_context()
+    tracker = UsageTracker()
+    snap = tracker.snapshot()
+    assert "translation_by_block" in snap
+    assert snap["translation_by_block"] == {}

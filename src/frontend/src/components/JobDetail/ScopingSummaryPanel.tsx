@@ -1,5 +1,6 @@
 import { getJobScopingSummary } from "@/api/jobs";
 import type { PhaseTokens, ScopingSummaryResponse } from "@/api/types";
+import React from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery } from "@tanstack/react-query";
@@ -23,6 +24,21 @@ function phaseDisplayName(key: string): string {
   return PHASE_NAMES[key] ?? key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+const BLOCK_NAMES: Record<string, string> = {
+  data_step: "Data step",
+  proc_sql: "PROC SQL",
+  proc_means: "PROC MEANS",
+  proc_freq: "PROC FREQ",
+  proc_sort: "PROC SORT",
+  proc_transpose: "PROC TRANSPOSE",
+  macro: "Macro",
+  generic_proc: "Generic PROC",
+};
+
+function blockDisplayName(key: string): string {
+  return BLOCK_NAMES[key] ?? key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 interface PhaseTokenRowProps {
   phaseKey: string;
   tokens: PhaseTokens;
@@ -37,6 +53,41 @@ function PhaseTokenRow({ phaseKey, tokens, phaseCost }: PhaseTokenRowProps) {
       <td className="py-1 pr-3 text-xs tabular-nums text-right">{tokens.output_tokens.toLocaleString()}</td>
       {phaseCost !== null && (
         <td className="py-1 text-xs tabular-nums text-right">${phaseCost.toFixed(4)}</td>
+      )}
+    </tr>
+  );
+}
+
+interface BlockSubRowProps {
+  blockKey: string;
+  tokens: PhaseTokens;
+  prices: { input_usd_per_mtok: number; output_usd_per_mtok: number } | null;
+  showCost: boolean;
+}
+
+function BlockSubRow({ blockKey, tokens, prices, showCost }: BlockSubRowProps) {
+  const cost =
+    showCost && prices !== null
+      ? (tokens.input_tokens * prices.input_usd_per_mtok +
+          tokens.output_tokens * prices.output_usd_per_mtok) /
+        1_000_000
+      : null;
+
+  return (
+    <tr className="border-t border-border/50">
+      <td className="py-0.5 pr-3 text-xs text-muted-foreground pl-6">
+        ↳ {blockDisplayName(blockKey)}
+      </td>
+      <td className="py-0.5 pr-3 text-xs tabular-nums text-right text-muted-foreground">
+        {tokens.input_tokens.toLocaleString()}
+      </td>
+      <td className="py-0.5 pr-3 text-xs tabular-nums text-right text-muted-foreground">
+        {tokens.output_tokens.toLocaleString()}
+      </td>
+      {showCost && (
+        <td className="py-0.5 text-xs tabular-nums text-right text-muted-foreground">
+          {cost !== null ? `$${cost.toFixed(4)}` : "—"}
+        </td>
       )}
     </tr>
   );
@@ -131,13 +182,27 @@ function ScopingSummaryLoaded({ data }: { data: ScopingSummaryResponse }) {
                 </tr>
               </thead>
               <tbody>
-                {Object.entries(data.token_usage.phases).map(([phase, tokens]) => (
-                  <PhaseTokenRow
-                    key={phase}
-                    phaseKey={phase}
-                    tokens={tokens}
-                    phaseCost={data.cost ? (data.cost.per_phase_usd[phase] ?? 0) : null}
-                  />
+                {Object.entries(data.token_usage.phases).filter(([, tokens]) => tokens.input_tokens > 0 || tokens.output_tokens > 0).map(([phase, tokens]) => (
+                  <React.Fragment key={phase}>
+                    <PhaseTokenRow
+                      phaseKey={phase}
+                      tokens={tokens}
+                      phaseCost={data.cost ? (data.cost.per_phase_usd[phase] ?? 0) : null}
+                    />
+                    {phase === "translation" &&
+                      Object.keys(data.token_usage!.translation_by_block ?? {}).length > 0 &&
+                      Object.entries(data.token_usage!.translation_by_block ?? {}).map(
+                        ([blockKey, blockTokens]) => (
+                          <BlockSubRow
+                            key={`block-${blockKey}`}
+                            blockKey={blockKey}
+                            tokens={blockTokens}
+                            prices={data.cost ? data.cost.prices : null}
+                            showCost={data.cost !== null}
+                          />
+                        ),
+                      )}
+                  </React.Fragment>
                 ))}
                 <tr className="border-t-2 border-border">
                   <td className="py-1 pr-3 text-xs font-semibold">Total</td>
