@@ -2094,7 +2094,7 @@ def _build_bom_summary(block_plans: list[dict[str, Any]]) -> BomSummary:
     human_review_required = 0
 
     for bp in block_plans:
-        block_type: str = bp.get("block_type", "")
+        block_type: str = bp.get("block_type", "").lower()
         strategy: str = bp.get("strategy", "")
         risk: str = bp.get("risk", "")
 
@@ -2109,7 +2109,13 @@ def _build_bom_summary(block_plans: list[dict[str, Any]]) -> BomSummary:
         elif block_type == "macro":
             macros += 1
 
-        if strategy == "untranslatable" or bp.get("untranslatable") is True:
+        # BlockType.UNTRANSLATABLE serialises as "UNRECOGNIZED"; also accept legacy
+        # "untranslatable" strategy value written by older worker versions.
+        if (
+            block_type == "unrecognized"
+            or strategy == "untranslatable"
+            or bp.get("untranslatable") is True
+        ):
             untranslatable += 1
 
         if risk:
