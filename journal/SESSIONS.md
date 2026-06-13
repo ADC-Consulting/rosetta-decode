@@ -6,6 +6,54 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-13 — F35 remediation runbook implemented; #19 closed
+**Duration:** ~2h | **Focus:** F35 planning and full-stack implementation
+
+### Done
+- Session-start confirmed F34 merged (PR #87); main clean, no in-progress plan
+- F35 planned: remediation runbook for high-risk/non-convertible blocks (#19)
+  - Key design choices settled via user Q&A: rule-based templates (not LLM), collapsible panel in Plan tab (not new tab), filter = criticality in (critical, high)
+- F35 implemented in full — 10 subtasks, single commit (9fbdabd):
+  - S-A: `src/backend/api/runbook_templates.py` — `remediation_outline()` + `why_risky()`, pure/deterministic
+  - S-B: `RunbookEntry` + `RunbookResponse` Pydantic schemas
+  - S-C: `_build_runbook_entries()` + `_render_runbook_markdown()` helpers in jobs.py
+  - S-D: `GET /jobs/{id}/runbook` endpoint
+  - S-E/S-F: `tests/test_runbook_templates.py` + `tests/test_runbook_routes.py` (31 tests)
+  - S-G: TypeScript types + `getJobRunbook()` API client
+  - S-H: `RunbookPanel.tsx` — collapsible, lazy-loaded, per-entry cards, Copy-as-Markdown
+  - S-I: Wired into `PlanTab.tsx` below `ScopingSummaryPanel`
+  - S-J: `make test` exits 0 (all 7 gates green, 90%+ coverage)
+- Bug fix mid-session: `why_risky()` was dumping raw `&in`, `&out` macro variable refs; fixed to render human-readable "Block uses macro parameters as dataset/library names (&in, &out) — context not available at translation time"
+- Diagnosed executor `FileNotFoundError` log: expected behavior — LLM faithfully mirrors a SAS step that failed in the original run (broken test fixture `06_broken_step.sas`)
+
+### Decisions
+- Runbook remediation is rule-based only (no LLM) — reproducible, zero token cost · revisit never
+- Runbook lives as a Plan tab panel, not a new chevron tab — respects locked single-surface decision · revisit never
+- `&`-prefixed items in `detected_features` are macro variable refs, not SAS pattern names — `why_risky()` branches on the `&` prefix to produce readable output · revisit never
+
+### Open Questions
+- None
+
+### Next Session — Start Here
+1. Open PR `feat/F35-remediation-runbook → main` for #19
+2. Next from priority queue: #56 (post-run risk + rationale enrichment, rule-based, design already in DECISIONS.md) or #43 (Data Storage tab, wireframe still pending)
+
+### Files Touched
+- `src/backend/api/runbook_templates.py` (new)
+- `src/backend/api/schemas.py`
+- `src/backend/api/routes/jobs.py`
+- `src/frontend/src/api/types.ts`
+- `src/frontend/src/api/jobs.ts`
+- `src/frontend/src/components/JobDetail/RunbookPanel.tsx` (new)
+- `src/frontend/src/components/JobDetail/PlanTab.tsx`
+- `tests/test_runbook_templates.py` (new)
+- `tests/test_runbook_routes.py` (new)
+- `journal/BACKLOG.md`
+- `journal/SESSIONS.md`
+- `journal/DECISIONS.md`
+
+---
+
 ## 2026-06-11 — F33 ETL tab complete; Plan tab sticky footer removed; PR #66 opened
 **Duration:** ~5h | **Focus:** F33 ETL tab design, implementation, browser verification
 

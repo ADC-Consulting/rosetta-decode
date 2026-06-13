@@ -18,6 +18,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from src.backend.api.runbook_templates import remediation_outline as _remediation_outline
+from src.backend.api.runbook_templates import why_risky as _why_risky
 from src.backend.api.schemas import (
     AcceptJobRequest,
     AttachmentInfo,
@@ -50,6 +52,8 @@ from src.backend.api.schemas import (
     PhaseTokens,
     RefineRequest,
     RefineResponse,
+    RunbookEntry,
+    RunbookResponse,
     SaveVersionRequest,
     SaveVersionResponse,
     ScopingSummaryResponse,
@@ -2266,4 +2270,212 @@ async def get_job_scoping(
         cost=cost,
         bom=bom,
         markdown=markdown,
+    )
+
+
+# ---------------------------------------------------------------------------
+# F35 — Remediation runbook helpers and endpoint
+# ---------------------------------------------------------------------------
+
+_CRITICALITY_ORDER: dict[str, int] = {"critical": 0, "high": 1}
+
+
+def _build_runbook_entries(
+    block_plans: list[dict[str, Any]],
+    blast_map: dict[str, int],
+    lineage: dict[str, Any],
+    latest_revision: dict[str, "BlockRevision"],
+) -> list[RunbookEntry]:
+    """Build filtered, sorted RunbookEntry list from migration plan data.
+
+    Only includes blocks with criticality ``"critical"`` or ``"high"``.
+    Pure aggregation — no I/O.
+
+    Args:
+        block_plans: List of block plan dicts from ``migration_plan["block_plans"]``.
+        blast_map: Map of block_id to blast-radius integer (outgoing cross-file edges).
+        lineage: Raw lineage dict; used to decide whether blast_radius is available.
+        latest_revision: Map of block_id to its most recent BlockRevision ORM row.
+
+    Returns:
+        Sorted list of RunbookEntry — critical before high, then blast_radius descending,
+        then source_file + start_line ascending.
+    """
+    # SAS: src/backend/api/routes/jobs.py:_build_runbook_entries
+    entries: list[RunbookEntry] = []
+
+    for bp in block_plans:
+        block_id: str = bp.get("block_id", "")
+        source_file: str = bp.get("source_file", "")
+        start_line: int = bp.get("start_line", 0)
+        block_type: str = bp.get("block_type", "")
+        strategy: str = bp.get("strategy", "translate")
+        confidence_band: str = bp.get("confidence_band", "unknown") or "unknown"
+        rationale: str = bp.get("rationale", "") or ""
+        detected_features: list[str] = bp.get("detected_features", []) or []
+        input_datasets: list[str] = bp.get("input_datasets", []) or []
+        output_datasets: list[str] = bp.get("output_datasets", []) or []
+
+        latest_rev: BlockRevision | None = latest_revision.get(block_id)
+        recon_status: str | None = latest_rev.reconciliation_status if latest_rev else None
+
+        eff_band = _effective_confidence(confidence_band, recon_status)
+        radius: int | None = blast_map.get(block_id) if lineage else None
+        crit = _criticality(strategy, eff_band, recon_status, radius)
+
+        if crit not in ("critical", "high"):
+            continue
+
+        description: str = (
+            rationale
+            if rationale
+            else f"SAS {block_type} block in {source_file} (line {start_line})"
+        )
+
+        entries.append(
+            RunbookEntry(
+                block_id=block_id,
+                source_file=source_file,
+                start_line=start_line,
+                block_type=block_type,
+                strategy=strategy,
+                criticality=crit,
+                effective_confidence_band=eff_band,
+                reconciliation_status=recon_status,
+                blast_radius=radius,
+                input_datasets=input_datasets,
+                output_datasets=output_datasets,
+                description=description,
+                why_risky=_why_risky(strategy, eff_band, recon_status, radius, detected_features),
+                remediation_outline=_remediation_outline(block_type, strategy, detected_features),
+            )
+        )
+
+    entries.sort(
+        key=lambda e: (
+            _CRITICALITY_ORDER.get(e.criticality, 9),
+            -(e.blast_radius if e.blast_radius is not None else -1),
+            e.source_file,
+            e.start_line,
+        )
+    )
+    return entries
+
+
+def _render_runbook_markdown(job_id: str, entries: list[RunbookEntry]) -> str:
+    """Render a complete Markdown remediation runbook string.
+
+    Args:
+        job_id: Job UUID string used in the document heading.
+        entries: List of RunbookEntry instances to include in the runbook.
+
+    Returns:
+        Markdown-formatted string suitable for copy-paste export.
+    """
+    # SAS: src/backend/api/routes/jobs.py:_render_runbook_markdown
+    if not entries:
+        return "# Remediation Runbook\n\nNo high-risk blocks identified — nothing to remediate.\n"
+
+    lines: list[str] = [
+        f"# Remediation Runbook — Job {job_id}",
+        "",
+        f"{len(entries)} block(s) require manual attention.",
+        "",
+        "---",
+    ]
+
+    for entry in entries:
+        inputs = ", ".join(entry.input_datasets) if entry.input_datasets else "—"
+        outputs = ", ".join(entry.output_datasets) if entry.output_datasets else "—"
+
+        lines += [
+            "",
+            f"## {entry.block_id} ({entry.source_file}:{entry.start_line})",
+            (
+                f"**Block type:** {entry.block_type}"
+                f" | **Criticality:** {entry.criticality}"
+                f" | **Strategy:** {entry.strategy}"
+            ),
+            f"**Inputs:** {inputs} | **Outputs:** {outputs}",
+            "",
+            "### What it does",
+            entry.description,
+            "",
+            "### Why it's risky",
+        ]
+        for reason in entry.why_risky:
+            lines.append(f"- {reason}")
+
+        lines += [
+            "",
+            "### Suggested remediation",
+        ]
+        for i, step in enumerate(entry.remediation_outline, start=1):
+            lines.append(f"{i}. {step}")
+
+        lines += ["", "---"]
+
+    return "\n".join(lines) + "\n"
+
+
+@router.get("/jobs/{job_id}/runbook", response_model=RunbookResponse)
+async def get_job_runbook(
+    job_id: uuid.UUID,
+    session: AsyncSession = Depends(get_async_session),
+) -> RunbookResponse:
+    """Return a remediation runbook for high-criticality blocks in a migration job.
+
+    Aggregates every block with criticality ``"critical"`` or ``"high"`` and
+    produces a deterministic, rule-based remediation outline for each. No LLM
+    calls are made — all content is generated from template rules.
+
+    Args:
+        job_id: UUID of the migration job.
+        session: Injected async database session.
+
+    Returns:
+        RunbookResponse with per-block entries and a pre-rendered Markdown export.
+
+    Raises:
+        HTTPException: 404 if the job does not exist.
+    """
+    result = await session.execute(select(Job).where(Job.id == str(job_id)))
+    job = result.scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+
+    reviewable = ("proposed", "accepted", "under_review", "done")
+    if job.status not in reviewable or job.migration_plan is None:
+        return RunbookResponse(
+            job_id=str(job_id),
+            total_entries=0,
+            entries=[],
+            markdown=_render_runbook_markdown(str(job_id), []),
+        )
+
+    lineage: dict[str, Any] = job.lineage or {}
+    cross_file_edges: list[dict[str, Any]] = lineage.get("cross_file_edges", [])
+    blast_map = _blast_radius_map(cross_file_edges)
+
+    rev_rows = await session.execute(
+        select(BlockRevision)
+        .where(BlockRevision.job_id == str(job_id))
+        .order_by(BlockRevision.block_id, BlockRevision.revision_number.desc())
+    )
+    all_revisions = rev_rows.scalars().all()
+
+    latest_revision: dict[str, BlockRevision] = {}
+    for rev in all_revisions:
+        if rev.block_id not in latest_revision:
+            latest_revision[rev.block_id] = rev
+
+    block_plans: list[dict[str, Any]] = job.migration_plan.get("block_plans", [])
+    entries = _build_runbook_entries(block_plans, blast_map, lineage, latest_revision)
+    md = _render_runbook_markdown(str(job_id), entries)
+
+    return RunbookResponse(
+        job_id=str(job_id),
+        total_entries=len(entries),
+        entries=entries,
+        markdown=md,
     )

@@ -36,6 +36,7 @@ import { useRef, useState } from "react";
 import BlockPlanTable from "./BlockPlanTable";
 import ChangelogFeed from "./ChangelogFeed";
 import ReportTab from "./ReportTab";
+import { RunbookPanel } from "./RunbookPanel";
 import { ScopingSummaryPanel } from "./ScopingSummaryPanel";
 
 // ---------------------------------------------------------------------------
@@ -1022,6 +1023,9 @@ export default function PlanTab({
 
         {/* Scoping summary section */}
         <ScopingSummaryPanel jobId={jobId} />
+
+        {/* Remediation runbook section */}
+        <RunbookPanel jobId={jobId} />
 
         {/* Needs attention section */}
         {trustReport && (
