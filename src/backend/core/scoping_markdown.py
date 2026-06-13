@@ -250,7 +250,7 @@ def _render_usage(
                 cost.prices.get("output_usd_per_mtok", 0.0) if include_cost and cost else 0.0
             )
             for bt_key, bt_phase in token_usage.translation_by_block.items():
-                sub_display = f"↳ {_block_display_name(bt_key)}"
+                sub_display = f"{_block_display_name(bt_key)}"
                 if include_cost:
                     bt_cost = (
                         bt_phase.input_tokens * input_price / 1_000_000
@@ -284,8 +284,8 @@ def _render_usage(
         output_price = cost.prices.get("output_usd_per_mtok", 0.0)
         lines.append("")
         lines.append(
-            f"> Costs are approximate. Pricing source: {cost.price_source}"
-            f" (${input_price}/M input, ${output_price}/M output). Model: {llm_model}."
+            f"> Costs are approximate. Model: {llm_model}."
+            f" Pricing: ${input_price}/M input, ${output_price}/M output."
         )
 
     return "\n".join(lines)

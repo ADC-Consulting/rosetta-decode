@@ -272,8 +272,8 @@ def test_price_source_footnote(
         token_usage=token_usage,
         cost=cost_estimate,
     )
-    assert "Pricing source: litellm" in result
-    assert "$3.0/M input" in result
+    assert "Model: m." in result
+    assert "Pricing: $3.0/M input" in result
     assert "$15.0/M output" in result
     assert "Model: m." in result
 

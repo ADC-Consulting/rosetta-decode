@@ -1,11 +1,10 @@
 import { getJobScopingSummary } from "@/api/jobs";
 import type { PhaseTokens, ScopingSummaryResponse } from "@/api/types";
-import React from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight, Copy } from "lucide-react";
-import { useState } from "react";
+import React, { useState } from "react";
 import { toast } from "sonner";
 
 interface ScopingSummaryPanelProps {
@@ -21,7 +20,10 @@ const PHASE_NAMES: Record<string, string> = {
 };
 
 function phaseDisplayName(key: string): string {
-  return PHASE_NAMES[key] ?? key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return (
+    PHASE_NAMES[key] ??
+    key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+  );
 }
 
 const BLOCK_NAMES: Record<string, string> = {
@@ -36,7 +38,10 @@ const BLOCK_NAMES: Record<string, string> = {
 };
 
 function blockDisplayName(key: string): string {
-  return BLOCK_NAMES[key] ?? key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return (
+    BLOCK_NAMES[key] ??
+    key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+  );
 }
 
 interface PhaseTokenRowProps {
@@ -48,11 +53,19 @@ interface PhaseTokenRowProps {
 function PhaseTokenRow({ phaseKey, tokens, phaseCost }: PhaseTokenRowProps) {
   return (
     <tr className="border-t border-border">
-      <td className="py-1 pr-3 text-xs text-muted-foreground">{phaseDisplayName(phaseKey)}</td>
-      <td className="py-1 pr-3 text-xs tabular-nums text-right">{tokens.input_tokens.toLocaleString()}</td>
-      <td className="py-1 pr-3 text-xs tabular-nums text-right">{tokens.output_tokens.toLocaleString()}</td>
+      <td className="py-1 pr-3 text-xs text-muted-foreground">
+        {phaseDisplayName(phaseKey)}
+      </td>
+      <td className="py-1 pr-3 text-xs tabular-nums text-right">
+        {tokens.input_tokens.toLocaleString()}
+      </td>
+      <td className="py-1 pr-3 text-xs tabular-nums text-right">
+        {tokens.output_tokens.toLocaleString()}
+      </td>
       {phaseCost !== null && (
-        <td className="py-1 text-xs tabular-nums text-right">${phaseCost.toFixed(4)}</td>
+        <td className="py-1 text-xs tabular-nums text-right">
+          ${phaseCost.toFixed(4)}
+        </td>
       )}
     </tr>
   );
@@ -76,7 +89,7 @@ function BlockSubRow({ blockKey, tokens, prices, showCost }: BlockSubRowProps) {
   return (
     <tr className="border-t border-border/50">
       <td className="py-0.5 pr-3 text-xs text-muted-foreground pl-6">
-        ↳ {blockDisplayName(blockKey)}
+        {blockDisplayName(blockKey)}
       </td>
       <td className="py-0.5 pr-3 text-xs tabular-nums text-right text-muted-foreground">
         {tokens.input_tokens.toLocaleString()}
@@ -103,14 +116,11 @@ function ScopingSummaryLoaded({ data }: { data: ScopingSummaryResponse }) {
 
   return (
     <div className="space-y-4 pt-2">
-      {/* Model name */}
-      {data.llm_model && (
-        <p className="text-xs text-muted-foreground -mt-1">Model: {data.llm_model}</p>
-      )}
-
       {/* BOM stat grid */}
       <div>
-        <p className="text-xs font-semibold text-foreground mb-1.5">Bill of materials</p>
+        <p className="text-xs font-semibold text-foreground mb-1.5">
+          Bill of materials
+        </p>
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
           {(
             [
@@ -127,7 +137,9 @@ function ScopingSummaryLoaded({ data }: { data: ScopingSummaryResponse }) {
               className="rounded-md border border-border bg-muted/30 px-3 py-2 text-center"
             >
               <p className="text-base font-semibold tabular-nums">{value}</p>
-              <p className="text-[11px] text-muted-foreground leading-tight">{label}</p>
+              <p className="text-[11px] text-muted-foreground leading-tight">
+                {label}
+              </p>
             </div>
           ))}
         </div>
@@ -136,7 +148,9 @@ function ScopingSummaryLoaded({ data }: { data: ScopingSummaryResponse }) {
       {/* Risk distribution */}
       {Object.keys(bom.risk_buckets).length > 0 && (
         <div>
-          <p className="text-xs font-semibold text-foreground mb-1.5">Risk distribution</p>
+          <p className="text-xs font-semibold text-foreground mb-1.5">
+            Risk distribution
+          </p>
           <div className="flex flex-wrap gap-2">
             {Object.entries(bom.risk_buckets).map(([risk, count]) => (
               <span
@@ -154,7 +168,9 @@ function ScopingSummaryLoaded({ data }: { data: ScopingSummaryResponse }) {
       {/* LLM usage */}
       {data.token_usage && (
         <div>
-          <p className="text-xs font-semibold text-foreground mb-1.5">LLM token usage</p>
+          <p className="text-xs font-semibold text-foreground mb-1.5">
+            LLM token usage
+          </p>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
@@ -182,17 +198,29 @@ function ScopingSummaryLoaded({ data }: { data: ScopingSummaryResponse }) {
                 </tr>
               </thead>
               <tbody>
-                {Object.entries(data.token_usage.phases).filter(([, tokens]) => tokens.input_tokens > 0 || tokens.output_tokens > 0).map(([phase, tokens]) => (
-                  <React.Fragment key={phase}>
-                    <PhaseTokenRow
-                      phaseKey={phase}
-                      tokens={tokens}
-                      phaseCost={data.cost ? (data.cost.per_phase_usd[phase] ?? 0) : null}
-                    />
-                    {phase === "translation" &&
-                      Object.keys(data.token_usage!.translation_by_block ?? {}).length > 0 &&
-                      Object.entries(data.token_usage!.translation_by_block ?? {}).map(
-                        ([blockKey, blockTokens]) => (
+                {Object.entries(data.token_usage.phases)
+                  .filter(
+                    ([, tokens]) =>
+                      tokens.input_tokens > 0 || tokens.output_tokens > 0,
+                  )
+                  .map(([phase, tokens]) => (
+                    <React.Fragment key={phase}>
+                      <PhaseTokenRow
+                        phaseKey={phase}
+                        tokens={tokens}
+                        phaseCost={
+                          data.cost
+                            ? (data.cost.per_phase_usd[phase] ?? 0)
+                            : null
+                        }
+                      />
+                      {phase === "translation" &&
+                        Object.keys(
+                          data.token_usage!.translation_by_block ?? {},
+                        ).length > 0 &&
+                        Object.entries(
+                          data.token_usage!.translation_by_block ?? {},
+                        ).map(([blockKey, blockTokens]) => (
                           <BlockSubRow
                             key={`block-${blockKey}`}
                             blockKey={blockKey}
@@ -200,10 +228,9 @@ function ScopingSummaryLoaded({ data }: { data: ScopingSummaryResponse }) {
                             prices={data.cost ? data.cost.prices : null}
                             showCost={data.cost !== null}
                           />
-                        ),
-                      )}
-                  </React.Fragment>
-                ))}
+                        ))}
+                    </React.Fragment>
+                  ))}
                 <tr className="border-t-2 border-border">
                   <td className="py-1 pr-3 text-xs font-semibold">Total</td>
                   <td className="py-1 pr-3 text-xs tabular-nums text-right font-semibold">
@@ -229,9 +256,9 @@ function ScopingSummaryLoaded({ data }: { data: ScopingSummaryResponse }) {
           </div>
           {data.cost && (
             <p className="text-[11px] text-muted-foreground mt-1.5">
-              Costs are approximate. {data.cost.price_source} pricing ($
-              {data.cost.prices.input_usd_per_mtok}/M in, $
-              {data.cost.prices.output_usd_per_mtok}/M out).
+              Costs are approximate. Model: {data.llm_model}. Pricing: $
+              {data.cost.prices.input_usd_per_mtok}/M input, $
+              {data.cost.prices.output_usd_per_mtok}/M output.
             </p>
           )}
         </div>
@@ -275,7 +302,9 @@ export function ScopingSummaryPanel({ jobId }: ScopingSummaryPanelProps) {
         ) : (
           <ChevronDown size={14} className="text-muted-foreground shrink-0" />
         )}
-        <h2 className="text-sm font-semibold text-foreground">Scoping summary</h2>
+        <h2 className="text-sm font-semibold text-foreground">
+          Scoping summary
+        </h2>
       </button>
 
       {!collapsed && (
