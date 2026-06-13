@@ -13,7 +13,7 @@ Covers:
 
 import asyncio
 
-from pydantic_ai.usage import Usage
+from pydantic_ai.usage import RunUsage
 from src.worker.engine.usage import (
     UsageTracker,
     _block_type,
@@ -36,8 +36,8 @@ def _make_usage(
     cache_read_tokens: int = 0,
     cache_write_tokens: int = 0,
     requests: int = 1,
-) -> Usage:
-    return Usage(
+) -> RunUsage:
+    return RunUsage(
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         cache_read_tokens=cache_read_tokens,

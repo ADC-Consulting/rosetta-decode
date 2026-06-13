@@ -410,8 +410,8 @@ def test_translation_sub_rows_present_when_by_block_populated(
         token_usage=usage,
         cost=None,
     )
-    assert "| ↳ Data step | 20000 | 1500 |" in result
-    assert "| ↳ PROC SQL | 25000 | 1700 |" in result
+    assert "|   Data step | 20000 | 1500 |" in result
+    assert "|   PROC SQL | 25000 | 1700 |" in result
 
 
 def test_translation_sub_rows_absent_when_by_block_empty(minimal_bom: BomSummary) -> None:
@@ -479,7 +479,7 @@ def test_translation_sub_rows_with_cost(
         token_usage=usage,
         cost=cost_estimate,
     )
-    assert "| ↳ Data step | 1000000 | 1000000 | $18.0000 |" in result
+    assert "|   Data step | 1000000 | 1000000 | $18.0000 |" in result
 
 
 def test_block_display_name_helper() -> None:
