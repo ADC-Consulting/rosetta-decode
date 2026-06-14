@@ -164,14 +164,15 @@ _KNOWN_PROCS: dict[str, BlockType] = {
     "FORMAT": BlockType.PROC_FORMAT,
 }
 
-# Extract DATA output name(s) from "DATA name1 name2;"
-_DATA_OUTPUT_RE = re.compile(r"(?i)DATA\s+([\w\s.]+?)\s*;")
+# Extract DATA output name(s) from "DATA name1 name2;" (datasets may carry
+# options like "(drop=x)"; capture up to the terminating ";").
+_DATA_OUTPUT_RE = re.compile(r"(?i)\bDATA\s+(.+?)\s*;", re.DOTALL)
 
-# Extract SET input name(s) from "SET name1 name2;"
-_DATA_INPUT_RE = re.compile(r"(?i)\bSET\s+([\w\s.]+?)\s*;")
+# Extract SET input name(s) from "SET name1 name2;" (options stripped later).
+_DATA_INPUT_RE = re.compile(r"(?i)\bSET\s+(.+?)\s*;", re.DOTALL)
 
-# Extract MERGE input name(s) from "MERGE name1 name2;"
-_DATA_MERGE_RE = re.compile(r"(?i)\bMERGE\s+([\w\s.]+?)\s*;")
+# Extract MERGE input name(s) from "MERGE name1(in=a) name2(in=b);".
+_DATA_MERGE_RE = re.compile(r"(?i)\bMERGE\s+(.+?)\s*;", re.DOTALL)
 
 # RENAME mappings inside a DATA step (RENAME old=new old2=new2;)
 _RENAME_RE = re.compile(r"(?i)\bRENAME\s+(.*?)\s*;")
@@ -235,10 +236,20 @@ def _line_of(text: str, char_offset: int) -> int:
 
 
 def _extract_names(pattern: re.Pattern[str], text: str) -> list[str]:
-    """Return a flat list of lowercased dataset names matched by *pattern*."""
+    """Return a flat list of lowercased dataset names matched by *pattern*.
+
+    Dataset options (e.g. ``(in=indm)``, ``(where=(x>1))``) are stripped so a
+    reference like ``sdtm.dm(in=indm)`` yields the clean name ``sdtm.dm``.
+    """
     names: list[str] = []
     for match in pattern.finditer(text):
-        names.extend(n.strip().lower() for n in match.group(1).split() if n.strip())
+        raw_list = match.group(1)
+        # Remove balanced dataset-option parens, innermost-first, to a fixed point.
+        prev = ""
+        while prev != raw_list:
+            prev = raw_list
+            raw_list = re.sub(r"\([^()]*\)", "", raw_list)
+        names.extend(n.strip().lower() for n in raw_list.split() if n.strip())
     return names
 
 
