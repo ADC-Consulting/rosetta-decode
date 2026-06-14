@@ -16,6 +16,8 @@ from pydantic_ai.providers.openai import OpenAIProvider
 from src.worker.core.config import worker_settings
 from src.worker.engine.agents.shared import (
     SHARED_TRANSLATION_RULES,
+    build_block_output_stems,
+    normalise_input_vars_in_code,
     normalise_output_var,
     normalise_output_var_in_code,
 )
@@ -108,6 +110,14 @@ _SYSTEM_PROMPT = textwrap.dedent(
     - WHERE (pre-agg) → df.filter(condition) using Column expressions.
       pandas last resort: boolean indexing or .query()
     - HAVING (post-agg) → df.filter(condition) after .agg().
+      Any aggregate referenced by a HAVING / post-aggregation filter MUST be materialised inside
+      the SAME .agg() call with an explicit .alias("name"), then filtered on that alias. NEVER
+      reference Spark-SQL auto-generated names like "count(1)", "count(*)", "sum(x)" or "avg(x)"
+      via F.col(...) after a DataFrame-API .agg() — those names do not exist (UNRESOLVED_COLUMN).
+      Drop tautological/no-op filters such as F.col("count(1)").isNotNull() (a count is never null)
+      — they have no SAS equivalent and must not be emitted.
+        WRONG: df.groupBy("k").agg(F.min("x").alias("mn")).filter(F.col("count(1)") > 5)
+        RIGHT: df.groupBy("k").agg(F.min("x").alias("mn"), F.count("*").alias("grp_n")).filter(F.col("grp_n") > 5)
       pandas last resort: .loc[condition] after .agg()
     - ORDER BY → df.orderBy([...]). NEVER use .sort_values() — it does not exist on Spark DataFrames.
     - CREATE TABLE x AS SELECT → assign to x (lowercased) as Spark DataFrame.
@@ -294,6 +304,12 @@ class ProcAgent:
             output: ProcResult = result.output  # type: ignore[assignment]
             fixed_code = normalise_output_var_in_code(
                 output.python_code, block.output_datasets, "ProcAgent"
+            )
+            fixed_code = normalise_input_vars_in_code(
+                fixed_code,
+                block.input_datasets,
+                build_block_output_stems(context.blocks),
+                "ProcAgent",
             )
             fixed_output_var = normalise_output_var(block.output_datasets, output.output_var)
             if fixed_output_var and not _re.search(

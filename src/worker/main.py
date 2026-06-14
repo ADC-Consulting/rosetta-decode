@@ -1323,6 +1323,28 @@ class JobOrchestrator:
                     error_summary = error_summary.replace("\n", " ")[:500]
                     flag = f"recon_failure_attempt_{attempt}: {error_summary}"
                     retry_flags: list[str] = [flag]
+                    # Change #1: when we have concrete corrective hints, surface them
+                    # as a high-salience MANDATORY directive (an imperative command)
+                    # distinct from the flat diagnostic flags — the model otherwise
+                    # buries the fix and rerolls it away.
+                    if extra_hints:
+                        fix_instructions = "; ".join(extra_hints).replace("\n", " ")[:500]
+                        mandatory_flag = (
+                            f"MANDATORY FIX (attempt {attempt}): your previous output was wrong."
+                            f" The corrected code MUST contain these changes: {fix_instructions}."
+                            f" Apply them exactly; do not omit them."
+                        )
+                        retry_flags.append(mandatory_flag)
+                    # Change #3: feed the prior attempt's code back so the model
+                    # patches it instead of regenerating from scratch. Reuses the
+                    # same fenced-python mechanism as the job-level refine flow.
+                    if gb is not None:
+                        retry_flags.append(
+                            "this is your previous attempt for THIS block; modify it"
+                            " minimally to apply the MANDATORY FIX above and fix the"
+                            " issues; keep everything else identical:\n```python\n"
+                            f"{gb.python_code}\n```"
+                        )
                     # Surface the actual Python traceback so the LLM can fix the root cause
                     if _runtime_error:
                         rt_flag = (

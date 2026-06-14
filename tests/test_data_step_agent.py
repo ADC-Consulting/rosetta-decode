@@ -165,6 +165,51 @@ async def test_empty_risk_flags_no_crash() -> None:
     assert isinstance(result, GeneratedBlock)
 
 
+async def test_input_var_normalised_when_llm_uses_wrong_form() -> None:
+    """LLM uses full libname form for an inter-block input; agent must correct it."""
+    sort_block = SASBlock(
+        block_type=BlockType.PROC_SORT,
+        source_file="02_build_sdtm_ex.sas",
+        start_line=7,
+        end_line=10,
+        raw_sas="proc sort data=work.ex_raw out=work.ex_dedup nodupkey; by SUBJID; run;",
+        input_datasets=["work.ex_raw"],
+        output_datasets=["work.ex_dedup"],
+    )
+    consuming_block = SASBlock(
+        block_type=BlockType.DATA_STEP,
+        source_file="02_build_sdtm_ex.sas",
+        start_line=13,
+        end_line=20,
+        raw_sas="data sdtm.ex; set work.ex_dedup; run;",
+        input_datasets=["work.ex_dedup"],
+        output_datasets=["sdtm.ex"],
+    )
+    context = JobContext(
+        source_files={"02_build_sdtm_ex.sas": ""},
+        resolved_macros=[],
+        dependency_order=[],
+        risk_flags=[],
+        blocks=[sort_block, consuming_block],
+        generated=[],
+    )
+
+    # LLM ignores the prompt hint and emits the wrong full form
+    bad_llm_result = DataStepResult(
+        python_code="sdtm_ex = work_ex_dedup.copy()  # SAS: 02_build_sdtm_ex.sas:13",
+        output_var="sdtm_ex",
+        confidence_band="high",
+        uncertainty_notes=[],
+    )
+    agent = DataStepAgent()
+    agent._agent.run = AsyncMock(return_value=_make_run_result(bad_llm_result))  # type: ignore[method-assign]
+
+    result = await agent.translate(consuming_block, context)
+
+    assert "work_ex_dedup" not in result.python_code
+    assert "ex_dedup" in result.python_code
+
+
 def test_make_agent_azure_provider_path() -> None:
     """_make_agent() takes the Azure branch when azure_openai_endpoint is set."""
     from unittest.mock import MagicMock, patch

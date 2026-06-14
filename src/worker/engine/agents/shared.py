@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import re
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -391,6 +392,79 @@ When converting SAS to PySpark:
 7. Handle nulls, types, and column casing explicitly.
 8. Add .orderBy() when output order matters.
 """
+
+
+def build_block_output_stems(all_blocks: list[Any]) -> dict[str, str]:
+    """Map every prior-block output dataset (dot AND underscore form) → stem name.
+
+    Both ``work.ex_dedup`` and ``work_ex_dedup`` map to ``ex_dedup``.  Used by
+    the prompt builder and the input-variable normalizer so they stay in sync.
+
+    Args:
+        all_blocks: All SASBlock objects in the job.
+
+    Returns:
+        Mapping from lower-cased dot-form and underscore-form dataset names to
+        their stem-only variable names.
+    """
+    stems: dict[str, str] = {}
+    for b in all_blocks:
+        for ds in b.output_datasets:
+            stem = ds.lower().split(".")[-1]
+            stems[ds.lower()] = stem
+            stems[ds.lower().replace(".", "_")] = stem
+    return stems
+
+
+def normalise_input_vars_in_code(
+    python_code: str,
+    input_datasets: list[str],
+    block_output_stems: dict[str, str],
+    agent_name: str,
+) -> str:
+    """Replace wrong input variable names in *python_code* with the correct form.
+
+    The prompt tells the LLM which variable name to use for each input dataset
+    (stem-only for prior-block outputs, underscore form for external datasets).
+    When the LLM ignores that hint and writes the wrong form, this function
+    corrects it deterministically — mirroring what ``normalise_output_var_in_code``
+    does for output variables.
+
+    Args:
+        python_code: Generated Python source from the LLM.
+        input_datasets: Dataset names from the SAS parser (may be ``libname.table``).
+        block_output_stems: Map produced by ``build_block_output_stems``.
+        agent_name: Agent class name used in log messages.
+
+    Returns:
+        Python source with all wrong input variable references corrected.
+    """
+    for ds in input_datasets:
+        ds_lower = ds.lower()
+        if ds_lower in block_output_stems:
+            correct = block_output_stems[ds_lower]  # prior-block output → stem
+        else:
+            correct = ds_lower.replace(".", "_")  # external → underscore form
+
+        underscore_form = ds_lower.replace(".", "_")
+        dot_form = ds_lower
+
+        for wrong, pattern in (
+            (underscore_form, rf"\b{re.escape(underscore_form)}\b"),
+            (dot_form, re.escape(dot_form)),
+        ):
+            if wrong == correct:
+                continue  # already the right form — no substitution needed
+            if not re.search(pattern, python_code):
+                continue
+            logger.warning(
+                "%s: renaming input '%s' → '%s' in generated code (LLM used wrong form)",
+                agent_name,
+                wrong,
+                correct,
+            )
+            python_code = re.sub(pattern, correct, python_code)
+    return python_code
 
 
 def normalise_output_var(

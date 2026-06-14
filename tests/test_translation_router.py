@@ -291,7 +291,7 @@ async def test_strategy_stub_adapter_init_and_translate() -> None:
 
 @pytest.mark.asyncio
 async def test_simple_copy_helper_keep_branch() -> None:
-    """_SimpleCopyHelper emits .copy() with column filter when KEEP is present (lines 183-186)."""
+    """_SimpleCopyHelper emits .select() with column filter when KEEP is present."""
     from src.worker.engine.router import _SimpleCopyHelper
 
     raw = "DATA out; SET in; KEEP col1 col2; RUN;"
@@ -305,8 +305,9 @@ async def test_simple_copy_helper_keep_branch() -> None:
         generated=[],
     )
     result = await _SimpleCopyHelper().translate(block, ctx)
-    assert "['col1', 'col2']" in result.python_code
-    assert ".copy()" in result.python_code
+    assert ".select(" in result.python_code
+    assert "col1" in result.python_code
+    assert "col2" in result.python_code
 
 
 @pytest.mark.asyncio
@@ -331,7 +332,7 @@ async def test_simple_copy_helper_drop_branch() -> None:
 
 @pytest.mark.asyncio
 async def test_simple_copy_helper_plain_copy() -> None:
-    """_SimpleCopyHelper emits plain .copy() when no KEEP or DROP (lines 194-195)."""
+    """_SimpleCopyHelper emits direct assignment (no .copy()) for plain SET."""
     from src.worker.engine.router import _SimpleCopyHelper
 
     raw = "DATA out; SET in; RUN;"
@@ -345,7 +346,8 @@ async def test_simple_copy_helper_plain_copy() -> None:
         generated=[],
     )
     result = await _SimpleCopyHelper().translate(block, ctx)
-    assert "out = in.copy()" in result.python_code
+    assert "out = in  " in result.python_code
+    assert ".copy()" not in result.python_code
 
 
 # ── router.route() simple DATA step returns _simple_copy (line 289) ─────────

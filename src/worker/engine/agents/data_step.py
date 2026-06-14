@@ -16,6 +16,8 @@ from pydantic_ai.providers.openai import OpenAIProvider
 from src.worker.core.config import worker_settings
 from src.worker.engine.agents.shared import (
     SHARED_TRANSLATION_RULES,
+    build_block_output_stems,
+    normalise_input_vars_in_code,
     normalise_output_var,
     normalise_output_var_in_code,
 )
@@ -166,12 +168,7 @@ def _build_prompt(block: SASBlock, windowed: JobContext, all_blocks: list[SASBlo
     # Maps both dot form (rawdir.customers) and underscore form (rawdir_customers) → stem (customers).
     # Must use ALL blocks (not just the windowed single block) so that upstream PROC IMPORT outputs
     # are visible when resolving input variable names for downstream DATA steps.
-    block_output_stems: dict[str, str] = {}
-    for b in all_blocks:
-        for ds in b.output_datasets:
-            stem = ds.lower().split(".")[-1]
-            block_output_stems[ds.lower()] = stem
-            block_output_stems[ds.lower().replace(".", "_")] = stem
+    block_output_stems = build_block_output_stems(all_blocks)
 
     lines.append("")
     lines.append("## Input datasets (already-loaded Spark DataFrame variables)")
@@ -293,6 +290,12 @@ class DataStepAgent:
             output: DataStepResult = result.output  # type: ignore[assignment]
             fixed_code = normalise_output_var_in_code(
                 output.python_code, block.output_datasets, "DataStepAgent"
+            )
+            fixed_code = normalise_input_vars_in_code(
+                fixed_code,
+                block.input_datasets,
+                build_block_output_stems(context.blocks),
+                "DataStepAgent",
             )
             fixed_output_var = normalise_output_var(block.output_datasets, output.output_var)
             if fixed_output_var and not _re.search(

@@ -6,6 +6,7 @@ import logging
 import re
 from typing import Any
 
+from src.worker.engine.agents.shared import build_block_output_stems
 from src.worker.engine.models import (
     BlockPlan,
     BlockType,
@@ -181,22 +182,27 @@ class _SimpleCopyHelper:
         keep_match = re.search(r"KEEP\s+([\w\s]+)\s*;", raw)
         drop_match = re.search(r"DROP\s+([\w\s]+)\s*;", raw)
 
-        out_ds = data_match.group(1).lower().replace(".", "_") if data_match else "output"
-        in_ds = set_match.group(1).lower().replace(".", "_") if set_match else "input"
+        stems = build_block_output_stems(context.blocks)
 
+        # Output: always stem-only (strip libname prefix)
+        raw_out = data_match.group(1).lower() if data_match else "output"
+        out_ds = raw_out.split(".")[-1]
+
+        # Input: stem-only if produced by a prior block, else underscore form for external
+        raw_in = set_match.group(1).lower() if set_match else "input"
+        in_ds = stems.get(raw_in, stems.get(raw_in.replace(".", "_"), raw_in.replace(".", "_")))
+
+        provenance = f"# SAS: {block.source_file}:{block.start_line}"
         if keep_match:
             cols = [c.lower() for c in keep_match.group(1).split()]
-            code = (
-                f"{out_ds} = {in_ds}[{cols}].copy()  # SAS: {block.source_file}:{block.start_line}"
-            )
+            cols_expr = ", ".join(f'"{c}"' for c in cols)
+            code = f"{out_ds} = {in_ds}.select({cols_expr})  {provenance}"
         elif drop_match:
             cols = [c.lower() for c in drop_match.group(1).split()]
-            code = (
-                f"{out_ds} = {in_ds}.drop(columns={cols}).copy()"
-                f"  # SAS: {block.source_file}:{block.start_line}"
-            )
+            cols_expr = ", ".join(f'"{c}"' for c in cols)
+            code = f"{out_ds} = {in_ds}.drop({cols_expr})  {provenance}"
         else:
-            code = f"{out_ds} = {in_ds}.copy()  # SAS: {block.source_file}:{block.start_line}"
+            code = f"{out_ds} = {in_ds}  {provenance}"
 
         return GeneratedBlock(source_block=block, python_code=code, confidence="high")
 

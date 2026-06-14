@@ -227,6 +227,61 @@ class TestRetryLoop:
         assert result[0].python_code == "# attempt 1"
 
 
+class TestRetryErrorFeed:
+    """Per-block retry feed: MANDATORY directive + prior-attempt code injection."""
+
+    @pytest.fixture()
+    def block(self) -> SASBlock:
+        return _make_block()
+
+    @pytest.fixture()
+    def context(self) -> JobContext:
+        return _make_context()
+
+    def test_schema_parity_failure_injects_mandatory_and_prior_code(
+        self, block: SASBlock, context: JobContext
+    ) -> None:
+        """A schema_parity failure surfaces a MANDATORY directive and the prior
+        attempt's code (fenced python) into the next attempt's context."""
+        gb1 = _make_gb("result = df.withColumn('rfstdtc', F.col('rfstdtc'))")
+        gb2 = _make_gb("# attempt 2")
+        seen_contexts: list[JobContext] = []
+
+        async def _translate(_b: SASBlock, ctx: JobContext) -> GeneratedBlock:
+            seen_contexts.append(ctx)
+            return gb1 if len(seen_contexts) == 1 else gb2
+
+        mock_translator = MagicMock()
+        mock_translator.translate = AsyncMock(side_effect=_translate)
+
+        fail = {
+            "checks": [
+                {
+                    "name": "schema_parity",
+                    "status": "fail",
+                    "detail": "rfstdtc: ref=object, actual=numeric (int64)",
+                }
+            ]
+        }
+        mock_executor = MagicMock(spec=BlockExecutor)
+        mock_executor.run = AsyncMock(side_effect=[fail, None])
+
+        _run(_run_translate_blocks_stub([block], context, mock_translator, mock_executor))
+
+        # Second attempt's context carries the new directive + prior code.
+        assert len(seen_contexts) == 2
+        retry_flags = seen_contexts[1].risk_flags
+        # (a) MANDATORY directive present and imperative
+        mandatory = [f for f in retry_flags if f.startswith("MANDATORY FIX (attempt 1)")]
+        assert mandatory, retry_flags
+        assert "cast('string')" in mandatory[0]
+        # (b) prior attempt's code injected in a fenced python block
+        prior = [f for f in retry_flags if "previous attempt for THIS block" in f]
+        assert prior, retry_flags
+        assert "```python" in prior[0]
+        assert "rfstdtc" in prior[0]
+
+
 # ── Stub that replicates the _translate_blocks F19 retry loop ────────────────
 
 
@@ -301,10 +356,47 @@ async def _run_translate_blocks_stub(
                     for c in checks
                     if c.get("status") != "pass"
                 ]
-                error_summary = "; ".join(failed_details).replace("\n", " ")[:200]
+                # Mirror of main.py: derive concrete cast hints from schema_parity.
+                extra_hints: list[str] = []
+                for check in checks:
+                    if check.get("status") == "pass":
+                        continue
+                    name = check.get("name", "")
+                    detail = check.get("detail", "")
+                    if name == "schema_parity" and detail:
+                        for col_part in detail.split(";"):
+                            col_part = col_part.strip()
+                            if "ref=" in col_part and "actual=" in col_part:
+                                col_name = col_part.split(":")[0].strip()
+                                ref_type = col_part.split("ref=")[1].split(",")[0].strip()
+                                actual_type = col_part.split("actual=")[1].strip()
+                                if ref_type == "object" and "numeric" in actual_type:
+                                    extra_hints.append(
+                                        f"column '{col_name}': ref is string/object"
+                                        f" but output is {actual_type} —"
+                                        f" add .withColumn('{col_name}',"
+                                        f" F.col('{col_name}').cast('string'))"
+                                    )
+                error_summary = "; ".join(failed_details + extra_hints).replace("\n", " ")[:200]
                 flag = f"recon_failure_attempt_{attempt}: {error_summary}"
+                retry_flags: list[str] = [flag]
+                # Change #1: high-salience MANDATORY directive when concrete hints exist.
+                if extra_hints:
+                    fix_instructions = "; ".join(extra_hints).replace("\n", " ")[:500]
+                    retry_flags.append(
+                        f"MANDATORY FIX (attempt {attempt}): your previous output was wrong."
+                        f" The corrected code MUST contain these changes: {fix_instructions}."
+                        f" Apply them exactly; do not omit them."
+                    )
+                # Change #3: feed the prior attempt's code back as a fenced python block.
+                if gb is not None:
+                    retry_flags.append(
+                        "this is your previous attempt for THIS block; modify it minimally to"
+                        " apply the MANDATORY FIX above and fix the issues; keep everything else"
+                        f" identical:\n```python\n{gb.python_code}\n```"
+                    )
                 attempt_context = attempt_context.model_copy(
-                    update={"risk_flags": [*attempt_context.risk_flags, flag]}
+                    update={"risk_flags": [*attempt_context.risk_flags, *retry_flags]}
                 )
 
         if gb is not None:

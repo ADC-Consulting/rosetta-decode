@@ -828,7 +828,6 @@ export default function LiveTraceDialog({
     setElapsed(0);
     setFinalStatus(null);
     setFinalElapsed(null);
-    startMsRef.current = null;
 
     const es = openTraceStream(jobId);
     es.onopen = () => setConnectionStatus("streaming");
