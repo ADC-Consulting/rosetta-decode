@@ -2,7 +2,7 @@
 
 **Phase:** 2
 **Area:** Backend / Worker
-**Status:** complete (pending commit)
+**Status:** complete (committed 256ee51; end-to-end sandbox evidence outstanding)
 
 ## Goal
 

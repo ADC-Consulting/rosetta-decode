@@ -6,6 +6,37 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-14 — feat: F60 PROC FORMAT translation + router guard + codegen hardening
+**Duration:** ~1 session | **Focus:** close the PROC FORMAT user-format gap end-to-end
+
+### Done
+- **Validated the F60 plan against code first** — caught a critical blind spot: the triggering block (`AGEGR1 = put(AGE, agegr1f.)`) was classified "simple" by `_SimpleCopyHelper` and diverted to the no-LLM copy path, so prompt injection alone would never have fixed it. Added S-E0 (router guard) as the gating subtask.
+- **F60 implemented + committed (256ee51):** `format_catalog.py` (`extract_format_catalog` + `normalize_format_name`), `FormatDef`/`FormatEntry` models + `format_catalog` on `ParseResult`/`JobContext` (threaded through `windowed_context`), parser wiring on `expanded_source`, `JobContext` wiring in `main.py`, prompt injection (`detect_referenced_formats`/`render_format_section` + scoped `put()` rule) across all 3 agents.
+- **Router guard:** `_SimpleCopyHelper.is_simple` rewritten to a strict allowlist.
+- **Codegen hardening:** added a column-lifecycle/ordering rule to `SHARED_TRANSLATION_RULES` after a sandbox run surfaced `UNRESOLVED_COLUMN: studyid` (keys dropped by a narrowing select before a derived column needed them).
+- **Tests:** new `test_format_catalog.py`, routing tests in `test_translation_router.py`, rule-presence tests in `test_shared_normalisers.py`. All 7 gates green, coverage ≥90%.
+
+### Decisions
+- PROC FORMAT gap marked FIXED; router allowlist locked; "mechanical invariants belong in deterministic code, not soft prompt rules" recorded as an open principle (see DECISIONS).
+
+### Open Questions
+- The full-pipeline sandbox run revealed two genuine derivation bugs (NOT F60): `firstaedt` comes out numeric (should be character ISO date), and `trtdurd` sums to ~38% of reference (nulls propagating from the dose aggregation/join).
+- Per-block reconciliation passes while full-pipeline fails — integration drift across block boundaries (string keys not cast back, null propagation) is invisible to per-block checks.
+
+### Next Session — Start Here
+1. Decide how to attack the integration-drift class: the deferred **type-aware schema contract** (capture `.sas7bdat` source types into `DataFileInfo.column_types`, bake auditable cast-backs into delivered code) was scoped this session but stopped by the user — revisit if approved.
+2. Fix `firstaedt`/`trtdurd` via the per-block refine loop feeding the full-pipeline recon report back.
+3. Capture documented end-to-end sandbox evidence for F60 (agegr1 column produced, no `UNRESOLVED_COLUMN`) — the one outstanding F60 acceptance item.
+4. Push `feat/F60-proc-format-translation` and open the PR (summary already drafted) when ready.
+
+### Files Touched
+- `src/worker/engine/format_catalog.py` (new), `models.py`, `parser.py`, `router.py`, `main.py`
+- `src/worker/engine/agents/{shared,data_step,proc,generic_proc}.py`
+- `tests/test_format_catalog.py` (new), `test_translation_router.py`, `test_shared_normalisers.py`
+- `docs/plans/latest/F60-proc-format-translation.md` (new), `journal/{BACKLOG,DECISIONS}.md`
+
+---
+
 ## 2026-06-14 — feat: F57 macro call expansion + F59 macro control-flow + SET/MERGE option fix
 
 **Branch:** `feat/F57-macro-call-expansion` → `feat/F59-macro-control-flow`
