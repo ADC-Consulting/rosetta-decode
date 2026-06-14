@@ -240,3 +240,118 @@ def test_expand_nested_expansion_fixed_point() -> None:
     # Neither call site should remain.
     assert "%a(" not in result.lower()
     assert "%b(" not in result.lower()
+
+
+# ---------------------------------------------------------------------------
+# F59 — control-flow macro expansion (S-E integration)
+# ---------------------------------------------------------------------------
+
+_M_DERIVE_AGE_GROUP_BODY = """%if %length(&in) = 0 %then %do;
+    %put ERROR: m_derive_age_group requires IN= dataset.;
+    %return;
+%end;
+data &out;
+    set &in;
+    length &grpvar $8;
+    &grpvar = put(&agevar, agegr1f.);
+run;"""
+
+
+def _derive_age_group_macro() -> MacroDef:
+    return MacroDef(
+        name="M_DERIVE_AGE_GROUP",
+        param_str="in=, out=, agevar=AGE, grpvar=AGEGR1",
+        body=_M_DERIVE_AGE_GROUP_BODY,
+        source_file="m_derive_age_group.sas",
+        line=1,
+    )
+
+
+def test_expand_m_derive_age_group_emits_data_step() -> None:
+    macro = _derive_age_group_macro()
+    source = "%m_derive_age_group(in=work.adsl_pre, out=work.adsl_age, agevar=AGE, grpvar=AGEGR1);"
+    result = expand_macro_calls(source, {"M_DERIVE_AGE_GROUP": macro})
+    # Guard FALSE (in= non-empty) -> DATA step branch taken, params substituted.
+    assert "data work.adsl_age" in result
+    assert "set work.adsl_pre" in result
+    # Control-flow tokens must be gone from the taken path.
+    assert "%if" not in result
+    assert "%do" not in result
+    assert "%put" not in result
+    assert "%return" not in result
+    # No leftover &-references after substitution.
+    assert "&" not in result
+    # Provenance marker present.
+    assert "SAS-MACRO-EXPANDED: M_DERIVE_AGE_GROUP" in result
+
+
+def test_expand_m_derive_age_group_guard_true_no_data_step() -> None:
+    macro = _derive_age_group_macro()
+    source = "%m_derive_age_group(in=, out=work.x, agevar=AGE, grpvar=AGEGR1);"
+    result = expand_macro_calls(source, {"M_DERIVE_AGE_GROUP": macro})
+    # Guard TRUE (in= empty) -> %do branch -> %return truncates -> no DATA step.
+    assert "data work.x" not in result
+    assert "set" not in result
+
+
+def test_expand_global_assign_propagates_across_source() -> None:
+    macro = MacroDef(
+        name="M_SET_FLAG",
+        param_str="val=",
+        body="%global GFLAG = &val;",
+        source_file="m_set_flag.sas",
+        line=1,
+    )
+    source = '%m_set_flag(val=ACTIVE);\ndata d; x = "&GFLAG"; run;'
+    result = expand_macro_calls(source, {"M_SET_FLAG": macro})
+    # %global NAME=VALUE is recorded in assigned_globals -> propagates downstream.
+    assert "ACTIVE" in result
+    assert "&GFLAG" not in result
+
+
+def test_expand_bare_global_then_let_does_not_propagate() -> None:
+    # Documents ACTUAL macro_logic behaviour: a bare `%global SAFETY_RESULT;`
+    # declaration is NOT recorded in assigned_globals, and a subsequent
+    # `%let SAFETY_RESULT=...` updates only the internal env (not
+    # assigned_globals). Therefore a downstream `&SAFETY_RESULT` in the same
+    # source remains unresolved. Verified against _apply_global / _apply_let.
+    macro = MacroDef(
+        name="M_SAFETY_FLAG",
+        param_str="dosed=",
+        body=(
+            "%global SAFETY_RESULT;\n"
+            "%if &dosed = 1 %then %let SAFETY_RESULT = Y;\n"
+            "%else %let SAFETY_RESULT = N;"
+        ),
+        source_file="m_safety_flag.sas",
+        line=1,
+    )
+    source = '%m_safety_flag(dosed=1);\ndata d; flag = "&SAFETY_RESULT"; run;'
+    result = expand_macro_calls(source, {"M_SAFETY_FLAG": macro})
+    # %let after a bare %global is not recorded -> no cross-source propagation.
+    assert "&SAFETY_RESULT" in result
+
+
+def test_expand_unsupported_construct_left_verbatim() -> None:
+    macro = MacroDef(
+        name="M_LOOPY",
+        param_str="x=",
+        body="%do %until(&x); data z; run; %end;",
+        source_file="m_loopy.sas",
+        line=1,
+    )
+    source = "%m_loopy(x=1);"
+    result = expand_macro_calls(source, {"M_LOOPY": macro})
+    # %do %until is unsupported -> CannotResolveMacroLogic -> call left verbatim.
+    assert "%m_loopy" in result
+    assert "SAS-MACRO-EXPANDED: M_LOOPY" not in result
+
+
+def test_expand_m_derive_age_group_idempotent() -> None:
+    macro = _derive_age_group_macro()
+    macro_defs = {"M_DERIVE_AGE_GROUP": macro}
+    source = "%m_derive_age_group(in=work.adsl_pre, out=work.adsl_age, agevar=AGE, grpvar=AGEGR1);"
+    out1 = expand_macro_calls(source, macro_defs)
+    out2 = expand_macro_calls(out1, macro_defs)
+    # Already-expanded output has no %-call left -> re-expansion is a no-op.
+    assert out1 == out2

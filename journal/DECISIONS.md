@@ -6,6 +6,17 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-06-14 — F57/F59 macro expansion + SET/MERGE option parsing
+
+- **Macro CALLS are expanded deterministically at parse time, before block extraction (F57):** `expand_macro_calls` runs inside `SASParser.parse` (two-pass: collect all defs across files, then expand each file) so datasets produced inside a macro body become real blocks. No LLM — reproducibility constraint. The legacy per-block `MacroExpander` (main.py) is left untouched; F57/F59 enhance only the parse-time path (no consolidation, no double-processing) · revisit never
+- **Macro control flow is evaluated by a tokenizer + recursive-descent resolver, not regex (F59):** nested `%do/%end` and `%else` pairing are a balanced-bracket problem regex cannot solve; `%end` matched by depth counter, `%else` by recursion stack. `evaluate_condition` is a pure leaf (no `eval()`); numeric comparison iff both operands match `^-?\d+$` else case-sensitive string · revisit never
+- **All-or-nothing macro resolution:** any construct that is not deterministically evaluable (`%do %while`/`%until`, `%sysfunc`/`%eval`, unresolved `&ref`, non-integer loop bound) raises `CannotResolveMacroLogic` and the macro is left unexpanded — never emit partial or guessed output (guards against wrong-but-runnable SAS). Bounded by `MAX_UNROLL=1000` and `_max_rounds=10` · revisit never
+- **Cross-FILE `%global` propagation is out of scope:** `parse()` expands each file's source independently; threading a shared env across files raises file-ordering determinism concerns. Within-file `%global NAME=VALUE` propagation is supported (substituted across the source each fixed-point round) · revisit if a real pipeline needs cross-file macro globals
+- **SET/MERGE/DATA dataset options break the input parser:** the `[\w\s.]` character class could not span `(in=indm)` options so `merge sdtm.dm(in=indm) ...` matched nothing → empty `input_datasets` → input-var normaliser never ran → `NameError`. Fixed by widening the regexes (non-greedy + DOTALL) and stripping balanced option parens in `_extract_names` · revisit never
+- **PROC FORMAT user formats are a known untranslated gap (discovered, not fixed):** `value` maps are parsed as `PROC_FORMAT` blocks but never fed to the DATA/PROC translation agents, so `put(var, customfmt.)` cannot be rendered into `when/otherwise` and the derived column is dropped (`UNRESOLVED_COLUMN: agegr1`). Planned fix: deterministic catalog extraction + inject definitions into the agent prompt context (LLM application) · revisit when planned
+
+---
+
 ## 2026-06-13 — F35 remediation runbook design
 
 - **Remediation guidance is rule-based, not LLM-generated:** `runbook_templates.py` maps block_type + strategy + detected_features to curated step lists; no new agent or token cost; honors the "same SAS input → same output" reproducibility rule · revisit if clients need block-specific tailored guidance (hybrid LLM option documented in plan)

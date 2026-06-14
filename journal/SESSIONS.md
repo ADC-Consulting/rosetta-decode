@@ -6,6 +6,39 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-14 — feat: F57 macro call expansion + F59 macro control-flow + SET/MERGE option fix
+
+**Branch:** `feat/F57-macro-call-expansion` → `feat/F59-macro-control-flow`
+
+**What we did:**
+- **SET/MERGE/DATA dataset-option parser fix** (`parser.py`): the regexes used `[\w\s.]`, which could not span `(in=indm)` options, so `merge sdtm.dm(in=indm) ...` matched nothing → empty `input_datasets` → the input-var normaliser never rewrote `sdtm_dm` → `NameError`. Widened the three regexes (non-greedy + DOTALL) and strip balanced option parens in `_extract_names`. Fixes the `sdtm_dm` crash class.
+- **F57 — macro call expansion** (`macro_call_expander.py`, new): deterministic textual expansion of control-flow-free macro calls before block extraction. Param/arg parsing, binding, `&param` substitution, fixed-point inlining with provenance markers. Two-pass `SASParser.parse` (collect all defs across files, then expand) for cross-file resolution; `MacroDef.param_str` added. Fixes the `dose` crash class.
+- **F59 — macro control-flow evaluation** (`macro_logic.py`, new): pure tokenizer + recursive-descent resolver. `evaluate_condition` (`%length`, comparison ops, `and`/`or`, parentheses, numeric-vs-string rule); `resolve_macro_body` (`%if/%then/%else` nested + depth-matched `%end` + stack-paired `%else`, `%do i=a %to b` loop unrolling capped at `MAX_UNROLL`, `%let/%global`, `%return`, `%put`). All-or-nothing: any unresolvable construct → left unexpanded. Integrated into `expand_macro_calls` with within-file `%global` propagation. Fixes the `adsl_age` crash class.
+- DEBUG logging added to the input-var normaliser and the three translation agents (was the diagnostic that pinpointed the empty-`input_datasets` root cause).
+- ~110 new unit tests + 2 reconciliation guards (`dose`, `adsl_age`); `make test` green throughout.
+- Diagnosed the NEXT crash (`UNRESOLVED_COLUMN: agegr1`): user-defined PROC FORMAT (`agegr1f.`) value maps are parsed as blocks but never fed to the DATA/PROC translation agents, so `put(AGE, agegr1f.)` cannot be rendered and the derived column is missing. New feature needed (not macros).
+
+**Decisions:**
+- Macro control-flow evaluation is deterministic (tokenizer + recursive descent), never LLM — consistent with the reproducibility constraint; all-or-nothing fallback prevents wrong-but-runnable output. See DECISIONS.
+- Cross-file `%global` propagation is out of scope (parser expands each file independently); within-file only.
+- F59 enhances only the parse-time `expand_macro_calls` path; legacy `MacroExpander` (main.py) left untouched — no consolidation.
+- PROC FORMAT translation will be deterministic catalog extraction + LLM prompt-injection (recommended) — not yet decided/started.
+
+**Open Questions:**
+- PROC FORMAT fix: deterministic-catalog + LLM-injection vs. hybrid (deterministic `put()→when/otherwise` for simple value maps)? Awaiting user decision.
+
+### Next Session — Start Here
+1. Decide PROC FORMAT approach, then `/plan-feature` for it (the `agegr1` crash). Branch off `feat/F59-macro-control-flow` (unmerged dependency chain F57→F59).
+2. Optionally open the PR for `feat/F59-macro-control-flow` → main (PR summary already generated).
+
+### Files Touched
+- `src/worker/engine/parser.py`, `models.py`, `macro_call_expander.py` (new), `macro_logic.py` (new)
+- `src/worker/engine/agents/{shared,generic_proc,data_step,proc}.py` (DEBUG logging)
+- `tests/test_macro_logic.py` (new), `tests/test_macro_call_expander.py`, `tests/test_parser.py`, `tests/reconciliation/test_macro_expansion.py` (new), `tests/reconciliation/test_macro_control_flow.py` (new)
+- `docs/plans/latest/F57-macro-call-expansion.md` (new), `docs/plans/latest/F59-macro-control-flow.md` (new), `journal/BACKLOG.md`
+
+---
+
 ## 2026-06-14 — fix: PROC SQL HAVING agg-alias rule + retry error-feed strengthening; macro-expansion diagnosis
 
 **Branch:** `fix/cross-block-input-names`
