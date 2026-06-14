@@ -45,7 +45,8 @@
 
 **Remaining Phase 2**
 
-- [ ] F1-ext: Macro definition + call expansion (`%MACRO` / `%MEND`)
+- [ ] F60: PROC FORMAT translation — extract `value` maps into a catalog (deterministic) + inject into DATA/PROC agent prompts so `put(var, fmt.)` renders as `when/otherwise`; fixes `UNRESOLVED_COLUMN: agegr1` (user-defined formats). Approach (deterministic-catalog + LLM-injection vs. hybrid) TBD.
+- [ ] F1-ext: Macro definition + call expansion (`%MACRO` / `%MEND`) — superseded by F57 (call expansion) + F59 (control flow); close once verified end-to-end
 - [ ] F3-ext: Row-level hash diff check
 - [ ] F4: SAS log ingestion — parse log structure
 - [ ] F4: LLM call for runtime logic reconstruction from log
