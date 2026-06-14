@@ -10,6 +10,7 @@ import logging
 import re
 
 from src.worker.engine.macro_expander import _substitute_let_vars
+from src.worker.engine.macro_logic import CannotResolveMacroLogic, resolve_macro_body
 from src.worker.engine.models import MacroDef
 
 logger = logging.getLogger(__name__)
@@ -168,12 +169,21 @@ def _is_expandable(body: str) -> bool:
 
 
 def expand_macro_calls(source: str, macro_defs: dict[str, MacroDef]) -> str:
-    """Expand all expandable macro calls in *source* to a fixed point.
+    """Expand all macro calls in *source* to a fixed point.
 
     Iterates up to 10 rounds of substitution.  On each round every call whose
-    macro is present in *macro_defs* and passes :func:`_is_expandable` is
-    replaced with the macro body after parameter substitution.  Calls to
-    unknown macros or non-expandable macros are left verbatim.
+    macro is present in *macro_defs* is replaced with the resolved macro body
+    after parameter substitution.  Control-flow-free macros (passing
+    :func:`_is_expandable`) are expanded by direct textual substitution; macros
+    containing control flow (``%if``/``%do``/``%let``/``%global``/etc.) are
+    resolved deterministically via
+    :func:`~src.worker.engine.macro_logic.resolve_macro_body`, which emits only
+    the taken branch and unrolls bounded loops.  Within-file ``%global``
+    assignments produced during resolution propagate across the whole source on
+    each round.  Calls to unknown macros, macros with unbindable arguments, or
+    control-flow macros that cannot be resolved deterministically (raising
+    :class:`~src.worker.engine.macro_logic.CannotResolveMacroLogic`) are left
+    verbatim.
 
     Args:
         source: Full SAS source text (may contain multiple macro calls).
@@ -187,6 +197,7 @@ def expand_macro_calls(source: str, macro_defs: dict[str, MacroDef]) -> str:
     # SAS: macro_call_expander.py:160
 
     _max_rounds = 10
+    global_env: dict[str, str] = {}
 
     for _ in range(_max_rounds):
 
@@ -198,8 +209,6 @@ def expand_macro_calls(source: str, macro_defs: dict[str, MacroDef]) -> str:
                 return m.group(0)
 
             macro = macro_defs[name]
-            if not _is_expandable(macro.body):
-                return m.group(0)
 
             params = parse_macro_params(macro.param_str)
             positional, keyword = parse_call_args(arg_str)
@@ -211,7 +220,19 @@ def expand_macro_calls(source: str, macro_defs: dict[str, MacroDef]) -> str:
 
             # _substitute_let_vars expects uppercase keys
             upper_var_map = {k.upper(): v for k, v in var_map.items()}
-            substituted = _substitute_let_vars(macro.body, upper_var_map)
+
+            if _is_expandable(macro.body):
+                body_text = macro.body
+            else:
+                try:
+                    result = resolve_macro_body(macro.body, upper_var_map)
+                except CannotResolveMacroLogic as exc:
+                    logger.warning("Skipping control-flow macro %%%s: %s", name, exc)
+                    return m.group(0)
+                body_text = result.sas_text
+                global_env.update(result.assigned_globals)
+
+            substituted = _substitute_let_vars(body_text, upper_var_map)
 
             return (
                 f"/* SAS-MACRO-EXPANDED: {name} from"
@@ -221,6 +242,8 @@ def expand_macro_calls(source: str, macro_defs: dict[str, MacroDef]) -> str:
             )
 
         expanded = _MACRO_CALL_RE.sub(_replacer, source)
+        if global_env:
+            expanded = _substitute_let_vars(expanded, global_env)
         if expanded == source:
             break
         source = expanded
