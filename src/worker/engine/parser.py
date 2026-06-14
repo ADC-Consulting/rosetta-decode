@@ -22,6 +22,7 @@ import re
 from collections.abc import Iterator
 
 import networkx as nx
+from src.worker.engine.macro_call_expander import expand_macro_calls
 from src.worker.engine.models import (
     BlockType,
     MacroDef,
@@ -164,14 +165,15 @@ _KNOWN_PROCS: dict[str, BlockType] = {
     "FORMAT": BlockType.PROC_FORMAT,
 }
 
-# Extract DATA output name(s) from "DATA name1 name2;"
-_DATA_OUTPUT_RE = re.compile(r"(?i)DATA\s+([\w\s.]+?)\s*;")
+# Extract DATA output name(s) from "DATA name1 name2;" (datasets may carry
+# options like "(drop=x)"; capture up to the terminating ";").
+_DATA_OUTPUT_RE = re.compile(r"(?i)\bDATA\s+(.+?)\s*;", re.DOTALL)
 
-# Extract SET input name(s) from "SET name1 name2;"
-_DATA_INPUT_RE = re.compile(r"(?i)\bSET\s+([\w\s.]+?)\s*;")
+# Extract SET input name(s) from "SET name1 name2;" (options stripped later).
+_DATA_INPUT_RE = re.compile(r"(?i)\bSET\s+(.+?)\s*;", re.DOTALL)
 
-# Extract MERGE input name(s) from "MERGE name1 name2;"
-_DATA_MERGE_RE = re.compile(r"(?i)\bMERGE\s+([\w\s.]+?)\s*;")
+# Extract MERGE input name(s) from "MERGE name1(in=a) name2(in=b);".
+_DATA_MERGE_RE = re.compile(r"(?i)\bMERGE\s+(.+?)\s*;", re.DOTALL)
 
 # RENAME mappings inside a DATA step (RENAME old=new old2=new2;)
 _RENAME_RE = re.compile(r"(?i)\bRENAME\s+(.*?)\s*;")
@@ -235,10 +237,20 @@ def _line_of(text: str, char_offset: int) -> int:
 
 
 def _extract_names(pattern: re.Pattern[str], text: str) -> list[str]:
-    """Return a flat list of lowercased dataset names matched by *pattern*."""
+    """Return a flat list of lowercased dataset names matched by *pattern*.
+
+    Dataset options (e.g. ``(in=indm)``, ``(where=(x>1))``) are stripped so a
+    reference like ``sdtm.dm(in=indm)`` yields the clean name ``sdtm.dm``.
+    """
     names: list[str] = []
     for match in pattern.finditer(text):
-        names.extend(n.strip().lower() for n in match.group(1).split() if n.strip())
+        raw_list = match.group(1)
+        # Remove balanced dataset-option parens, innermost-first, to a fixed point.
+        prev = ""
+        while prev != raw_list:
+            prev = raw_list
+            raw_list = re.sub(r"\([^()]*\)", "", raw_list)
+        names.extend(n.strip().lower() for n in raw_list.split() if n.strip())
     return names
 
 
@@ -719,7 +731,14 @@ class SASParser:
             body = m.group(3).strip()
             line = source[: m.start()].count("\n") + 1
             defs.append(
-                MacroDef(name=name, params=params, body=body, source_file=filename, line=line)
+                MacroDef(
+                    name=name,
+                    params=params,
+                    param_str=params_raw,
+                    body=body,
+                    source_file=filename,
+                    line=line,
+                )
             )
         return defs
 
@@ -809,11 +828,21 @@ class SASParser:
         all_macro_defs: list[MacroDef] = []
         all_filename_map: dict[str, str] = {}
 
+        # Pass 1: collect all macro defs across all files (needed for cross-file
+        # call resolution).  Last definition of a given name wins for duplicates.
+        all_macro_defs_map: dict[str, MacroDef] = {}
         for filename, source in files.items():
+            for md in self._extract_macro_defs(source, filename):
+                all_macro_defs_map[md.name.upper()] = md
+
+        # Pass 2: expand macro calls, then extract blocks from the expanded source.
+        for filename, source in files.items():
+            expanded_source = expand_macro_calls(source, all_macro_defs_map)
+
             # Strip block comments before regex matching so that PROC keywords
             # inside /* ... */ comments don't produce phantom blocks.
             # The original source is kept for raw_sas capture inside each extractor.
-            source_stripped = _strip_block_comments(source)
+            source_stripped = _strip_block_comments(expanded_source)
             covered: list[tuple[int, int]] = []
 
             for pattern in (
@@ -844,11 +873,11 @@ class SASParser:
             all_blocks.extend(self._extract_proc_iml(source_stripped, filename))
             all_blocks.extend(self._extract_proc_format(source_stripped, filename))
             all_blocks.extend(_extract_unsupported_procs(source_stripped, filename, covered))
-            all_macro_vars.extend(_extract_macro_vars(source, filename))
-            all_libnames.update(_extract_libnames(source))
-            all_includes.extend(_extract_includes(source))
-            all_macro_defs.extend(self._extract_macro_defs(source, filename))
-            all_filename_map.update(self._extract_filenames(source))
+            all_macro_vars.extend(_extract_macro_vars(expanded_source, filename))
+            all_libnames.update(_extract_libnames(expanded_source))
+            all_includes.extend(_extract_includes(expanded_source))
+            all_macro_defs.extend(self._extract_macro_defs(expanded_source, filename))
+            all_filename_map.update(self._extract_filenames(expanded_source))
 
         result = ParseResult(
             blocks=_topological_sort(all_blocks),

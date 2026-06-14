@@ -305,6 +305,13 @@ class ProcAgent:
             fixed_code = normalise_output_var_in_code(
                 output.python_code, block.output_datasets, "ProcAgent"
             )
+            logger.debug(
+                "ProcAgent block %s:%s input_datasets=%s output_datasets=%s",
+                block.source_file,
+                block.start_line,
+                block.input_datasets,
+                block.output_datasets,
+            )
             fixed_code = normalise_input_vars_in_code(
                 fixed_code,
                 block.input_datasets,

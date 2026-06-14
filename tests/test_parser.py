@@ -49,6 +49,23 @@ def test_data_step_keep_drop_no_crash(parser: SASParser) -> None:
     assert any(b.block_type == BlockType.DATA_STEP for b in blocks)
 
 
+def test_merge_with_dataset_options(parser: SASParser) -> None:
+    sas = """\
+data work.adsl_pre;
+    merge sdtm.dm(in=indm) work.dose(in=indose);
+    by STUDYID SITEID SUBJID;
+    if indm;
+run;
+"""
+    result = parser.parse({"test.sas": sas})
+    data_blocks = [b for b in result.blocks if b.block_type == BlockType.DATA_STEP]
+    assert len(data_blocks) == 1
+    block = data_blocks[0]
+    assert "sdtm.dm" in block.input_datasets
+    assert "work.dose" in block.input_datasets
+    assert "sdtm.dm(in=indm)" not in block.input_datasets
+
+
 # ── PROC SQL extraction ───────────────────────────────────────────────────────
 
 

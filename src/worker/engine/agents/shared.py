@@ -439,12 +439,22 @@ def normalise_input_vars_in_code(
     Returns:
         Python source with all wrong input variable references corrected.
     """
+    logger.debug(
+        "%s normalise_input_vars: input_datasets=%s stems_keys=%s",
+        agent_name,
+        input_datasets,
+        sorted(block_output_stems.keys()),
+    )
     for ds in input_datasets:
         ds_lower = ds.lower()
         if ds_lower in block_output_stems:
             correct = block_output_stems[ds_lower]  # prior-block output → stem
+            logger.debug("%s: '%s' found in stems → correct='%s'", agent_name, ds_lower, correct)
         else:
             correct = ds_lower.replace(".", "_")  # external → underscore form
+            logger.debug(
+                "%s: '%s' NOT in stems → external form '%s'", agent_name, ds_lower, correct
+            )
 
         underscore_form = ds_lower.replace(".", "_")
         dot_form = ds_lower

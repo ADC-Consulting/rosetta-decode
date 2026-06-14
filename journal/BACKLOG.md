@@ -388,7 +388,14 @@
 - [x] F32 S-F: Render warning banner on Plan tab
 - [x] F32 S-G: make test exits 0
 - [ ] #56: Post-run risk + rationale enrichment (rule-based, already designed)
-- [ ] #57: Macro definition + call expansion (%MACRO/%MEND)
+- [ ] #57: Macro definition + call expansion (%MACRO/%MEND) → see `docs/plans/latest/F57-macro-call-expansion.md`
+  - [ ] F57 S-A: macro signature + call-arg parsing helpers → `src/worker/engine/macro_call_expander.py`
+  - [ ] F57 S-B: expandability guard (`_is_expandable`) → `src/worker/engine/macro_call_expander.py`
+  - [ ] F57 S-C: core `expand_macro_calls()` → `src/worker/engine/macro_call_expander.py`
+  - [ ] F57 S-D: two-pass expansion wired into `SASParser.parse` → `src/worker/engine/parser.py`
+  - [ ] F57 S-E: unit tests → `tests/test_macro_call_expander.py`
+  - [ ] F57 S-F: reconciliation/integration test → `tests/reconciliation/test_macro_expansion.py`
+  - [ ] F57 S-G: `make test` exits 0
 - [ ] #58: Record-level reconciliation (row-by-row diff)
 - [ ] #59: Artefact versioning — group jobs by input_hash
 - [ ] #21: Consolidate lineage into a single primary view — `backlog` label
