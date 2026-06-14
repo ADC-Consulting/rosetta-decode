@@ -45,7 +45,15 @@
 
 **Remaining Phase 2**
 
-- [ ] F60: PROC FORMAT translation — extract `value` maps into a catalog (deterministic) + inject into DATA/PROC agent prompts so `put(var, fmt.)` renders as `when/otherwise`; fixes `UNRESOLVED_COLUMN: agegr1` (user-defined formats). Approach (deterministic-catalog + LLM-injection vs. hybrid) TBD.
+- [ ] F60: PROC FORMAT translation (user formats → when/otherwise) → see `docs/plans/latest/F60-proc-format-translation.md` (code complete + green, pending commit; end-to-end sandbox evidence still to capture per S-F)
+  - [x] F60 S-A: format-catalog data model (`FormatDef`/`FormatEntry` + `format_catalog` on ParseResult/JobContext) → `src/worker/engine/models.py`
+  - [x] F60 S-B: deterministic extractor (`extract_format_catalog` + `normalize_format_name`; line-bounded mapping regex) → `src/worker/engine/format_catalog.py`
+  - [x] F60 S-C: unit tests for extractor → `tests/test_format_catalog.py`
+  - [x] F60 S-D: wire extraction into parser (on `expanded_source`) + JobContext → `src/worker/engine/parser.py`, `src/worker/main.py`
+  - [x] F60 S-E0: router guard — `is_simple()` allowlist so `put()` DATA steps route to `DataStepAgent`, not `_SimpleCopyHelper` → `src/worker/engine/router.py`
+  - [x] F60 S-E: inject referenced formats into agent prompts + scoped `put()` rule (normalized name match, no built-in regression) → `agents/{shared,data_step,proc,generic_proc}.py`
+  - [x] F60 S-F: tests for wiring + prompt injection (cross-file catalog, width/`$` refs, built-in negative case) → `tests/test_format_catalog.py`; router routing covered in `tests/test_translation_router.py`
+  - [x] F60 S-G: `make test` exits 0 (all 7 gates green, coverage ≥90%)
 - [ ] F1-ext: Macro definition + call expansion (`%MACRO` / `%MEND`) — superseded by F57 (call expansion) + F59 (control flow); close once verified end-to-end
 - [ ] F3-ext: Row-level hash diff check
 - [ ] F4: SAS log ingestion — parse log structure

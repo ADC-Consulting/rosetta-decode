@@ -25,9 +25,11 @@ from src.worker.core.config import worker_settings
 from src.worker.engine.agents.shared import (
     SHARED_TRANSLATION_RULES,
     build_block_output_stems,
+    detect_referenced_formats,
     normalise_input_vars_in_code,
     normalise_output_var,
     normalise_output_var_in_code,
+    render_format_section,
 )
 from src.worker.engine.models import GeneratedBlock, JobContext, SASBlock
 from src.worker.engine.usage import record_usage
@@ -411,6 +413,12 @@ def _build_prompt(block: SASBlock, windowed: JobContext, all_blocks: list[SASBlo
             lines.append(
                 f"- /workspace/data/{basename}  ({info.extension}, {info.row_count or '?'} rows)"
             )
+
+    referenced = detect_referenced_formats(block.raw_sas)
+    format_section = render_format_section(referenced, windowed.format_catalog)
+    if format_section:
+        lines.append("")
+        lines.append(format_section)
 
     lines.append(f"## SAS {block.block_type} block to translate")
     lines.append(f"Source: {block.source_file}, lines {block.start_line}-{block.end_line}")
