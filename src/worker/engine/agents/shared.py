@@ -14,7 +14,22 @@ import logging
 import re
 from typing import Any
 
+from src.worker.engine.format_catalog import normalize_format_name
+from src.worker.engine.models import FormatDef
+
 logger = logging.getLogger(__name__)
+
+# A SAS ``put(<var>, <fmt>)`` call. The second argument is the format reference:
+# an optional ``$`` (char-format marker), the format name with an optional numeric
+# width, and a format dot. Two valid shapes are accepted: a trailing-dot form
+# ``name[w].`` (e.g. ``agegr1f.``, ``agegr1f8.``, ``$sexdec.``) and the ``w.d``
+# decimal-width form ``name w.d`` (e.g. ``agegr1f8.2``). Whitespace around the
+# comma and arguments is tolerated (e.g. ``put( x , agegr1f. )``). Only the raw
+# format token is captured; normalization is delegated to ``normalize_format_name``.
+_PUT_FORMAT_RE = re.compile(
+    r"\bput\s*\(\s*[^,()]+?\s*,\s*(?P<fmt>\$?\w+(?:\.\d+|\.))\s*\)",
+    re.IGNORECASE,
+)
 
 # ── Shared LLM prompt rules (injected into all three translation agents) ─────
 
@@ -108,7 +123,55 @@ step that adds new variables. If in doubt, keep every column from
 the input and only add new ones.
 
 
-## 4. Join Key Normalisation — CRITICAL
+## 4. Column Lifecycle & Ordering — CRITICAL
+
+A column must EXIST in the DataFrame at the moment any transformation
+references it. Two failure modes crash generated PySpark with
+`[UNRESOLVED_COLUMN]`:
+
+1. **Dropping a column before a later transform needs it.** A narrowing
+   `.select(...)` or `.drop(...)` to the final output schema removes columns;
+   any derivation that reads those columns must run BEFORE the narrowing,
+   never after.
+2. **Recomputing a column that already exists.** If a derived column was
+   already built earlier in the chain, REUSE it — do not rebuild it from its
+   source columns again (those sources may have been projected away, and the
+   rebuild is redundant even when they survive).
+
+Rules:
+1. Derive EVERY column that depends on join keys or source columns BEFORE any
+   `.select(...)`/projection that narrows the column set. Never reference a
+   column in a later transform after it has been projected away.
+2. Keep join keys (e.g. studyid, siteid, subjid) available until ALL downstream
+   derivations that need them are complete. Only drop them at the final
+   projection.
+3. Place the narrowing `.select(...)`/`.drop(...)` to the final output schema as
+   the LAST step, after all derivations are done.
+4. Do NOT recompute a column that already exists in the DataFrame — reuse it.
+
+  ❌ Wrong — selects the final schema first, dropping the join keys, then tries
+  to derive usubjid from keys that no longer exist (and re-derives a column that
+  was already built):
+  df = df.select("usubjid", "age", "sex")          # drops studyid/siteid/subjid
+  df = df.withColumn(                                # UNRESOLVED_COLUMN: studyid
+      "usubjid",
+      F.concat_ws("-", F.col("studyid"), F.col("siteid"), F.col("subjid")),
+  )
+
+  ✅ Correct — derive usubjid from the keys FIRST, then narrow to the final
+  schema as the last step:
+  df = df.withColumn(
+      "usubjid",
+      F.concat_ws("-", F.col("studyid"), F.col("siteid"), F.col("subjid")),
+  )
+  df = df.select("usubjid", "age", "sex")          # final projection LAST
+
+This complements rule #3 (carry columns forward) and the join-key rules below:
+keep columns AND order derivations before any narrowing, and never re-derive a
+column that already exists.
+
+
+## 5. Join Key Normalisation — CRITICAL
 
 Identifier columns used as join keys (e.g. customer_id, policy_no, account_id) must be
 normalised to the same type before joining. Source CSVs often store integer IDs as floats
@@ -133,7 +196,7 @@ AMBIGUOUS_REFERENCE errors:
         F.col("a.*"), F.col("b.extra_col"))
 
 
-## 5. Null Handling — CRITICAL
+## 6. Null Handling — CRITICAL
 
 SAS "missing" ≈ Spark NULL. Always be explicit with NULL in joins, aggregations,
 and derived columns.
@@ -154,7 +217,7 @@ and derived columns.
   df = df.filter(F.col("col").isNotNull() & (F.col("col") != ""))
 
 
-## 6. Python vs Column Expressions — CRITICAL
+## 7. Python vs Column Expressions — CRITICAL
 
 Inside DataFrame operations (withColumn, filter, agg, etc.) use ONLY Column
 expressions, not Python booleans or numbers.
@@ -183,7 +246,7 @@ expressions, not Python booleans or numbers.
       df = df.withColumn("rate", F.lit(None))
 
 
-## 7. Explicit Type Casting
+## 8. Explicit Type Casting
 
 SAS auto-coerces types; PySpark does not.
 
@@ -207,7 +270,7 @@ SAS auto-coerces types; PySpark does not.
   )
 
 
-## 8. No Implicit Ordering
+## 9. No Implicit Ordering
 
 DataFrames are unordered unless you call .orderBy().
 
@@ -221,7 +284,7 @@ Window functions require an orderBy in the window spec; that is separate
 from global output ordering.
 
 
-## 9. UDFs: Use Sparingly
+## 10. UDFs: Use Sparingly
 
 Prefer native functions: F.when, F.coalesce, F.datediff, F.concat, etc.
 Use Python UDFs only when logic cannot be expressed with built-ins.
@@ -243,7 +306,7 @@ Always declare the return type.
       return "Low"
 
 
-## 10. Date Conventions
+## 11. Date Conventions
 
 - SAS dates: '01JAN2024'd → PySpark: '2024-01-01' (ISO format)
 - Use Spark date type and ISO strings.
@@ -261,7 +324,7 @@ Always declare the return type.
 | INTCK('month',start,end)     | F.months_between(F.col("end"), F.col("start"))|
 
 
-## 11. String Function Mappings
+## 12. String Function Mappings
 
 | SAS                          | PySpark                                       |
 |------------------------------|-----------------------------------------------|
@@ -274,7 +337,7 @@ Always declare the return type.
 | CATX(delim,s1,s2)           | F.concat_ws(delim, *cols)                     |
 
 
-## 12. Numeric / Aggregation Function Mappings
+## 13. Numeric / Aggregation Function Mappings
 
 | SAS          | PySpark                          |
 |--------------|----------------------------------|
@@ -289,7 +352,7 @@ Always declare the return type.
 | CEIL(x)      | F.ceil(F.col("x"))               |
 
 
-## 13. PROC → PySpark Patterns
+## 14. PROC → PySpark Patterns
 
 ### PROC FREQ → groupBy + count
   freq_df = df.filter(F.col("year") == 2024) \\
@@ -324,7 +387,7 @@ PROC IML is SAS's matrix language. Common operations:
 - READ/CREATE from datasets → the input DataFrame is already provided
 - APPEND to datasets → the output DataFrame is returned
 
-## 14. DATA Step → PySpark Patterns
+## 15. DATA Step → PySpark Patterns
 
 ### IF-THEN-ELSE → F.when
   df = df.withColumn(
@@ -348,7 +411,7 @@ PROC IML is SAS's matrix language. Common operations:
   )
 
 
-## 15. Macro Handling
+## 16. Macro Handling
 
 ### %LET → Python variables
   measurement_year = 2024
@@ -362,7 +425,32 @@ PROC IML is SAS's matrix language. Common operations:
       plan_df = df.filter(F.col("plan_type") == plan)
 
 
-## 16. Performance Patterns
+## 17. PUT() / User-Defined Format Handling — SCOPED RULE
+
+**When** a format definition is supplied in the "## Available SAS formats"
+section of this prompt, translate a `put(var, fmt.)` call into an explicit
+`F.when(...).otherwise(...)` chain (or a broadcast lookup table for large maps)
+built directly from that definition, and PRESERVE the resulting column on the
+output DataFrame. Map each definition entry faithfully: single values become
+equality tests, ranges become bound comparisons (respect exclusive upper bounds
+shown as ``< high``), and the ``other`` catch-all becomes the trailing
+``.otherwise(...)``.
+
+  # Given format `sexdec`:  1 -> "Male", 2 -> "Female", other -> "Unknown"
+  df = df.withColumn(
+      "sex_label",
+      F.when(F.col("sex") == 1, F.lit("Male"))
+       .when(F.col("sex") == 2, F.lit("Female"))
+       .otherwise(F.lit("Unknown"))
+  )
+
+**Otherwise** (no matching definition in "## Available SAS formats"), treat
+`fmt` as a built-in SAS format (e.g. `dollar8.`, `date9.`, `comma12.`) and apply
+the existing date/string/numeric conventions in sections #11-13. Do NOT invent a
+value mapping for a format whose definition was not supplied.
+
+
+## 18. Performance Patterns
 
   # Broadcast small tables in joins
   from pyspark.sql.functions import broadcast
@@ -377,7 +465,7 @@ PROC IML is SAS's matrix language. Common operations:
   base_df.unpersist()
 
 
-## 17. Response Expectations
+## 19. Response Expectations
 
 When converting SAS to PySpark:
 1. Return complete, runnable PySpark code (no pseudocode).
@@ -392,6 +480,78 @@ When converting SAS to PySpark:
 7. Handle nulls, types, and column casing explicitly.
 8. Add .orderBy() when output order matters.
 """
+
+
+def detect_referenced_formats(raw_sas: str) -> list[str]:
+    """Find every ``put(var, fmt.)`` format reference in *raw_sas*.
+
+    Scans for SAS ``put(<var>, <fmt>)`` calls (case-insensitive) and returns the
+    normalized names of the formats referenced as the second argument. The format
+    token may be ``$``-prefixed (character format) and width-suffixed; both are
+    handled by :func:`normalize_format_name`. Whitespace variants such as
+    ``put( x , agegr1f. )`` and ``put(sex,$sexdec.)`` are tolerated.
+
+    Args:
+        raw_sas: Raw SAS source text for a single block.
+
+    Returns:
+        De-duplicated, order-stable list of normalized format names.
+    """
+    seen: dict[str, None] = {}
+    for match in _PUT_FORMAT_RE.finditer(raw_sas):
+        normalized = normalize_format_name(match.group("fmt"))
+        if normalized not in seen:
+            seen[normalized] = None
+    return list(seen)
+
+
+def _render_format_entry(entry: Any) -> str:
+    """Render one :class:`FormatEntry` as a single human-readable bullet line.
+
+    Args:
+        entry: A ``FormatEntry`` from a ``FormatDef``.
+
+    Returns:
+        A bullet line describing the entry's source operand → label mapping.
+    """
+    if entry.is_other:
+        operand = "other"
+    elif entry.value is not None:
+        operand = entry.value
+    else:
+        bound = "< high (exclusive)" if entry.exclusive_upper else "high (inclusive)"
+        operand = f"{entry.low} .. {entry.high} [{bound}]"
+    return f"- {operand} -> {entry.label!r}"
+
+
+def render_format_section(referenced: list[str], catalog: dict[str, FormatDef]) -> str:
+    """Render a prompt section describing referenced user-defined formats.
+
+    Only names present in *catalog* are rendered; built-in formats (e.g.
+    ``dollar8.``, ``date9.``) are absent from the catalog and therefore omitted.
+    Each rendered format gets a ``### <name>`` header followed by one bullet per
+    entry. Rendering is deterministic and compact.
+
+    Args:
+        referenced: Normalized format names from :func:`detect_referenced_formats`.
+        catalog: ``{normalized_name: FormatDef}`` (e.g. ``JobContext.format_catalog``).
+
+    Returns:
+        The rendered section under a ``## Available SAS formats`` header, or an
+        empty string when none of *referenced* are in *catalog* (so callers may
+        skip the section entirely).
+    """
+    matched = [name for name in referenced if name in catalog]
+    if not matched:
+        return ""
+    lines: list[str] = ["## Available SAS formats"]
+    for name in matched:
+        fmt = catalog[name]
+        kind = "character" if fmt.is_char else "numeric"
+        lines.append(f"### {name} ({kind})")
+        for entry in fmt.entries:
+            lines.append(_render_format_entry(entry))
+    return "\n".join(lines)
 
 
 def build_block_output_stems(all_blocks: list[Any]) -> dict[str, str]:

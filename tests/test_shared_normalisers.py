@@ -1,6 +1,7 @@
 """Unit tests for build_block_output_stems and normalise_input_vars_in_code."""
 
 from src.worker.engine.agents.shared import (
+    SHARED_TRANSLATION_RULES,
     build_block_output_stems,
     normalise_input_vars_in_code,
 )
@@ -113,3 +114,23 @@ def test_empty_input_datasets_no_change() -> None:
     code = "sdtm_ex = work_ex_dedup.copy()"
     result = normalise_input_vars_in_code(code, [], stems, "TestAgent")
     assert result == code
+
+
+# ── SHARED_TRANSLATION_RULES content ──────────────────────────────────────────
+
+
+def test_column_lifecycle_rule_present() -> None:
+    assert "## 4. Column Lifecycle & Ordering" in SHARED_TRANSLATION_RULES
+
+
+def test_column_lifecycle_rule_orders_derivation_before_narrowing() -> None:
+    rules = SHARED_TRANSLATION_RULES
+    assert "BEFORE any" in rules and ".select(...)" in rules
+    assert "Do NOT recompute a column that already exists" in rules
+
+
+def test_section_numbering_contiguous() -> None:
+    import re
+
+    numbers = [int(m) for m in re.findall(r"^## (\d+)\.", SHARED_TRANSLATION_RULES, re.M)]
+    assert numbers == list(range(1, numbers[-1] + 1))

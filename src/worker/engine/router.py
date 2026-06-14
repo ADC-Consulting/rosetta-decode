@@ -140,20 +140,26 @@ class _SimpleCopyHelper:
     routed to the full DataStepAgent instead.
     """
 
-    # Patterns that indicate the block requires full LLM translation
-    _COMPLEX_PATTERNS: tuple[str, ...] = (
-        "IF ",
-        "DO ",
-        "DO;",
-        "MERGE ",
-        "RETAIN ",
-        "ARRAY ",
-        "OUTPUT;",
-    )
+    # Leading keywords of statements this helper can faithfully reproduce
+    # without an LLM. Anything else (assignments, LENGTH, FORMAT, put(...),
+    # IF/DO/MERGE/RETAIN/ARRAY/OUTPUT, ...) forces full DataStepAgent routing.
+    _ALLOWED_STATEMENT_KEYWORDS: tuple[str, ...] = ("DATA", "SET", "KEEP", "DROP")
+
+    # Matches a SAS line comment (``* ... ;``) or a block comment (``/* ... */``).
+    _COMMENT_RE = re.compile(r"/\*.*?\*/|^\s*\*[^;]*;", re.DOTALL | re.MULTILINE)
 
     @classmethod
     def is_simple(cls, block: SASBlock) -> bool:  # SAS: src/worker/engine/router.py:111
-        """Return True when *block* is a pure SET+KEEP/DROP DATA step.
+        """Return True only for a genuinely pure SET (+KEEP/DROP) DATA step.
+
+        Uses a positive allowlist: after stripping comments, every
+        semicolon-terminated statement must begin with one of
+        ``DATA``/``SET``/``KEEP``/``DROP`` (``RUN`` is implicit — it leaves an
+        empty trailing fragment). Any other statement — including an assignment
+        such as ``AGEGR1 = put(AGE, agegr1f.)``, a ``LENGTH``/``FORMAT``
+        declaration, or an ``IF``/``DO``/``MERGE`` — makes the block NOT simple,
+        so it is routed to the full ``DataStepAgent`` instead of the no-LLM copy
+        path (which would silently drop the derived column).
 
         Args:
             block: The SAS block to inspect.
@@ -161,8 +167,17 @@ class _SimpleCopyHelper:
         Returns:
             True if the block can be handled without LLM translation.
         """
-        raw_upper = block.raw_sas.upper()
-        return not any(pat in raw_upper for pat in cls._COMPLEX_PATTERNS)
+        without_comments = cls._COMMENT_RE.sub("", block.raw_sas)
+        for statement in without_comments.split(";"):
+            stripped = statement.strip()
+            if not stripped:
+                continue  # empty fragment (e.g. trailing RUN; or blank lines)
+            keyword = stripped.split(None, 1)[0].upper().rstrip(";")
+            if keyword == "RUN":
+                continue
+            if keyword not in cls._ALLOWED_STATEMENT_KEYWORDS:
+                return False
+        return True
 
     # SAS: src/worker/engine/router.py:127
     async def translate(self, block: SASBlock, context: JobContext) -> GeneratedBlock:

@@ -502,6 +502,7 @@ class JobOrchestrator:
                 "data_files": data_files,
                 "libname_map": libname_map,
                 "log_contents": log_contents,
+                "format_catalog": parse_result.format_catalog,
             }
         )
         if expansion_warnings:

@@ -22,9 +22,11 @@ import re
 from collections.abc import Iterator
 
 import networkx as nx
+from src.worker.engine.format_catalog import extract_format_catalog
 from src.worker.engine.macro_call_expander import expand_macro_calls
 from src.worker.engine.models import (
     BlockType,
+    FormatDef,
     MacroDef,
     MacroVar,
     ParseResult,
@@ -827,6 +829,7 @@ class SASParser:
         all_includes: list[str] = []
         all_macro_defs: list[MacroDef] = []
         all_filename_map: dict[str, str] = {}
+        all_format_defs: dict[str, FormatDef] = {}
 
         # Pass 1: collect all macro defs across all files (needed for cross-file
         # call resolution).  Last definition of a given name wins for duplicates.
@@ -878,6 +881,7 @@ class SASParser:
             all_includes.extend(_extract_includes(expanded_source))
             all_macro_defs.extend(self._extract_macro_defs(expanded_source, filename))
             all_filename_map.update(self._extract_filenames(expanded_source))
+            all_format_defs.update(extract_format_catalog(expanded_source))
 
         result = ParseResult(
             blocks=_topological_sort(all_blocks),
@@ -886,5 +890,6 @@ class SASParser:
             includes=all_includes,
             macro_defs=all_macro_defs,
             filename_map=all_filename_map,
+            format_catalog=all_format_defs,
         )
         return result
