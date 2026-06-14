@@ -122,6 +122,7 @@ class MacroDef(BaseModel):
 
     name: str
     params: list[str] = Field(default_factory=list)
+    param_str: str = ""
     body: str
     source_file: str
     line: int = Field(ge=1)

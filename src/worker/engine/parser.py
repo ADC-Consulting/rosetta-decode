@@ -22,6 +22,7 @@ import re
 from collections.abc import Iterator
 
 import networkx as nx
+from src.worker.engine.macro_call_expander import expand_macro_calls
 from src.worker.engine.models import (
     BlockType,
     MacroDef,
@@ -730,7 +731,14 @@ class SASParser:
             body = m.group(3).strip()
             line = source[: m.start()].count("\n") + 1
             defs.append(
-                MacroDef(name=name, params=params, body=body, source_file=filename, line=line)
+                MacroDef(
+                    name=name,
+                    params=params,
+                    param_str=params_raw,
+                    body=body,
+                    source_file=filename,
+                    line=line,
+                )
             )
         return defs
 
@@ -820,11 +828,21 @@ class SASParser:
         all_macro_defs: list[MacroDef] = []
         all_filename_map: dict[str, str] = {}
 
+        # Pass 1: collect all macro defs across all files (needed for cross-file
+        # call resolution).  Last definition of a given name wins for duplicates.
+        all_macro_defs_map: dict[str, MacroDef] = {}
         for filename, source in files.items():
+            for md in self._extract_macro_defs(source, filename):
+                all_macro_defs_map[md.name.upper()] = md
+
+        # Pass 2: expand macro calls, then extract blocks from the expanded source.
+        for filename, source in files.items():
+            expanded_source = expand_macro_calls(source, all_macro_defs_map)
+
             # Strip block comments before regex matching so that PROC keywords
             # inside /* ... */ comments don't produce phantom blocks.
             # The original source is kept for raw_sas capture inside each extractor.
-            source_stripped = _strip_block_comments(source)
+            source_stripped = _strip_block_comments(expanded_source)
             covered: list[tuple[int, int]] = []
 
             for pattern in (
@@ -855,11 +873,11 @@ class SASParser:
             all_blocks.extend(self._extract_proc_iml(source_stripped, filename))
             all_blocks.extend(self._extract_proc_format(source_stripped, filename))
             all_blocks.extend(_extract_unsupported_procs(source_stripped, filename, covered))
-            all_macro_vars.extend(_extract_macro_vars(source, filename))
-            all_libnames.update(_extract_libnames(source))
-            all_includes.extend(_extract_includes(source))
-            all_macro_defs.extend(self._extract_macro_defs(source, filename))
-            all_filename_map.update(self._extract_filenames(source))
+            all_macro_vars.extend(_extract_macro_vars(expanded_source, filename))
+            all_libnames.update(_extract_libnames(expanded_source))
+            all_includes.extend(_extract_includes(expanded_source))
+            all_macro_defs.extend(self._extract_macro_defs(expanded_source, filename))
+            all_filename_map.update(self._extract_filenames(expanded_source))
 
         result = ParseResult(
             blocks=_topological_sort(all_blocks),
