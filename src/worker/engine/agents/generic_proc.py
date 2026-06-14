@@ -526,6 +526,13 @@ class GenericProcAgent:
         python_code = normalise_output_var_in_code(
             proc_result.python_code, block.output_datasets, "GenericProcAgent"
         )
+        logger.debug(
+            "GenericProcAgent block %s:%s input_datasets=%s output_datasets=%s",
+            block.source_file,
+            block.start_line,
+            block.input_datasets,
+            block.output_datasets,
+        )
         python_code = normalise_input_vars_in_code(
             python_code,
             block.input_datasets,
