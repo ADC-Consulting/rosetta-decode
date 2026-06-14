@@ -6,6 +6,22 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-14 — fix: PROC SQL HAVING agg-alias rule + retry error-feed strengthening; macro-expansion diagnosis
+
+**Branch:** `fix/cross-block-input-names`
+
+**What we did:**
+- Diagnosed `UNRESOLVED_COLUMN: count(1)` crash — LLM emitted `F.col("count(1)")` after a DataFrame-API `.agg()` (a Spark-SQL auto-name that the API never creates), mistranslating a SAS `HAVING COUNT(*)` clause. Fix: added a mandatory aggregate-alias rule to the PROC SQL agent prompt (`proc.py`) forbidding SQL auto-names and tautological count filters; unit test asserts the rule text.
+- Strengthened the per-block retry error feed in `_translate_blocks` (`main.py`): (#1) corrective hints now surface as a high-salience `MANDATORY FIX (attempt N)` directive; (#3) the failing attempt's code is fed back in a fenced python block so the model patches instead of regenerating from scratch. Reuses the existing job-level `prior_python_code` mechanism. Test added to `test_refine_loop.py`.
+- Diagnosed `NameError: name 'dose' is not defined`: root cause is unexpanded macro **calls** — `%m_first_dose(out=work.dose)` is never expanded into a block, so `dose` is never produced. Macro call expansion (#57 / F1-ext) is still unimplemented. Deferred to a dedicated feature.
+- Planned F36 (phase-2 retry loop) — plan file written, not yet implemented.
+
+**Decisions:**
+- Macro call expansion is the real fix for the `dose` crash class — to be tackled as a feature (#57), not an inline patch
+- Secondary hygiene bug noted: `_ProcSortHelper` (router.py) never sets `output_var` nor runs the input-var normalizer — fold in when next touching PROC SORT
+
+---
+
 ## 2026-06-13 — fix: cross-block input name mismatch + _SimpleCopyHelper Spark compat
 
 **Branch:** `fix/cross-block-input-names`
