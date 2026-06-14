@@ -110,6 +110,14 @@ _SYSTEM_PROMPT = textwrap.dedent(
     - WHERE (pre-agg) → df.filter(condition) using Column expressions.
       pandas last resort: boolean indexing or .query()
     - HAVING (post-agg) → df.filter(condition) after .agg().
+      Any aggregate referenced by a HAVING / post-aggregation filter MUST be materialised inside
+      the SAME .agg() call with an explicit .alias("name"), then filtered on that alias. NEVER
+      reference Spark-SQL auto-generated names like "count(1)", "count(*)", "sum(x)" or "avg(x)"
+      via F.col(...) after a DataFrame-API .agg() — those names do not exist (UNRESOLVED_COLUMN).
+      Drop tautological/no-op filters such as F.col("count(1)").isNotNull() (a count is never null)
+      — they have no SAS equivalent and must not be emitted.
+        WRONG: df.groupBy("k").agg(F.min("x").alias("mn")).filter(F.col("count(1)") > 5)
+        RIGHT: df.groupBy("k").agg(F.min("x").alias("mn"), F.count("*").alias("grp_n")).filter(F.col("grp_n") > 5)
       pandas last resort: .loc[condition] after .agg()
     - ORDER BY → df.orderBy([...]). NEVER use .sort_values() — it does not exist on Spark DataFrames.
     - CREATE TABLE x AS SELECT → assign to x (lowercased) as Spark DataFrame.
