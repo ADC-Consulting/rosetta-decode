@@ -42,7 +42,7 @@ services:
       - uploads:/uploads
 
   tensorzero:
-    image: tensorzero/gateway:latest
+    image: tensorzero/gateway@sha256:4dfc5fffccbae7c39da85505c4449d7551afe14e19a9fd17fc0473f547f371c1
     container_name: rosetta-tensorzero
     restart: unless-stopped
     ports:
