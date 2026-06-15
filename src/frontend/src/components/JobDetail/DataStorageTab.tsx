@@ -117,13 +117,11 @@ function sortedGroupKeys(groups: GroupedTables): (string | null)[] {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-type PanelView = "schema" | "erd";
-type ErdView = "data-model" | "data-flow";
+type TabView = "schema" | "data-model" | "data-flow";
 
 export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabProps) {
   const [manualSelectedPath, setSelectedPath] = useState<string | null>(null);
-  const [panelView, setPanelView] = useState<PanelView>("schema");
-  const [erdView, setErdView] = useState<ErdView>("data-model");
+  const [tabView, setTabView] = useState<TabView>("schema");
   const [ddlOpen, setDdlOpen] = useState(false);
   const [ddlLastPath, setDdlLastPath] = useState<string | null>(null);
   const [editingLibname, setEditingLibname] = useState<string | null>(null);
@@ -337,96 +335,52 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
 
       {/* Right: schema detail / ERD */}
       <div className="flex-1 min-w-0 flex flex-col min-h-0">
-        {/* Schema / ERD toggle */}
+        {/* Tab bar */}
         <div className="flex items-center gap-1 px-4 py-2 border-b border-border shrink-0">
           <div
             className="inline-flex rounded-md border border-border overflow-hidden text-xs font-medium"
             role="group"
-            aria-label="View toggle"
+            aria-label="View"
           >
-            <button
-              type="button"
-              onClick={() => setPanelView("schema")}
-              aria-pressed={panelView === "schema"}
-              className={`px-3 py-1.5 transition-colors ${
-                panelView === "schema"
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-background text-muted-foreground hover:bg-muted"
-              }`}
-            >
-              Schema
-            </button>
-            <button
-              type="button"
-              onClick={() => setPanelView("erd")}
-              aria-pressed={panelView === "erd"}
-              className={`px-3 py-1.5 border-l border-border transition-colors ${
-                panelView === "erd"
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-background text-muted-foreground hover:bg-muted"
-              }`}
-            >
-              Diagram
-            </button>
+            {(["schema", "data-model", "data-flow"] as TabView[]).map((view, i) => (
+              <button
+                key={view}
+                type="button"
+                onClick={() => setTabView(view)}
+                aria-pressed={tabView === view}
+                className={`px-3 py-1.5 transition-colors ${i > 0 ? "border-l border-border" : ""} ${
+                  tabView === view
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-background text-muted-foreground hover:bg-muted"
+                }`}
+              >
+                {view === "schema" ? "Schema" : view === "data-model" ? "Data model" : "Data flow"}
+              </button>
+            ))}
           </div>
         </div>
 
-        {panelView === "erd" ? (
-          <div className="flex-1 min-h-0 flex flex-col">
-            <div className="flex items-center gap-1 px-4 py-2 border-b border-border shrink-0">
-              <div
-                className="inline-flex rounded-md border border-border overflow-hidden text-xs font-medium"
-                role="group"
-                aria-label="ERD view toggle"
-              >
-                <button
-                  type="button"
-                  onClick={() => setErdView("data-model")}
-                  aria-pressed={erdView === "data-model"}
-                  className={`px-3 py-1.5 transition-colors ${
-                    erdView === "data-model"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-background text-muted-foreground hover:bg-muted"
-                  }`}
-                >
-                  Data model
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setErdView("data-flow")}
-                  aria-pressed={erdView === "data-flow"}
-                  className={`px-3 py-1.5 border-l border-border transition-colors ${
-                    erdView === "data-flow"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-background text-muted-foreground hover:bg-muted"
-                  }`}
-                >
-                  Data flow
-                </button>
-              </div>
-            </div>
-
-            <div className="flex-1 min-h-0">
-              {erdView === "data-model" ? (
-                <DataModelERD
-                  schema={schemaData}
-                  selectedTable={selectedTable?.dataset_name ?? null}
-                  onTableSelect={(name) => {
-                    const match = schemaData.tables.find((t) => t.dataset_name === name);
-                    if (match) setSelectedPath(match.path);
-                  }}
-                />
-              ) : (
-                <DataFlowDiagram
-                  jobId={jobId}
-                  selectedTable={selectedTable?.dataset_name ?? null}
-                  onTableSelect={(name) => {
-                    const match = schemaData.tables.find((t) => t.dataset_name === name);
-                    if (match) setSelectedPath(match.path);
-                  }}
-                />
-              )}
-            </div>
+        {tabView === "data-model" ? (
+          <div className="flex-1 min-h-0">
+            <DataModelERD
+              schema={schemaData}
+              selectedTable={selectedTable?.dataset_name ?? null}
+              onTableSelect={(name) => {
+                const match = schemaData.tables.find((t) => t.dataset_name === name);
+                if (match) setSelectedPath(match.path);
+              }}
+            />
+          </div>
+        ) : tabView === "data-flow" ? (
+          <div className="flex-1 min-h-0">
+            <DataFlowDiagram
+              jobId={jobId}
+              selectedTable={selectedTable?.dataset_name ?? null}
+              onTableSelect={(name) => {
+                const match = schemaData.tables.find((t) => t.dataset_name === name);
+                if (match) setSelectedPath(match.path);
+              }}
+            />
           </div>
         ) : (
           <div className="flex-1 min-h-0 overflow-y-auto">
