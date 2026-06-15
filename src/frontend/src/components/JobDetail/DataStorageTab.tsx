@@ -1,9 +1,12 @@
 import { getJobSchema, patchJobSchema } from "@/api/jobs";
 import type { TableSchema } from "@/api/types";
+import MonacoEditor from "@/components/MonacoEditor";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil } from "lucide-react";
+import { ChevronDown, ChevronRight, Pencil } from "lucide-react";
 import { useMemo, useState } from "react";
+import DataStorageERD from "./DataStorageERD";
 
 interface DataStorageTabProps {
   jobId: string;
@@ -53,8 +56,12 @@ function sortedGroupKeys(groups: GroupedTables): (string | null)[] {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
+type PanelView = "schema" | "erd";
+
 export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabProps) {
   const [manualSelectedPath, setSelectedPath] = useState<string | null>(null);
+  const [panelView, setPanelView] = useState<PanelView>("schema");
+  const [ddlOpen, setDdlOpen] = useState(false);
   const queryClient = useQueryClient();
 
   const { data: schemaData } = useQuery({
@@ -164,112 +171,187 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
         })}
       </div>
 
-      {/* Right: schema detail */}
-      <div className="flex-1 min-w-0 overflow-y-auto">
-        {!selectedTable ? (
-          <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
-            Select a table from the list to view its schema.
+      {/* Right: schema detail / ERD */}
+      <div className="flex-1 min-w-0 flex flex-col min-h-0">
+        {/* Schema / ERD toggle */}
+        <div className="flex items-center gap-1 px-4 py-2 border-b border-border shrink-0">
+          <div
+            className="inline-flex rounded-md border border-border overflow-hidden text-xs font-medium"
+            role="group"
+            aria-label="View toggle"
+          >
+            <button
+              type="button"
+              onClick={() => setPanelView("schema")}
+              aria-pressed={panelView === "schema"}
+              className={`px-3 py-1.5 transition-colors ${
+                panelView === "schema"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-background text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              Schema
+            </button>
+            <button
+              type="button"
+              onClick={() => setPanelView("erd")}
+              aria-pressed={panelView === "erd"}
+              className={`px-3 py-1.5 border-l border-border transition-colors ${
+                panelView === "erd"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-background text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              ERD
+            </button>
+          </div>
+        </div>
+
+        {panelView === "erd" ? (
+          <div className="flex-1 min-h-0 overflow-auto p-4">
+            <DataStorageERD
+              tables={schemaData.tables}
+              relationships={schemaData.relationships}
+              selectedTable={selectedTable?.dataset_name ?? null}
+              onTableSelect={(name) => {
+                const match = schemaData.tables.find((t) => t.dataset_name === name);
+                if (match) setSelectedPath(match.path);
+              }}
+            />
           </div>
         ) : (
-          <>
-            {/* Header */}
-            <div className="px-4 py-3 border-b border-border">
-              <div className="flex items-center gap-3 flex-wrap">
-                <span className="font-mono text-sm font-semibold">
-                  {selectedTable.dataset_name}
-                </span>
-                {selectedTable.libname && (
-                  <span className="text-xs text-muted-foreground">
-                    {selectedTable.libname} &rarr; {selectedTable.target_schema}
-                  </span>
-                )}
-                {selectedTable.row_count != null && (
-                  <span className="text-xs text-muted-foreground">
-                    {selectedTable.row_count.toLocaleString()} rows
-                  </span>
-                )}
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            {!selectedTable ? (
+              <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+                Select a table from the list to view its schema.
               </div>
-            </div>
-
-            {/* Column table or no-columns notice */}
-            {selectedTable.columns.length > 0 ? (
-              <table className="w-full text-sm border-collapse">
-                <thead className="sticky top-0 bg-background z-10">
-                  <tr className="border-b border-border">
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                      Column
-                    </th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                      SAS type
-                    </th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                      Format
-                    </th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                      Type
-                    </th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                      Label
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {selectedTable.columns.map((col) => {
-                    const displayType = col.override_type ?? col.semantic_type;
-                    const isOverridden = col.override_type !== null;
-                    return (
-                      <tr key={col.name} className="border-b border-border last:border-0">
-                        <td className="px-3 py-2 font-mono text-xs text-foreground whitespace-nowrap">
-                          {col.name}
-                        </td>
-                        <td className="px-3 py-2 whitespace-nowrap">
-                          <span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
-                            {col.sas_type}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 font-mono text-xs text-muted-foreground whitespace-nowrap">
-                          {col.sas_format ?? "—"}
-                        </td>
-                        <td className="px-3 py-2 whitespace-nowrap">
-                          {displayType === "Unknown" ? (
-                            <span className="text-xs text-muted-foreground">—</span>
-                          ) : (
-                            <span
-                              className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium ${semanticBadgeClasses(displayType)}`}
-                            >
-                              {displayType}
-                              {isOverridden && (
-                                <Pencil className="w-3 h-3" aria-label="Overridden type" />
-                              )}
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2 text-xs text-muted-foreground max-w-xs truncate">
-                          {col.label ?? "—"}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
             ) : (
-              <div className="px-4 py-6">
-                <p className="text-sm text-muted-foreground">
-                  Column schema not available — no .sas7bdat file or source declarations found.
-                </p>
-              </div>
-            )}
+              <>
+                {/* Header */}
+                <div className="px-4 py-3 border-b border-border">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <span className="font-mono text-sm font-semibold">
+                      {selectedTable.dataset_name}
+                    </span>
+                    {selectedTable.libname && (
+                      <span className="text-xs text-muted-foreground">
+                        {selectedTable.libname} &rarr; {selectedTable.target_schema}
+                      </span>
+                    )}
+                    {selectedTable.row_count != null && (
+                      <span className="text-xs text-muted-foreground">
+                        {selectedTable.row_count.toLocaleString()} rows
+                      </span>
+                    )}
+                  </div>
+                </div>
 
-            {/* DDL block */}
-            {selectedTable.ddl && (
-              <div className="px-4 py-3 border-t border-border">
-                <p className="text-xs font-semibold text-muted-foreground mb-2">DDL</p>
-                <pre className="text-xs font-mono bg-muted rounded p-3 overflow-x-auto whitespace-pre">
-                  {selectedTable.ddl}
-                </pre>
-              </div>
+                {/* Column table or no-columns notice */}
+                {selectedTable.columns.length > 0 ? (
+                  <table className="w-full text-sm border-collapse">
+                    <thead className="sticky top-0 bg-background z-10">
+                      <tr className="border-b border-border">
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                          Column
+                        </th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                          SAS type
+                        </th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                          Format
+                        </th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                          Type
+                        </th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                          Label
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedTable.columns.map((col) => {
+                        const displayType = col.override_type ?? col.semantic_type;
+                        const isOverridden = col.override_type !== null;
+                        return (
+                          <tr key={col.name} className="border-b border-border last:border-0">
+                            <td className="px-3 py-2 font-mono text-xs text-foreground whitespace-nowrap">
+                              {col.name}
+                            </td>
+                            <td className="px-3 py-2 whitespace-nowrap">
+                              <span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
+                                {col.sas_type}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 font-mono text-xs text-muted-foreground whitespace-nowrap">
+                              {col.sas_format ?? "—"}
+                            </td>
+                            <td className="px-3 py-2 whitespace-nowrap">
+                              {displayType === "Unknown" ? (
+                                <span className="text-xs text-muted-foreground">—</span>
+                              ) : (
+                                <span
+                                  className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium ${semanticBadgeClasses(displayType)}`}
+                                >
+                                  {displayType}
+                                  {isOverridden && (
+                                    <Pencil className="w-3 h-3" aria-label="Overridden type" />
+                                  )}
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-xs text-muted-foreground max-w-xs truncate">
+                              {col.label ?? "—"}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="px-4 py-6">
+                    <p className="text-sm text-muted-foreground">
+                      Column schema not available — no .sas7bdat file or source declarations found.
+                    </p>
+                  </div>
+                )}
+
+                {/* DDL collapsible */}
+                <div className="border-t border-border">
+                  <Collapsible open={ddlOpen} onOpenChange={setDdlOpen}>
+                    <CollapsibleTrigger
+                      className="flex w-full items-center gap-2 px-4 py-2.5 text-xs font-semibold
+                        text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors
+                        select-none"
+                      aria-label="Toggle DDL panel"
+                    >
+                      {ddlOpen ? (
+                        <ChevronDown className="w-3.5 h-3.5 shrink-0" />
+                      ) : (
+                        <ChevronRight className="w-3.5 h-3.5 shrink-0" />
+                      )}
+                      DDL
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      {selectedTable.ddl ? (
+                        <div className="px-4 pb-4">
+                          <MonacoEditor
+                            value={selectedTable.ddl}
+                            language="sql"
+                            readOnly
+                            height="240px"
+                          />
+                        </div>
+                      ) : (
+                        <p className="px-4 pb-4 text-xs text-muted-foreground">
+                          DDL not available
+                        </p>
+                      )}
+                    </CollapsibleContent>
+                  </Collapsible>
+                </div>
+              </>
             )}
-          </>
+          </div>
         )}
       </div>
     </div>

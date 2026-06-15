@@ -337,9 +337,9 @@ Phase 3 — Relationships + ERD + DDL:
 - [x] F34 P3-C: Build relationships list and persist to MigrationPlan
 - [x] F34 P3-D: DDL generation module
 - [x] F34 P3-E: Surface relationships and DDL in schema route
-- [ ] F34 P3-F: Build DataStorageERD component
-- [ ] F34 P3-G: Add DDL panel and ERD toggle to DataStorageTab
-- [ ] F34 P3-H: make test exits 0
+- [x] F34 P3-F: Build DataStorageERD component
+- [x] F34 P3-G: Add DDL panel and ERD toggle to DataStorageTab
+- [x] F34 P3-H: make test exits 0
 Backlog: user-selectable DDL target platform (Databricks Delta, Snowflake, etc.)
 - [x] #40: Chevron tab shell — delivered by F28, issue closed
 - [x] #44: BI tab placeholder — empty state delivered in F28 S-C, issue closed

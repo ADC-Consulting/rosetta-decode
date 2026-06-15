@@ -2,7 +2,7 @@
 
 **Phase:** 3
 **Area:** Both (Backend / Worker + Frontend)
-**Status:** in-progress
+**Status:** complete
 **GitHub issue:** #43
 
 ## Goal
@@ -138,18 +138,18 @@ New field on `SASBlock`: `column_schema: dict[str, dict[str, str]] = Field(defau
 **File:** `src/frontend/src/components/JobDetail/DataStorageERD.tsx` (new)
 **Depends on:** P3-E
 **Done when:** ReactFlow graph with dagre auto-layout; each node is a table entity box showing table name + column count; edges connect related tables (from `relationships`), labelled with the join/merge key column; clicking a node selects it in the schema panel; `initialView` similar to LineageGraph pattern
-- [ ] done
+- [x] done
 
 ### P3-G: Add DDL panel and ERD tab toggle to DataStorageTab
 **File:** `src/frontend/src/components/JobDetail/DataStorageTab.tsx`
 **Depends on:** P3-D, P3-F
 **Done when:** Schema panel shows a "DDL" button that expands a syntax-highlighted code block with the `CREATE TABLE` statement (use `MonacoEditor` read-only, `language="sql"`); a "Schema / ERD" toggle at the top of the main area switches between the table browser and the ERD; relationships shown on the ERD component
-- [ ] done
+- [x] done
 
 ### P3-H: make test exits 0
 **Depends on:** all subtasks
 **Done when:** All 7 gates green
-- [ ] done
+- [x] done
 
 ## Dependencies on other features
 
