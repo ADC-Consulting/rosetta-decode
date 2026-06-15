@@ -253,13 +253,9 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                 </tbody>
               </table>
             ) : (
-              <div className="px-4 py-6 space-y-1">
+              <div className="px-4 py-6">
                 <p className="text-sm text-muted-foreground">
-                  Column metadata not available for this dataset.
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Schema is extracted from uploaded .sas7bdat and .csv files. Derived datasets
-                  show no columns until schema extraction is extended.
+                  Column schema not available — no .sas7bdat file or source declarations found.
                 </p>
               </div>
             )}

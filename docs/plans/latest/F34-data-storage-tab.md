@@ -100,7 +100,7 @@ New field on `SASBlock`: `column_schema: dict[str, dict[str, str]] = Field(defau
 **Files:** `src/backend/api/routes/jobs.py`, `src/frontend/src/components/JobDetail/DataStorageTab.tsx`
 **Depends on:** P2-B, P2-C
 **Done when:** `GET /jobs/{id}/schema` includes columns for derived datasets (sdtm_dm, adsl_output, etc.) using source-derived schema when no pyreadstat data is available; derived dataset columns show SAS type, format, and semantic type in the Data Storage tab; datasets with no column info at all show "Column schema not available — no .sas7bdat file or source declarations found"; unit tests for the route merging logic
-- [ ] done
+- [x] done
 
 ## Phase 3 Subtasks
 

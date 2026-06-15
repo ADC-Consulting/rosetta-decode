@@ -330,7 +330,7 @@ Phase 2 — Column types + semantic type mapping:
 - [x] F34 P2-A: Semantic type mapping function
 - [x] F34 P2-B: Fix semantic type default for CSV columns (Unknown not Number)
 - [x] F34 P2-C: Extract column schema from SAS source (LENGTH/FORMAT/ATTRIB) for derived datasets
-- [ ] F34 P2-D: Surface source-derived column schema in Data Storage tab
+- [x] F34 P2-D: Surface source-derived column schema in Data Storage tab
 Phase 3 — Relationships + ERD + DDL:
 - [ ] F34 P3-A: Add merge_by_vars and join_on_keys to SASBlock
 - [ ] F34 P3-B: Extract MERGE BY and JOIN ON in parser

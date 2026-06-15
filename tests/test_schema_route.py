@@ -295,6 +295,116 @@ async def test_patch_schema_libname_override_reflected_in_get(
 
 
 @pytest.mark.asyncio
+async def test_schema_route_derived_dataset_source_columns(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Derived dataset populated by P2-C _merge_source_column_schema returns columns in response.
+
+    Simulates a data_schema entry for a derived output (e.g. sdtm_dm) that has no
+    uploaded .sas7bdat file but was populated from LENGTH/FORMAT/ATTRIB declarations
+    by the worker pipeline. The route must serialise these columns exactly like
+    file-backed datasets — no special handling needed or skipped.
+
+    Column type mapping follows map_sas_to_semantic_type:
+    - character → String (regardless of format)
+    - double + DATE9. format → Date
+    - double + no format → Number
+    """
+    migration_plan: dict[str, Any] = {
+        "summary": "test",
+        "block_plans": [],
+        "libname_map": {"outdir": "/data/out"},
+        "data_schema": {
+            # Derived dataset — key is a plain stem (no extension), as written by
+            # _merge_source_column_schema when no uploaded file sentinel is present.
+            "sdtm_dm": {
+                "columns": ["USUBJID", "AGE", "STARTDT"],
+                "column_types": {
+                    "USUBJID": "character",
+                    "AGE": "double",
+                    "STARTDT": "double",
+                },
+                "column_labels": {
+                    "USUBJID": "Unique Subject Identifier",
+                    "AGE": "Age",
+                    "STARTDT": "Start Date",
+                },
+                # STARTDT is a numeric date stored with DATE9. format — maps to "Date"
+                "column_formats": {"STARTDT": "DATE9.", "AGE": ""},
+                "row_count": None,
+            }
+        },
+        "relationships": [],
+    }
+    job_id = await _insert_job(db_session, migration_plan=migration_plan)
+    response = await client.get(f"/jobs/{job_id}/schema")
+    assert response.status_code == 200
+    body = response.json()
+
+    assert len(body["tables"]) == 1
+    table = body["tables"][0]
+    assert table["dataset_name"] == "sdtm_dm"
+    assert table["row_count"] is None
+
+    cols_by_name = {c["name"]: c for c in table["columns"]}
+    assert set(cols_by_name.keys()) == {"USUBJID", "AGE", "STARTDT"}
+
+    # Character column → String semantic type regardless of any format
+    assert cols_by_name["USUBJID"]["sas_type"] == "character"
+    assert cols_by_name["USUBJID"]["semantic_type"] == "String"
+    assert cols_by_name["USUBJID"]["label"] == "Unique Subject Identifier"
+
+    # Numeric column with DATE9. format → Date semantic type
+    assert cols_by_name["STARTDT"]["sas_type"] == "double"
+    assert cols_by_name["STARTDT"]["semantic_type"] == "Date"
+    assert cols_by_name["STARTDT"]["sas_format"] == "DATE9."
+    assert cols_by_name["STARTDT"]["label"] == "Start Date"
+
+    # Plain numeric (no format) → Number semantic type
+    assert cols_by_name["AGE"]["sas_type"] == "double"
+    assert cols_by_name["AGE"]["semantic_type"] == "Number"
+
+
+@pytest.mark.asyncio
+async def test_schema_route_dataset_no_columns_returns_empty_list(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Dataset with no column info at all returns an entry with columns=[].
+
+    This covers the UI empty-state path: the API must include the table in the
+    response (so the left-hand tree still shows the dataset name) but with
+    columns=[] so the frontend renders the fallback message.
+    """
+    migration_plan: dict[str, Any] = {
+        "summary": "test",
+        "block_plans": [],
+        "libname_map": {},
+        "data_schema": {
+            "work_temp": {
+                "columns": [],
+                "column_types": {},
+                "column_labels": {},
+                "column_formats": {},
+                "row_count": None,
+            }
+        },
+        "relationships": [],
+    }
+    job_id = await _insert_job(db_session, migration_plan=migration_plan)
+    response = await client.get(f"/jobs/{job_id}/schema")
+    assert response.status_code == 200
+    body = response.json()
+
+    # The table IS present in the response (UI can show it in the tree)
+    assert len(body["tables"]) == 1
+    table = body["tables"][0]
+    assert table["dataset_name"] == "work_temp"
+    # columns is empty — frontend renders the fallback message
+    assert table["columns"] == []
+    assert table["row_count"] is None
+
+
+@pytest.mark.asyncio
 async def test_patch_schema_column_type_override_reflected_in_get(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:
