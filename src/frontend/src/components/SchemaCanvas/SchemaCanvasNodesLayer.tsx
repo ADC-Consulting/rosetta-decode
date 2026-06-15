@@ -4,7 +4,7 @@ import type { GraphNode } from "./graph-types";
 import { DATA_MODEL_NODE_WIDTH } from "./layout-constants";
 import { getNodeFocusRole, type FocusContext } from "./schema-canvas-focus";
 import { getNodeHeight } from "./schema-canvas-geometry";
-import type { CanvasColumn, TableNodeData } from "./types";
+import type { TableNodeData } from "./types";
 
 type SelectedField = { nodeId: string; columnName: string } | null;
 
@@ -112,12 +112,22 @@ export function SchemaCanvasNodesLayer({
                         onSelectField({ nodeId: node.id, columnName: column.name });
                       }}
                     >
-                      <span className="col-name">
-                        {column.isPrimaryKey ? "PK " : ""}
-                        {column.name}
-                      </span>
+                      <span className="col-name">{column.name}</span>
                       <span className="col-type">{column.type}</span>
-                      <span className="col-flags">{columnFlagText(column)}</span>
+                      <span className="col-flags" style={{ display: "flex", gap: 2, alignItems: "center" }}>
+                        {column.isPrimaryKey && (
+                          <span style={{ display: "inline-flex", alignItems: "center", borderRadius: 3, padding: "1px 4px", fontSize: 10, fontWeight: 600, background: "#fef9c3", color: "#854d0e" }}>PK</span>
+                        )}
+                        {column.isForeignKey && (
+                          <span style={{ display: "inline-flex", alignItems: "center", borderRadius: 3, padding: "1px 4px", fontSize: 10, fontWeight: 600, background: "#dbeafe", color: "#1e40af" }}>FK</span>
+                        )}
+                        {column.isUnique && !column.isPrimaryKey && (
+                          <span style={{ display: "inline-flex", alignItems: "center", borderRadius: 3, padding: "1px 4px", fontSize: 10, fontWeight: 600, background: "#f3e8ff", color: "#6b21a8" }}>UQ</span>
+                        )}
+                        {!column.nullable && !column.isPrimaryKey && (
+                          <span style={{ display: "inline-flex", alignItems: "center", borderRadius: 3, padding: "1px 4px", fontSize: 10, fontWeight: 600, background: "#f1f5f9", color: "#475569" }}>NN</span>
+                        )}
+                      </span>
                     </li>
                   );
                 })}
@@ -130,13 +140,4 @@ export function SchemaCanvasNodesLayer({
       })}
     </>
   );
-}
-
-function columnFlagText(column: CanvasColumn): string {
-  return [
-    column.isPrimaryKey ? "pk" : "",
-    column.isForeignKey ? "fk" : "",
-    column.isUnique ? "uq" : "",
-    !column.nullable ? "nn" : "",
-  ].filter(Boolean).join(" ");
 }

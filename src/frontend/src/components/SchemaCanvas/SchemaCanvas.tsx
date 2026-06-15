@@ -8,9 +8,11 @@ import {
   buildFocusContext,
   getEdgeFocusRole,
 } from "./schema-canvas-focus";
+import { DATA_MODEL_NODE_WIDTH } from "./layout-constants";
 import {
   computeCanvasStageSize,
   getEdgeHandlePoint,
+  getNodeHeight,
   pathFromPoints,
 } from "./schema-canvas-geometry";
 import type { CanvasEdgeData, TableNodeData } from "./types";
@@ -70,6 +72,23 @@ export function SchemaCanvas({
     const fz = Math.min(vw / stageSize.width, vh / stageSize.height, 1) * 0.9;
     setZoom(Math.max(fz, MIN_ZOOM));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!selectedNodeId) return;
+    const node = nodes.find((n) => n.id === selectedNodeId);
+    if (!node || !viewportRef.current) return;
+    const viewport = viewportRef.current;
+    const collapsed = collapsedNodeIds.has(node.id);
+    const nodeW = DATA_MODEL_NODE_WIDTH;
+    const nodeH = getNodeHeight(node, collapsed);
+    const cx = (node.position.x + nodeW / 2) * zoom;
+    const cy = (node.position.y + nodeH / 2) * zoom;
+    viewport.scrollTo({
+      left: Math.max(0, cx - viewport.clientWidth / 2),
+      top: Math.max(0, cy - viewport.clientHeight / 2),
+      behavior: "smooth",
+    });
+  }, [selectedNodeId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function startNodeDrag(event: ReactMouseEvent<HTMLDivElement>, node: GraphNode<TableNodeData>) {
     event.stopPropagation();
