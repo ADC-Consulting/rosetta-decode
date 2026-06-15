@@ -430,6 +430,11 @@ export interface ColumnSchema {
   label: string | null;
   semantic_type: string;
   override_type: string | null;
+  python_type: string | null;
+  sql_type: string | null;
+  is_pk: boolean;
+  is_fk: boolean;
+  fk_ref: string | null;
 }
 
 export interface TableSchema {
@@ -440,6 +445,14 @@ export interface TableSchema {
   columns: ColumnSchema[];
   row_count: number | null;
   ddl: string;
+  target_columns: ColumnSchema[];
+  schema_status: string;
+  ddl_source: string;
+}
+
+export interface PatchJobSchemaRequest {
+  pk_overrides?: Record<string, string[]>;
+  fk_overrides?: Record<string, string>;
 }
 
 export interface RelationshipSchema {

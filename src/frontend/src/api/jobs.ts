@@ -11,6 +11,7 @@ import type {
     JobLineageResponse,
     JobPlanResponse,
     JobSchemaResponse,
+    PatchJobSchemaRequest,
     JobSourcesResponse,
     JobStatus,
     JobSummary,
@@ -285,10 +286,7 @@ export async function getJobSchema(jobId: string): Promise<JobSchemaResponse> {
 
 export async function patchJobSchema(
   jobId: string,
-  overrides: {
-    libname_overrides?: Record<string, string>;
-    column_type_overrides?: Record<string, Record<string, string>>;
-  }
+  overrides: PatchJobSchemaRequest
 ): Promise<JobSchemaResponse> {
   const res = await fetch(`${BASE}/jobs/${jobId}/schema`, {
     method: "PATCH",
