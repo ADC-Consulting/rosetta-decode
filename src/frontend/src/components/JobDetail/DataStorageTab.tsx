@@ -30,6 +30,65 @@ function semanticBadgeClasses(type: string): string {
   return SEMANTIC_COLORS[type] ?? "bg-muted text-muted-foreground";
 }
 
+function statusDotClass(status: string): string {
+  if (status === "migrated") return "bg-green-500";
+  if (status === "changed") return "bg-amber-400";
+  return "bg-muted-foreground/30";
+}
+
+type DiffStatus = "unchanged" | "added" | "dropped";
+
+interface DiffRow {
+  name: string;
+  status: DiffStatus;
+  sas_type: string | null;
+  sas_format: string | null;
+  semantic_type: string | null;
+  sql_type: string | null;
+  is_pk: boolean;
+  is_fk: boolean;
+}
+
+function buildColumnDiff(table: TableSchema): DiffRow[] {
+  const sourceMap = new Map(table.columns.map((c) => [c.name.toLowerCase(), c]));
+  const targetMap = new Map(table.target_columns.map((c) => [c.name.toLowerCase(), c]));
+
+  const rows: DiffRow[] = [];
+
+  for (const col of table.columns) {
+    const key = col.name.toLowerCase();
+    const target = targetMap.get(key);
+    rows.push({
+      name: col.name,
+      status: target ? "unchanged" : "dropped",
+      sas_type: col.sas_type || null,
+      sas_format: col.sas_format,
+      semantic_type: col.override_type ?? col.semantic_type,
+      sql_type: target?.sql_type ?? null,
+      is_pk: target?.is_pk ?? false,
+      is_fk: target?.is_fk ?? false,
+    });
+  }
+
+  for (const col of table.target_columns) {
+    const key = col.name.toLowerCase();
+    if (!sourceMap.has(key)) {
+      rows.push({
+        name: col.name,
+        status: "added",
+        sas_type: null,
+        sas_format: null,
+        semantic_type: null,
+        sql_type: col.sql_type,
+        is_pk: col.is_pk,
+        is_fk: col.is_fk,
+      });
+    }
+  }
+
+  return rows;
+}
+
 // ── Group helpers ─────────────────────────────────────────────────────────────
 
 type GroupedTables = Map<string | null, TableSchema[]>;
@@ -164,6 +223,10 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                       : "border-l-2 border-transparent"
                   }`}
                 >
+                  <span
+                    className={`w-2 h-2 rounded-full shrink-0 ${statusDotClass(table.schema_status)}`}
+                    aria-label={table.schema_status}
+                  />
                   <span className="font-mono text-xs truncate text-foreground">
                     {table.dataset_name}
                   </span>
@@ -175,6 +238,18 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
             </div>
           );
         })}
+        <div className="mt-auto border-t border-border px-3 py-2 flex flex-col gap-1">
+          {[
+            { cls: "bg-green-500", label: "Migrated" },
+            { cls: "bg-amber-400", label: "Changed" },
+            { cls: "bg-muted-foreground/30", label: "Not run" },
+          ].map(({ cls, label }) => (
+            <div key={label} className="flex items-center gap-1.5">
+              <span className={`w-2 h-2 rounded-full ${cls}`} />
+              <span className="text-xs text-muted-foreground">{label}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Right: schema detail / ERD */}
@@ -298,25 +373,81 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                 </div>
 
                 {/* Column table or no-columns notice */}
-                {selectedTable.columns.length > 0 ? (
+                {selectedTable.schema_status === "not_run" && selectedTable.columns.length === 0 ? (
+                  <div className="px-4 py-6">
+                    <p className="text-sm text-muted-foreground">
+                      Column schema not available — no .sas7bdat file or source declarations found.
+                    </p>
+                  </div>
+                ) : selectedTable.target_columns.length > 0 ? (
                   <table className="w-full text-sm border-collapse">
                     <thead className="sticky top-0 bg-background z-10">
                       <tr className="border-b border-border">
-                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                          Column
-                        </th>
-                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                          SAS type
-                        </th>
-                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                          Format
-                        </th>
-                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                          Type
-                        </th>
-                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                          Label
-                        </th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide w-6" />
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Column</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">SAS type</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">SQL type</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Flags</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {buildColumnDiff(selectedTable).map((row) => (
+                        <tr
+                          key={row.name}
+                          className={`border-b border-border last:border-0 ${
+                            row.status === "added" ? "bg-green-50 dark:bg-green-950/20" :
+                            row.status === "dropped" ? "bg-red-50 dark:bg-red-950/20" : ""
+                          }`}
+                        >
+                          <td className="px-3 py-2 whitespace-nowrap">
+                            {row.status === "added" ? (
+                              <span className="text-xs font-bold text-green-600" title="Added in output">+</span>
+                            ) : row.status === "dropped" ? (
+                              <span className="text-xs font-bold text-red-500" title="Dropped in output">✗</span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground/50" title="Unchanged">✓</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 font-mono text-xs text-foreground whitespace-nowrap">
+                            {row.name}
+                          </td>
+                          <td className="px-3 py-2 whitespace-nowrap">
+                            {row.sas_type ? (
+                              <span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
+                                {row.sas_type}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 font-mono text-xs whitespace-nowrap">
+                            {row.sql_type ? (
+                              <span className="text-foreground">{row.sql_type}</span>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-xs whitespace-nowrap">
+                            {row.is_pk && (
+                              <span className="inline-flex items-center rounded px-1 py-0.5 text-xs font-semibold bg-yellow-100 text-yellow-800 mr-1">PK</span>
+                            )}
+                            {row.is_fk && (
+                              <span className="inline-flex items-center rounded px-1 py-0.5 text-xs font-semibold bg-blue-100 text-blue-800">FK</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : selectedTable.columns.length > 0 ? (
+                  <table className="w-full text-sm border-collapse">
+                    <thead className="sticky top-0 bg-background z-10">
+                      <tr className="border-b border-border">
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Column</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">SAS type</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Format</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Type</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Label</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -380,7 +511,18 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                       ) : (
                         <ChevronRight className="w-3.5 h-3.5 shrink-0" />
                       )}
-                      DDL
+                      {selectedTable.ddl_source === "target" ? (
+                        "Target DDL"
+                      ) : selectedTable.ddl_source === "source_estimated" ? (
+                        <span className="flex items-center gap-2">
+                          Source DDL
+                          <span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-800">
+                            estimated
+                          </span>
+                        </span>
+                      ) : (
+                        "DDL"
+                      )}
                     </CollapsibleTrigger>
                     <CollapsibleContent>
                       {selectedTable.ddl ? (
