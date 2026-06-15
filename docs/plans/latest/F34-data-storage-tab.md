@@ -126,7 +126,7 @@ New field on `SASBlock`: `column_schema: dict[str, dict[str, str]] = Field(defau
 **File:** `src/worker/engine/ddl_generator.py` (new)
 **Depends on:** P2-A
 **Done when:** `generate_create_table(table_name: str, target_schema: str, columns: list[ColumnSchema]) -> str` generates ANSI SQL `CREATE TABLE schema.table (col TYPE)` using semantic_type → SQL type mapping: `String→TEXT`, `Date→DATE`, `Timestamp→TIMESTAMP`, `Decimal→DECIMAL`, `Number→DOUBLE PRECISION`, `Integer→BIGINT`; unit tests covering each type mapping and full DDL output
-- [ ] done
+- [x] done
 
 ### P3-E: Surface relationships and DDL in GET /jobs/{id}/schema
 **File:** `src/backend/api/routes/jobs.py`

@@ -335,7 +335,7 @@ Phase 3 — Relationships + ERD + DDL:
 - [x] F34 P3-A: Add merge_by_vars and join_on_keys to SASBlock
 - [x] F34 P3-B: Extract MERGE BY and JOIN ON in parser
 - [x] F34 P3-C: Build relationships list and persist to MigrationPlan
-- [ ] F34 P3-D: DDL generation module
+- [x] F34 P3-D: DDL generation module
 - [ ] F34 P3-E: Surface relationships and DDL in schema route
 - [ ] F34 P3-F: Build DataStorageERD component
 - [ ] F34 P3-G: Add DDL panel and ERD toggle to DataStorageTab
