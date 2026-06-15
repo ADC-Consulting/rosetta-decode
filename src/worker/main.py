@@ -38,11 +38,14 @@ from src.worker.engine.llm_client import LLMClient, LLMTranslationError
 from src.worker.engine.macro_expander import CannotExpandError, MacroExpander
 from src.worker.engine.models import (
     BlockPlan,
+    BlockRisk,
     DataFileInfo,
     GeneratedBlock,
     JobContext,
+    MigrationPlan,
     ReconciliationReport,
     SASBlock,
+    TranslationStrategy,
 )
 from src.worker.engine.parser import SASParser, extract_declared_char_columns, extract_lineage
 from src.worker.engine.pii_scanner import scan_for_pii
@@ -403,6 +406,68 @@ def _build_recon_groups(
 
     logger.debug("[recon_groups] final assignment=%s", {k: v[0] for k, v in assignment.items()})
     return assignment
+
+
+def _enrich_block_plan_post_run(
+    migration_plan: MigrationPlan, generated_blocks: list[GeneratedBlock]
+) -> MigrationPlan:
+    """Recompute per-block risk and rationale from post-run reconciliation outcomes.
+
+    Pure, rule-based (no LLM). Returns a deep copy — the pre-run plan passed in is
+    never mutated. Risk is only changed when a rule fires; ``medium`` is never
+    synthesized, so blocks that match no rule keep the planner's original risk.
+
+    Rule precedence (first match wins) per block:
+        1. strategy == MANUAL                       → HIGH
+        2. recon ran and failed                     → HIGH
+        3. recon ran and passed and confidence high → LOW
+        4. recon did not run and confidence low/very_low → HIGH
+
+    Args:
+        migration_plan: The pre-run planner estimate.
+        generated_blocks: Translated blocks carrying post-run recon outcomes.
+
+    Returns:
+        A deep-copied :class:`MigrationPlan` with enriched per-block risk,
+        confidence band, rationale, and recomputed ``overall_risk``.
+    """
+    enriched = migration_plan.model_copy(deep=True)
+    by_id = {
+        f"{gb.source_block.source_file}:{gb.source_block.start_line}": gb for gb in generated_blocks
+    }
+    for bp in enriched.block_plans:
+        gb = by_id.get(bp.block_id)
+        if gb is None:
+            continue
+        recon_ran = bool(gb.recon_checks)
+        recon_pass = recon_ran and gb.exec_ok
+        recon_fail = recon_ran and not gb.exec_ok
+        conf = gb.confidence_band
+
+        if bp.strategy == TranslationStrategy.MANUAL or recon_fail:
+            bp.risk = BlockRisk.HIGH
+        elif recon_pass and conf == "high":
+            bp.risk = BlockRisk.LOW
+        elif not recon_ran and conf in {"low", "very_low"}:
+            bp.risk = BlockRisk.HIGH
+
+        bp.confidence_band = conf
+        recon_label = "pass" if recon_pass else ("fail" if recon_fail else "none")
+        base_rationale = bp.rationale.split(" · post-run:")[0]
+        bp.rationale = (
+            f"{base_rationale} · post-run: recon={recon_label}, "
+            f"confidence={conf} → risk={bp.risk.value}"
+        )
+
+    if enriched.block_plans:
+        risks = {bp.risk for bp in enriched.block_plans}
+        if BlockRisk.HIGH in risks:
+            enriched.overall_risk = BlockRisk.HIGH
+        elif BlockRisk.MEDIUM in risks:
+            enriched.overall_risk = BlockRisk.MEDIUM
+        else:
+            enriched.overall_risk = BlockRisk.LOW
+    return enriched
 
 
 class JobOrchestrator:
@@ -925,6 +990,22 @@ class JobOrchestrator:
 
         # Step 10c: Persist initial BlockRevision rows for every translated block
         await self._persist_initial_revisions(session, job, generated, context)
+
+        # Step 10d: Post-run risk + rationale enrichment (rule-based, no LLM) → new column.
+        # Best-effort: a cosmetic post-run enrichment must NEVER fail an already-successful job.
+        if context.migration_plan:
+            try:
+                enriched_plan = _enrich_block_plan_post_run(context.migration_plan, generated)
+                await session.execute(
+                    update(Job)
+                    .where(Job.id == job.id)
+                    .values(migration_plan_post_run=enriched_plan.model_dump())
+                )
+                await session.commit()
+            except Exception as exc:  # never break a completed job
+                logger.warning(
+                    "Job %s: post-run plan enrichment failed, continuing: %s", job.id, exc
+                )
 
         # Auto-save initial v1 for every tab so the rail shows the agent-generated baseline.
         plan_overrides = (
