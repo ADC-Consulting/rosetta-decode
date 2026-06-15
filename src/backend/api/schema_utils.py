@@ -28,8 +28,10 @@ def map_sas_to_semantic_type(sas_type: str, sas_format: str | None) -> str:
         sas_format: SAS format name e.g. "DATE9.", "$40.", "DATETIME20." (may be empty/None)
 
     Returns:
-        One of: "String", "Date", "Timestamp", "Decimal", "Number", "Integer"
+        One of: "String", "Date", "Timestamp", "Decimal", "Number", "Integer", "Unknown"
     """
+    if not sas_type:
+        return "Unknown"
     fmt = (sas_format or "").strip().lstrip("$").rstrip(".")
     if sas_type == "character":
         return "String"

@@ -231,14 +231,18 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                           {col.sas_format ?? "—"}
                         </td>
                         <td className="px-3 py-2 whitespace-nowrap">
-                          <span
-                            className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium ${semanticBadgeClasses(displayType)}`}
-                          >
-                            {displayType}
-                            {isOverridden && (
-                              <Pencil className="w-3 h-3" aria-label="Overridden type" />
-                            )}
-                          </span>
+                          {displayType === "Unknown" ? (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          ) : (
+                            <span
+                              className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium ${semanticBadgeClasses(displayType)}`}
+                            >
+                              {displayType}
+                              {isOverridden && (
+                                <Pencil className="w-3 h-3" aria-label="Overridden type" />
+                              )}
+                            </span>
+                          )}
                         </td>
                         <td className="px-3 py-2 text-xs text-muted-foreground max-w-xs truncate">
                           {col.label ?? "—"}

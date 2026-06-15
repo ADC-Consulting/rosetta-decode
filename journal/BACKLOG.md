@@ -328,7 +328,7 @@ Phase 1 — Schema hierarchy + table browser + LIBNAME editing:
 - [x] F34 P1-G: Wire into JobDetailPage
 Phase 2 — Column types + semantic type mapping:
 - [x] F34 P2-A: Semantic type mapping function
-- [ ] F34 P2-B: Fix semantic type default for CSV columns (Unknown not Number)
+- [x] F34 P2-B: Fix semantic type default for CSV columns (Unknown not Number)
 - [ ] F34 P2-C: Extract column schema from SAS source (LENGTH/FORMAT/ATTRIB) for derived datasets
 - [ ] F34 P2-D: Surface source-derived column schema in Data Storage tab
 Phase 3 — Relationships + ERD + DDL:

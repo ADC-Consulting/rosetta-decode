@@ -58,3 +58,13 @@ def test_case_insensitive_date() -> None:
 
 def test_case_insensitive_datetime() -> None:
     assert map_sas_to_semantic_type("double", "datetime20.") == "Timestamp"
+
+
+def test_empty_sas_type_is_unknown() -> None:
+    """CSV/unknown files have no SAS type metadata; result must be 'Unknown', not 'Number'."""
+    assert map_sas_to_semantic_type("", None) == "Unknown"
+
+
+def test_empty_sas_type_with_format_is_unknown() -> None:
+    """Empty sas_type takes priority over any format hint."""
+    assert map_sas_to_semantic_type("", "DATE9.") == "Unknown"

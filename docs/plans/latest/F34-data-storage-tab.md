@@ -84,7 +84,7 @@ Three internal development phases:
 **File:** `src/backend/api/schema_utils.py`, `src/backend/api/routes/jobs.py`
 **Depends on:** P2-A
 **Done when:** When `sas_type` is empty (CSV/unknown files), `map_sas_to_semantic_type` returns `"Unknown"` instead of `"Number"`; `GET /jobs/{id}/schema` sets `semantic_type = "Unknown"` for columns with no SAS type metadata; frontend `DataStorageTab.tsx` displays "—" for "Unknown" type instead of the "Unknown" badge; unit tests updated
-- [ ] done
+- [x] done
 
 ### P2-C: Extract column schema from SAS source code (LENGTH, FORMAT, ATTRIB)
 **Files:** `src/worker/engine/parser.py`, `src/worker/engine/models.py`, `src/worker/main.py`
