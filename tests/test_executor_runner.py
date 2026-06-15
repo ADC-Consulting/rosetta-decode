@@ -143,3 +143,100 @@ def test_run_code_generic_exception_sets_error() -> None:
         result = runner.run_code("x = 1")
     assert result["error"] == "disk full"
     assert result["stdout"] == ""
+
+
+# ---------------------------------------------------------------------------
+# AMBIGUOUS_REFERENCE auto-patch — helper + bounded subprocess retry
+# ---------------------------------------------------------------------------
+
+_AMBIGUOUS_STDERR = (
+    "pyspark.errors.exceptions.captured.AnalysisException: "
+    "[AMBIGUOUS_REFERENCE] Reference `usubjid` is ambiguous, "
+    "could be: [`a`.`usubjid`, `usubjid`]."
+)
+
+
+def test_qualify_ambiguous_column_rewrites_bare_ref() -> None:
+    """A bare F.col(\"usubjid\") is rewritten to the first alias candidate."""
+    code = 'df = df.withColumn("flag", F.when(F.col("usubjid").isNotNull(), 1))'
+    patched = runner._qualify_ambiguous_column(code, _AMBIGUOUS_STDERR)
+    assert patched is not None
+    assert 'F.col("a.usubjid")' in patched
+    assert 'F.col("usubjid")' not in patched
+
+
+def test_qualify_ambiguous_column_leaves_qualified_refs() -> None:
+    """Already alias-qualified refs are untouched (contain a dot)."""
+    code = 'df = df.select(F.col("a.usubjid"), F.col("b.age"))'
+    patched = runner._qualify_ambiguous_column(code, _AMBIGUOUS_STDERR)
+    # Nothing bare to rewrite → None (no-op).
+    assert patched is None
+
+
+def test_qualify_ambiguous_column_single_quotes() -> None:
+    """Single-quoted bare refs are also rewritten."""
+    code = "df = df.filter(F.col('usubjid') > 0)"
+    patched = runner._qualify_ambiguous_column(code, _AMBIGUOUS_STDERR)
+    assert patched is not None
+    assert 'F.col("a.usubjid")' in patched
+
+
+def test_qualify_ambiguous_column_no_error_returns_none() -> None:
+    """stderr without AMBIGUOUS_REFERENCE yields None."""
+    code = 'df = df.select(F.col("usubjid"))'
+    assert runner._qualify_ambiguous_column(code, "some other error") is None
+
+
+def test_run_code_retries_on_ambiguous_reference() -> None:
+    """run_code re-runs after patching the code on AMBIGUOUS_REFERENCE."""
+    fail = _FakeProc(stderr=_AMBIGUOUS_STDERR, returncode=1)
+    ok = _FakeProc(stdout="done\n", returncode=0)
+    calls = {"n": 0}
+
+    def _fake_run(*args, **kwargs):  # type: ignore[no-untyped-def]
+        calls["n"] += 1
+        return fail if calls["n"] == 1 else ok
+
+    with (
+        patch("runner.subprocess.run", side_effect=_fake_run),
+        patch("runner.open", side_effect=FileNotFoundError),
+    ):
+        result = runner.run_code('df = df.select(F.col("usubjid"))')
+
+    assert calls["n"] == 2
+    assert result["error"] is None
+    assert result["stdout"] == "done\n"
+
+
+def test_run_code_caps_ambiguous_retries_at_three() -> None:
+    """run_code never exceeds 3 attempts when AMBIGUOUS_REFERENCE persists.
+
+    Each attempt reports a fresh ambiguous column so the rewrite always finds a
+    bare ref to patch; the loop must still terminate at the 3-attempt cap and
+    surface the error rather than looping forever.
+    """
+
+    def _err_for(col: str) -> str:
+        return (
+            f"[AMBIGUOUS_REFERENCE] Reference `{col}` is ambiguous, "
+            f"could be: [`a`.`{col}`, `{col}`]."
+        )
+
+    cols = ["usubjid", "studyid", "siteid", "subjid"]
+    calls = {"n": 0}
+
+    def _fake_run(*args, **kwargs):  # type: ignore[no-untyped-def]
+        col = cols[calls["n"]]
+        calls["n"] += 1
+        return _FakeProc(stderr=_err_for(col), returncode=1)
+
+    code = 'df = df.select(F.col("usubjid"), F.col("studyid"), F.col("siteid"), F.col("subjid"))'
+    with (
+        patch("runner.subprocess.run", side_effect=_fake_run),
+        patch("runner.open", side_effect=FileNotFoundError),
+    ):
+        result = runner.run_code(code)
+
+    # Bounded at 3 even though a 4th distinct column remains patchable.
+    assert calls["n"] == 3
+    assert result["error"] is not None
