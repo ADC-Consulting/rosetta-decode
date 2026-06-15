@@ -541,7 +541,6 @@ function DataFlowDiagramInner({
   return (
     <div
       className="rounded-md border border-border overflow-hidden w-full h-full"
-      style={{ position: "relative" }}
     >
       <ReactFlow
         nodes={nodes}
@@ -556,43 +555,7 @@ function DataFlowDiagramInner({
         <Controls />
         <Background />
       </ReactFlow>
-      <div
-        style={{
-          position: "absolute",
-          bottom: 12,
-          right: 12,
-          background: "rgba(255,255,255,0.92)",
-          border: "1px solid #e2e8f0",
-          borderRadius: 6,
-          padding: "6px 10px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 4,
-          fontSize: 11,
-          zIndex: 10,
-          pointerEvents: "none",
-        }}
-      >
-        {[
-          { bg: "#e0f2fe", border: "#93c5fd", label: "Source" },
-          { bg: "#f0f4ff", border: "#c7d2fe", label: "Step" },
-          { bg: "#d1fae5", border: "#6ee7b7", label: "Output" },
-        ].map(({ bg, border, label }) => (
-          <div key={label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span
-              style={{
-                width: 12,
-                height: 12,
-                borderRadius: 3,
-                background: bg,
-                border: `1.5px solid ${border}`,
-                flexShrink: 0,
-              }}
-            />
-            <span style={{ color: "#475569", fontWeight: 500 }}>{label}</span>
-          </div>
-        ))}
-      </div>
+
     </div>
   );
 }
