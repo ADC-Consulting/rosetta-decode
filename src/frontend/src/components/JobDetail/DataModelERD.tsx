@@ -11,7 +11,16 @@ interface DataModelERDProps {
   onTableSelect: (datasetName: string) => void;
 }
 
-function DataModelERDCanvas({ schema, selectedTable, onTableSelect }: DataModelERDProps) {
+interface DataModelERDCanvasProps extends DataModelERDProps {
+  hasSourceTables: boolean;
+}
+
+function DataModelERDCanvas({
+  schema,
+  selectedTable,
+  onTableSelect,
+  hasSourceTables,
+}: DataModelERDCanvasProps) {
   const canvasData = useMemo(() => schemaResponseToCanvas(schema), [schema]);
   const [nodes, setNodes] = useState<GraphNode<TableNodeData>[]>(canvasData.nodes);
   const [localSelectedNode, setLocalSelectedNode] = useState<string | null>(null);
@@ -28,42 +37,59 @@ function DataModelERDCanvas({ schema, selectedTable, onTableSelect }: DataModelE
   }
 
   return (
-    <div className="w-full h-full min-h-0 relative">
-      <SchemaCanvas
-        nodes={nodes}
-        edges={canvasData.edges}
-        setNodes={setNodes}
-        selectedNodeId={selectedNodeId}
-        selectedEdgeId={selectedEdgeId}
-        selectedField={selectedField}
-        onSelectNode={handleSelectNode}
-        onSelectEdge={setSelectedEdgeId}
-        onSelectField={setSelectedField}
-      />
+    <div className="w-full h-full min-h-0 flex flex-col">
+      {hasSourceTables && (
+        <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-border text-xs text-muted-foreground bg-muted/10">
+          <span className="font-medium text-foreground">
+            {nodes.length} output {nodes.length === 1 ? "table" : "tables"}
+          </span>
+          <span className="text-muted-foreground/40">·</span>
+          <span>Source SAS tables are not shown here — see the left sidebar</span>
+        </div>
+      )}
+      <div className="flex-1 min-h-0 relative">
+        <SchemaCanvas
+          nodes={nodes}
+          edges={canvasData.edges}
+          setNodes={setNodes}
+          selectedNodeId={selectedNodeId}
+          selectedEdgeId={selectedEdgeId}
+          selectedField={selectedField}
+          onSelectNode={handleSelectNode}
+          onSelectEdge={setSelectedEdgeId}
+          onSelectField={setSelectedField}
+        />
+      </div>
     </div>
   );
 }
 
 export default function DataModelERD({ schema, selectedTable, onTableSelect }: DataModelERDProps) {
-  if (schema.tables.length === 0) {
+  const outputTables = schema.tables.filter((t) => t.libname === null);
+  const hasSourceTables = schema.tables.some((t) => t.libname !== null);
+
+  if (outputTables.length === 0) {
+    const message =
+      schema.tables.length === 0
+        ? "No tables found — run a migration to extract table metadata."
+        : "No output tables yet — run the migration to see the output schema.";
     return (
       <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
-        No tables found — run a migration to extract table metadata.
+        {message}
       </div>
     );
   }
 
-  const schemaKey = schema.tables
-    .map((t) => t.dataset_name)
-    .sort()
-    .join(",");
+  const filteredSchema = { ...schema, tables: outputTables };
+  const schemaKey = outputTables.map((t) => t.dataset_name).sort().join(",");
 
   return (
     <DataModelERDCanvas
       key={schemaKey}
-      schema={schema}
+      schema={filteredSchema}
       selectedTable={selectedTable}
       onTableSelect={onTableSelect}
+      hasSourceTables={hasSourceTables}
     />
   );
 }
