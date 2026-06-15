@@ -6,6 +6,36 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-15 — F35 Phase 1 + Phase 2 complete; Phase 3 next
+
+**Branch:** `feat/F35-migration-output-catalog` (8 commits ahead of F34 base)
+
+**What we did:**
+
+Phase 1 (backend) completed last session:
+- `ReconciliationService` + executor now return `output_schema` (column names + dtypes) from real execution
+- `RemoteReconciliationService` propagates `output_schema` through full chain (executor → recon → main.py → DB)
+- `infer_pk_fk()` in `schema_utils.py` with SDTM-aware heuristics (USUBJID, STUDYID, *SEQ, *ID, relationship hints, user overrides) — all keys normalised to lowercase
+- `map_python_dtype_to_sql()` maps pandas dtypes to ANSI SQL types
+- Schema route extended: `target_columns`, `schema_status`, `ddl_source`, `is_pk`, `is_fk`, `fk_ref` per column
+- `PATCH /jobs/{id}/schema` accepts `pk_overrides` + `fk_overrides`
+
+Phase 2 (frontend) completed this session — 6 commits:
+- **P2-0**: Extended `ColumnSchema`/`TableSchema`/`PatchJobSchemaRequest` TS types with all P1-E fields
+- **P2-A**: Ported structor canvas (10 files) to `src/frontend/src/components/SchemaCanvas/` — read-only mode (no connection drag, no rename), `rosetta-schema-canvas` CSS scope, `import type` for all type-only imports
+- **P2-B**: Created `schemaResponseToCanvas.ts` adapter — 4-col grid layout, target_columns fallback to columns, FK edges from both relationships and fk_ref fields, deduplication by key string
+- **P2-C**: Created `DataModelERD.tsx` — wraps SchemaCanvas with API data; `key={schemaKey}` remount pattern avoids useEffect-setState lint errors
+- **P2-D**: Created `DataFlowDiagram.tsx` — ReactFlow + dagre LR; 3 custom node types (source/step/output); uses `getJobLineage`; falls back between `pipeline_steps` and `nodes/edges` lineage formats
+- **P2-E**: Updated `DataStorageTab.tsx` — "ERD" view now has `[Data Model] [Data Flow]` sub-toggle; replaced `DataStorageERD` with `DataModelERD` + `DataFlowDiagram`
+
+**Fixes during session:**
+- `DataModelERD`: ESLint `react-hooks/set-state-in-effect` — solved with `key={schemaKey}` remount pattern + derived `selectedNodeId = localSelectedNode ?? selectedTable`
+- `schemaResponseToCanvas.ts`: rolldown `MISSING_EXPORT` build error — all type-only imports changed to `import type { ... }`
+
+**Next:** F35 Phase 3 — column diff panel (P3-A), sidebar status dots (P3-B), DDL label (P3-C), all in `DataStorageTab.tsx`
+
+---
+
 ## 2026-06-15 — F34 Phase 2 + Phase 3 complete; PR #98 open
 **Duration:** ~4h | **Focus:** F34 P2-B through P3-H implementation + browser verification + PR
 

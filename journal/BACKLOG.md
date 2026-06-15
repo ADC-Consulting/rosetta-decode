@@ -343,20 +343,21 @@ Phase 3 — Relationships + ERD + DDL:
 Backlog: user-selectable DDL target platform (Databricks Delta, Snowflake, etc.)
 
 **F35 — Migration Output Catalog → see `docs/plans/latest/F35-migration-output-catalog.md`**
-Phase 1 — Backend: capture execution output schema:
-- [ ] F35 P1-A: Return output schema from ReconciliationService
-- [ ] F35 P1-B: Persist output_schema on MigrationPlan
-- [ ] F35 P1-C: Infer PK/FK from output schema
-- [ ] F35 P1-D: Map Python dtypes → SQL types
-- [ ] F35 P1-E: Extend schema route with target_columns and schema_status
-- [ ] F35 P1-F: PATCH schema accepts pk/fk overrides
-Phase 2 — Frontend: port structor canvas:
-- [ ] F35 P2-A: Port structor canvas components
-- [ ] F35 P2-B: Adapter — schema response → canvas format
-- [ ] F35 P2-C: DataModelERD component
-- [ ] F35 P2-D: DataFlowDiagram component
-- [ ] F35 P2-E: ERD panel toggle — Data Model / Data Flow
-Phase 3 — Column diff panel and sidebar indicators:
+Phase 1 — Backend: capture execution output schema — **complete**
+- [x] F35 P1-A: Return output schema from ReconciliationService
+- [x] F35 P1-B: Persist output_schema on MigrationPlan
+- [x] F35 P1-C: Infer PK/FK from output schema
+- [x] F35 P1-D: Map Python dtypes → SQL types
+- [x] F35 P1-E: Extend schema route with target_columns and schema_status
+- [x] F35 P1-F: PATCH schema accepts pk/fk overrides
+Phase 2 — Frontend: port structor canvas — **complete**
+- [x] F35 P2-0: Extend TS types (ColumnSchema/TableSchema/PatchJobSchemaRequest)
+- [x] F35 P2-A: Port structor canvas components (SchemaCanvas/)
+- [x] F35 P2-B: Adapter — schema response → canvas format
+- [x] F35 P2-C: DataModelERD component
+- [x] F35 P2-D: DataFlowDiagram component
+- [x] F35 P2-E: ERD panel toggle — Data Model / Data Flow
+Phase 3 — Column diff panel and sidebar indicators — **next**
 - [ ] F35 P3-A: Source / target column diff table
 - [ ] F35 P3-B: Table sidebar status indicators
 - [ ] F35 P3-C: DDL label reflects source

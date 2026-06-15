@@ -1,8 +1,8 @@
 # F35 — Migration Output Catalog
 
-**Phase:** 1  
+**Phase:** 3  
 **Area:** Both (Backend / Worker + Frontend)  
-**Status:** planned  
+**Status:** in-progress  
 **GitHub issue:** TBD
 
 ## Goal
@@ -104,7 +104,7 @@ New file: `schemaResponseToCanvas.ts` — maps `JobSchemaResponse` →
 (already computed at line 278); column names from `list(actual_df.columns)`;
 no change to existing reconciliation logic or return value for callers that
 don't use the new field.
-- [ ] done
+- [x] done
 
 ### P1-B: Persist output_schema on MigrationPlan
 **File:** `src/worker/engine/models.py`, `src/worker/main.py`  
@@ -115,7 +115,7 @@ don't use the new field.
 worker stores schema from each reconciled block's `actual_df` into
 `migration_plan.output_schema[dataset_name]` after block execution;
 non-reconciled blocks left absent (frontend treats absent = "not run").
-- [ ] done
+- [x] done
 
 ### P1-C: Infer PK/FK from output schema
 **File:** `src/backend/api/schema_utils.py` (new function `infer_pk_fk`)  
@@ -125,7 +125,7 @@ applies inference rules (see Architecture Notes above); returns per-table
 `{pks: list[str], fks: dict[str, str]}` (fks: column → "other_table.column");
 user overrides from `job.user_overrides.schema_overrides` applied on top;
 unit tests covering each inference rule and override precedence.
-- [ ] done
+- [x] done
 
 ### P1-D: Map Python dtypes → SQL types
 **File:** `src/backend/api/schema_utils.py`  
@@ -134,7 +134,7 @@ unit tests covering each inference rule and override precedence.
 strings to ANSI SQL: `object→TEXT`, `int64/int32→BIGINT`, `float64→DOUBLE PRECISION`,
 `datetime64[ns]→TIMESTAMP`, `bool→BOOLEAN`; used when building `target_columns`
 in the schema route; unit tests for each mapping.
-- [ ] done
+- [x] done
 
 ### P1-E: Extend schema route with target_columns and schema_status
 **File:** `src/backend/api/routes/jobs.py`, `src/backend/api/schemas.py`  
@@ -148,7 +148,7 @@ source, "changed" if col count differs, "not_run" if absent;
 DDL generated from `target_columns` when present, source columns as fallback;
 DDL source flagged: `ddl_source: Literal["target", "source_estimated"]`;
 unit tests for status logic and DDL source selection.
-- [ ] done
+- [x] done
 
 ### P1-F: PATCH schema accepts pk/fk overrides
 **File:** `src/backend/api/routes/jobs.py`  
@@ -157,7 +157,7 @@ unit tests for status logic and DDL source selection.
 and `fk_overrides: dict[str, str]` (child_table.col → parent_table.col);
 merged into `job.user_overrides.schema_overrides`; schema route re-runs
 inference and applies overrides on each GET; unit tests for merge behaviour.
-- [ ] done
+- [x] done
 
 ## Phase 2 — Frontend: port structor canvas
 
@@ -168,7 +168,7 @@ inference and applies overrides on each GET; unit tests for merge behaviour.
 (TypeScript strict, Tailwind, shadcn/ui tokens for colours); read-only mode
 (no edge-create drag, no rename); components compile with `make test`; CSS
 scoped to avoid global leakage.
-- [ ] done
+- [x] done
 
 ### P2-B: Adapter — schema response → canvas format
 **File:** `src/frontend/src/components/SchemaCanvas/schemaResponseToCanvas.ts`  
@@ -179,7 +179,7 @@ each table becomes a node with `target_columns` (falling back to `columns`);
 each FK relationship becomes an edge from child column handle to parent PK handle;
 layout positions tables in schema-grouped columns (RAW left, SDTM centre, ADAM right);
 unit tests for FK edge generation and column fallback.
-- [ ] done
+- [x] done
 
 ### P2-C: DataModelERD component
 **File:** `src/frontend/src/components/JobDetail/DataModelERD.tsx` (new)  
@@ -189,7 +189,7 @@ structor canvas; PK column rows show 🔑 icon; FK columns show chain icon + FK
 badge; clicking a column's PK/FK badge fires `onOverride` callback (debounced
 PATCH to backend); focus highlight on table click (upstream/downstream path);
 empty state when no tables; loading skeleton while data fetches.
-- [ ] done
+- [x] done
 
 ### P2-D: DataFlowDiagram component
 **File:** `src/frontend/src/components/JobDetail/DataFlowDiagram.tsx` (new)  
@@ -200,7 +200,7 @@ blocks centre, target tables right); source nodes: table name + col count +
 table name + col count + schema_status dot; edges: source→block (input) and
 block→target (output), derived from `block.input_datasets` /
 `block.output_datasets`; dagre LR layout; read-only (no drag).
-- [ ] done
+- [x] done
 
 ### P2-E: ERD panel toggle — Data Model / Data Flow
 **File:** `src/frontend/src/components/JobDetail/DataStorageTab.tsx`  
@@ -209,7 +209,7 @@ block→target (output), derived from `block.input_datasets` /
 `[Data Model]` `[Data Flow]`; state persists for the session; `DataModelERD`
 rendered for Data Model, `DataFlowDiagram` for Data Flow; existing ERD
 (ReactFlow simple graph from P3-F/G) removed and replaced.
-- [ ] done
+- [x] done
 
 ## Phase 3 — Column diff panel and sidebar indicators
 
@@ -222,7 +222,7 @@ each row has STATUS badge: ✓ unchanged, + added (target only), ✗ dropped
 (source only); "not run" placeholder when `schema_status === "not_run"`;
 target TYPE column shows `sql_type` from `target_columns`; source columns
 unchanged from current implementation.
-- [ ] done
+- [ ] not started
 
 ### P3-B: Table sidebar status indicators
 **File:** `src/frontend/src/components/JobDetail/DataStorageTab.tsx`  
@@ -230,7 +230,7 @@ unchanged from current implementation.
 **Done when:** Each table row in sidebar shows a status dot: ◉ (green) migrated,
 △ (amber) changed, ○ (muted) not_run; dot is a small circle (8px) left of
 table name; legend shown at bottom of sidebar.
-- [ ] done
+- [ ] not started
 
 ### P3-C: DDL label reflects source
 **File:** `src/frontend/src/components/JobDetail/DataStorageTab.tsx`  
@@ -238,12 +238,12 @@ table name; legend shown at bottom of sidebar.
 **Done when:** DDL collapsible header shows "Target DDL" when `ddl_source === "target"`,
 "Source DDL (estimated)" when `ddl_source === "source_estimated"`;
 "estimated" badge shown in muted amber style.
-- [ ] done
+- [ ] not started
 
 ### P3-D: make test exits 0
 **Depends on:** all subtasks  
 **Done when:** All 7 gates green.
-- [ ] done
+- [ ] not started
 
 ## Dependencies on other features
 
