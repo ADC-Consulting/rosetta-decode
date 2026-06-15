@@ -183,6 +183,9 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
   const groupKeys = sortedGroupKeys(groups);
   const selectedTable = schemaData.tables.find((t) => t.path === selectedPath) ?? null;
 
+  const namedKeys = groupKeys.filter((k): k is string => k !== null);
+  const outputTables = groups.get(null) ?? [];
+
   return (
     <div className="h-full min-h-0 flex overflow-hidden">
       {/* Left: LIBNAME tree */}
@@ -190,72 +193,111 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
         className="w-72 shrink-0 border-r border-border overflow-y-auto flex flex-col"
         aria-label="Table list"
       >
-        {groupKeys.map((libname) => {
-          const tables = groups.get(libname) ?? [];
-          return (
-            <div
-              key={libname ?? "__other__"}
-              className="border-b border-border last:border-0"
-            >
-              {/* Group header */}
-              <div className="flex items-center justify-between px-3 py-2 bg-muted/30">
-                <div>
-                  <span className="text-xs font-semibold text-foreground uppercase tracking-wide">
-                    {libname ? (tables[0]?.target_schema ?? libname) : "Output tables"}
-                  </span>
-                  {libname && (
-                    <span className="block text-xs text-muted-foreground/60 font-normal normal-case tracking-normal">
-                      SAS: {libname}
-                    </span>
+        {/* Section 1: Source data */}
+        {namedKeys.length > 0 && (
+          <div>
+            <div className="px-3 py-1.5 bg-muted/50 border-b border-border">
+              <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                Source data
+              </span>
+            </div>
+            {namedKeys.map((libname) => {
+              const tables = groups.get(libname) ?? [];
+              const nameCount = new Map<string, number>();
+              tables.forEach((t) => nameCount.set(t.dataset_name, (nameCount.get(t.dataset_name) ?? 0) + 1));
+              return (
+                <div key={libname} className="border-b border-border last:border-0">
+                  {/* Sub-group header */}
+                  <div className="flex items-center justify-between pl-5 pr-3 py-1.5 bg-muted/20">
+                    <div>
+                      <span className="text-xs font-semibold text-foreground tracking-wide">
+                        {tables[0]?.target_schema ?? libname}
+                      </span>
+                      <span className="block text-xs text-muted-foreground/60 font-normal">
+                        SAS: {libname}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setEditingLibname(editingLibname === libname ? null : libname)}
+                      className="text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+                      title="Rename target schema"
+                    >
+                      <Settings className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  {editingLibname === libname && (
+                    <div className="flex items-center gap-2 pl-5 pr-3 py-1.5 bg-muted/10 border-b border-border text-xs">
+                      <span className="text-muted-foreground shrink-0">Target schema:</span>
+                      <input
+                        className="flex-1 bg-transparent border-b border-dashed border-muted-foreground/40 focus:outline-none focus:border-primary text-xs"
+                        defaultValue={tables[0]?.target_schema ?? libname}
+                        onBlur={(e) => {
+                          handleLibnameRename(libname, e.target.value.trim());
+                          setEditingLibname(null);
+                        }}
+                        autoFocus
+                      />
+                    </div>
                   )}
+                  {/* Table rows — indented */}
+                  {tables.map((table) => (
+                    <button
+                      key={table.path}
+                      type="button"
+                      onClick={() => setSelectedPath(table.path)}
+                      aria-pressed={selectedPath === table.path}
+                      className={`w-full flex items-center gap-2 pl-7 pr-3 py-2 text-left transition-colors hover:bg-muted/50 ${
+                        selectedPath === table.path
+                          ? "bg-primary/10 border-l-2 border-primary"
+                          : "border-l-2 border-transparent"
+                      }`}
+                    >
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${statusDotClass(table.schema_status)}`} aria-label={table.schema_status} />
+                      <span className="font-mono text-xs truncate text-foreground flex-1 text-left">
+                        {table.dataset_name}
+                        {(nameCount.get(table.dataset_name) ?? 0) > 1 && (
+                          <span className="block text-xs text-muted-foreground/60 font-sans font-normal truncate">
+                            {table.path.split("/").at(-1) ?? table.path}
+                          </span>
+                        )}
+                      </span>
+                      <span className="text-xs text-muted-foreground shrink-0">
+                        {table.columns.length > 0 ? `${table.columns.length} col` : "—"}
+                      </span>
+                    </button>
+                  ))}
                 </div>
-                {libname && (
-                  <button
-                    type="button"
-                    onClick={() => setEditingLibname(editingLibname === libname ? null : libname)}
-                    className="text-muted-foreground/50 hover:text-muted-foreground transition-colors"
-                    title="Rename target schema"
-                  >
-                    <Settings className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-              {libname && editingLibname === libname && (
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-muted/20 border-b border-border text-xs">
-                  <span className="text-muted-foreground shrink-0">Target schema:</span>
-                  <input
-                    className="flex-1 bg-transparent border-b border-dashed border-muted-foreground/40 focus:outline-none focus:border-primary text-xs"
-                    defaultValue={tables[0]?.target_schema ?? libname}
-                    onBlur={(e) => {
-                      handleLibnameRename(libname, e.target.value.trim());
-                      setEditingLibname(null);
-                    }}
-                    autoFocus
-                  />
-                </div>
-              )}
+              );
+            })}
+          </div>
+        )}
 
-              {/* Table rows */}
-              {(() => {
-                const nameCount = new Map<string, number>();
-                tables.forEach((t) => nameCount.set(t.dataset_name, (nameCount.get(t.dataset_name) ?? 0) + 1));
-                return tables.map((table) => (
+        {/* Section 2: Migration output */}
+        {outputTables.length > 0 && (
+          <div>
+            <div className="px-3 py-1.5 bg-muted/50 border-b border-border">
+              <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                Migration output
+              </span>
+            </div>
+            {(() => {
+              const nameCount = new Map<string, number>();
+              outputTables.forEach((t) => nameCount.set(t.dataset_name, (nameCount.get(t.dataset_name) ?? 0) + 1));
+              return outputTables.map((table) => (
                 <button
                   key={table.path}
                   type="button"
                   onClick={() => setSelectedPath(table.path)}
                   aria-pressed={selectedPath === table.path}
-                  className={`w-full flex items-center justify-between px-3 py-2 text-left transition-colors hover:bg-muted/50 ${
+                  className={`w-full flex items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-muted/50 ${
                     selectedPath === table.path
                       ? "bg-primary/10 border-l-2 border-primary"
                       : "border-l-2 border-transparent"
                   }`}
                 >
-                  <span
-                    className={`w-2 h-2 rounded-full shrink-0 ${statusDotClass(table.schema_status)}`}
-                    aria-label={table.schema_status}
-                  />
-                  <span className="font-mono text-xs truncate text-foreground">
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${statusDotClass(table.schema_status)}`} aria-label={table.schema_status} />
+                  <span className="font-mono text-xs truncate text-foreground flex-1 text-left">
                     {table.dataset_name}
                     {(nameCount.get(table.dataset_name) ?? 0) > 1 && (
                       <span className="block text-xs text-muted-foreground/60 font-sans font-normal truncate">
@@ -263,15 +305,16 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                       </span>
                     )}
                   </span>
-                  <span className="text-xs text-muted-foreground shrink-0 ml-1">
+                  <span className="text-xs text-muted-foreground shrink-0">
                     {table.columns.length > 0 ? `${table.columns.length} col` : "—"}
                   </span>
                 </button>
               ));
-              })()}
-            </div>
-          );
-        })}
+            })()}
+          </div>
+        )}
+
+        {/* Legend — only when 2+ distinct statuses exist */}
         {(() => {
           const statuses = new Set(schemaData.tables.map((t) => t.schema_status));
           if (statuses.size < 2) return null;
