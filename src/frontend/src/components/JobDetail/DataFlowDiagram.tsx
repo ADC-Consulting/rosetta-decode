@@ -93,7 +93,7 @@ function SourceNode({ data }: { data: FlowNodeData }): React.ReactElement {
         >
           {data.label}
         </div>
-        <div style={{ fontSize: 10, color: "#3b82f6", marginTop: 2, fontWeight: 500 }}>source</div>
+        <div style={{ fontSize: 10, color: "#3b82f6", marginTop: 2, fontWeight: 500 }}>SAS input</div>
       </div>
       <Handle
         type="source"
@@ -160,7 +160,7 @@ function StepNode({ data }: { data: FlowNodeData }): React.ReactElement {
         <div
           style={{ fontSize: 10, color: "hsl(var(--primary) / 0.7)", marginTop: 2, fontWeight: 500 }}
         >
-          step
+          Python step
         </div>
       </div>
       <Handle
@@ -229,7 +229,7 @@ function OutputNode({ data }: { data: FlowNodeData }): React.ReactElement {
         >
           {data.label}
         </div>
-        <div style={{ fontSize: 10, color: "#10b981", marginTop: 2, fontWeight: 500 }}>output</div>
+        <div style={{ fontSize: 10, color: "#10b981", marginTop: 2, fontWeight: 500 }}>output table</div>
       </div>
       <Handle
         type="source"
@@ -558,7 +558,7 @@ function DataFlowDiagramInner({
   return (
     <div className="flex flex-col w-full h-full min-h-0">
       <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-border text-xs text-muted-foreground bg-muted/10">
-        <span>Dataset lineage</span>
+        <span>Generated migration pipeline</span>
         {stepCount > 0 && (
           <>
             <span className="text-muted-foreground/40">·</span>
