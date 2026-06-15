@@ -391,6 +391,45 @@ async def download_job(
     )
 
 
+def _normalise_pipeline_step_names(
+    pipeline_steps: list[dict[str, Any]],
+    data_schema: dict[str, Any],
+    libname_map: dict[str, str],
+) -> list[dict[str, Any]]:
+    """Rewrite pipeline step input/output names to canonical data_schema dataset_name values.
+
+    Converts SAS logical names (e.g. 'work.dm_raw', 'sdtm.dm') to the file-stem
+    equivalents used as data_schema keys (e.g. 'dm_raw', 'dm') so Data Flow node
+    labels match sidebar table names.
+    """
+
+    def _resolve(ds: str) -> str:
+        ds_lower = ds.lower()
+        ds_stem = ds_lower.split(".")[-1]
+        for path in data_schema:
+            filename_stem = path.rsplit("/", 1)[-1].rsplit(".", 1)[0].lower()
+            if ds_stem == filename_stem:
+                return filename_stem
+            if "." in ds_lower:
+                lib, table = ds_lower.split(".", 1)
+                folder = libname_map.get(lib, "")
+                if folder and path.startswith(folder) and table == filename_stem:
+                    return filename_stem
+            alias_path = libname_map.get(ds_lower, "")
+            if alias_path and alias_path == path:
+                return filename_stem
+        return ds_stem  # fallback: strip libname prefix
+
+    return [
+        {
+            **step,
+            "inputs": [_resolve(ds) for ds in step.get("inputs", [])],
+            "outputs": [_resolve(ds) for ds in step.get("outputs", [])],
+        }
+        for step in pipeline_steps
+    ]
+
+
 @router.get("/jobs/{job_id}/lineage", response_model=None)
 async def get_job_lineage(
     job_id: uuid.UUID,
@@ -416,6 +455,15 @@ async def get_job_lineage(
     if job.lineage is None:
         return JSONResponse(status_code=202, content={})
     lineage: dict[str, Any] = job.lineage
+    pipeline_steps: list[dict[str, Any]] = lineage.get("pipeline_steps", [])
+    if pipeline_steps and job.migration_plan:
+        _plan: dict[str, Any] = job.migration_plan if isinstance(job.migration_plan, dict) else {}
+        _data_schema: dict[str, Any] = _plan.get("data_schema", {})
+        _libname_map: dict[str, str] = _plan.get("libname_map", {}) or {}
+        if _data_schema:
+            pipeline_steps = _normalise_pipeline_step_names(
+                pipeline_steps, _data_schema, _libname_map
+            )
     return JobLineageResponse(
         job_id=job_id,
         nodes=lineage.get("nodes", []),
@@ -426,7 +474,7 @@ async def get_job_lineage(
         dataset_summaries=lineage.get("dataset_summaries", {}),
         file_nodes=lineage.get("file_nodes", []),
         file_edges=lineage.get("file_edges", []),
-        pipeline_steps=lineage.get("pipeline_steps", []),
+        pipeline_steps=pipeline_steps,
         block_status=lineage.get("block_status", []),
         log_links=lineage.get("log_links", []),
     )
