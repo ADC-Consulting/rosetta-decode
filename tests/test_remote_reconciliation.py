@@ -37,7 +37,9 @@ async def test_remote_recon_returns_checks_on_success() -> None:
             python_code="x = 1",
             backend=LocalBackend(),
         )
-    assert result == {"checks": [{"name": "row_count", "status": "pass"}]}
+    # result_columns is non-empty so output_schema is now included (F35 P1)
+    assert result["checks"] == [{"name": "row_count", "status": "pass"}]
+    assert result["output_schema"] == {"columns": ["x"], "dtypes": {}}
 
 
 @pytest.mark.asyncio

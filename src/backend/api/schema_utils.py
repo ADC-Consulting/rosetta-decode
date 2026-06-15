@@ -146,19 +146,23 @@ def infer_pk_fk(
                 if key_col and right_table and key_col not in fks:
                     fks[key_col] = f"{right_table}.{key_col}"
 
-        result[name] = {"pks": pks, "fks": fks}
+        # Normalise to lowercase so they match the lowercase column names from pandas output
+        result[name] = {
+            "pks": [p.lower() for p in pks],
+            "fks": {k.lower(): v.lower() for k, v in fks.items()},
+        }
 
     # Apply user overrides (highest precedence)
     for tname, pk_list in (user_pk_overrides or {}).items():
         if tname in result:
-            result[tname]["pks"] = pk_list
+            result[tname]["pks"] = [p.lower() for p in pk_list]
 
     for fk_key, fk_target in (user_fk_overrides or {}).items():
         parts = fk_key.split(".", 1)
         if len(parts) == 2:
             tname, col = parts
             if tname in result:
-                result[tname]["fks"][col] = fk_target
+                result[tname]["fks"][col.lower()] = fk_target.lower()
 
     return result
 

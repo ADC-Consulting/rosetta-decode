@@ -970,6 +970,23 @@ class JobOrchestrator:
             data_dir=data_dir,
         )
 
+        # SAS: worker/main.py:output_schema — persist execution output schema into migration_plan
+        # so the schema route can surface target_columns for the LLM job path
+        _raw_output_schema = report.get("output_schema")
+        if _raw_output_schema and context.migration_plan is not None:
+            _output_cols: list[str] = _raw_output_schema.get("columns", [])
+            _output_dtypes: dict[str, str] = _raw_output_schema.get("dtypes", {})
+            if _output_cols:
+                _dataset_name = "output"
+                for _gb in reversed(generated):
+                    if _gb.source_block.output_datasets:
+                        _dataset_name = _gb.source_block.output_datasets[0].lower()
+                        break
+                context.migration_plan.output_schema[_dataset_name] = [
+                    {"name": col, "python_type": _output_dtypes.get(col, "object")}
+                    for col in _output_cols
+                ]
+
         if tracer:
             await tracer.emit(
                 "phase_done",
@@ -1998,7 +2015,7 @@ async def _process_job(session: AsyncSession, job: Job) -> None:
         # SAS: main.py:output_schema — propagate execution output schema into migration_plan
         raw_output_schema: dict[str, Any] = report.get("output_schema", {})
         updated_migration_plan: dict[str, Any] | None = None
-        if raw_output_schema:
+        if generated and raw_output_schema:
             existing_plan: dict[str, Any] = dict(job.migration_plan or {})
             # Determine dataset name from the last generated block's output_datasets
             dataset_name: str = "output"

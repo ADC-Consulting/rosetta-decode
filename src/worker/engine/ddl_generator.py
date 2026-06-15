@@ -39,6 +39,12 @@ _SEMANTIC_TO_SQL: dict[str, str] = {
     "Decimal": "DECIMAL",
     "Number": "DOUBLE PRECISION",
     "Integer": "BIGINT",
+    # Raw SQL types passed through directly (used by F35 target-column DDL generation)
+    "TEXT": "TEXT",
+    "BIGINT": "BIGINT",
+    "DOUBLE PRECISION": "DOUBLE PRECISION",
+    "TIMESTAMP": "TIMESTAMP",
+    "BOOLEAN": "BOOLEAN",
 }
 
 _FALLBACK_SQL_TYPE = "TEXT"

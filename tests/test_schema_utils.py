@@ -148,48 +148,48 @@ def _make_table(
 
 
 def test_infer_pk_fk_usubjid_dm_gets_pk() -> None:
-    """DM table with USUBJID gets USUBJID as PK."""
+    """DM table with USUBJID gets USUBJID as PK (lowercased)."""
     tables = [
         _make_table("dm", ["USUBJID", "AGE"]),
     ]
     result = infer_pk_fk(tables, [])
-    assert "USUBJID" in result["dm"]["pks"]
+    assert "usubjid" in result["dm"]["pks"]
 
 
 def test_infer_pk_fk_usubjid_non_dm_gets_fk() -> None:
-    """Non-DM table with USUBJID gets USUBJID as FK pointing to dm.USUBJID."""
+    """Non-DM table with USUBJID gets USUBJID as FK pointing to dm.usubjid (lowercased)."""
     tables = [
         _make_table("dm", ["USUBJID"]),
         _make_table("ex", ["USUBJID", "EXDOSE"]),
     ]
     result = infer_pk_fk(tables, [])
-    assert result["ex"]["fks"].get("USUBJID") == "dm.USUBJID"
+    assert result["ex"]["fks"].get("usubjid") == "dm.usubjid"
 
 
 def test_infer_pk_fk_studyid_usubjid_compound_pk() -> None:
-    """Table with both STUDYID and USUBJID gets compound PK."""
+    """Table with both STUDYID and USUBJID gets compound PK (lowercased)."""
     tables = [
         _make_table("dm", ["STUDYID", "USUBJID", "AGE"]),
     ]
     result = infer_pk_fk(tables, [])
     pks = result["dm"]["pks"]
-    assert "STUDYID" in pks
-    assert "USUBJID" in pks
+    assert "studyid" in pks
+    assert "usubjid" in pks
 
 
 def test_infer_pk_fk_seq_rule_compound_pk() -> None:
-    """Table with USUBJID + *SEQ column gets compound PK."""
+    """Table with USUBJID + *SEQ column gets compound PK (lowercased)."""
     tables = [
         _make_table("ex", ["USUBJID", "EXSEQ", "EXDOSE"]),
     ]
     # ex is not a dm table → normally FK, but SEQ rule promotes it
     result = infer_pk_fk(tables, [])
     pks = result["ex"]["pks"]
-    assert "EXSEQ" in pks
+    assert "exseq" in pks
 
 
 def test_infer_pk_fk_relationship_hint_sets_fk() -> None:
-    """Relationship hint sets FK for left_table.key_column → right_table."""
+    """Relationship hint sets FK for left_table.key_column → right_table (lowercased)."""
     tables = [
         _make_table("dm", ["USUBJID"]),
         _make_table("ex", ["USUBJID", "EXDOSE"]),
@@ -204,20 +204,20 @@ def test_infer_pk_fk_relationship_hint_sets_fk() -> None:
         }
     ]
     result = infer_pk_fk(tables, relationships)
-    assert "USUBJID" in result["ex"]["fks"]
+    assert "usubjid" in result["ex"]["fks"]
 
 
 def test_infer_pk_fk_user_pk_override_takes_precedence() -> None:
-    """User pk_overrides replaces inferred PKs."""
+    """User pk_overrides replaces inferred PKs (lowercased)."""
     tables = [
         _make_table("dm", ["USUBJID", "SUBJID"]),
     ]
     result = infer_pk_fk(tables, [], user_pk_overrides={"dm": ["SUBJID"]})
-    assert result["dm"]["pks"] == ["SUBJID"]
+    assert result["dm"]["pks"] == ["subjid"]
 
 
 def test_infer_pk_fk_user_fk_override_takes_precedence() -> None:
-    """User fk_overrides replaces/adds FK entries."""
+    """User fk_overrides replaces/adds FK entries (lowercased)."""
     tables = [
         _make_table("ex", ["USUBJID"]),
     ]
@@ -226,7 +226,7 @@ def test_infer_pk_fk_user_fk_override_takes_precedence() -> None:
         [],
         user_fk_overrides={"ex.USUBJID": "sdtm_dm.USUBJID"},
     )
-    assert result["ex"]["fks"]["USUBJID"] == "sdtm_dm.USUBJID"
+    assert result["ex"]["fks"]["usubjid"] == "sdtm_dm.usubjid"
 
 
 def test_infer_pk_fk_empty_tables_returns_empty() -> None:

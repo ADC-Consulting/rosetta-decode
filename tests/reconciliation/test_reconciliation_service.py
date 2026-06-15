@@ -377,6 +377,50 @@ async def test_remote_recon_success_extracts_checks() -> None:
     assert result == {"checks": expected_checks}
 
 
+@pytest.mark.asyncio
+@pytest.mark.reconciliation
+async def test_remote_recon_forwards_output_schema() -> None:
+    """RemoteReconciliationService.run includes output_schema when executor returns dtypes.
+
+    The executor now returns result_columns and result_dtypes in its response;
+    RemoteReconciliationService must surface them as output_schema for the worker
+    to persist into migration_plan.
+    """
+    from src.worker.validation.reconciliation import RemoteReconciliationService
+
+    svc = RemoteReconciliationService()
+    executor_response = {
+        "checks": [],
+        "result_columns": ["a", "b"],
+        "result_dtypes": {"a": "object", "b": "int64"},
+    }
+    with patch.object(svc, "_post_execute", return_value=executor_response):
+        result = await svc.run("ref.csv", "code", MagicMock(), "")
+
+    assert "output_schema" in result
+    schema = result["output_schema"]
+    assert schema["columns"] == ["a", "b"]
+    assert schema["dtypes"] == {"a": "object", "b": "int64"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.reconciliation
+async def test_remote_recon_no_output_schema_when_no_columns() -> None:
+    """RemoteReconciliationService.run omits output_schema when result_columns is empty."""
+    from src.worker.validation.reconciliation import RemoteReconciliationService
+
+    svc = RemoteReconciliationService()
+    executor_response: dict[str, object] = {
+        "checks": [],
+        "result_columns": [],
+        "result_dtypes": {},
+    }
+    with patch.object(svc, "_post_execute", return_value=executor_response):
+        result = await svc.run("ref.csv", "code", MagicMock(), "")
+
+    assert "output_schema" not in result
+
+
 # ── _get_spark ImportError path (lines 42-50) ────────────────────────────────
 
 

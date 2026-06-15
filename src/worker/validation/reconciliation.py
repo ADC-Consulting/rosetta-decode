@@ -433,6 +433,9 @@ class RemoteReconciliationService:
             checks = raw.get("checks") or []
             runtime_error: str = raw.get("error") or ""
             stderr: str = raw.get("stderr") or ""
+            # SAS: reconciliation.py:result_dtypes — forward executor dtype info as output_schema
+            result_columns: list[str] = raw.get("result_columns") or []
+            result_dtypes: dict[str, str] = raw.get("result_dtypes") or {}
             for c in checks:
                 name = c.get("name", "?")
                 detail = c.get("detail", "")
@@ -449,11 +452,19 @@ class RemoteReconciliationService:
                     "PASS" if all_passed else "FAIL",
                     len(checks),
                 )
+            output_schema: dict[str, Any] | None = None
+            if result_columns:
+                output_schema = {
+                    "columns": result_columns,
+                    "dtypes": result_dtypes,
+                }
             result: dict[str, Any] = {"checks": checks}
             if runtime_error:
                 result["runtime_error"] = runtime_error
             if stderr:
                 result["stderr"] = stderr
+            if output_schema is not None:
+                result["output_schema"] = output_schema
             return result
         except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError) as exc:
             logger.warning("RemoteReconciliationService: executor unreachable: %s", exc)

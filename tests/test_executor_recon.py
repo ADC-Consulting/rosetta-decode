@@ -134,3 +134,27 @@ def test_row_count_pass() -> None:
     actual_df = pd.DataFrame({"a": [4, 5, 6]})
     result = recon._row_count(ref_df, actual_df)
     assert result["status"] == "pass"
+
+
+# ── F35 P1 — executor run_recon return shape verification ────────────────────
+
+
+def test_run_recon_return_shape(tmp_path: Path) -> None:
+    """run_recon returns a list of dicts each with 'name' and 'status' keys.
+
+    This verifies the executor recon module return contract is unchanged after
+    the F35 output_schema changes to executor/main.py (which wraps run_recon).
+    run_recon itself is unmodified; this test pins the shape.
+    """
+    ref_df = pd.DataFrame({"val": [1.0, 2.0]})
+    csv_path = tmp_path / "ref.csv"
+    ref_df.to_csv(csv_path, index=False)
+
+    actual_rows = _make_rows(ref_df)
+    checks = recon.run_recon(actual_rows, ref_csv_path=str(csv_path), ref_sas7bdat_path="")
+
+    assert isinstance(checks, list)
+    for check in checks:
+        assert "name" in check
+        assert "status" in check
+        assert check["status"] in ("pass", "fail")
