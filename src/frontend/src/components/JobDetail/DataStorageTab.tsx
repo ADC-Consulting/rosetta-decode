@@ -5,6 +5,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight, Pencil } from "lucide-react";
+import { useTheme } from "next-themes";
 import { useMemo, useState } from "react";
 import DataStorageERD from "./DataStorageERD";
 
@@ -63,6 +64,8 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
   const [panelView, setPanelView] = useState<PanelView>("schema");
   const [ddlOpen, setDdlOpen] = useState(false);
   const queryClient = useQueryClient();
+  const { resolvedTheme } = useTheme();
+  const monacoTheme = resolvedTheme === "dark" ? "sas-dark" : "sas-light";
 
   const { data: schemaData } = useQuery({
     queryKey: ["job", jobId, "schema"],
@@ -339,6 +342,7 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                             language="sql"
                             readOnly
                             height="240px"
+                            theme={monacoTheme}
                           />
                         </div>
                       ) : (

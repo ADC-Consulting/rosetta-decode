@@ -5,6 +5,7 @@ import {
   Background,
   Controls,
   MarkerType,
+  Panel,
   Position,
   ReactFlow,
   ReactFlowProvider,
@@ -167,10 +168,10 @@ function DataStorageERDInner({
     );
   }, [selectedTable, setNodes]);
 
-  if (relationships.length === 0) {
+  if (tables.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
-        No relationships detected — MERGE BY or JOIN ON keys needed
+        No tables found — run a migration to extract table metadata.
       </div>
     );
   }
@@ -191,6 +192,13 @@ function DataStorageERDInner({
       >
         <Controls />
         <Background />
+        {relationships.length === 0 && (
+          <Panel position="top-center">
+            <p className="text-xs text-muted-foreground bg-background/90 border border-border rounded px-3 py-1.5 shadow-sm">
+              No relationships detected — add MERGE BY or JOIN ON statements to your SAS code
+            </p>
+          </Panel>
+        )}
       </ReactFlow>
     </div>
   );
