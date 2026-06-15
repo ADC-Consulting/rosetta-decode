@@ -6,6 +6,23 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-15 — F35 Phase 3 complete; feature branch ready for PR
+
+**Branch:** `feat/F35-migration-output-catalog` (10 commits ahead of F34 base)
+
+**What we did:**
+
+Completed F35 Phase 3 — all in `DataStorageTab.tsx`, one commit:
+- **P3-B** (sidebar status dots): `statusDotClass()` helper; coloured dot (green/amber/muted) prepended to each table row; Migrated/Changed/Not run legend pinned to sidebar bottom with `mt-auto`
+- **P3-A** (column diff table): `buildColumnDiff()` pure function computes unified diff between source and target columns; four-way branch in column panel: diff table (with +/✗/✓ status badges, green/red row tints, SAS type, SQL type, PK/FK flag chips) when `target_columns.length > 0`; original source-only table as fallback; empty-state for not-run tables
+- **P3-C** (DDL label): CollapsibleTrigger text becomes "Target DDL" / "Source DDL + amber estimated badge" / "DDL" fallback based on `ddl_source`
+
+**F35 is now fully complete.** All 3 phases, all 7 make test gates green, 10 commits on branch.
+
+**Next:** Open PR for F35 against `feat/F34-data-storage-tab` (not main — F34 PR #98 still open)
+
+---
+
 ## 2026-06-15 — F35 Phase 1 + Phase 2 complete; Phase 3 next
 
 **Branch:** `feat/F35-migration-output-catalog` (8 commits ahead of F34 base)

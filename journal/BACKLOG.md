@@ -357,11 +357,11 @@ Phase 2 — Frontend: port structor canvas — **complete**
 - [x] F35 P2-C: DataModelERD component
 - [x] F35 P2-D: DataFlowDiagram component
 - [x] F35 P2-E: ERD panel toggle — Data Model / Data Flow
-Phase 3 — Column diff panel and sidebar indicators — **next**
-- [ ] F35 P3-A: Source / target column diff table
-- [ ] F35 P3-B: Table sidebar status indicators
-- [ ] F35 P3-C: DDL label reflects source
-- [ ] F35 P3-D: make test exits 0
+Phase 3 — Column diff panel and sidebar indicators — **complete**
+- [x] F35 P3-A: Source / target column diff table
+- [x] F35 P3-B: Table sidebar status indicators
+- [x] F35 P3-C: DDL label reflects source
+- [x] F35 P3-D: make test exits 0
 - [x] #40: Chevron tab shell — delivered by F28, issue closed
 - [x] #44: BI tab placeholder — empty state delivered in F28 S-C, issue closed
 - [x] #45: AI tab placeholder — empty state delivered in F28 S-C, issue closed

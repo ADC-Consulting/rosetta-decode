@@ -2,7 +2,7 @@
 
 **Phase:** 3  
 **Area:** Both (Backend / Worker + Frontend)  
-**Status:** in-progress  
+**Status:** complete  
 **GitHub issue:** TBD
 
 ## Goal
@@ -214,36 +214,16 @@ rendered for Data Model, `DataFlowDiagram` for Data Flow; existing ERD
 ## Phase 3 — Column diff panel and sidebar indicators
 
 ### P3-A: Source / target column diff table
-**File:** `src/frontend/src/components/JobDetail/DataStorageTab.tsx`  
-**Depends on:** P1-E TypeScript types  
-**Done when:** Column panel shows two sections — SOURCE (SAS) and TARGET
-(Python output) — or a unified diff table when `target_columns` present;
-each row has STATUS badge: ✓ unchanged, + added (target only), ✗ dropped
-(source only); "not run" placeholder when `schema_status === "not_run"`;
-target TYPE column shows `sql_type` from `target_columns`; source columns
-unchanged from current implementation.
-- [ ] not started
+- [x] done — four-way branch: diff table (+/✗/✓ badges, green/red rows, SAS+SQL types, PK/FK flags) when target_columns present; source-only table as fallback; empty state when not_run
 
 ### P3-B: Table sidebar status indicators
-**File:** `src/frontend/src/components/JobDetail/DataStorageTab.tsx`  
-**Depends on:** P1-E TypeScript types  
-**Done when:** Each table row in sidebar shows a status dot: ◉ (green) migrated,
-△ (amber) changed, ○ (muted) not_run; dot is a small circle (8px) left of
-table name; legend shown at bottom of sidebar.
-- [ ] not started
+- [x] done — coloured dot (green/amber/muted) before dataset_name; legend pinned at sidebar bottom
 
 ### P3-C: DDL label reflects source
-**File:** `src/frontend/src/components/JobDetail/DataStorageTab.tsx`  
-**Depends on:** P1-E (ddl_source field)  
-**Done when:** DDL collapsible header shows "Target DDL" when `ddl_source === "target"`,
-"Source DDL (estimated)" when `ddl_source === "source_estimated"`;
-"estimated" badge shown in muted amber style.
-- [ ] not started
+- [x] done — "Target DDL" / "Source DDL + amber estimated badge" / "DDL" fallback
 
 ### P3-D: make test exits 0
-**Depends on:** all subtasks  
-**Done when:** All 7 gates green.
-- [ ] not started
+- [x] done — all 7 gates green
 
 ## Dependencies on other features
 
