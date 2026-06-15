@@ -125,6 +125,7 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
   const [panelView, setPanelView] = useState<PanelView>("schema");
   const [erdView, setErdView] = useState<ErdView>("data-model");
   const [ddlOpen, setDdlOpen] = useState(false);
+  const [ddlLastPath, setDdlLastPath] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const { resolvedTheme } = useTheme();
   const monacoTheme = resolvedTheme === "dark" ? "sas-dark" : "sas-light";
@@ -145,6 +146,13 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
     await patchJobSchema(jobId, { libname_overrides: { [libname]: newName } });
     queryClient.invalidateQueries({ queryKey: ["job", jobId, "schema"] });
   };
+
+  // Derive DDL open state when selected table changes — render-time pattern avoids useEffect
+  if (selectedPath !== ddlLastPath) {
+    setDdlLastPath(selectedPath);
+    const table = schemaData?.tables.find((t) => t.path === selectedPath);
+    setDdlOpen(table?.ddl_source === "target");
+  }
 
   // ── Guard states ─────────────────────────────────────────────────────────────
 
@@ -191,10 +199,11 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
               {/* Group header */}
               <div className="flex items-center justify-between px-3 py-2 bg-muted/30">
                 <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                  {libname ?? "Other"}
+                  {libname ?? "Output"}
                 </span>
                 {libname && (
-                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <div className="group flex items-center gap-1 text-xs text-muted-foreground">
+                    <Pencil className="w-3 h-3 opacity-40 group-hover:opacity-70 transition-opacity" />
                     <span>&rarr;</span>
                     <input
                       className={
@@ -211,7 +220,10 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
               </div>
 
               {/* Table rows */}
-              {tables.map((table) => (
+              {(() => {
+                const nameCount = new Map<string, number>();
+                tables.forEach((t) => nameCount.set(t.dataset_name, (nameCount.get(t.dataset_name) ?? 0) + 1));
+                return tables.map((table) => (
                 <button
                   key={table.path}
                   type="button"
@@ -229,12 +241,18 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                   />
                   <span className="font-mono text-xs truncate text-foreground">
                     {table.dataset_name}
+                    {(nameCount.get(table.dataset_name) ?? 0) > 1 && (
+                      <span className="block text-xs text-muted-foreground/60 font-sans font-normal truncate">
+                        {table.path.split("/").at(-1) ?? table.path}
+                      </span>
+                    )}
                   </span>
-                  <span className="text-xs text-muted-foreground shrink-0 ml-1">
+                  <span className="text-xs text-muted-foreground shrink-0 ml-1" title="Source columns">
                     {table.columns.length > 0 ? `${table.columns.length}` : "—"}
                   </span>
                 </button>
-              ))}
+              ));
+              })()}
             </div>
           );
         })}
@@ -369,6 +387,21 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                         {selectedTable.row_count.toLocaleString()} rows
                       </span>
                     )}
+                    <span
+                      className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium ${
+                        selectedTable.schema_status === "migrated"
+                          ? "bg-green-100 text-green-800"
+                          : selectedTable.schema_status === "changed"
+                            ? "bg-amber-100 text-amber-800"
+                            : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      {selectedTable.schema_status === "migrated"
+                        ? "Migrated"
+                        : selectedTable.schema_status === "changed"
+                          ? "Changed"
+                          : "Not run"}
+                    </span>
                   </div>
                 </div>
 
