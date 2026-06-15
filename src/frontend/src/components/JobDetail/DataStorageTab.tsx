@@ -470,6 +470,14 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                   </div>
                 </div>
 
+                {selectedTable.schema_status === "not_run" && selectedTable.columns.length > 0 && (
+                  <div className="px-4 py-2 bg-muted/30 border-b border-border flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">
+                      Migration has not run for this table yet — showing source schema from the SAS project.
+                    </span>
+                  </div>
+                )}
+
                 {/* Column table or no-columns notice */}
                 {selectedTable.schema_status === "not_run" && selectedTable.columns.length === 0 ? (
                   <div className="px-4 py-6">
@@ -478,6 +486,21 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                     </p>
                   </div>
                 ) : selectedTable.target_columns.length > 0 ? (
+                  <>
+                  <div className="px-3 py-2 flex items-center justify-between border-b border-border bg-muted/10 text-xs text-muted-foreground">
+                    <span>SAS source schema vs migration output</span>
+                    <span className="flex items-center gap-3">
+                      <span className="flex items-center gap-1">
+                        <span className="font-bold text-green-600">+</span> Added
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <span className="font-bold text-red-500">✗</span> Dropped
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <span className="text-muted-foreground/40">✓</span> Unchanged
+                      </span>
+                    </span>
+                  </div>
                   <table className="w-full text-sm border-collapse">
                     <thead className="sticky top-0 bg-background z-10">
                       <tr className="border-b border-border">
@@ -537,6 +560,7 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                       ))}
                     </tbody>
                   </table>
+                  </>
                 ) : selectedTable.columns.length > 0 ? (
                   <table className="w-full text-sm border-collapse">
                     <thead className="sticky top-0 bg-background z-10">
@@ -544,7 +568,7 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                         <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Column</th>
                         <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">SAS type</th>
                         <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Format</th>
-                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Type</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Data type</th>
                         <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Label</th>
                       </tr>
                     </thead>
@@ -558,9 +582,13 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                               {col.name}
                             </td>
                             <td className="px-3 py-2 whitespace-nowrap">
-                              <span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
-                                {col.sas_type}
-                              </span>
+                              {col.sas_type ? (
+                                <span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
+                                  {col.sas_type}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">—</span>
+                              )}
                             </td>
                             <td className="px-3 py-2 font-mono text-xs text-muted-foreground whitespace-nowrap">
                               {col.sas_format ?? "—"}
