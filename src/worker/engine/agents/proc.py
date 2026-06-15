@@ -16,6 +16,7 @@ from pydantic_ai.providers.openai import OpenAIProvider
 from src.worker.core.config import worker_settings
 from src.worker.engine.agents.shared import (
     SHARED_TRANSLATION_RULES,
+    apply_mechanical_drift_guard,
     build_block_output_stems,
     detect_referenced_data_files,
     detect_referenced_formats,
@@ -345,17 +346,19 @@ class ProcAgent:
                     " after rename — check LLM output",
                     fixed_output_var,
                 )
-            return GeneratedBlock(
-                source_block=block,
-                python_code=fixed_code,
-                output_var=fixed_output_var,
-                confidence=output.confidence_band,
-                confidence_score=output.confidence_score,
-                confidence_band=output.confidence_band,
-                uncertainty_notes=output.uncertainty_notes,
-                assumptions=output.assumptions,
-                strategy_used=output.strategy_used,
-                is_untranslatable=False,
+            return apply_mechanical_drift_guard(
+                GeneratedBlock(
+                    source_block=block,
+                    python_code=fixed_code,
+                    output_var=fixed_output_var,
+                    confidence=output.confidence_band,
+                    confidence_score=output.confidence_score,
+                    confidence_band=output.confidence_band,
+                    uncertainty_notes=output.uncertainty_notes,
+                    assumptions=output.assumptions,
+                    strategy_used=output.strategy_used,
+                    is_untranslatable=False,
+                )
             )
         except Exception as e:
             raise ProcError(message=str(e), cause=e) from e

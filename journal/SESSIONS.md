@@ -6,6 +6,28 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-15 — feat: F15 record-level reconciliation (row_hash_diff) + deterministic mechanical fixes
+**Duration:** ~1 session | **Focus:** add row-by-row reconciliation, then harden everything dogfooding it surfaced
+
+### Done (all on `feat/F15-record-level-reconciliation`, all 7 gates green, coverage 89%, gate 82)
+- **F15 `row_hash_diff`:** new record-level check joining ref/actual on keys (explicit → inferred → positional), per-column compare within float tolerance; typed `ReconConfig` (`join_keys`, `float_tolerance`, `resolve_key_with_llm`, `max_key_attempts`) sourced from the `__recon_config__` job sentinel; threaded through both `ReconciliationService` and the executor `run_recon`. Gates `reconciliation_status`; never feeds the agentic retry (parity = human-review).
+- **§20 mechanical-format drift guard:** prompt rule (`put z<w>.`→`lpad`, `||`/`cats`→`concat`, `catx`→`concat_ws`) + `check_mechanical_format_drift` that downgrades drifting blocks to review (root cause of the `usubjid` zero-pad regression).
+- **Datetime-equivalence in `_values_match`:** `2025-06-10` ≡ `2025-06-10T00:00:00.000` (stop false positives), worker + executor.
+- **Date-format output fidelity:** `_map_readstat_type` recovers SAS date formats → declared `date` type → `DateType` cast; executor serializes pure-date columns as bare `YYYY-MM-DD`.
+- **Hardened `_infer_join_keys`:** null + uniqueness gates, composite search (≤ arity 3), explicit-key quality warning; empty-string treated as null in `_null_fraction`.
+- **LLM join-key resolution (per-block):** `ReconKeyResolverAgent` proposes the correct business key when `row_hash_diff` fails on a unique-but-wrong key (AE `(subjid,aestdtc)` swapped-pair case); worker re-compares IN-PROCESS from the executor's `result_json` (no re-execution, no translation attempt), ≤3 tries with closest-attempt feedback; proposed keys validated at EXACT uniqueness + zero nulls in both frames; resolved key persisted to `__recon_config__` (whole-dict merge) + `BlockRevision.recon_checks` revived for all checks.
+- **Frontend:** `row_hash_diff` renders as "Record-Level Diff" in LiveTraceDialog.
+
+### Decisions (see DECISIONS 2026-06-15)
+- LLM may resolve the comparison KEY, never the output (recon verdict non-reproducible tradeoff accepted; key persisted for stability). Mechanical invariants belong in deterministic code, not soft prompt rules — next: enforce zero-pad/concat keys deterministically in codegen (planned).
+
+### Next Session — Start Here
+1. Implement the deterministic zero-pad/concat-key codegen enforcement (plan approved; overrides LLM output for cleanly-parsed `catx`/`cats`/`||` + `put zW.` keys, source-driven).
+2. Unrelated stray change on the branch: `docker-compose.yml` pins tensorzero to a sha256 digest — decide whether to keep/commit separately (needs `make docker-build`).
+3. Push branch + open PR for #58 / F15.
+
+---
+
 ## 2026-06-15 — feat: F61 type-aware schema contract + full-pipeline reconciliation hardening
 **Duration:** ~1 session | **Focus:** bake declared `.sas7bdat` types into delivered PySpark, then drive the full pipeline to green
 

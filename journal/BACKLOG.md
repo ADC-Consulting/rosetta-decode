@@ -78,7 +78,7 @@
 - [ ] F4: LLM call for runtime logic reconstruction from log
 - [ ] F10: Artefact versioning — group jobs by input_hash, expose version history per migration
 - [ ] F11: Plain-language documentation — LLM-generated business-readable summary per job → see `docs/plans/F-backend-postmvp.md` S-BE4
-- [ ] F15: Record-level reconciliation — row-by-row diff with configurable keys and tolerances
+- [x] F15: Record-level reconciliation — row-by-row diff with configurable keys and tolerances (row_hash_diff + ReconConfig + LLM key resolution; `feat/F15-record-level-reconciliation`)
 - [ ] F18: Refine conversion action — re-submit with previous output + reconciliation report as context → see `docs/plans/F-backend-postmvp.md` S-BE6
 
 **F2-improvements — Agentic pipeline overhaul (`docs/plans/F2-agentic-workflow-improvements.md`)**
@@ -433,7 +433,7 @@
   - [x] F59 S-E: unit tests for integrated expansion → `tests/test_macro_call_expander.py`
   - [x] F59 S-F: reconciliation test through parser → `tests/reconciliation/test_macro_control_flow.py`
   - [x] F59 S-G: `make test` exits 0
-- [ ] #58: Record-level reconciliation (row-by-row diff)
+- [x] #58: Record-level reconciliation (row-by-row diff) — row_hash_diff + ReconConfig + LLM key resolution
 - [ ] #59: Artefact versioning — group jobs by input_hash
 - [ ] #21: Consolidate lineage into a single primary view — `backlog` label
 - [ ] #20: Rollback / versioning based on lineage — `backlog` label

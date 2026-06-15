@@ -2,10 +2,12 @@
 
 from src.worker.engine.agents.shared import (
     SHARED_TRANSLATION_RULES,
+    apply_mechanical_drift_guard,
     build_block_output_stems,
+    check_mechanical_format_drift,
     normalise_input_vars_in_code,
 )
-from src.worker.engine.models import BlockType, SASBlock
+from src.worker.engine.models import BlockType, GeneratedBlock, SASBlock
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -134,3 +136,112 @@ def test_section_numbering_contiguous() -> None:
 
     numbers = [int(m) for m in re.findall(r"^## (\d+)\.", SHARED_TRANSLATION_RULES, re.M)]
     assert numbers == list(range(1, numbers[-1] + 1))
+
+
+def test_mechanical_primitives_rule_present() -> None:
+    rules = SHARED_TRANSLATION_RULES
+    assert "## 20. Mechanical Formatting Primitives" in rules
+    assert "F.lpad" in rules and "F.concat_ws" in rules
+
+
+# ── check_mechanical_format_drift ─────────────────────────────────────────────
+
+
+def test_drift_zpad_missing_lpad_warns() -> None:
+    raw = "data x; usubjid = put(subjid, z4.); run;"
+    code = 'df = df.withColumn("usubjid", F.col("subjid").cast("string"))'
+    warnings = check_mechanical_format_drift(raw, code)
+    assert len(warnings) == 1
+    assert "z4." in warnings[0] and "F.lpad" in warnings[0]
+
+
+def test_drift_zpad_with_lpad_clean() -> None:
+    raw = "data x; usubjid = put(subjid, z4.); run;"
+    code = 'df = df.withColumn("usubjid", F.lpad(F.col("subjid").cast("string"), 4, "0"))'
+    assert check_mechanical_format_drift(raw, code) == []
+
+
+def test_drift_concat_op_missing_concat_warns() -> None:
+    raw = "data x; usubjid = study || site; run;"
+    code = 'df = df.withColumn("usubjid", F.col("study"))'
+    warnings = check_mechanical_format_drift(raw, code)
+    assert len(warnings) == 1
+    assert "'||'" in warnings[0] and "F.concat" in warnings[0]
+
+
+def test_drift_concat_op_with_concat_clean() -> None:
+    raw = "data x; usubjid = study || site; run;"
+    code = 'df = df.withColumn("usubjid", F.concat(F.col("study"), F.col("site")))'
+    assert check_mechanical_format_drift(raw, code) == []
+
+
+def test_drift_cats_missing_concat_warns() -> None:
+    raw = "data x; usubjid = cats(study, site); run;"
+    code = 'df = df.withColumn("usubjid", F.col("study"))'
+    warnings = check_mechanical_format_drift(raw, code)
+    assert len(warnings) == 1
+    assert "cats()" in warnings[0]
+
+
+def test_drift_catx_missing_concat_ws_warns() -> None:
+    raw = "data x; usubjid = catx('-', study, site); run;"
+    code = 'df = df.withColumn("usubjid", F.concat(F.col("study"), F.col("site")))'
+    warnings = check_mechanical_format_drift(raw, code)
+    assert len(warnings) == 1
+    assert "F.concat_ws" in warnings[0]
+
+
+def test_drift_catx_with_concat_ws_clean() -> None:
+    raw = "data x; usubjid = catx('-', study, site); run;"
+    code = 'df = df.withColumn("usubjid", F.concat_ws("-", F.col("study"), F.col("site")))'
+    assert check_mechanical_format_drift(raw, code) == []
+
+
+def test_drift_no_construct_no_warning() -> None:
+    raw = "data x; age_group = 1; run;"
+    code = 'df = df.withColumn("age_group", F.lit(1))'
+    assert check_mechanical_format_drift(raw, code) == []
+
+
+# ── apply_mechanical_drift_guard (wiring) ─────────────────────────────────────
+
+
+def _gen_block(raw_sas: str, python_code: str) -> GeneratedBlock:
+    return GeneratedBlock(
+        source_block=SASBlock(
+            block_type=BlockType.DATA_STEP,
+            source_file="test.sas",
+            start_line=1,
+            end_line=5,
+            raw_sas=raw_sas,
+            input_datasets=[],
+            output_datasets=["work.x"],
+        ),
+        python_code=python_code,
+        confidence="high",
+        confidence_score=0.95,
+        confidence_band="high",
+    )
+
+
+def test_guard_downgrades_block_with_drift() -> None:
+    block = _gen_block(
+        "data x; usubjid = put(subjid, z4.); run;",
+        'df = df.withColumn("usubjid", F.col("subjid").cast("string"))',
+    )
+    result = apply_mechanical_drift_guard(block)
+    assert result.confidence_band == "low"
+    assert result.confidence == "low"
+    assert result.confidence_score <= 0.40
+    assert any("F.lpad" in note for note in result.uncertainty_notes)
+
+
+def test_guard_leaves_clean_block_untouched() -> None:
+    block = _gen_block(
+        "data x; usubjid = put(subjid, z4.); run;",
+        'df = df.withColumn("usubjid", F.lpad(F.col("subjid").cast("string"), 4, "0"))',
+    )
+    result = apply_mechanical_drift_guard(block)
+    assert result.confidence_band == "high"
+    assert result.confidence_score == 0.95
+    assert result.uncertainty_notes == []

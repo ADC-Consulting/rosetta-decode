@@ -15,9 +15,14 @@ import re
 from typing import Any
 
 from src.worker.engine.format_catalog import normalize_format_name
-from src.worker.engine.models import DataFileInfo, FormatDef
+from src.worker.engine.models import DataFileInfo, FormatDef, GeneratedBlock
 
 logger = logging.getLogger(__name__)
+
+# Confidence-score ceiling applied when mechanical-format drift is detected. Aligns
+# with the "low" band boundary (≥0.40) documented on ``GeneratedBlock`` so a
+# downgraded block lands in — not below — the low band unless it was already lower.
+_DRIFT_MAX_CONFIDENCE_SCORE = 0.40
 
 # A SAS ``put(<var>, <fmt>)`` call. The second argument is the format reference:
 # an optional ``$`` (char-format marker), the format name with an optional numeric
@@ -30,6 +35,21 @@ _PUT_FORMAT_RE = re.compile(
     r"\bput\s*\(\s*[^,()]+?\s*,\s*(?P<fmt>\$?\w+(?:\.\d+|\.))\s*\)",
     re.IGNORECASE,
 )
+
+# A SAS ``put(<var>, z<w>[.<d>])`` zero-pad call. Narrower than ``_PUT_FORMAT_RE``:
+# it matches only the ``Zw.`` / ``Zw.d`` numeric zero-pad format whose deterministic
+# PySpark equivalent is ``F.lpad(...)``. The pad width is captured in ``width``.
+# Examples matched: ``put(subjid, z4.)``, ``put( site , Z3.0 )``.
+_PUT_ZPAD_RE = re.compile(
+    r"\bput\s*\(\s*[^,()]+?\s*,\s*z(?P<width>\d+)(?:\.\d*)?\s*\)",
+    re.IGNORECASE,
+)
+
+# SAS string-concatenation constructs whose deterministic PySpark equivalents are
+# ``F.concat`` (``||``, ``cats``/``catt``) or ``F.concat_ws`` (``catx``).
+_CONCAT_OP_RE = re.compile(r"\|\|")
+_CATS_RE = re.compile(r"\bcat[st]\s*\(", re.IGNORECASE)
+_CATX_RE = re.compile(r"\bcatx\s*\(", re.IGNORECASE)
 
 # ── Shared LLM prompt rules (injected into all three translation agents) ─────
 
@@ -362,6 +382,10 @@ Always declare the return type.
 | INDEX(str,substr)            | F.instr(F.col("str"), "substr")               |
 | CATX(delim,s1,s2)           | F.concat_ws(delim, *cols)                     |
 
+See §20 for the full, MANDATORY mechanical mappings of `put(...,z<w>.)`
+zero-padding and `||`/`cats`/`catx` concatenation — those are deterministic
+primitives, not stylistic choices.
+
 
 ## 13. Numeric / Aggregation Function Mappings
 
@@ -505,6 +529,50 @@ When converting SAS to PySpark:
    unless the SAS code explicitly does so.
 7. Handle nulls, types, and column casing explicitly.
 8. Add .orderBy() when output order matters.
+
+
+## 20. Mechanical Formatting Primitives — MANDATORY, NOT OPTIONAL
+
+These mappings are deterministic: each SAS construct has exactly ONE correct
+PySpark equivalent. They are NOT stylistic choices. Composite keys such as
+`usubjid` depend on them — a missed zero-pad or concat silently destroys key
+overlap (`ADC-XYZ-001-001-0014` vs `ADC-XYZ-001-3-1`) and breaks every join.
+
+### 20.1 Zero-pad: `put(x, z<w>.)` / `put(x, z<w>.<d>)`
+
+A `z`-format left-pads the value with `"0"` to total width `<w>`. ALWAYS emit
+`F.lpad`, NEVER a bare `str(x)`, plain `.cast("string")`, or `F.format_string`:
+
+  ❌ Wrong — drops the zero-padding:
+  F.col("subjid").cast("string")              # "3", not "003"
+
+  ✅ Correct — `put(subjid, z3.)`:
+  F.lpad(F.col("subjid").cast("string"), 3, "0")    # "003"
+
+The width `<w>` is the integer after `z`; any `.<d>` decimal suffix does not
+change the pad width for integer-style keys.
+
+### 20.2 Concatenation: `||`, `cats(...)`, `catx(...)`
+
+SAS concatenation trims trailing blanks; reproduce that with `F.concat` over
+trimmed operands (or `F.concat_ws` for a delimiter). Map exactly:
+
+| SAS                          | PySpark                                          |
+|------------------------------|--------------------------------------------------|
+| a || b                       | F.concat(F.col("a"), F.col("b"))                 |
+| cats(a, b)                   | F.concat(F.trim(F.col("a")), F.trim(F.col("b"))) |
+| catx(delim, a, b)            | F.concat_ws(delim, F.col("a"), F.col("b"))       |
+
+`catx` here is the same mapping cross-referenced in §12 — `concat_ws` already
+handles the delimiter and trims/ skips nulls. Combine 20.1 and 20.2 for keys:
+
+  ✅ Correct — `usubjid = catx('-', study, put(site, z3.), put(subj, z4.))`:
+  F.concat_ws(
+      "-",
+      F.col("study"),
+      F.lpad(F.col("site").cast("string"), 3, "0"),
+      F.lpad(F.col("subj").cast("string"), 4, "0"),
+  )
 """
 
 
@@ -639,6 +707,8 @@ def render_declared_types_section(
         for col, cast_type in sorted(data_files[key].column_types.items()):
             if cast_type == "string":
                 lines.append(f"- {col}: character")
+            elif cast_type == "date":
+                lines.append(f"- {col}: date")
             else:
                 lines.append(f"- {col}: numeric")
     lines.append(
@@ -930,3 +1000,88 @@ def inject_declared_casts(
         )
 
     return python_code
+
+
+def check_mechanical_format_drift(raw_sas: str, python_code: str) -> list[str]:
+    """Return human-readable warnings when a mechanical formatting primitive drifted.
+
+    Detects the deterministic SAS formatting constructs whose PySpark equivalent is
+    fixed (``put(...,z<w>.)`` zero-pad -> ``F.lpad``; ``||``/``cats``/``catt`` ->
+    ``F.concat``; ``catx`` -> ``F.concat_ws``). For each construct present in
+    *raw_sas*, it checks that *python_code* contains the matching primitive. This is
+    a conservative, surface-for-human-review check: it warns ONLY when the source
+    clearly uses a construct and the output clearly lacks ANY matching primitive, so
+    false positives stay rare. It never rewrites code and never raises.
+
+    Args:
+        raw_sas: Raw SAS source text for the block.
+        python_code: Generated PySpark source for the same block.
+
+    Returns:
+        Order-stable list of warning strings; empty when no drift is detected.
+    """
+    warnings: list[str] = []
+    code_lower = python_code.lower()
+
+    zpad = _PUT_ZPAD_RE.search(raw_sas)
+    if zpad is not None and "lpad" not in code_lower:
+        warnings.append(
+            f"SAS uses put(...,z{zpad.group('width')}.) zero-pad but generated code has "
+            "no F.lpad — verify USUBJID-style key formatting"
+        )
+
+    has_concat = "concat" in code_lower  # matches both F.concat and F.concat_ws
+    if _CONCAT_OP_RE.search(raw_sas) is not None and not has_concat:
+        warnings.append(
+            "SAS uses '||' string concatenation but generated code has no F.concat — "
+            "verify concatenated key/string formatting"
+        )
+    if _CATS_RE.search(raw_sas) is not None and not has_concat:
+        warnings.append(
+            "SAS uses cats()/catt() concatenation but generated code has no F.concat — "
+            "verify trimmed concatenation"
+        )
+    if _CATX_RE.search(raw_sas) is not None and "concat_ws" not in code_lower:
+        warnings.append(
+            "SAS uses catx() delimited concatenation but generated code has no "
+            "F.concat_ws — verify delimited key formatting"
+        )
+
+    return warnings
+
+
+def apply_mechanical_drift_guard(block: GeneratedBlock) -> GeneratedBlock:
+    """Run the mechanical-format drift guard on a translated block, in place.
+
+    When :func:`check_mechanical_format_drift` finds drift between the block's SAS
+    source and its generated PySpark, the warnings are appended to
+    ``block.uncertainty_notes`` and the block's confidence is downgraded to at most
+    the "low" band so it surfaces in the human-review queue. The generated code is
+    NOT rewritten, no exception is raised, and no re-translation is triggered — this
+    is surface-for-review only, consistent with the no-auto-repair stance.
+
+    Args:
+        block: A freshly translated :class:`GeneratedBlock`.
+
+    Returns:
+        The same *block* instance, mutated when drift was detected.
+    """
+    warnings = check_mechanical_format_drift(block.source_block.raw_sas, block.python_code)
+    if not warnings:
+        return block
+
+    block.uncertainty_notes = [*block.uncertainty_notes, *warnings]
+    if block.confidence_score > _DRIFT_MAX_CONFIDENCE_SCORE:
+        block.confidence_score = _DRIFT_MAX_CONFIDENCE_SCORE
+    if block.confidence_band not in ("low", "very_low"):
+        block.confidence_band = "low"
+        block.confidence = "low"
+    logger.warning(
+        "apply_mechanical_drift_guard: %d mechanical-format drift warning(s) for %s:%s"
+        " — downgraded to '%s' for human review",
+        len(warnings),
+        block.source_block.source_file,
+        block.source_block.start_line,
+        block.confidence_band,
+    )
+    return block

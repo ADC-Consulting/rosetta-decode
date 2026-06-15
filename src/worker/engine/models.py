@@ -1,7 +1,7 @@
 """Pydantic models shared across the migration engine (parser → LLM → codegen)."""
 
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -226,6 +226,9 @@ class GeneratedBlock(BaseModel):
     verified_confidence: str | None = None
     output_var: str | None = None
     exec_ok: bool = True
+    # Final per-block reconciliation checks (revived for the BlockRevision audit
+    # trail). A key-resolved row_hash_diff pass carries ``resolved_join_key``.
+    recon_checks: list[dict[str, Any]] | None = None
 
 
 class ReconciliationReport(BaseModel):
@@ -439,8 +442,9 @@ class DataFileInfo(BaseModel):
         columns: Column headers sniffed from the file; empty list if unreadable.
         row_count: Number of data rows, or ``None`` if not sniffable.
         column_types: Mapping of lowercased column name to Spark cast type
-            (``"string"`` or ``"double"``), populated only for ``.sas7bdat``
-            files. Empty for CSV/TSV/XLSX and derived datasets.
+            (``"string"``, ``"double"``, or ``"date"`` for columns declared with
+            a SAS date format), populated only for ``.sas7bdat`` files. Empty for
+            CSV/TSV/XLSX and derived datasets.
     """
 
     path: str

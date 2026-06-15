@@ -7,7 +7,7 @@ import re
 import sys
 import time
 import uuid as _uuid
-from typing import Any
+from typing import Any, cast
 
 import httpx
 from sqlalchemy import select, update
@@ -24,6 +24,12 @@ from src.worker.engine.agents.lineage_enricher import LineageEnricherAgent
 from src.worker.engine.agents.migration_planner import MigrationPlannerAgent
 from src.worker.engine.agents.plain_english import PlainEnglishAgent
 from src.worker.engine.agents.proc import ProcAgent
+from src.worker.engine.agents.recon_key_resolver import (
+    KeyResolution,
+    ReconKeyResolverAgent,
+    ReconKeyResolverError,
+    build_candidate_stats,
+)
 from src.worker.engine.block_executor import BlockExecutor
 from src.worker.engine.codegen import CodeGenerator
 from src.worker.engine.dependency_checker import detect_missing_dependencies
@@ -44,7 +50,15 @@ from src.worker.engine.router import TranslationRouter
 from src.worker.engine.stub_generator import StubGenerator
 from src.worker.engine.trace import JobCancelledError, TraceEmitter
 from src.worker.engine.usage import UsageTracker, activate, set_block_type, set_phase
-from src.worker.validation.reconciliation import ReconciliationService, RemoteReconciliationService
+from src.worker.validation.reconciliation import (
+    _AGGREGATE_RTOL,
+    ReconciliationService,
+    ReconConfig,
+    RemoteReconciliationService,
+    _coerce_sas_date_columns,
+    _row_hash_diff,
+    validate_proposed_key,
+)
 
 logging.basicConfig(
     level=getattr(logging, worker_settings.log_level.upper(), logging.INFO),
@@ -60,17 +74,101 @@ logging.getLogger("openai._base_client").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 
-def _map_readstat_type(rs_type: str) -> str:
-    """Map a readstat variable type string to a Spark cast type.
+# Upper bound on the actual-row count eligible for in-process LLM join-key
+# resolution (F15). Above this, re-comparing a wide frame per attempt is too
+# costly, so the row_hash_diff failure is left for human review instead.
+_RESOLVE_ROW_CAP = 200_000
+
+
+# SAS display formats whose underlying numeric value is a *date* (days since
+# 1960-01-01), as opposed to a datetime (seconds since 1960) or time-of-day.
+# These map to Spark DateType so the delivered output carries a bare date
+# (``2025-06-10``) instead of a spurious midnight timestamp
+# (``2025-06-10T00:00:00.000``). DATETIME*/TIME* formats are deliberately
+# excluded — they legitimately carry a time component and stay numeric.
+_SAS_DATE_FORMATS: frozenset[str] = frozenset(
+    {
+        "date",
+        "day",
+        "ddmmyy",
+        "ddmmyyb",
+        "ddmmyyc",
+        "ddmmyyd",
+        "ddmmyyn",
+        "ddmmyyp",
+        "ddmmyys",
+        "e8601da",
+        "julian",
+        "mmddyy",
+        "mmddyyb",
+        "mmddyyc",
+        "mmddyyd",
+        "mmddyyn",
+        "mmddyyp",
+        "mmddyys",
+        "mmyy",
+        "monyy",
+        "weekdate",
+        "worddate",
+        "yymmdd",
+        "yymmddb",
+        "yymmddc",
+        "yymmddd",
+        "yymmddn",
+        "yymmddp",
+        "yymmdds",
+        "yymon",
+        "year",
+    }
+)
+
+
+def _strip_sas_format(raw_format: str) -> str:
+    """Return the lowercased alphabetic stem of a SAS format string.
+
+    SAS formats are written ``NAME<w>.<d>`` (e.g. ``DATE9.``, ``YYMMDD10.``,
+    ``DATETIME20.``). This strips the width/decimal suffix and surrounding
+    punctuation, returning just the leading alphabetic name (``date``,
+    ``yymmdd``, ``datetime``).
+
+    Args:
+        raw_format: The format string from ``meta.original_variable_types``.
+
+    Returns:
+        Lowercased alphabetic format name, or ``""`` if none can be derived.
+    """
+    name_chars: list[str] = []
+    for char in raw_format.lstrip("$").strip():
+        if char.isalpha():
+            name_chars.append(char)
+        else:
+            break
+    return "".join(name_chars).lower()
+
+
+def _map_readstat_type(rs_type: str, sas_format: str | None = None) -> str:
+    """Map a readstat variable type (and optional SAS format) to a Spark cast type.
+
+    A SAS *date* column is stored numerically but displayed via a date format
+    (e.g. ``DATE9.``, ``YYMMDD10.``). When the declared format identifies the
+    column as a bare date — not a datetime or time-of-day — it is cast to Spark
+    ``"date"`` so the delivered output matches the source's declared date format
+    (no spurious ``T00:00:00`` timestamp). This is keyed off the source's own
+    declared metadata only — never the reference/golden schema.
 
     Args:
         rs_type: The readstat type string from ``meta.readstat_variable_types``.
+        sas_format: The display format from ``meta.original_variable_types``
+            (e.g. ``"DATE9."``), if available.
 
     Returns:
-        ``"string"`` for string columns; ``"double"`` for all numeric/unknown types.
+        ``"string"`` for string columns; ``"date"`` for numeric columns declared
+        with a SAS date format; ``"double"`` for all other numeric/unknown types.
     """
     if rs_type == "string":
         return "string"
+    if sas_format and _strip_sas_format(sas_format) in _SAS_DATE_FORMATS:
+        return "date"
     return "double"
 
 
@@ -86,8 +184,9 @@ def _sniff_file(disk_path: str, ext: str) -> tuple[list[str], int | None, dict[s
 
     Returns:
         A 3-tuple of ``(columns, row_count, column_types)``. ``column_types`` maps
-        lowercased column name to Spark cast type (``"string"`` or ``"double"``),
-        populated only for ``.sas7bdat`` files; ``{}`` otherwise.
+        lowercased column name to Spark cast type (``"string"``, ``"double"``, or
+        ``"date"`` for date-formatted columns), populated only for ``.sas7bdat``
+        files; ``{}`` otherwise.
     """
     import pandas as pd  # local import — pandas may not be installed in all envs
 
@@ -109,8 +208,11 @@ def _sniff_file(disk_path: str, ext: str) -> tuple[list[str], int | None, dict[s
 
                 _df, meta = pyreadstat.read_sas7bdat(disk_path, row_limit=0)
                 columns = list(meta.column_names)
+                # original_variable_types carries the declared SAS display format
+                # (e.g. DATE9., DATETIME20.) used to distinguish dates from datetimes.
+                formats: dict[str, str] = dict(getattr(meta, "original_variable_types", {}) or {})
                 column_types = {
-                    varname.lower(): _map_readstat_type(rs_type)
+                    varname.lower(): _map_readstat_type(rs_type, formats.get(varname))
                     for varname, rs_type in meta.readstat_variable_types.items()
                 }
                 return columns, None, column_types
@@ -316,6 +418,7 @@ class JobOrchestrator:
         self._expander = MacroExpander()
         self._migration_planner = MigrationPlannerAgent()
         self._lineage_enricher = LineageEnricherAgent()
+        self._recon_key_resolver = ReconKeyResolverAgent()
 
     async def run(self, session: AsyncSession, job: Job) -> None:
         """Execute the full pipeline and persist results.
@@ -411,11 +514,23 @@ class JobOrchestrator:
         files: dict[str, str] = {
             k: v
             for k, v in job.files.items()
-            if k not in ("__ref_csv__", "__ref_sas7bdat__", "__refine_context__")
+            if k
+            not in (
+                "__ref_csv__",
+                "__ref_sas7bdat__",
+                "__refine_context__",
+                "__recon_config__",
+            )
         }
         ref_csv_path: str = str(job.files.get("__ref_csv__", ""))
         ref_sas7bdat_path: str = str(job.files.get("__ref_sas7bdat__", ""))
         data_dir: str = worker_settings.upload_dir.rstrip("/") + "/" + str(job.id)
+
+        # Record-level reconciliation config — future config injection point.
+        # Sourced from the optional ``__recon_config__`` sentinel in job.files
+        # (same precedent as ``__refine_context__``); no DB column / API / frontend
+        # in this feature. Absent → ReconConfig() defaults (existing jobs unchanged).
+        recon_config = _parse_recon_config(job.files.get("__recon_config__"))
 
         # Refine context — injected by POST /jobs/{id}/refine
         refine_context_raw = job.files.get("__refine_context__")
@@ -619,6 +734,7 @@ class JobOrchestrator:
             hint=hint,
             data_dir=data_dir,
             session=session,
+            recon_config=recon_config,
         )
 
         if tracer:
@@ -655,6 +771,7 @@ class JobOrchestrator:
             backend,
             ref_sas7bdat_path,
             data_dir=data_dir,
+            recon_config=recon_config,
         )
 
         if tracer:
@@ -820,6 +937,151 @@ class JobOrchestrator:
         # intentionally skipped here to avoid reconciling intermediate blocks against
         # the final output schema.
 
+    async def _resolve_join_key_and_recompare(
+        self,
+        *,
+        checks: list[dict[str, Any]],
+        recon_result: dict[str, Any],
+        recon_config: ReconConfig | None,
+        block: SASBlock,
+        ref_paths: tuple[str, str],
+        backend: Any,
+    ) -> bool:
+        """Resolve the correct join key via the LLM and re-compare in-process.
+
+        Triggered only when every non-``row_hash_diff`` check passes but
+        ``row_hash_diff`` failed (F15). Reuses the executor's already-returned
+        ``result_json`` as the actual rows — the pipeline is NEVER re-executed
+        and no translation attempt is spent. On success the failed
+        ``row_hash_diff`` entry in *checks* is replaced (in place) with a plain
+        pass carrying ``resolved_join_key`` and the key is persisted for reuse.
+
+        Args:
+            checks: The per-block check list; mutated in place on success.
+            recon_result: The BlockExecutor result dict (carries ``result_json``).
+            recon_config: Active record-level config (mutated in-memory on success).
+            block: The SAS block (raw SAS feeds the resolver prompt).
+            ref_paths: ``(ref_csv_path, ref_sas7bdat_path)`` for this block.
+            backend: ComputeBackend for loading the reference frame.
+
+        Returns:
+            True when a proposed key made the comparison pass (checks mutated).
+        """
+        cfg = recon_config or ReconConfig()
+        if not cfg.resolve_key_with_llm:
+            return False
+        rhd = next((c for c in checks if c.get("name") == "row_hash_diff"), None)
+        if rhd is None or rhd.get("status") == "pass":
+            return False
+        result_json = recon_result.get("result_json")
+        if not result_json:
+            logger.info("F15: no result_json available — skipping LLM key resolution")
+            return False
+        if len(result_json) > _RESOLVE_ROW_CAP:
+            logger.info(
+                "F15: %d rows exceed resolve cap (%d) — leaving for human review",
+                len(result_json),
+                _RESOLVE_ROW_CAP,
+            )
+            return False
+        frames = await asyncio.to_thread(_preprocess_recon_frames, result_json, ref_paths, backend)
+        if frames is None:
+            logger.info("F15: could not load/preprocess reference — skipping key resolution")
+            return False
+        ref_df, actual_df = frames
+        return await self._run_resolve_loop(
+            checks=checks, rhd=rhd, cfg=cfg, block=block, ref_df=ref_df, actual_df=actual_df
+        )
+
+    async def _run_resolve_loop(
+        self,
+        *,
+        checks: list[dict[str, Any]],
+        rhd: dict[str, Any],
+        cfg: ReconConfig,
+        block: SASBlock,
+        ref_df: Any,
+        actual_df: Any,
+    ) -> bool:
+        """Run the bounded resolve→validate→recompare loop. Returns True on pass."""
+        ref_schema = list(ref_df.columns)
+        actual_schema = list(actual_df.columns)
+        candidate_stats = build_candidate_stats(ref_df, actual_df)
+        feedback: list[_KeyAttempt] = []
+        for _ in range(max(1, cfg.max_key_attempts)):
+            try:
+                resolution: KeyResolution = await self._recon_key_resolver.resolve(
+                    failure_detail=str(rhd.get("detail", "")),
+                    ref_schema=ref_schema,
+                    actual_schema=actual_schema,
+                    raw_sas=block.raw_sas,
+                    candidate_stats=candidate_stats,
+                    attempts_feedback=_render_feedback(feedback),
+                )
+            except ReconKeyResolverError as exc:
+                logger.warning("F15: key resolver failed: %s — leaving for human review", exc)
+                return False
+            proposed = resolution.proposed_keys
+            if not validate_proposed_key(ref_df, actual_df, proposed):
+                feedback.append(
+                    _KeyAttempt(
+                        proposed,
+                        "rejected (not exactly unique / null-bearing)",
+                        _closeness_score(ref_df, actual_df, proposed),
+                    )
+                )
+                continue
+            result = _row_hash_diff(
+                ref_df, actual_df, join_keys=proposed, float_tolerance=cfg.float_tolerance
+            )
+            if result.get("status") == "pass":
+                _apply_resolved_key(checks, rhd, proposed)
+                cfg.join_keys = proposed
+                await self._persist_resolved_key(cfg)
+                logger.info("F15: row_hash_diff resolved with join key %s", proposed)
+                return True
+            feedback.append(
+                _KeyAttempt(
+                    proposed,
+                    f"still diffs: {result.get('detail', '')[:200]}",
+                    _closeness_score(ref_df, actual_df, proposed),
+                )
+            )
+        logger.info("F15: no proposed key resolved row_hash_diff — leaving for human review")
+        return False
+
+    async def _persist_resolved_key(self, cfg: ReconConfig) -> None:
+        """Persist the resolved key into the job's ``__recon_config__`` sentinel.
+
+        Whole-dict merge (``job.files`` is an un-tracked JSON column, so in-place
+        mutation is silently lost). Preserves all other ``__ref_*__`` sentinels so
+        a refine child job inherits the key via ``POST /refine``. Best-effort.
+
+        Args:
+            cfg: The in-memory ReconConfig carrying the resolved ``join_keys``.
+        """
+        job: Job | None = getattr(self, "_current_job", None)
+        if self._session_factory is None or job is None:
+            return
+        payload = json.dumps(
+            {
+                "join_keys": cfg.join_keys,
+                "float_tolerance": cfg.float_tolerance,
+                "resolve_key_with_llm": cfg.resolve_key_with_llm,
+                "max_key_attempts": cfg.max_key_attempts,
+            }
+        )
+        try:
+            async with self._session_factory() as cs:
+                fresh = await cs.get(Job, job.id)
+                if fresh is None:
+                    return
+                merged = {**(fresh.files or {}), "__recon_config__": payload}
+                await cs.execute(update(Job).where(Job.id == job.id).values(files=merged))
+                await cs.commit()
+        except Exception as exc:  # best-effort — never fail the job over persistence
+            logger.warning("F15: could not persist resolved recon key: %s", exc)
+
     async def _persist_initial_revisions(
         self,
         session: AsyncSession,
@@ -862,6 +1124,7 @@ class JobOrchestrator:
                 confidence=gb.confidence_band,
                 uncertainty_notes=gb.uncertainty_notes,
                 reconciliation_status="pass" if gb.exec_ok else "fail",
+                recon_checks=gb.recon_checks,
                 trigger="agent",
                 notes=None,
                 hint=None,
@@ -1011,6 +1274,7 @@ class JobOrchestrator:
         hint: str | None = None,
         data_dir: str = "",
         session: AsyncSession | None = None,
+        recon_config: ReconConfig | None = None,
     ) -> tuple[list[GeneratedBlock], bool]:
         """Translate blocks using an explicit two-phase sequence.
 
@@ -1027,6 +1291,7 @@ class JobOrchestrator:
             hint: Reviewer hint to prepend to the LLM prompt (from refine context).
             data_dir: Job-specific upload directory forwarded to the executor.
             session: Active database session forwarded for cancel checks.
+            recon_config: Record-level reconciliation config forwarded to recon.
 
         Returns:
             (generated_blocks, recon_failed) tuple.
@@ -1041,6 +1306,7 @@ class JobOrchestrator:
             hint,
             data_dir=data_dir,
             session=session,
+            recon_config=recon_config,
         )
 
         # If per-block recon already flagged failure, skip phase 2 — return what we have
@@ -1057,6 +1323,7 @@ class JobOrchestrator:
             backend,
             ref_sas7bdat_path,
             data_dir=data_dir,
+            recon_config=recon_config,
         )
         report_v1 = (
             _dict_to_recon_report(raw_report_v1)
@@ -1064,6 +1331,12 @@ class JobOrchestrator:
             else raw_report_v1
         )
         if report_v1.passed or not report_v1.diff_summary:
+            return generated_v1, False
+
+        # INVARIANT (DECISIONS 2026-06-15): if the ONLY failing check is the
+        # parity-class row_hash_diff, do not spend an agentic re-translation —
+        # surface it for human review. Phase 2 fires only for other failures.
+        if isinstance(raw_report_v1, dict) and _only_row_hash_diff_failed(raw_report_v1):
             return generated_v1, False
 
         # Phase 2 — interpret failure and re-translate the affected block only
@@ -1091,6 +1364,7 @@ class JobOrchestrator:
         hint: str | None = None,
         data_dir: str = "",
         session: AsyncSession | None = None,
+        recon_config: ReconConfig | None = None,
     ) -> tuple[list[GeneratedBlock], bool]:
         """Translate every block via the TranslationRouter with a per-block refine loop.
 
@@ -1115,6 +1389,7 @@ class JobOrchestrator:
             hint: Reviewer hint to prepend to the LLM prompt (from refine context).
             data_dir: Job-specific upload directory forwarded to BlockExecutor.
             session: Active database session used for cancel checks (optional).
+            recon_config: Record-level reconciliation config forwarded to recon.
 
         Returns:
             (generated_blocks, False)
@@ -1151,6 +1426,8 @@ class JobOrchestrator:
 
             gb: GeneratedBlock | None = None
             exec_ok: bool = True
+            # Final per-block checks (possibly key-resolved) for BlockRevision audit.
+            block_final_checks: list[dict[str, Any]] | None = None
             attempt_context = effective_context
 
             for attempt in range(1, 4):
@@ -1222,6 +1499,7 @@ class JobOrchestrator:
                     data_dir=data_dir or None,
                     ref_csv_path=recon_groups.get(block_idx, ("", ""))[0],
                     ref_sas7bdat_path=recon_groups.get(block_idx, ("", ""))[1],
+                    recon_config=recon_config,
                 )
                 elapsed_ms = int((time.monotonic() - t0) * 1000)
 
@@ -1242,9 +1520,43 @@ class JobOrchestrator:
                 checks: list[dict[str, Any]] = recon_result.get("checks", [])
                 _runtime_error: str = recon_result.get("runtime_error", "")
                 _stderr: str = recon_result.get("stderr", "")
+                # all_passed gates the persisted reconciliation_status — it
+                # includes EVERY check, so a row_hash_diff mismatch correctly
+                # flips the block to fail (same as aggregate_parity).
                 all_passed = all(c.get("status") == "pass" for c in checks)
                 recon_passed = all_passed
                 exec_ok = all_passed
+                # INVARIANT (DECISIONS 2026-06-15): row_hash_diff is a parity-class
+                # check — it may gate status but must NEVER drive the agentic
+                # auto-repair retry below (that rewards gaming the golden). Only
+                # non-parity checks (e.g. execution crashes, schema/aggregate
+                # parity) are eligible to trigger re-translation.
+                auto_repairable_passed = all(
+                    c.get("status") == "pass" for c in checks if c.get("name") != "row_hash_diff"
+                )
+
+                # F15: when every non-row_hash_diff check passes but row_hash_diff
+                # failed, the inferred key is unique-but-wrong. Resolve the correct
+                # business key via the LLM and RE-COMPARE in-process (no pipeline
+                # re-execution, no translation attempt spent). Mutates `checks` in
+                # place on success so the tracer below emits the corrected verdict
+                # (no stale fail left in the SSE stream).
+                if auto_repairable_passed and not recon_passed:
+                    resolved = await self._resolve_join_key_and_recompare(
+                        checks=checks,
+                        recon_result=recon_result,
+                        recon_config=recon_config,
+                        block=block,
+                        ref_paths=recon_groups.get(block_idx, ("", "")),
+                        backend=backend,
+                    )
+                    if resolved:
+                        all_passed = all(c.get("status") == "pass" for c in checks)
+                        recon_passed = all_passed
+                        exec_ok = all_passed
+
+                # Capture the (possibly key-resolved) checks for BlockRevision audit.
+                block_final_checks = checks
 
                 if tracer is not None:
                     await tracer.emit(
@@ -1273,15 +1585,20 @@ class JobOrchestrator:
                             },
                         )
 
-                if all_passed:
+                # Stop retrying once all AUTO-REPAIRABLE checks pass: a lone
+                # row_hash_diff mismatch leaves the block marked failed (for human
+                # review) but does NOT spend another agentic re-translation attempt.
+                if auto_repairable_passed:
                     break
 
                 if attempt < 3:
-                    # Summarise first failure for the next attempt's context
+                    # Summarise first failure for the next attempt's context.
+                    # Exclude row_hash_diff — it is human-review-only and must not
+                    # feed the LLM retry prompt (parity-class, never auto-repaired).
                     failed_details = [
                         c.get("detail", c.get("name", "unknown"))
                         for c in checks
-                        if c.get("status") != "pass"
+                        if c.get("status") != "pass" and c.get("name") != "row_hash_diff"
                     ]
                     extra_hints: list[str] = []
                     for check in checks:
@@ -1387,6 +1704,10 @@ class JobOrchestrator:
 
             if gb is not None:
                 gb.exec_ok = exec_ok
+                # Persist the final per-block checks (revived recon_checks audit,
+                # incl. resolved_join_key on a key-resolved row_hash_diff pass).
+                if block_final_checks is not None:
+                    gb.recon_checks = block_final_checks
                 generated.append(gb)
 
             # Cancel check: open a fresh session so we don't touch the outer
@@ -1417,6 +1738,7 @@ class JobOrchestrator:
                 session_dir="",  # run everything fresh — no cache
                 ref_csv_path=ref_csv_path,
                 ref_sas7bdat_path=ref_sas7bdat_path,
+                recon_config=recon_config,
             )
             elapsed_f = int((time.monotonic() - t0_f) * 1000)
             final_checks: list[dict[str, Any]] = (
@@ -1519,12 +1841,14 @@ class JobOrchestrator:
         """
         try:
             backend = BackendFactory.create()
+            recon_config = _parse_recon_config(job.files.get("__recon_config__"))
             report = await asyncio.to_thread(
                 self._reconciler.run,
                 ref_csv_path,
                 job.python_code or "",
                 backend,
                 ref_sas7bdat_path,
+                recon_config,
             )
             await session.execute(
                 update(Job)
@@ -1540,6 +1864,169 @@ class JobOrchestrator:
             )
             await session.commit()
             raise
+
+
+class _KeyAttempt:
+    """A single LLM key proposal and how it fared (for closest-attempt feedback)."""
+
+    def __init__(self, keys: list[str], reason: str, closeness: tuple[float, int, int]) -> None:
+        """Record the proposed *keys*, the *reason* it failed, and its *closeness*."""
+        self.keys = keys
+        self.reason = reason
+        self.closeness = closeness
+
+
+def _closeness_score(ref: Any, actual: Any, proposed: list[str]) -> tuple[float, int, int]:
+    """Score a proposed key's closeness (higher uniqueness, fewer diffs = better).
+
+    Deterministic ranking key (for the single closest attempt fed back to the
+    LLM): ``(ref+actual uniqueness fraction, -only_in_* rows, -differing groups)``.
+    Higher tuples are better. Computed in the worker so the LLM never ranks.
+
+    Args:
+        ref: Reference pandas DataFrame (lowercased columns).
+        actual: Actual pandas DataFrame (lowercased columns).
+        proposed: Candidate key columns.
+
+    Returns:
+        A sortable ``(uniqueness_fraction, -extra_rows, -diff_groups)`` tuple.
+    """
+    present = [c for c in proposed if c in ref.columns and c in actual.columns]
+    if not present:
+        return (0.0, -(10**9), -(10**9))
+    n_ref = max(len(ref), 1)
+    n_act = max(len(actual), 1)
+    uniq = (
+        ref[present].dropna().drop_duplicates().shape[0] / n_ref
+        + actual[present].dropna().drop_duplicates().shape[0] / n_act
+    ) / 2.0
+    result = _row_hash_diff(ref, actual, join_keys=present, float_tolerance=_AGGREGATE_RTOL)
+    detail = str(result.get("detail", ""))
+    extra = detail.count("only in ref") + detail.count("only in actual")
+    diffs = detail.count("differing cell-group")
+    return (uniq, -extra, -diffs)
+
+
+def _render_feedback(feedback: list[_KeyAttempt]) -> str:
+    """Render bounded prior-attempt feedback, flagging the single closest attempt.
+
+    Args:
+        feedback: Accumulated key attempts so far (empty on the first call).
+
+    Returns:
+        A bounded multi-line string, or ``""`` when no attempts have been made.
+    """
+    if not feedback:
+        return ""
+    best_idx = max(range(len(feedback)), key=lambda i: feedback[i].closeness)
+    lines: list[str] = []
+    for i, att in enumerate(feedback):
+        flag = "  <-- CLOSEST so far; build on this" if i == best_idx else ""
+        lines.append(f"- tried {att.keys}: {att.reason}{flag}")
+    return "\n".join(lines[:10])
+
+
+def _preprocess_recon_frames(
+    result_json: list[dict[str, Any]],
+    ref_paths: tuple[str, str],
+    backend: Any,
+) -> tuple[Any, Any] | None:
+    """Load ref + build actual, mirroring the executor preprocessing order exactly.
+
+    Replicates ``src/executor/recon.py`` (``run_recon``): ``pd.DataFrame(result_json)``
+    → lowercase BOTH frames' columns → ``_coerce_sas_date_columns``. Kept in
+    lockstep with the executor so the in-process re-comparison sees identical data.
+
+    Args:
+        result_json: Executor-returned actual rows.
+        ref_paths: ``(ref_csv_path, ref_sas7bdat_path)``.
+        backend: ComputeBackend for loading the reference frame.
+
+    Returns:
+        ``(ref_df, actual_df)``, or ``None`` when no ref is available / load fails.
+    """
+    import pandas as pd
+
+    ref_csv_path, ref_sas7bdat_path = ref_paths
+    if not ref_csv_path and not ref_sas7bdat_path:
+        return None
+    try:
+        if ref_sas7bdat_path:
+            ref_df = cast("pd.DataFrame", backend.read_sas7bdat(ref_sas7bdat_path))
+        else:
+            ref_df = cast("pd.DataFrame", backend.read_csv(ref_csv_path))
+    except Exception as exc:
+        logger.warning("F15: reference load failed: %s", exc)
+        return None
+    actual_df = pd.DataFrame(result_json)
+    ref_df.columns = ref_df.columns.str.lower()
+    actual_df.columns = actual_df.columns.str.lower()
+    ref_df, actual_df = _coerce_sas_date_columns(ref_df, actual_df)
+    return ref_df, actual_df
+
+
+def _apply_resolved_key(
+    checks: list[dict[str, Any]], rhd: dict[str, Any], proposed: list[str]
+) -> None:
+    """Replace the failed ``row_hash_diff`` check with a plain pass (in place).
+
+    The reported check is a PLAIN pass (no fan-out / key-warning artefacts) per
+    the locked decision, carrying ``resolved_join_key`` for audit.
+
+    Args:
+        checks: The per-block check list (mutated in place).
+        rhd: The existing failed ``row_hash_diff`` check dict.
+        proposed: The resolved key columns.
+    """
+    idx = checks.index(rhd)
+    checks[idx] = {
+        "name": "row_hash_diff",
+        "status": "pass",
+        "resolved_join_key": list(proposed),
+    }
+
+
+def _parse_recon_config(raw: str | None) -> ReconConfig:
+    """Parse the optional ``__recon_config__`` sentinel value into a ReconConfig.
+
+    The sentinel stores a JSON object (``{"join_keys": [...], "float_tolerance": ...}``).
+    Malformed / absent values fall back to ReconConfig defaults so existing jobs
+    behave identically.
+
+    Args:
+        raw: Raw sentinel string from ``job.files`` (may be ``None``).
+
+    Returns:
+        A populated ReconConfig (defaults when *raw* is absent / invalid).
+    """
+    if not raw:
+        return ReconConfig()
+    try:
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        logger.warning("Could not parse __recon_config__ sentinel; using defaults")
+        return ReconConfig()
+    return ReconConfig.from_metadata(parsed if isinstance(parsed, dict) else None)
+
+
+def _only_row_hash_diff_failed(raw_report: dict[str, Any]) -> bool:
+    """Return True when the only failing check in *raw_report* is row_hash_diff.
+
+    Used to keep the parity-class ``row_hash_diff`` check from driving the
+    agentic phase-2 re-translation (DECISIONS 2026-06-15: parity mismatches are
+    human-review-only, never auto-repaired).
+
+    Args:
+        raw_report: A ``{"checks": [...]}`` dict from RemoteReconciliationService.
+
+    Returns:
+        True iff at least one check failed and every failed check is row_hash_diff.
+    """
+    checks: list[dict[str, Any]] = raw_report.get("checks", [])
+    failed = [c for c in checks if c.get("status") != "pass"]
+    if not failed:
+        return False
+    return all(c.get("name") == "row_hash_diff" for c in failed)
 
 
 def _dict_to_recon_report(report: dict[str, Any]) -> ReconciliationReport:
@@ -1642,7 +2129,9 @@ async def _process_job(session: AsyncSession, job: Job) -> None:
     logger.info("Processing job %s", job.id)
     try:
         files: dict[str, str] = {
-            k: v for k, v in job.files.items() if k not in ("__ref_csv__", "__ref_sas7bdat__")
+            k: v
+            for k, v in job.files.items()
+            if k not in ("__ref_csv__", "__ref_sas7bdat__", "__recon_config__")
         }
         ref_csv_path: str = str(job.files.get("__ref_csv__", ""))
         ref_sas7bdat_path: str = str(job.files.get("__ref_sas7bdat__", ""))
