@@ -132,7 +132,7 @@ New field on `SASBlock`: `column_schema: dict[str, dict[str, str]] = Field(defau
 **File:** `src/backend/api/routes/jobs.py`
 **Depends on:** P3-C, P3-D
 **Done when:** `JobSchemaResponse.relationships` populated from `migration_plan.relationships`; `TableSchema.ddl` populated by calling `generate_create_table` at serve time; TypeScript types updated
-- [ ] done
+- [x] done
 
 ### P3-F: Build DataStorageERD component
 **File:** `src/frontend/src/components/JobDetail/DataStorageERD.tsx` (new)

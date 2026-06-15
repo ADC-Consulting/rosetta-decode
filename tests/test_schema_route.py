@@ -448,3 +448,151 @@ async def test_patch_schema_column_type_override_reflected_in_get(
     get_resp = await client.get(f"/jobs/{job_id}/schema")
     assert get_resp.status_code == 200
     assert get_resp.json()["tables"][0]["columns"][0]["override_type"] == "Integer"
+
+
+# ── DDL generation (P3-E) ─────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_schema_route_ddl_populated_for_table_with_columns(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """TableSchema.ddl is generated for a table that has columns.
+
+    The DDL must contain a CREATE TABLE statement qualified with the target_schema
+    and dataset_name, and include a column definition for each column.
+    """
+    migration_plan: dict[str, Any] = {
+        "summary": "test",
+        "block_plans": [],
+        "libname_map": {"rawdir": "/data/raw"},
+        "data_schema": {
+            "/data/raw/subjects.sas7bdat": {
+                "columns": ["subject_id", "visit_date"],
+                "column_types": {"subject_id": "character", "visit_date": "double"},
+                "column_labels": {},
+                "column_formats": {"visit_date": "DATE9."},
+                "row_count": 100,
+            }
+        },
+        "relationships": [],
+    }
+    job_id = await _insert_job(db_session, migration_plan=migration_plan)
+    response = await client.get(f"/jobs/{job_id}/schema")
+    assert response.status_code == 200
+    body = response.json()
+
+    table = body["tables"][0]
+    ddl: str = table["ddl"]
+
+    # Must be a non-empty CREATE TABLE statement
+    assert ddl.startswith("CREATE TABLE")
+    # Qualified with target_schema (= libname "rawdir") and dataset_name
+    assert "rawdir.subjects" in ddl
+    # Both columns must appear
+    assert "subject_id" in ddl
+    assert "visit_date" in ddl
+    # SQL types: character → TEXT, double + DATE9. → DATE
+    assert "TEXT" in ddl
+    assert "DATE" in ddl
+
+
+@pytest.mark.asyncio
+async def test_schema_route_ddl_stub_for_table_with_no_columns(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """TableSchema.ddl is a stub comment for a table with no columns.
+
+    generate_create_table returns a stub DDL (with '-- no columns extracted')
+    when the column list is empty.  The route must propagate that stub rather
+    than an empty string.
+    """
+    migration_plan: dict[str, Any] = {
+        "summary": "test",
+        "block_plans": [],
+        "libname_map": {},
+        "data_schema": {
+            "work_empty": {
+                "columns": [],
+                "column_types": {},
+                "column_labels": {},
+                "column_formats": {},
+                "row_count": None,
+            }
+        },
+        "relationships": [],
+    }
+    job_id = await _insert_job(db_session, migration_plan=migration_plan)
+    response = await client.get(f"/jobs/{job_id}/schema")
+    assert response.status_code == 200
+    body = response.json()
+
+    table = body["tables"][0]
+    ddl: str = table["ddl"]
+
+    # Must still be a CREATE TABLE stub, not an empty string
+    assert ddl.startswith("CREATE TABLE")
+    assert "no columns extracted" in ddl
+
+
+@pytest.mark.asyncio
+async def test_schema_route_relationships_from_migration_plan(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Route returns all valid relationships from migration_plan.relationships."""
+    migration_plan: dict[str, Any] = {
+        "summary": "test",
+        "block_plans": [],
+        "libname_map": {},
+        "data_schema": {},
+        "relationships": [
+            {
+                "left_table": "patients",
+                "right_table": "labs",
+                "key_column": "patient_id",
+                "via_block_id": "analysis.sas:20",
+                "relationship_type": "join",
+            },
+            {
+                "left_table": "patients",
+                "right_table": "demographics",
+                "key_column": "subject_id",
+                "via_block_id": "demographics.sas:5",
+                "relationship_type": "merge",
+            },
+        ],
+    }
+    job_id = await _insert_job(db_session, migration_plan=migration_plan)
+    response = await client.get(f"/jobs/{job_id}/schema")
+    assert response.status_code == 200
+    body = response.json()
+
+    rels = body["relationships"]
+    assert len(rels) == 2
+
+    rel_types = {r["relationship_type"] for r in rels}
+    assert "join" in rel_types
+    assert "merge" in rel_types
+
+    left_tables = {r["left_table"] for r in rels}
+    assert "patients" in left_tables
+
+
+@pytest.mark.asyncio
+async def test_schema_route_relationships_empty_when_plan_has_none(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Route returns empty relationships list when migration_plan has no relationships key."""
+    migration_plan: dict[str, Any] = {
+        "summary": "test",
+        "block_plans": [],
+        "libname_map": {},
+        "data_schema": {},
+        # No 'relationships' key at all
+    }
+    job_id = await _insert_job(db_session, migration_plan=migration_plan)
+    response = await client.get(f"/jobs/{job_id}/schema")
+    assert response.status_code == 200
+    body = response.json()
+
+    assert body["relationships"] == []

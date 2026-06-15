@@ -516,6 +516,7 @@ async def get_job_schema(
         HTTPException: 404 if the job does not exist.
     """
     from src.backend.api.schema_utils import map_sas_to_semantic_type  # SAS: schema_utils.py:1
+    from src.worker.engine.ddl_generator import generate_create_table  # SAS: ddl_generator.py:63
 
     result = await session.execute(select(Job).where(Job.id == str(job_id)))
     job = result.scalar_one_or_none()
@@ -578,6 +579,9 @@ async def get_job_schema(
             )
 
         dataset_name = os.path.splitext(os.path.basename(path))[0]
+        # SAS: ddl_generator.py:63 — generate DDL at serve time from column metadata
+        ddl_columns = [{"name": c.name, "semantic_type": c.semantic_type} for c in columns]
+        ddl = generate_create_table(dataset_name, target_schema, ddl_columns)
         tables.append(
             TableSchema(
                 path=path,
@@ -586,6 +590,7 @@ async def get_job_schema(
                 target_schema=target_schema,
                 columns=columns,
                 row_count=row_count,
+                ddl=ddl,
             )
         )
 
