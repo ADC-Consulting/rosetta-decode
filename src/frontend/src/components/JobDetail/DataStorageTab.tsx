@@ -117,11 +117,11 @@ function sortedGroupKeys(groups: GroupedTables): (string | null)[] {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-type TabView = "schema" | "data-model" | "data-flow";
+type ProjectView = "data-model" | "data-flow";
 
 export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabProps) {
   const [manualSelectedPath, setSelectedPath] = useState<string | null>(null);
-  const [tabView, setTabView] = useState<TabView>("schema");
+  const [projectView, setProjectView] = useState<ProjectView | null>(null);
   const [ddlOpen, setDdlOpen] = useState(false);
   const [ddlLastPath, setDdlLastPath] = useState<string | null>(null);
   const [editingLibname, setEditingLibname] = useState<string | null>(null);
@@ -333,56 +333,61 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
         })()}
       </div>
 
-      {/* Right: schema detail / ERD */}
+      {/* Right: column details / project view */}
       <div className="flex-1 min-w-0 flex flex-col min-h-0">
-        {/* Tab bar */}
-        <div className="flex items-center gap-1 px-4 py-2 border-b border-border shrink-0">
-          <div
-            className="inline-flex rounded-md border border-border overflow-hidden text-xs font-medium"
-            role="group"
-            aria-label="View"
-          >
-            {(["schema", "data-model", "data-flow"] as TabView[]).map((view, i) => (
-              <button
-                key={view}
-                type="button"
-                onClick={() => setTabView(view)}
-                aria-pressed={tabView === view}
-                className={`px-3 py-1.5 transition-colors ${i > 0 ? "border-l border-border" : ""} ${
-                  tabView === view
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-background text-muted-foreground hover:bg-muted"
-                }`}
-              >
-                {view === "schema" ? "Schema" : view === "data-model" ? "Data model" : "Data flow"}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {tabView === "data-model" ? (
-          <div className="flex-1 min-h-0">
-            <DataModelERD
-              schema={schemaData}
-              selectedTable={selectedTable?.dataset_name ?? null}
-              onTableSelect={(name) => {
-                const match = schemaData.tables.find((t) => t.dataset_name === name);
-                if (match) setSelectedPath(match.path);
-              }}
-            />
-          </div>
-        ) : tabView === "data-flow" ? (
-          <div className="flex-1 min-h-0">
-            <DataFlowDiagram
-              jobId={jobId}
-              selectedTable={selectedTable?.dataset_name ?? null}
-              onTableSelect={(name) => {
-                const match = schemaData.tables.find((t) => t.dataset_name === name);
-                if (match) setSelectedPath(match.path);
-              }}
-            />
+        {projectView !== null ? (
+          /* Project view mode */
+          <div className="flex-1 min-h-0 flex flex-col">
+            {/* Project view header */}
+            <div className="flex items-center justify-between px-4 py-2 border-b border-border shrink-0">
+              <span className="text-sm font-semibold text-foreground">
+                {projectView === "data-model" ? "Data model" : "Data flow"}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setProjectView(projectView === "data-model" ? "data-flow" : "data-model")
+                  }
+                  className="px-2 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                >
+                  {projectView === "data-model" ? "Data flow" : "Data model"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setProjectView(null)}
+                  className="px-2 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                  title="Return to table schema"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+            {/* Diagram */}
+            <div className="flex-1 min-h-0">
+              {projectView === "data-model" ? (
+                <DataModelERD
+                  schema={schemaData}
+                  selectedTable={selectedTable?.dataset_name ?? null}
+                  onTableSelect={(name) => {
+                    const match = schemaData.tables.find((t) => t.dataset_name === name);
+                    if (match) setSelectedPath(match.path);
+                  }}
+                />
+              ) : (
+                <DataFlowDiagram
+                  jobId={jobId}
+                  selectedTable={selectedTable?.dataset_name ?? null}
+                  onTableSelect={(name) => {
+                    const match = schemaData.tables.find((t) => t.dataset_name === name);
+                    if (match) setSelectedPath(match.path);
+                  }}
+                />
+              )}
+            </div>
           </div>
         ) : (
+          /* Column details mode */
           <div className="flex-1 min-h-0 overflow-y-auto">
             {!selectedTable ? (
               <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
@@ -391,7 +396,7 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
             ) : (
               <>
                 {/* Header */}
-                <div className="px-4 py-3 border-b border-border">
+                <div className="px-4 py-3 border-b border-border flex items-start justify-between gap-2">
                   <div className="flex items-center gap-3 flex-wrap">
                     <span className="font-mono text-sm font-semibold">
                       {selectedTable.dataset_name}
@@ -421,6 +426,24 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                           ? "Changed"
                           : "Not run"}
                     </span>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setProjectView("data-model")}
+                      className="px-2 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                      title="View all tables as entity diagram"
+                    >
+                      Data model
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setProjectView("data-flow")}
+                      className="px-2 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                      title="View full pipeline data flow"
+                    >
+                      Data flow
+                    </button>
                   </div>
                 </div>
 
