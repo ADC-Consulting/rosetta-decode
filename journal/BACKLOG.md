@@ -252,7 +252,7 @@
 - [x] fix(worker): cumulative code execution — prior-block NameErrors fixed; Parquet session cache removed; `result = <output_var>` injected for correct recon capture
 - [x] fix(prompt): `.schema[col]` introspection on inter-block DataFrames suppressed via `SHARED_TRANSLATION_RULES`
 - [x] fix(planner): `block_type` authoritative from parser; PROC_IML no longer shows as UNTRANSLATABLE
-- [ ] feat(planner): post-run risk+rationale enrichment — `_enrich_block_plan_post_run` in `main.py`; rule-based, no LLM call; re-persists `job.migration_plan` after `_persist_initial_revisions`
+- [x] feat(planner): post-run risk+rationale enrichment — `_enrich_block_plan_post_run` in `main.py`; rule-based, no LLM call; writes new `migration_plan_post_run` column after `_persist_initial_revisions` (two-column; pre-run preserved) → see #56
 - [ ] F20 Stream B: ExecutionOutputPanel improvements + Trust tab in EditorTab → see `docs/plans/latest/F20-live-trace-popup.md`
 
 ---
@@ -416,7 +416,8 @@
 - [x] F32 S-E: Update TypeScript type
 - [x] F32 S-F: Render warning banner on Plan tab
 - [x] F32 S-G: make test exits 0
-- [ ] #56: Post-run risk + rationale enrichment (rule-based, already designed)
+- [x] #56: Post-run risk + rationale enrichment (rule-based) — `_enrich_block_plan_post_run` + `migration_plan_post_run` column + `effective_migration_plan` accessor; branch `feat/F56-blockplan-risk-rationale`
+- [ ] frontend: Plan-tab Strategy label vs `needs_attention` flag inconsistency for `translated_with_review` (fix B+) — issue text drafted 2026-06-15; surfaced during F56 verification
 - [x] #57: Macro definition + call expansion (%MACRO/%MEND) → see `docs/plans/latest/F57-macro-call-expansion.md`
   - [x] F57 S-A: macro signature + call-arg parsing helpers → `src/worker/engine/macro_call_expander.py`
   - [x] F57 S-B: expandability guard (`_is_expandable`) → `src/worker/engine/macro_call_expander.py`

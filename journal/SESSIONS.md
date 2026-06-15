@@ -6,6 +6,38 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-15 — F56: post-run risk & rationale enrichment for BlockPlan (two-column)
+
+**Duration:** ~1 session | **Focus:** implement #56 — recompute per-block risk/rationale post-run (rule-based, no LLM) into a new `migration_plan_post_run` column
+
+### Done
+- **New DB column + migration:** `Job.migration_plan_post_run` (JSON, nullable) in `models.py`; Alembic `019_add_migration_plan_post_run` (rev `019`, down `018`). Backend entrypoint runs `alembic upgrade head`, so it applies on stack start.
+- **`effective_migration_plan(job)` accessor** in `models.py` — returns post-run plan when present, else pre-run. Pre-run estimate in `migration_plan` is preserved untouched.
+- **`_enrich_block_plan_post_run` helper** (`worker/main.py`, module-level, pure, deep-copy — never mutates input). Rule precedence per block: MANUAL→HIGH; recon_fail→HIGH; recon_pass+high-conf→LOW; no-recon+low/very_low→HIGH; else risk unchanged (medium never synthesized). Also overwrites `confidence_band` with the post-run band, recomputes `overall_risk`, and appends an idempotent ` · post-run: recon=…, confidence=… → risk=…` rationale suffix.
+- **Wired as best-effort Step 10d** in `_execute` (after `_persist_initial_revisions`) — wrapped in try/except so cosmetic enrichment can never fail a completed job.
+- **API read sites swapped to `effective_migration_plan`:** plan endpoint (`jobs.py`), BOM, runbook, explain LLM-context (`explain.py`). Trust-report / criticality paths deliberately left on `migration_plan` (already post-run-aware via `reconciliation_status`).
+- **Tests:** new `tests/test_block_plan_enrichment.py` (every rule branch, precedence, idempotency, non-mutation, confidence overwrite, overall_risk recompute, accessor fallback) + API test in `test_fallback_plan_endpoint.py`. `make test` green (all 7 gates, coverage ≥90%).
+- **Live Docker verification:** ran the pharma sandbox job through the running stack; confirmed `migration_plan` (pre) vs `migration_plan_post_run` (post) in Postgres. Block `03_build_sdtm_ae.sas:9` flipped medium→low (recon pass + high conf); several blocks got confidence medium→high; `overall_risk` stayed HIGH (macro blocks remain HIGH).
+
+### Decisions
+- **Scope extension to the 2026-05-04 F56 design** (logged in DECISIONS.md): two-column storage (preserve pre-run in `migration_plan`, enriched in `migration_plan_post_run`) instead of re-persisting in place; also overwrite `confidence_band` with the post-run band and recompute `MigrationPlan.overall_risk`.
+
+### Open Questions
+- **Plan-tab UI inconsistency (NOT F56):** Strategy column relabels `translated_with_review`→"Translated" on recon pass, but the ⚠ attention flag (`needs_attention`) still fires on the real strategy — so label and flag contradict (e.g. `02_build_sdtm_ex.sas:3`). Issue text drafted; fix recommendation = "B+" (frontend label = true strategy, recon-fail still overrides to "Review needed"). Not yet filed/implemented.
+
+### Next Session — Start Here
+1. File the drafted GitHub issue for the Strategy-label vs attention-flag inconsistency, then implement fix B+ (frontend-only, `BlockPlanTable.tsx:696-705`) + a frontend test asserting `translated_with_review` renders "Review needed" regardless of `reconciliation_status`.
+2. Open the F56 PR off `feat/F56-blockplan-risk-rationale`.
+
+### Files Touched
+- `src/backend/db/models.py`, `alembic/versions/019_add_migration_plan_post_run.py`
+- `src/worker/main.py`
+- `src/backend/api/routes/jobs.py`, `src/backend/api/routes/explain.py`
+- `tests/test_block_plan_enrichment.py` (new), `tests/test_fallback_plan_endpoint.py`
+- `journal/SESSIONS.md`, `journal/BACKLOG.md`, `journal/DECISIONS.md`
+
+---
+
 ## 2026-06-15 — fix: preserve leading zeros via SAS LENGTH char declarations + F15 PR prep
 
 **Duration:** ~1 session | **Focus:** diagnose and fix USUBJID zero-padding regression; commit F15 leftovers; generate PR summary

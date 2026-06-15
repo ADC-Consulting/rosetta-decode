@@ -66,7 +66,13 @@ from src.backend.api.schemas import (
 from src.backend.core.config import settings
 from src.backend.core.pricing import compute_cost
 from src.backend.core.scoping_markdown import render_scoping_markdown
-from src.backend.db.models import BlockRevision, Job, JobTrace, JobVersion
+from src.backend.db.models import (
+    BlockRevision,
+    Job,
+    JobTrace,
+    JobVersion,
+    effective_migration_plan,
+)
 from src.backend.db.session import AsyncSessionLocal, get_async_session
 from src.worker.compute.local import LocalBackend
 from src.worker.engine.agents.data_step import DataStepAgent
@@ -497,7 +503,7 @@ async def get_job_plan(
                 "Please retry in a moment.",
             },
         )
-    return JobPlanResponse(**job.migration_plan, job_id=job.id)
+    return JobPlanResponse(**(effective_migration_plan(job) or {}), job_id=job.id)
 
 
 _REVIEW_STATUSES = frozenset({"proposed", "accepted", "under_review"})
@@ -2207,8 +2213,9 @@ async def get_job_scoping(
 
     # --- BOM ---
     block_plans: list[dict[str, Any]] = []
-    if job.migration_plan:
-        block_plans = job.migration_plan.get("block_plans") or []
+    eff_plan = effective_migration_plan(job)
+    if eff_plan:
+        block_plans = eff_plan.get("block_plans") or []
 
     bom = _build_bom_summary(block_plans)
 
@@ -2469,7 +2476,7 @@ async def get_job_runbook(
         if rev.block_id not in latest_revision:
             latest_revision[rev.block_id] = rev
 
-    block_plans: list[dict[str, Any]] = job.migration_plan.get("block_plans", [])
+    block_plans: list[dict[str, Any]] = (effective_migration_plan(job) or {}).get("block_plans", [])
     entries = _build_runbook_entries(block_plans, blast_map, lineage, latest_revision)
     md = _render_runbook_markdown(str(job_id), entries)
 

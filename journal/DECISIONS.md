@@ -140,6 +140,15 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-06-15 — F56 post-run risk enrichment implemented (extends 2026-05-04 design)
+
+- **Two-column storage, not in-place re-persist:** pre-run planner estimate stays untouched in `migration_plan`; enriched plan goes to a new `migration_plan_post_run` JSON column (Alembic 019). Consumers read via `effective_migration_plan(job)` = post-run when present, else pre-run (fallback for older jobs). Rationale: preserves the audit trail of the original estimate vs. the post-run revision · revisit never
+- **Enrichment also overwrites `confidence_band` (post-run band) and recomputes `MigrationPlan.overall_risk`:** extends the 2026-05-04 rule set (which only covered per-block `risk`/`rationale`) so the displayed confidence agrees with the rationale text, and the summary risk stays consistent with the upgraded per-block risks (HIGH if any block HIGH, else MEDIUM if any, else LOW) · revisit never
+- **Enrichment is best-effort (Step 10d, try/except):** a cosmetic post-run enrichment must never fail an already-successful job; on exception it logs and continues · revisit never
+- **Trust-report / criticality (`needs_attention`, `_criticality`) deliberately NOT swapped to post-run:** they already compute from `strategy` + `confidence_band` + `reconciliation_status`, so they are post-run-aware without reading `bp["risk"]`. `recommended_review_blocks` / `risk_explanation` also not recomputed (no signal change warrants it) · revisit if those signals diverge from post-run risk
+
+---
+
 ## 2026-05-03 (session 3 — recon grouping fixes, retry loop, session cache, parser enhancements)
 
 - **`_build_recon_groups` direct-match only:** strip libname prefix from `output_datasets` before stem match; no BFS backward traversal — upstream blocks produce different shapes and must not be reconciled against the terminal output ref · revisit never
