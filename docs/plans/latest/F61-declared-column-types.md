@@ -2,7 +2,7 @@
 
 **Phase:** 2
 **Area:** Backend / Worker
-**Status:** done
+**Status:** complete (verified end-to-end in sandbox; full-pipeline reconciliation green)
 **Depends on:** F57/F59 (macro expansion — merged), F60 (PROC FORMAT catalog — merged)
 **Branch:** `feat/F61-declared-column-types` (cut from latest `main`)
 
@@ -127,6 +127,25 @@ schema (respects the existing "never cast to match ref" rule). Two complementary
 
 - `make test` green with the new unit + e2e tests; coverage ≥90% (F60 gate).
 - Capture a documented sandbox artefact (paste into this plan / journal at close, as F60 did): a real migration on the `subjid $10` fixture showing the `.cast("string")` + `# SAS:` provenance comment in delivered PySpark, and full-pipeline reconciliation no longer false-passing.
+
+## Session close (2026-06-15) — verification outcome + downstream fixes
+
+End-to-end sandbox verification confirmed the `.cast("string")` + `# SAS:` provenance injection in
+delivered PySpark. Driving the full pipeline to green surfaced four issues — only the first is F61
+itself; the rest were latent problems F61's correct casting *exposed* (committed separately):
+
+- **F61 casting works** — `subjid`/`siteid` now carry the declared `string` type into delivered code.
+- **Recon dtype detection (pandas 3.0):** `is_object_dtype` is `False` for the new `StringDtype`, so
+  the recon type-alignment branch never fired. Switched the discriminator to `not is_numeric_dtype`.
+- **Executor date serialization:** `to_json(orient='records')` encoded `DateType` columns as epoch-millis
+  (pandas default), which recon misread as numeric SAS-days → `OutOfBoundsDatetime`. Fixed with
+  `date_format='iso'` at the serialization boundary — the true root cause of the `firstaedt` mismatch.
+- **`trtdurd` drift was NOT a code bug:** the generated `datediff+1` was faithful to `%m_first_dose`;
+  the golden `adsl_expected.csv` was stale (built from a richer exposure dataset, end dates ~29d later).
+  Regenerated `TRTEDT`/`TRTDURD` from the current `ex_raw.csv`. **Decision: never auto-fix parity
+  mismatches with an agent** — it rewards gaming the golden and falsifies correct translations.
+- **AMBIGUOUS_REFERENCE self-heal:** sharpened §5 (mandate `on=[...]` equi-joins) + deterministic
+  bare→alias-qualified `F.col` rewrite in both `_safe_exec` and the executor's (new) bounded retry.
 
 ## Out of scope
 

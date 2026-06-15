@@ -6,6 +6,17 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-06-15 — F61 type-aware schema contract + full-pipeline recon hardening
+
+- **Declared `.sas7bdat` types are baked in via a deterministic injector, not the LLM (F61):** `inject_declared_casts` post-processes generated code, adding `.withColumn(col, F.col(col).cast(...))` after each `toDF(lower)` line, sourced from `meta.readstat_variable_types` (string→`string`, else→`double`). The prompt section is *informational only* — the LLM never hand-writes the load cast (single deterministic author = byte-reproducible). Cast to the **source's** declared type, never the reference schema · revisit never
+- **Recon type detection uses `not is_numeric_dtype`, not `is_object_dtype`:** pandas ≥2 / 3.0 infers a dedicated `StringDtype` for text columns, for which `is_object_dtype` is `False` — the original guard silently never fired. `is_numeric_dtype` negation is the version-robust discriminator. Date/ID coercion is gated by a parseable-fraction threshold over *non-blank* cells (sparse clinical date columns like first-AE-date are legitimately mostly null) · revisit never
+- **Executor serializes result dates as ISO strings (`date_format='iso'`):** the pandas `to_json` default encodes `DateType` as epoch-millis, which recon misread as numeric SAS-days and overflowed. ISO matches the golden CSV and is the deprecation-recommended format. This was the true root cause of the `firstaedt` object-vs-numeric mismatch — every prior recon-side fix was treating corrupted serialized data · revisit never
+- **NEVER auto-fix reconciliation *parity* mismatches with an LLM agent:** when the pipeline runs but numbers differ, agentic "fix until recon passes" rewards gaming the golden and can falsify correct translations. `trtdurd` this session proved it — the code was right, the golden fixture was stale. Agentic full-pipeline retry is acceptable ONLY for runtime crashes (attribute traceback → block, re-run that block's refine). Parity mismatches are surfaced for human review, not auto-repaired · revisit never
+- **AMBIGUOUS_REFERENCE is self-healed deterministically in both exec paths:** prompt §5 sharpened to mandate `on=[...]` equi-joins (collapses duplicate keys at the source); as the guarantee, a bare→alias-qualified `F.col` rewrite runs in the worker `_safe_exec` retry loop AND a new bounded (3×) retry in the executor subprocess runner (executor must not import from `src/worker`, so the helper is duplicated). Converges naturally — once qualified, the same error finds nothing to rewrite · revisit never
+- **Golden fixtures are regenerated from current raw inputs when stale:** test data is synthetic, so `adsl_expected.csv` TRTEDT/TRTDURD were rebuilt from the current `ex_raw.csv` via the exact `%m_first_dose` semantics rather than altering correct code to match drifted expectations · revisit never
+
+---
+
 ## 2026-06-14 — F57/F59 macro expansion + SET/MERGE option parsing
 
 - **Macro CALLS are expanded deterministically at parse time, before block extraction (F57):** `expand_macro_calls` runs inside `SASParser.parse` (two-pass: collect all defs across files, then expand each file) so datasets produced inside a macro body become real blocks. No LLM — reproducibility constraint. The legacy per-block `MacroExpander` (main.py) is left untouched; F57/F59 enhance only the parse-time path (no consolidation, no double-processing) · revisit never
