@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import {
   Background,
   Controls,
+  Handle,
   MarkerType,
   Position,
   ReactFlow,
@@ -58,6 +59,11 @@ function SourceNode({ data }: { data: FlowNodeData }): React.ReactElement {
         boxShadow: data.isSelected ? "0 0 0 2px rgba(59,130,246,0.25)" : "0 1px 3px rgba(0,0,0,0.08)",
       }}
     >
+      <Handle
+        type="target"
+        position={Position.Left}
+        style={{ background: "transparent", border: "none" }}
+      />
       <svg
         width={16}
         height={16}
@@ -88,6 +94,11 @@ function SourceNode({ data }: { data: FlowNodeData }): React.ReactElement {
         </div>
         <div style={{ fontSize: 10, color: "#3b82f6", marginTop: 2, fontWeight: 500 }}>source</div>
       </div>
+      <Handle
+        type="source"
+        position={Position.Right}
+        style={{ background: "transparent", border: "none" }}
+      />
     </div>
   );
 }
@@ -98,8 +109,8 @@ function StepNode({ data }: { data: FlowNodeData }): React.ReactElement {
       style={{
         width: STEP_W,
         minHeight: NODE_H,
-        background: "hsl(var(--primary) / 0.12)",
-        border: "1.5px solid hsl(var(--primary) / 0.4)",
+        background: "#f0f4ff",
+        border: "1.5px solid #c7d2fe",
         borderRadius: 8,
         padding: "8px 12px",
         display: "flex",
@@ -109,6 +120,11 @@ function StepNode({ data }: { data: FlowNodeData }): React.ReactElement {
         boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
       }}
     >
+      <Handle
+        type="target"
+        position={Position.Left}
+        style={{ background: "transparent", border: "none" }}
+      />
       <svg
         width={16}
         height={16}
@@ -144,6 +160,11 @@ function StepNode({ data }: { data: FlowNodeData }): React.ReactElement {
           step
         </div>
       </div>
+      <Handle
+        type="source"
+        position={Position.Right}
+        style={{ background: "transparent", border: "none" }}
+      />
     </div>
   );
 }
@@ -168,6 +189,11 @@ function OutputNode({ data }: { data: FlowNodeData }): React.ReactElement {
           : "0 1px 3px rgba(0,0,0,0.08)",
       }}
     >
+      <Handle
+        type="target"
+        position={Position.Left}
+        style={{ background: "transparent", border: "none" }}
+      />
       <svg
         width={16}
         height={16}
@@ -201,6 +227,11 @@ function OutputNode({ data }: { data: FlowNodeData }): React.ReactElement {
         </div>
         <div style={{ fontSize: 10, color: "#10b981", marginTop: 2, fontWeight: 500 }}>output</div>
       </div>
+      <Handle
+        type="source"
+        position={Position.Right}
+        style={{ background: "transparent", border: "none" }}
+      />
     </div>
   );
 }
@@ -247,12 +278,13 @@ function buildNodesAndEdges(
   const edges: Edge[] = [];
 
   if (lineage.pipeline_steps && lineage.pipeline_steps.length > 0) {
-    const inputSets = new Set(lineage.pipeline_steps.flatMap((s) => s.inputs));
-    const outputSets = new Set(lineage.pipeline_steps.flatMap((s) => s.outputs));
-
+    const steps = lineage.pipeline_steps;
+    const inputSets = new Set(steps.flatMap((s) => s.inputs));
+    const outputSets = new Set(steps.flatMap((s) => s.outputs));
     const pureInputs = [...inputSets].filter((ds) => !outputSets.has(ds));
     const pureOutputs = [...outputSets].filter((ds) => !inputSets.has(ds));
 
+    // Source nodes: only true external sources (not produced by any step)
     pureInputs.forEach((ds) => {
       nodes.push({
         id: `src-${ds}`,
@@ -269,7 +301,8 @@ function buildNodesAndEdges(
       });
     });
 
-    lineage.pipeline_steps.forEach((step) => {
+    // Step nodes
+    steps.forEach((step) => {
       nodes.push({
         id: `step-${step.step_id}`,
         type: "step",
@@ -284,48 +317,74 @@ function buildNodesAndEdges(
         } satisfies FlowNodeData,
       });
 
-      step.inputs.forEach((inp, idx) => {
-        const srcId = pureInputs.includes(inp) ? `src-${inp}` : `out-${inp}`;
+      // Source → step edges (external inputs only)
+      step.inputs
+        .filter((inp) => pureInputs.includes(inp))
+        .forEach((inp, idx) => {
+          edges.push({
+            id: `e-src-${step.step_id}-${inp}-${idx}`,
+            source: `src-${inp}`,
+            target: `step-${step.step_id}`,
+            type: "smoothstep",
+            style: { stroke: "#94a3b8", strokeWidth: 1.5 },
+            markerEnd: { type: MarkerType.ArrowClosed, color: "#94a3b8" },
+          });
+        });
+    });
+
+    // Step → step edges (intermediate datasets connect steps)
+    const seenStepEdges = new Set<string>();
+    steps.forEach((stepA) => {
+      steps.forEach((stepB) => {
+        if (stepA.step_id === stepB.step_id) return;
+        const shared = stepA.outputs.filter((out) => stepB.inputs.includes(out));
+        if (shared.length === 0) return;
+        const key = `${stepA.step_id}→${stepB.step_id}`;
+        if (seenStepEdges.has(key)) return;
+        seenStepEdges.add(key);
         edges.push({
-          id: `e-in-${step.step_id}-${inp}-${idx}`,
-          source: srcId,
-          target: `step-${step.step_id}`,
+          id: `e-step-${stepA.step_id}-${stepB.step_id}`,
+          source: `step-${stepA.step_id}`,
+          target: `step-${stepB.step_id}`,
           type: "smoothstep",
+          label: shared.join(", "),
           style: { stroke: "#94a3b8", strokeWidth: 1.5 },
           markerEnd: { type: MarkerType.ArrowClosed, color: "#94a3b8" },
         });
       });
+    });
 
-      step.outputs.forEach((out, idx) => {
-        if (!nodes.find((n) => n.id === `out-${out}`)) {
-          nodes.push({
-            id: `out-${out}`,
-            type: "output",
-            position: { x: 0, y: 0 },
-            sourcePosition: Position.Right,
-            targetPosition: Position.Left,
-            data: {
-              label: out,
-              nodeType: "output" as FlowNodeType,
-              isSelected: out === selectedTable,
-              onClick: () => onTableSelect(out),
-            } satisfies FlowNodeData,
-          });
-        }
-
-        if (!pureOutputs.includes(out) && inputSets.has(out)) {
-          return;
-        }
-
-        edges.push({
-          id: `e-out-${step.step_id}-${out}-${idx}`,
-          source: `step-${step.step_id}`,
-          target: `out-${out}`,
-          type: "smoothstep",
-          style: { stroke: "#6ee7b7", strokeWidth: 1.5 },
-          markerEnd: { type: MarkerType.ArrowClosed, color: "#6ee7b7" },
-        });
+    // Output nodes: only pure outputs (not consumed by any step)
+    pureOutputs.forEach((ds) => {
+      nodes.push({
+        id: `out-${ds}`,
+        type: "output",
+        position: { x: 0, y: 0 },
+        sourcePosition: Position.Right,
+        targetPosition: Position.Left,
+        data: {
+          label: ds,
+          nodeType: "output" as FlowNodeType,
+          isSelected: ds === selectedTable,
+          onClick: () => onTableSelect(ds),
+        } satisfies FlowNodeData,
       });
+    });
+
+    // Step → pure output edges
+    steps.forEach((step) => {
+      step.outputs
+        .filter((out) => pureOutputs.includes(out))
+        .forEach((out, idx) => {
+          edges.push({
+            id: `e-out-${step.step_id}-${out}-${idx}`,
+            source: `step-${step.step_id}`,
+            target: `out-${out}`,
+            type: "smoothstep",
+            style: { stroke: "#6ee7b7", strokeWidth: 1.5 },
+            markerEnd: { type: MarkerType.ArrowClosed, color: "#6ee7b7" },
+          });
+        });
     });
 
     return { nodes, edges };

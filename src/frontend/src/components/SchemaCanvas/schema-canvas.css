@@ -18,6 +18,21 @@
   --duration: 0.15s;
   --duration-slow: 0.25s;
   --ease-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Map rosetta-canvas design tokens to shadcn/ui CSS variables */
+  --surface-raised: var(--card);
+  --surface-subtle: var(--muted);
+  --surface-hover: var(--accent);
+  --text-primary: var(--foreground);
+  --text-secondary: var(--muted-foreground);
+  --text-tertiary: color-mix(in oklch, var(--muted-foreground) 70%, transparent);
+  --border-default: var(--border);
+  --border-strong: var(--border);
+  --brand-primary: var(--primary);
+  --brand-primary-hover: color-mix(in oklch, var(--primary) 80%, transparent);
+  --brand-primary-border: color-mix(in oklch, var(--primary) 50%, transparent);
+  --brand-primary-softer: color-mix(in oklch, var(--primary) 10%, transparent);
+
   --ink: var(--text-primary);
   --ink-soft: var(--text-secondary);
   --panel: var(--surface-raised);
