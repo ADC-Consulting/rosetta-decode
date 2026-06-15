@@ -110,11 +110,66 @@ if _result_path:
                 _result = _v.toPandas()
                 break
     if _result is not None:
-        # date_format='iso' keeps DateType/Timestamp columns as ISO strings
+        # SAS DATE columns (Spark DateType) arrive from toPandas() as a column of
+        # datetime.date objects. pandas' to_json(date_format='iso') would still
+        # render them as "YYYY-MM-DDT00:00:00.000" — a spurious midnight timestamp
+        # the SAS source never declared. Emit bare "YYYY-MM-DD" for any column
+        # whose populated cells are pure dates (datetime.date but NOT
+        # datetime.datetime); datetime columns (TimestampType) keep their time.
+        import datetime as _dt
+
+        for _col in _result.columns:
+            _non_null = _result[_col].dropna()
+            if len(_non_null) == 0:
+                continue
+            if all(
+                type(_cell) is _dt.date for _cell in _non_null
+            ):
+                _result[_col] = _result[_col].map(
+                    lambda _cell: _cell.isoformat() if isinstance(_cell, _dt.date) else _cell
+                )
+        # date_format='iso' keeps remaining datetime columns as ISO strings
         # (matching the golden CSV). The pandas default 'epoch' encodes them as
         # millisecond integers, which recon then misreads as numeric SAS days.
         _result.to_json(_result_path, orient='records', date_format='iso')
 """
+
+
+def normalise_date_columns(df: Any) -> Any:
+    """Render pure-date columns as bare ``YYYY-MM-DD`` strings, in place.
+
+    A SAS DATE column (Spark ``DateType``) arrives from ``toPandas()`` as a column
+    of :class:`datetime.date` objects. ``pandas.to_json(date_format='iso')`` would
+    serialize these as ``YYYY-MM-DDT00:00:00.000`` — a spurious midnight timestamp
+    the SAS source never declared. This converts any column whose populated cells
+    are *pure* dates (``datetime.date`` but NOT ``datetime.datetime``) to ISO date
+    strings, so the delivered output matches the source's declared date format.
+
+    ``datetime.datetime`` is a subclass of ``datetime.date``, so the
+    ``type(cell) is datetime.date`` test fires only for true dates; datetime
+    (``TimestampType``) columns keep their time component.
+
+    This logic is duplicated inside ``_RESULT_CAPTURE_SNIPPET`` because the
+    executor subprocess runs in a fresh namespace and must not import from the
+    package — the snippet and this function must be kept in sync.
+
+    Args:
+        df: A pandas DataFrame (typed loosely to avoid a hard pandas import).
+
+    Returns:
+        The same DataFrame instance, with pure-date columns stringified.
+    """
+    import datetime as _dt
+
+    for col in df.columns:
+        non_null = df[col].dropna()
+        if len(non_null) == 0:
+            continue
+        if all(type(cell) is _dt.date for cell in non_null):
+            df[col] = df[col].map(
+                lambda cell: cell.isoformat() if isinstance(cell, _dt.date) else cell
+            )
+    return df
 
 
 # Self-contained copy of the ambiguity-rewrite helper. The executor must NOT

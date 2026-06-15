@@ -547,3 +547,388 @@ def test_safe_exec_raises_non_nameerror() -> None:
     ns: dict[str, object] = {}
     with pytest.raises(ZeroDivisionError):
         _safe_exec("x = 1 / 0", ns)
+
+
+# ── F15: ReconConfig ──────────────────────────────────────────────────────────
+
+
+@pytest.mark.reconciliation
+def test_recon_config_from_metadata_none_returns_defaults() -> None:
+    """ReconConfig.from_metadata(None) yields defaults."""
+    from src.worker.validation.reconciliation import _AGGREGATE_RTOL, ReconConfig
+
+    cfg = ReconConfig.from_metadata(None)
+    assert cfg.join_keys == []
+    assert cfg.float_tolerance == _AGGREGATE_RTOL
+
+
+@pytest.mark.reconciliation
+def test_recon_config_from_metadata_lowercases_join_keys() -> None:
+    """ReconConfig.from_metadata lowercases join_keys and parses tolerance."""
+    from src.worker.validation.reconciliation import ReconConfig
+
+    cfg = ReconConfig.from_metadata({"join_keys": ["ID", " Subjid "], "float_tolerance": 1e-6})
+    assert cfg.join_keys == ["id", "subjid"]
+    assert cfg.float_tolerance == 1e-6
+
+
+@pytest.mark.reconciliation
+def test_recon_config_from_metadata_bad_tolerance_falls_back() -> None:
+    """ReconConfig.from_metadata tolerates a non-numeric float_tolerance."""
+    from src.worker.validation.reconciliation import _AGGREGATE_RTOL, ReconConfig
+
+    cfg = ReconConfig.from_metadata({"float_tolerance": "not-a-number"})
+    assert cfg.float_tolerance == _AGGREGATE_RTOL
+
+
+# ── F15: _infer_join_keys ─────────────────────────────────────────────────────
+
+
+@pytest.mark.reconciliation
+def test_infer_join_keys_picks_unique_id_column() -> None:
+    """A unique non-numeric column is inferred as the join key."""
+    from src.worker.validation.reconciliation import _infer_join_keys
+
+    ref = pd.DataFrame({"id": ["a", "b", "c"], "val": [1, 2, 3]})
+    actual = pd.DataFrame({"id": ["a", "b", "c"], "val": [1, 2, 3]})
+    assert _infer_join_keys(ref, actual) == ["id"]
+
+
+@pytest.mark.reconciliation
+def test_infer_join_keys_returns_empty_when_no_usable_key() -> None:
+    """No unique single column and no unique composite → no inferred key."""
+    from src.worker.validation.reconciliation import _infer_join_keys
+
+    # Fully duplicated rows: nothing (single or composite) indexes rows uniquely.
+    ref = pd.DataFrame({"grp": ["x", "x", "x"], "val": [1, 1, 1]})
+    actual = pd.DataFrame({"grp": ["x", "x", "x"], "val": [1, 1, 1]})
+    assert _infer_join_keys(ref, actual) == []
+
+
+# ── F15: _row_hash_diff ───────────────────────────────────────────────────────
+
+
+@pytest.mark.reconciliation
+def test_row_hash_diff_explicit_key_mismatch_fails_with_detail() -> None:
+    """Acceptance case: a single differing cell fails and names key + column."""
+    from src.worker.validation.reconciliation import _row_hash_diff
+
+    ref = pd.DataFrame({"id": ["a", "b"], "amount": [100, 200]})
+    actual = pd.DataFrame({"id": ["a", "b"], "amount": [100, 999]})
+    result = _row_hash_diff(ref, actual, join_keys=["id"], float_tolerance=0.001)
+    assert result["status"] == "fail"
+    assert "id='b'" in result["detail"]
+    assert "amount" in result["detail"]
+
+
+@pytest.mark.reconciliation
+def test_row_hash_diff_identical_rows_pass() -> None:
+    """Identical frames pass with no detail."""
+    from src.worker.validation.reconciliation import _row_hash_diff
+
+    ref = pd.DataFrame({"id": ["a", "b"], "amount": [100, 200]})
+    actual = pd.DataFrame({"id": ["a", "b"], "amount": [100, 200]})
+    result = _row_hash_diff(ref, actual, join_keys=["id"], float_tolerance=0.001)
+    assert result["status"] == "pass"
+    assert "detail" not in result
+
+
+@pytest.mark.reconciliation
+def test_row_hash_diff_float_within_tolerance_passes() -> None:
+    """A numeric delta inside the relative tolerance passes."""
+    from src.worker.validation.reconciliation import _row_hash_diff
+
+    ref = pd.DataFrame({"id": ["a"], "amount": [1000.0]})
+    actual = pd.DataFrame({"id": ["a"], "amount": [1000.5]})
+    result = _row_hash_diff(ref, actual, join_keys=["id"], float_tolerance=0.001)
+    assert result["status"] == "pass"
+
+
+@pytest.mark.reconciliation
+def test_row_hash_diff_float_outside_tolerance_fails() -> None:
+    """A numeric delta outside the tolerance fails."""
+    from src.worker.validation.reconciliation import _row_hash_diff
+
+    ref = pd.DataFrame({"id": ["a"], "amount": [1000.0]})
+    actual = pd.DataFrame({"id": ["a"], "amount": [1000.5]})
+    result = _row_hash_diff(ref, actual, join_keys=["id"], float_tolerance=1e-9)
+    assert result["status"] == "fail"
+
+
+@pytest.mark.reconciliation
+def test_row_hash_diff_only_in_ref_and_actual_reported() -> None:
+    """Keys present in only one frame are reported."""
+    from src.worker.validation.reconciliation import _row_hash_diff
+
+    ref = pd.DataFrame({"id": ["a", "b"], "v": [1, 2]})
+    actual = pd.DataFrame({"id": ["a", "c"], "v": [1, 3]})
+    result = _row_hash_diff(ref, actual, join_keys=["id"], float_tolerance=0.001)
+    assert result["status"] == "fail"
+    assert "only in ref" in result["detail"]
+    assert "only in actual" in result["detail"]
+
+
+@pytest.mark.reconciliation
+def test_row_hash_diff_auto_inferred_key_path() -> None:
+    """With no explicit keys, the key is inferred and the mismatch is caught."""
+    from src.worker.validation.reconciliation import _row_hash_diff
+
+    ref = pd.DataFrame({"id": ["a", "b"], "amount": [10, 20]})
+    actual = pd.DataFrame({"id": ["a", "b"], "amount": [10, 21]})
+    result = _row_hash_diff(ref, actual, join_keys=[], float_tolerance=0.001)
+    assert result["status"] == "fail"
+    assert "id='b'" in result["detail"]
+
+
+@pytest.mark.reconciliation
+def test_row_hash_diff_positional_fallback() -> None:
+    """No usable key → positional comparison after a stable sort."""
+    from src.worker.validation.reconciliation import _row_hash_diff
+
+    # No single column and no composite is unique → no inferable key.
+    ref = pd.DataFrame({"grp": [1, 1], "val": [5, 5]})
+    actual = pd.DataFrame({"grp": [1, 1], "val": [5, 99]})
+    result = _row_hash_diff(ref, actual, join_keys=[], float_tolerance=0.001)
+    assert result["status"] == "fail"
+    assert "positional comparison" in result["detail"]
+
+
+@pytest.mark.reconciliation
+def test_row_hash_diff_date_vs_timestamp_format_passes() -> None:
+    """Same instant in different string formats must NOT be a mismatch."""
+    from src.worker.validation.reconciliation import _row_hash_diff
+
+    ref = pd.DataFrame({"id": ["a", "b"], "visitdt": ["2025-06-10", "2025-06-11"]})
+    actual = pd.DataFrame(
+        {"id": ["a", "b"], "visitdt": ["2025-06-10T00:00:00.000", "2025-06-11T00:00:00.000"]}
+    )
+    result = _row_hash_diff(ref, actual, join_keys=["id"], float_tolerance=0.001)
+    assert result["status"] == "pass"
+    assert "detail" not in result
+
+
+@pytest.mark.reconciliation
+def test_row_hash_diff_genuinely_different_dates_still_fails() -> None:
+    """Control: two different dates must still be reported as a mismatch."""
+    from src.worker.validation.reconciliation import _row_hash_diff
+
+    ref = pd.DataFrame({"id": ["a"], "visitdt": ["2025-06-10"]})
+    actual = pd.DataFrame({"id": ["a"], "visitdt": ["2025-06-11T00:00:00.000"]})
+    result = _row_hash_diff(ref, actual, join_keys=["id"], float_tolerance=0.001)
+    assert result["status"] == "fail"
+    assert "visitdt" in result["detail"]
+
+
+@pytest.mark.reconciliation
+def test_run_appends_row_hash_diff_check() -> None:
+    """ReconciliationService.run includes a row_hash_diff check and fails on mismatch."""
+    from src.worker.validation.reconciliation import ReconConfig
+
+    ref_df = pd.DataFrame({"id": ["a", "b"], "amount": [100, 200]})
+    backend = _make_backend(ref_df)
+    code = "import pandas as pd\nresult = pd.DataFrame({'id': ['a', 'b'], 'amount': [100, 999]})\n"
+    svc = ReconciliationService()
+    report = svc.run(
+        ref_csv_path="ref.csv",
+        python_code=code,
+        backend=backend,
+        recon_config=ReconConfig(join_keys=["id"]),
+    )
+    rhd = next(c for c in report["checks"] if c["name"] == "row_hash_diff")
+    assert rhd["status"] == "fail"
+
+
+# ── F15: validated join-key inference (key-selection bug fix) ────────────────
+
+
+@pytest.mark.reconciliation
+def test_infer_join_keys_rejects_mostly_null_dthdtc() -> None:
+    """The exact bug: a mostly-null dthdtc must NOT be chosen; usubjid wins."""
+    from src.worker.validation.reconciliation import _infer_join_keys
+
+    ref = pd.DataFrame(
+        {
+            "usubjid": [f"S-{i}" for i in range(12)],
+            "dthdtc": [None] * 11 + ["2025-01-01"],
+        }
+    )
+    actual = ref.copy()
+    assert _infer_join_keys(ref, actual) == ["usubjid"]
+
+
+@pytest.mark.reconciliation
+def test_row_hash_diff_dthdtc_present_pass_and_fail() -> None:
+    """With a sparse dthdtc + real usubjid: identical data passes, one change fails."""
+    from src.worker.validation.reconciliation import _row_hash_diff
+
+    ref = pd.DataFrame(
+        {
+            "usubjid": [f"S-{i}" for i in range(12)],
+            "dthdtc": [None] * 11 + ["2025-01-01"],
+            "age": list(range(20, 32)),
+        }
+    )
+    actual = ref.copy()
+    passed = _row_hash_diff(ref, actual, join_keys=[], float_tolerance=0.001)
+    assert passed["status"] == "pass"
+    assert "detail" not in passed
+
+    changed = ref.copy()
+    changed.loc[3, "age"] = 999
+    failed = _row_hash_diff(ref, changed, join_keys=[], float_tolerance=0.001)
+    assert failed["status"] == "fail"
+    assert "usubjid='S-3'" in failed["detail"]
+    assert "dthdtc" not in failed["detail"].split("sample:")[0]
+
+
+@pytest.mark.reconciliation
+def test_infer_join_keys_composite_siteid_subjid() -> None:
+    """No single unique column, but siteid+subjid is unique → composite returned."""
+    from src.worker.validation.reconciliation import _infer_join_keys
+
+    # No single column is unique (each repeats); only siteid+subjid is unique.
+    ref = pd.DataFrame(
+        {
+            "siteid": ["01", "01", "02", "02"],
+            "subjid": ["1", "2", "1", "2"],
+            "val": [10, 20, 10, 20],
+        }
+    )
+    actual = ref.copy()
+    keys = _infer_join_keys(ref, actual)
+    assert set(keys) == {"siteid", "subjid"}
+
+    changed = ref.copy()
+    changed.loc[2, "val"] = 999
+    result = _row_hash_diff_helper(ref, changed)
+    assert result["status"] == "fail"
+    assert "siteid='02'" in str(result["detail"]) and "subjid='1'" in str(result["detail"])
+
+
+@pytest.mark.reconciliation
+def test_infer_join_keys_no_usable_key_returns_empty() -> None:
+    """No fully-populated unique single/composite column → [] (positional fallback)."""
+    from src.worker.validation.reconciliation import _compare_positional, _infer_join_keys
+
+    # Fully duplicated rows → no single column and no composite is unique.
+    ref = pd.DataFrame({"grp": ["x", "x"], "val": [1, 1]})
+    actual = pd.DataFrame({"grp": ["x", "x"], "val": [1, 99]})
+    assert _infer_join_keys(ref, actual) == []
+    # And the diff routes through the positional path.
+    result = _compare_positional(ref, actual, 0.001)
+    assert result["status"] == "fail"
+
+
+@pytest.mark.reconciliation
+def test_infer_join_keys_rejects_unique_but_mostly_null_column() -> None:
+    """A unique-but-mostly-null column must NOT be chosen as a key."""
+    from src.worker.validation.reconciliation import _infer_join_keys
+
+    ref = pd.DataFrame(
+        {
+            "sparseid": ["only"] + [None] * 9,  # unique among non-null, but 90% null
+            "usubjid": [f"S-{i}" for i in range(10)],
+        }
+    )
+    actual = ref.copy()
+    assert _infer_join_keys(ref, actual) == ["usubjid"]
+
+
+@pytest.mark.reconciliation
+def test_explicit_nonunique_key_surfaces_warning() -> None:
+    """An explicit non-unique key is not overridden but is flagged in the detail."""
+    from src.worker.validation.reconciliation import _compare_keyed
+
+    ref = pd.DataFrame({"grp": ["x", "x"], "val": [1, 2]})
+    actual = pd.DataFrame({"grp": ["x", "x"], "val": [1, 2]})
+    result = _compare_keyed(ref, actual, ["grp"], 0.001)
+    assert result.get("key_warning")
+    assert "non-unique" in result["key_warning"]
+
+
+def _row_hash_diff_helper(ref: pd.DataFrame, actual: pd.DataFrame) -> dict[str, object]:
+    """Run the worker _row_hash_diff with inference (test convenience)."""
+    from src.worker.validation.reconciliation import _row_hash_diff
+
+    return _row_hash_diff(ref, actual, join_keys=[], float_tolerance=0.001)
+
+
+# ── validate_proposed_key (F15) ───────────────────────────────────────────────
+
+
+@pytest.mark.reconciliation
+def test_validate_proposed_key_accepts_exact_unique_composite() -> None:
+    """A non-null, exactly-unique composite key is accepted in both frames."""
+    from src.worker.validation.reconciliation import validate_proposed_key
+
+    ref = pd.DataFrame(
+        {
+            "subjid": ["1", "1", "2"],
+            "aestdtc": ["2025-01-01", "2025-01-01", "2025-02-01"],
+            "aeterm": ["headache", "nausea", "rash"],
+            "sev": [1, 2, 3],
+        }
+    )
+    actual = ref.copy()
+    assert validate_proposed_key(ref, actual, ["subjid", "aestdtc", "aeterm"]) is True
+
+
+@pytest.mark.reconciliation
+def test_validate_proposed_key_rejects_near_unique_ae_case() -> None:
+    """The 0.95-near-unique AE (subjid,aestdtc) key is REJECTED (not exactly unique)."""
+    from src.worker.validation.reconciliation import _is_unique, validate_proposed_key
+
+    # Subject 1 has two adverse events on the same date — key is non-unique.
+    ref = pd.DataFrame(
+        {
+            "subjid": ["1", "1", "2"],
+            "aestdtc": ["2025-01-01", "2025-01-01", "2025-02-01"],
+            "aeterm": ["headache", "nausea", "rash"],
+        }
+    )
+    actual = ref.copy()
+    # It would even pass the lenient 0.95 inference gate on a small frame, so the
+    # exact-uniqueness validator is what disqualifies it.
+    assert _is_unique(ref, ["subjid", "aestdtc"], threshold=1.0) is False
+    assert validate_proposed_key(ref, actual, ["subjid", "aestdtc"]) is False
+
+
+@pytest.mark.reconciliation
+def test_validate_proposed_key_rejects_null_bearing() -> None:
+    """A key with a null/blank component is rejected even if otherwise unique."""
+    from src.worker.validation.reconciliation import validate_proposed_key
+
+    ref = pd.DataFrame({"k": ["a", "b", ""], "v": [1, 2, 3]})
+    actual = ref.copy()
+    assert validate_proposed_key(ref, actual, ["k"]) is False
+
+
+@pytest.mark.reconciliation
+def test_validate_proposed_key_rejects_actual_side_duplicate() -> None:
+    """A key unique in ref but duplicated in actual is rejected (fan-out guard)."""
+    from src.worker.validation.reconciliation import validate_proposed_key
+
+    ref = pd.DataFrame({"k": ["a", "b", "c"], "v": [1, 2, 3]})
+    actual = pd.DataFrame({"k": ["a", "a", "b"], "v": [1, 1, 2]})
+    assert validate_proposed_key(ref, actual, ["k"]) is False
+
+
+@pytest.mark.reconciliation
+def test_validate_proposed_key_rejects_missing_column() -> None:
+    """A proposed column absent from one frame is rejected."""
+    from src.worker.validation.reconciliation import validate_proposed_key
+
+    ref = pd.DataFrame({"k": ["a", "b"], "v": [1, 2]})
+    actual = pd.DataFrame({"j": ["a", "b"], "v": [1, 2]})
+    assert validate_proposed_key(ref, actual, ["k"]) is False
+
+
+@pytest.mark.reconciliation
+def test_is_unique_default_threshold_unchanged() -> None:
+    """Default threshold (0.95) keeps the inference path byte-identical."""
+    from src.worker.validation.reconciliation import _is_unique
+
+    # 19/20 distinct → 0.95, passes the default gate but not exact.
+    df = pd.DataFrame({"k": [*[str(i) for i in range(19)], "0"]})
+    assert _is_unique(df, ["k"]) is True
+    assert _is_unique(df, ["k"], threshold=1.0) is False

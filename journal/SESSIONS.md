@@ -6,6 +6,67 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-15 — fix: preserve leading zeros via SAS LENGTH char declarations + F15 PR prep
+
+**Duration:** ~1 session | **Focus:** diagnose and fix USUBJID zero-padding regression; commit F15 leftovers; generate PR summary
+
+### Done
+- **Root-cause analysis:** record-level diff showed `USUBJID=ADC-XYZ-001-3-1` vs `ADC-XYZ-001-003-0001`. Traced to `spark.read.csv(inferSchema=True)` reading `SITEID=003`→int `3` and `SUBJID=0001`→int `1` before the `catx` concat runs. The existing `enforce_padded_concat_keys` (F15) correctly rebuilds the concat but cannot recover zeros already lost at read time.
+- **`extract_declared_char_columns` (parser.py):** scans all `LENGTH var $w` statements job-wide; returns lowercased char column names. Conservative text scan — no PROC IMPORT→DATA-step dependency tracing.
+- **`_sniff_file` extended (main.py):** CSV/TSV branch now builds a full pandas-dtype→Spark-type map (int→`long`, float→`double`, bool→`boolean`, else→`string`) instead of returning `{}`. Build loop overrides declared-char columns to `"string"` before constructing `DataFileInfo`.
+- **`enforce_csv_read_schema` (shared.py):** deterministic post-processor that rewrites `spark.read.csv(..., inferSchema=True)` to an explicit `StructType` for any CSV with declared-char columns. Idempotent; no-op when `column_types` is empty. Wired in `GenericProcAgent`, `DataStepAgent`, `ProcAgent` before `inject_declared_casts`.
+- **`DataFileInfo.column_types` docstring updated** to reflect CSV/TSV coverage.
+- **10 new reconciliation tests** in `test_csv_declared_char_schema.py`; updated existing assertions in 3 test files.
+- **Committed F15 leftovers:** `enforce_padded_concat_keys` shared functions + agent wiring, `test_shared_normalisers.py` coverage, `DECISIONS.md` entry, tensorzero digest pin.
+- **3 clean commits** on `fix/csv-declared-char-zeros`; all 7 gates green, 89% coverage.
+- **PR summary generated** (ready to paste into GitHub).
+
+### Decisions
+- Generalizable fix uses job-wide `LENGTH $` scan (not per-PROC IMPORT tracing) — false positives benign for pharma identifier data; documented as known limitation.
+- `_sniff_file` now always returns a type map for CSV/TSV; the SAS-char override is applied in `_execute` where the source text is in scope, keeping `_sniff_file` SAS-agnostic.
+
+### Open Questions
+- `stub_generator.py` `pd.read_csv` fallback still reads declared-char columns as inferred types — noted as follow-up, not addressed here.
+
+### Next Session — Start Here
+1. Open PR for `fix/csv-declared-char-zeros` → `main` (PR summary already generated).
+2. After merge, open PR for `feat/F15-record-level-reconciliation` → `main` (or cherry-pick; both branches diverge from pre-F15 main).
+3. Consider follow-up: add `dtype={col: str}` for declared-char columns in `stub_generator.py` `pd.read_csv` scaffold.
+
+### Files Touched
+- `src/worker/engine/parser.py` — `extract_declared_char_columns`
+- `src/worker/main.py` — `_sniff_file`, `_execute` build loop
+- `src/worker/engine/agents/shared.py` — `_render_struct_schema`, `enforce_csv_read_schema`, `enforce_padded_concat_keys` + helpers
+- `src/worker/engine/agents/generic_proc.py`, `data_step.py`, `proc.py` — wiring
+- `src/worker/engine/models.py` — docstring
+- `tests/reconciliation/test_csv_declared_char_schema.py` — new
+- `tests/test_shared_normalisers.py`, `test_worker_main.py`, `test_worker_main_comprehensive.py`, `test_context_improvements.py` — updated
+- `journal/DECISIONS.md`, `docker-compose.yml`
+
+---
+
+## 2026-06-15 — feat: F15 record-level reconciliation (row_hash_diff) + deterministic mechanical fixes
+**Duration:** ~1 session | **Focus:** add row-by-row reconciliation, then harden everything dogfooding it surfaced
+
+### Done (all on `feat/F15-record-level-reconciliation`, all 7 gates green, coverage 89%, gate 82)
+- **F15 `row_hash_diff`:** new record-level check joining ref/actual on keys (explicit → inferred → positional), per-column compare within float tolerance; typed `ReconConfig` (`join_keys`, `float_tolerance`, `resolve_key_with_llm`, `max_key_attempts`) sourced from the `__recon_config__` job sentinel; threaded through both `ReconciliationService` and the executor `run_recon`. Gates `reconciliation_status`; never feeds the agentic retry (parity = human-review).
+- **§20 mechanical-format drift guard:** prompt rule (`put z<w>.`→`lpad`, `||`/`cats`→`concat`, `catx`→`concat_ws`) + `check_mechanical_format_drift` that downgrades drifting blocks to review (root cause of the `usubjid` zero-pad regression).
+- **Datetime-equivalence in `_values_match`:** `2025-06-10` ≡ `2025-06-10T00:00:00.000` (stop false positives), worker + executor.
+- **Date-format output fidelity:** `_map_readstat_type` recovers SAS date formats → declared `date` type → `DateType` cast; executor serializes pure-date columns as bare `YYYY-MM-DD`.
+- **Hardened `_infer_join_keys`:** null + uniqueness gates, composite search (≤ arity 3), explicit-key quality warning; empty-string treated as null in `_null_fraction`.
+- **LLM join-key resolution (per-block):** `ReconKeyResolverAgent` proposes the correct business key when `row_hash_diff` fails on a unique-but-wrong key (AE `(subjid,aestdtc)` swapped-pair case); worker re-compares IN-PROCESS from the executor's `result_json` (no re-execution, no translation attempt), ≤3 tries with closest-attempt feedback; proposed keys validated at EXACT uniqueness + zero nulls in both frames; resolved key persisted to `__recon_config__` (whole-dict merge) + `BlockRevision.recon_checks` revived for all checks.
+- **Frontend:** `row_hash_diff` renders as "Record-Level Diff" in LiveTraceDialog.
+
+### Decisions (see DECISIONS 2026-06-15)
+- LLM may resolve the comparison KEY, never the output (recon verdict non-reproducible tradeoff accepted; key persisted for stability). Mechanical invariants belong in deterministic code, not soft prompt rules — next: enforce zero-pad/concat keys deterministically in codegen (planned).
+
+### Next Session — Start Here
+1. Implement the deterministic zero-pad/concat-key codegen enforcement (plan approved; overrides LLM output for cleanly-parsed `catx`/`cats`/`||` + `put zW.` keys, source-driven).
+2. Unrelated stray change on the branch: `docker-compose.yml` pins tensorzero to a sha256 digest — decide whether to keep/commit separately (needs `make docker-build`).
+3. Push branch + open PR for #58 / F15.
+
+---
+
 ## 2026-06-15 — feat: F61 type-aware schema contract + full-pipeline reconciliation hardening
 **Duration:** ~1 session | **Focus:** bake declared `.sas7bdat` types into delivered PySpark, then drive the full pipeline to green
 

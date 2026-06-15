@@ -12,7 +12,7 @@ import logging
 from typing import Any
 
 from src.worker.compute.base import ComputeBackend
-from src.worker.validation.reconciliation import RemoteReconciliationService
+from src.worker.validation.reconciliation import ReconConfig, RemoteReconciliationService
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +66,7 @@ class BlockExecutor:
         session_dir: str = "",
         ref_csv_path: str = "",
         ref_sas7bdat_path: str = "",
+        recon_config: ReconConfig | None = None,
     ) -> ReconResult | None:
         """Execute *python_code* via the remote executor and return reconciliation results.
 
@@ -85,10 +86,14 @@ class BlockExecutor:
                 prior blocks' DataFrames are pre-loaded before this block runs.
             ref_csv_path: Path to reference CSV for reconciliation checks.
             ref_sas7bdat_path: Path to reference .sas7bdat for reconciliation checks.
+            recon_config: Optional record-level reconciliation config forwarded to
+                RemoteReconciliationService.
 
         Returns:
-            A ``{"checks": [...]}`` dict on success, or ``None`` on exception /
-            when no reference data checks were executed.
+            A ``{"checks": [...]}`` dict on success (including the executor's
+            ``result_json`` / ``result_columns`` when present, so callers can run
+            an in-process re-comparison without re-executing), or ``None`` on
+            exception / when no reference data checks were executed.
         """
         effective_data_dir = data_dir or ""
         remote = RemoteReconciliationService()
@@ -100,6 +105,7 @@ class BlockExecutor:
                 ref_sas7bdat_path,
                 data_dir=effective_data_dir,
                 session_dir=session_dir,
+                recon_config=recon_config,
             )
         except Exception as exc:
             logger.warning(

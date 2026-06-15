@@ -16,9 +16,12 @@ from pydantic_ai.providers.openai import OpenAIProvider
 from src.worker.core.config import worker_settings
 from src.worker.engine.agents.shared import (
     SHARED_TRANSLATION_RULES,
+    apply_mechanical_drift_guard,
     build_block_output_stems,
     detect_referenced_data_files,
     detect_referenced_formats,
+    enforce_csv_read_schema,
+    enforce_padded_concat_keys,
     inject_declared_casts,
     normalise_input_vars_in_code,
     normalise_output_var,
@@ -321,8 +324,12 @@ class DataStepAgent:
                 build_block_output_stems(context.blocks),
                 "DataStepAgent",
             )
+            fixed_code = enforce_csv_read_schema(fixed_code, context.data_files, "DataStepAgent")
             fixed_code = inject_declared_casts(fixed_code, context.data_files, "DataStepAgent")
             fixed_output_var = normalise_output_var(block.output_datasets, output.output_var)
+            fixed_code = enforce_padded_concat_keys(
+                fixed_code, block.raw_sas, fixed_output_var, "DataStepAgent"
+            )
             if fixed_output_var and not _re.search(
                 rf"\b{_re.escape(fixed_output_var)}\s*=", fixed_code
             ):
@@ -331,17 +338,19 @@ class DataStepAgent:
                     " after rename — check LLM output",
                     fixed_output_var,
                 )
-            return GeneratedBlock(
-                source_block=block,
-                python_code=fixed_code,
-                output_var=fixed_output_var,
-                confidence=output.confidence_band,
-                confidence_score=output.confidence_score,
-                confidence_band=output.confidence_band,
-                uncertainty_notes=output.uncertainty_notes,
-                assumptions=output.assumptions,
-                strategy_used=output.strategy_used,
-                is_untranslatable=False,
+            return apply_mechanical_drift_guard(
+                GeneratedBlock(
+                    source_block=block,
+                    python_code=fixed_code,
+                    output_var=fixed_output_var,
+                    confidence=output.confidence_band,
+                    confidence_score=output.confidence_score,
+                    confidence_band=output.confidence_band,
+                    uncertainty_notes=output.uncertainty_notes,
+                    assumptions=output.assumptions,
+                    strategy_used=output.strategy_used,
+                    is_untranslatable=False,
+                )
             )
         except Exception as e:
             raise DataStepError(message=str(e), cause=e) from e

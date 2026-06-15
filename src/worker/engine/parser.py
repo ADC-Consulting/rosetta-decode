@@ -229,6 +229,36 @@ _LIBNAME_RE = re.compile(r"""(?i)LIBNAME\s+(\w+)\s+['"]([^'"]+)['"]\s*;""")
 # %INCLUDE references
 _INCLUDE_RE = re.compile(r"""(?i)%INCLUDE\s+['"]([^'"]+)['"]\s*;""")
 
+# LENGTH statement body and character-variable token (var $[w])
+_LENGTH_STMT_RE = re.compile(r"(?i)\bLENGTH\b(.+?);", re.DOTALL)
+_CHAR_VAR_RE = re.compile(r"(?i)\b([A-Za-z_]\w*)\s*\$\s*\d*")
+
+
+def extract_declared_char_columns(sas_source: str) -> set[str]:
+    """Return lowercased names of CHARACTER variables declared via LENGTH var $w statements.
+
+    Scans every ``LENGTH ... ;`` statement in *sas_source* for tokens of the form
+    ``name $[w]`` (the ``$`` marks a character variable in SAS; numeric vars have no
+    ``$``). Applied job-wide: the union across all source files identifies columns that
+    must be read as strings from CSV/TSV to preserve leading zeros.
+
+    This is a conservative text scan — no PROC IMPORT→DATA-step dependency tracing.
+    A column declared char anywhere is forced to string in any CSV containing that
+    column name. False positives are benign for pharma identifier data.
+
+    Args:
+        sas_source: Raw SAS source text.
+
+    Returns:
+        Set of lowercased column names declared as character.
+    """
+    char_cols: set[str] = set()
+    for stmt_match in _LENGTH_STMT_RE.finditer(sas_source):
+        body = stmt_match.group(1)
+        for var_match in _CHAR_VAR_RE.finditer(body):
+            char_cols.add(var_match.group(1).lower())
+    return char_cols
+
 
 # ── Line-number helpers ───────────────────────────────────────────────────────
 

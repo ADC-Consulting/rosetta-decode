@@ -69,7 +69,12 @@ def test_sniff_file_succeeds_for_data_formats(
     cols, count, column_types = _sniff_file(disk_path, ext)
     assert cols == expected_cols
     assert count == expected_count
-    assert column_types == {}
+    # CSV/TSV: column_types is now populated from pandas dtype inference
+    if ext in (".csv", ".tsv"):
+        assert isinstance(column_types, dict)
+        assert set(column_types.keys()) == {c.lower() for c in expected_cols}
+    else:
+        assert column_types == {}
 
 
 @pytest.mark.parametrize("ext", [".xlsx", ".xls"])
@@ -119,7 +124,8 @@ def test_sniff_file_handles_malformed_csv(tmp_path: pathlib.Path) -> None:
     # Pandas reads the header but may fail on the binary; we catch Exception
     assert isinstance(cols, list)
     assert count is None or isinstance(count, int)
-    assert column_types == {}
+    # column_types may be {} (on error) or a dict of inferred types (on partial success)
+    assert isinstance(column_types, dict)
 
 
 def test_sniff_file_returns_none_for_sas7bdat_columns(tmp_path: pathlib.Path) -> None:

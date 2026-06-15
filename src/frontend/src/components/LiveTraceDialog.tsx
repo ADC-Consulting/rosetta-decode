@@ -205,6 +205,7 @@ const CHECK_LABEL_MAP: Record<string, string> = {
   schema_parity: "Schema Parity",
   row_count: "Row Count",
   aggregate_parity: "Aggregate Parity",
+  row_hash_diff: "Record-Level Diff",
 };
 
 function humanCheckLabel(name: string): string {

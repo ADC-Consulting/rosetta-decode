@@ -903,7 +903,10 @@ async def test_sniff_file_csv_succeeds(tmp_path: Any) -> None:
     cols, row_count, column_types = _sniff_file(disk_path, ".csv")
     assert cols == ["col1", "col2"]
     assert row_count == 3
-    assert column_types == {}
+    # column_types is now populated for CSV: pandas infers int64 → "long", object → "string"
+    assert isinstance(column_types, dict)
+    assert column_types.get("col1") == "long"
+    assert column_types.get("col2") == "string"
 
 
 @pytest.mark.asyncio
@@ -918,7 +921,10 @@ async def test_sniff_file_tsv_succeeds(tmp_path: Any) -> None:
     cols, row_count, column_types = _sniff_file(disk_path, ".tsv")
     assert cols == ["x", "y"]
     assert row_count == 2
-    assert column_types == {}
+    # column_types is now populated for TSV
+    assert isinstance(column_types, dict)
+    assert column_types.get("x") == "long"
+    assert column_types.get("y") == "long"
 
 
 def test_sniff_file_returns_empty_on_missing() -> None:
@@ -960,6 +966,49 @@ def test_map_readstat_type_int_falls_back_to_double() -> None:
     assert _map_readstat_type("int") == "double"
 
 
+def test_map_readstat_type_date_format_maps_to_date() -> None:
+    """A numeric column with a SAS date format casts to Spark 'date', not 'double'."""
+    from src.worker.main import _map_readstat_type
+
+    assert _map_readstat_type("double", "DATE9.") == "date"
+    assert _map_readstat_type("double", "YYMMDD10.") == "date"
+    assert _map_readstat_type("double", "MMDDYY8.") == "date"
+
+
+def test_map_readstat_type_datetime_format_stays_double() -> None:
+    """DATETIME/TIME formats carry a time component and must remain numeric ('double')."""
+    from src.worker.main import _map_readstat_type
+
+    assert _map_readstat_type("double", "DATETIME20.") == "double"
+    assert _map_readstat_type("double", "TIME8.") == "double"
+
+
+def test_map_readstat_type_string_ignores_date_format() -> None:
+    """A string column is never reclassified as a date even if a format is present."""
+    from src.worker.main import _map_readstat_type
+
+    assert _map_readstat_type("string", "DATE9.") == "string"
+
+
+def test_map_readstat_type_numeric_format_stays_double() -> None:
+    """A plain numeric format (e.g. BEST12.) or no format maps to 'double'."""
+    from src.worker.main import _map_readstat_type
+
+    assert _map_readstat_type("double", "BEST12.") == "double"
+    assert _map_readstat_type("double", None) == "double"
+
+
+def test_strip_sas_format_extracts_alphabetic_stem() -> None:
+    """_strip_sas_format returns the lowercased alphabetic name without width/decimals."""
+    from src.worker.main import _strip_sas_format
+
+    assert _strip_sas_format("DATE9.") == "date"
+    assert _strip_sas_format("YYMMDD10.") == "yymmdd"
+    assert _strip_sas_format("DATETIME20.") == "datetime"
+    assert _strip_sas_format("$CHAR8.") == "char"
+    assert _strip_sas_format("") == ""
+
+
 # ── _sniff_file — .sas7bdat column_types branch ──────────────────────────────
 
 
@@ -983,8 +1032,54 @@ def test_sniff_file_sas7bdat_returns_column_types() -> None:
     assert column_types == {"subjid": "string", "siteid": "string", "age": "double"}
 
 
-def test_sniff_file_csv_returns_empty_column_types(tmp_path: Any) -> None:
-    """_sniff_file returns column_types={} for CSV files (no declared types)."""
+def test_sniff_file_sas7bdat_date_format_maps_to_date() -> None:
+    """A SAS date-formatted column is classified as 'date'; datetime stays 'double'."""
+    from unittest.mock import MagicMock, patch
+
+    meta = MagicMock()
+    meta.column_names = ["SUBJID", "AESTDTC", "AESTDTM"]
+    meta.readstat_variable_types = {
+        "SUBJID": "string",
+        "AESTDTC": "double",
+        "AESTDTM": "double",
+    }
+    # AESTDTC is a bare date (DATE9.); AESTDTM is a datetime (DATETIME20.)
+    meta.original_variable_types = {
+        "SUBJID": "$CHAR8.",
+        "AESTDTC": "DATE9.",
+        "AESTDTM": "DATETIME20.",
+    }
+    fake_df = MagicMock()
+
+    mock_pr = MagicMock()
+    mock_pr.read_sas7bdat.return_value = (fake_df, meta)
+
+    with patch.dict("sys.modules", {"pyreadstat": mock_pr}):
+        _columns, _row_count, column_types = _sniff_file("/fake/path/AE.sas7bdat", ".sas7bdat")
+
+    assert column_types == {"subjid": "string", "aestdtc": "date", "aestdtm": "double"}
+
+
+def test_sniff_file_sas7bdat_missing_formats_falls_back_to_double() -> None:
+    """When original_variable_types is absent, numeric columns default to 'double'."""
+    from unittest.mock import MagicMock, patch
+
+    meta = MagicMock(spec=["column_names", "readstat_variable_types"])
+    meta.column_names = ["SUBJID", "AGE"]
+    meta.readstat_variable_types = {"SUBJID": "string", "AGE": "double"}
+    fake_df = MagicMock()
+
+    mock_pr = MagicMock()
+    mock_pr.read_sas7bdat.return_value = (fake_df, meta)
+
+    with patch.dict("sys.modules", {"pyreadstat": mock_pr}):
+        _columns, _row_count, column_types = _sniff_file("/fake/path/x.sas7bdat", ".sas7bdat")
+
+    assert column_types == {"subjid": "string", "age": "double"}
+
+
+def test_sniff_file_csv_populates_column_types(tmp_path: Any) -> None:
+    """_sniff_file returns a non-empty column_types dict for CSV files (pandas dtype inference)."""
     import pandas as pd
 
     disk_path = str(tmp_path / "test.csv")
@@ -992,7 +1087,8 @@ def test_sniff_file_csv_returns_empty_column_types(tmp_path: Any) -> None:
     fake_df.to_csv(disk_path, index=False)
 
     _columns, _row_count, column_types = _sniff_file(disk_path, ".csv")
-    assert column_types == {}
+    assert isinstance(column_types, dict)
+    assert column_types == {"a": "long", "b": "long"}
 
 
 def test_sniff_file_sas7bdat_import_error_returns_empty() -> None:
@@ -1121,3 +1217,73 @@ async def test_orchestrator_run_handles_other_http_errors() -> None:
 
     with pytest.raises(httpx.HTTPStatusError):
         await orch.run(session, job)
+
+
+# ── F15: __recon_config__ sentinel parsing + retry-gating helper ─────────────
+
+
+@pytest.mark.reconciliation
+def test_parse_recon_config_absent_returns_defaults() -> None:
+    """_parse_recon_config(None) yields ReconConfig defaults."""
+    from src.worker.main import _parse_recon_config
+    from src.worker.validation.reconciliation import _AGGREGATE_RTOL
+
+    cfg = _parse_recon_config(None)
+    assert cfg.join_keys == []
+    assert cfg.float_tolerance == _AGGREGATE_RTOL
+
+
+@pytest.mark.reconciliation
+def test_parse_recon_config_valid_json() -> None:
+    """_parse_recon_config parses a JSON sentinel and lowercases join_keys."""
+    from src.worker.main import _parse_recon_config
+
+    cfg = _parse_recon_config('{"join_keys": ["ID"], "float_tolerance": 1e-6}')
+    assert cfg.join_keys == ["id"]
+    assert cfg.float_tolerance == 1e-6
+
+
+@pytest.mark.reconciliation
+def test_parse_recon_config_malformed_json_falls_back() -> None:
+    """_parse_recon_config tolerates malformed JSON and returns defaults."""
+    from src.worker.main import _parse_recon_config
+
+    cfg = _parse_recon_config("{not valid json")
+    assert cfg.join_keys == []
+
+
+@pytest.mark.reconciliation
+def test_only_row_hash_diff_failed_true() -> None:
+    """_only_row_hash_diff_failed is True when row_hash_diff is the sole failure."""
+    from src.worker.main import _only_row_hash_diff_failed
+
+    report = {
+        "checks": [
+            {"name": "schema_parity", "status": "pass"},
+            {"name": "row_hash_diff", "status": "fail", "detail": "x"},
+        ]
+    }
+    assert _only_row_hash_diff_failed(report) is True
+
+
+@pytest.mark.reconciliation
+def test_only_row_hash_diff_failed_false_when_other_check_fails() -> None:
+    """_only_row_hash_diff_failed is False when a non-parity check also fails."""
+    from src.worker.main import _only_row_hash_diff_failed
+
+    report = {
+        "checks": [
+            {"name": "aggregate_parity", "status": "fail"},
+            {"name": "row_hash_diff", "status": "fail"},
+        ]
+    }
+    assert _only_row_hash_diff_failed(report) is False
+
+
+@pytest.mark.reconciliation
+def test_only_row_hash_diff_failed_false_when_all_pass() -> None:
+    """_only_row_hash_diff_failed is False when nothing failed."""
+    from src.worker.main import _only_row_hash_diff_failed
+
+    report = {"checks": [{"name": "row_hash_diff", "status": "pass"}]}
+    assert _only_row_hash_diff_failed(report) is False

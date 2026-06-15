@@ -34,6 +34,9 @@ class ExecuteRequest(BaseModel):
     ref_sas7bdat_path: str = ""
     data_dir: str = ""
     session_dir: str = ""
+    # Record-level reconciliation config (join_keys, float_tolerance). Kept a
+    # plain dict on the wire — the executor cannot import the worker ReconConfig.
+    recon_config: dict = {}  # type: ignore[type-arg]
 
 
 class ExecuteResponse(BaseModel):
@@ -87,6 +90,7 @@ def execute(request: ExecuteRequest) -> ExecuteResponse:
                 run_result["result_json"],
                 request.ref_csv_path,
                 request.ref_sas7bdat_path,
+                request.recon_config,
             )
             statuses = {c["name"]: c["status"] for c in checks}
             logger.info("Recon checks: %s", statuses)

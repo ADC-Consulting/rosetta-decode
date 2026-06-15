@@ -200,3 +200,55 @@ def test_inject_noop_when_file_not_referenced_in_code() -> None:
     result = inject_declared_casts(code, data_files, "TestAgent")
     # No read-assignment for adsl — nothing injected; code unchanged
     assert result == code
+
+
+# ---------------------------------------------------------------------------
+# Date-typed columns cast to DateType (no spurious timestamp) — F15/F61
+# ---------------------------------------------------------------------------
+
+
+def test_inject_date_column_casts_to_date_not_timestamp() -> None:
+    """A SAS-date-declared column casts to Spark 'date', never 'timestamp'.
+
+    This is the F15 ``aestdtc`` fix: a bare-date source column must be delivered
+    as ``2025-06-10``, not ``2025-06-10T00:00:00.000``. A sibling datetime column
+    declared as 'double' is left as a numeric cast and never reclassified.
+    """
+    code = textwrap.dedent("""
+        ae = spark.read.format("sas7bdat").load("/workspace/data/ae.sas7bdat")
+        ae = ae.toDF(*[c.lower() for c in ae.columns])
+    """).strip()
+
+    data_files = {
+        "data/raw/ae.sas7bdat": _data_file(
+            path="data/raw/ae.sas7bdat",
+            column_types={"aestdtc": "date", "aestdtm": "double", "subjid": "string"},
+        )
+    }
+    result = inject_declared_casts(code, data_files, "TestAgent")
+
+    # Bare-date column → DateType cast (no time component on serialization)
+    assert 'ae = ae.withColumn("aestdtc", F.col("aestdtc").cast("date"))' in result
+    # Crucially: never a timestamp cast for the date column
+    assert 'F.col("aestdtc").cast("timestamp")' not in result
+    # Datetime/numeric sibling is untouched as a double — not reclassified to date
+    assert 'ae = ae.withColumn("aestdtm", F.col("aestdtm").cast("double"))' in result
+    assert 'F.col("aestdtm").cast("date")' not in result
+
+
+def test_inject_date_cast_is_idempotent() -> None:
+    """Re-running injection on a date cast does not duplicate it."""
+    code = textwrap.dedent("""
+        ae = spark.read.format("sas7bdat").load("/workspace/data/ae.sas7bdat")
+        ae = ae.toDF(*[c.lower() for c in ae.columns])
+    """).strip()
+
+    data_files = {
+        "data/raw/ae.sas7bdat": _data_file(
+            path="data/raw/ae.sas7bdat", column_types={"aestdtc": "date"}
+        )
+    }
+    once = inject_declared_casts(code, data_files, "TestAgent")
+    twice = inject_declared_casts(once, data_files, "TestAgent")
+    assert once == twice
+    assert once.count('.cast("date")') == 1
