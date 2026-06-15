@@ -2,7 +2,7 @@ import { getJobLineage } from "@/api/jobs";
 import type { JobLineageResponse, LineageNode } from "@/api/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import dagre from "dagre";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   Background,
   Controls,
@@ -80,6 +80,7 @@ function SourceNode({ data }: { data: FlowNodeData }): React.ReactElement {
       </svg>
       <div style={{ overflow: "hidden" }}>
         <div
+          title={data.label}
           style={{
             fontSize: 12,
             fontWeight: 700,
@@ -106,18 +107,19 @@ function SourceNode({ data }: { data: FlowNodeData }): React.ReactElement {
 function StepNode({ data }: { data: FlowNodeData }): React.ReactElement {
   return (
     <div
+      onClick={data.onClick}
       style={{
         width: STEP_W,
         minHeight: NODE_H,
-        background: "#f0f4ff",
-        border: "1.5px solid #c7d2fe",
+        background: data.isSelected ? "#c7d2fe" : "#f0f4ff",
+        border: data.isSelected ? "2px solid #818cf8" : "1.5px solid #c7d2fe",
         borderRadius: 8,
         padding: "8px 12px",
         display: "flex",
         alignItems: "center",
         gap: 8,
-        cursor: "default",
-        boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+        cursor: "pointer",
+        boxShadow: data.isSelected ? "0 0 0 2px rgba(129,140,248,0.25)" : "0 1px 3px rgba(0,0,0,0.08)",
       }}
     >
       <Handle
@@ -142,6 +144,7 @@ function StepNode({ data }: { data: FlowNodeData }): React.ReactElement {
       </svg>
       <div style={{ overflow: "hidden" }}>
         <div
+          title={data.label}
           style={{
             fontSize: 12,
             fontWeight: 700,
@@ -213,6 +216,7 @@ function OutputNode({ data }: { data: FlowNodeData }): React.ReactElement {
       </svg>
       <div style={{ overflow: "hidden" }}>
         <div
+          title={data.label}
           style={{
             fontSize: 12,
             fontWeight: 700,
@@ -347,7 +351,9 @@ function buildNodesAndEdges(
           source: `step-${stepA.step_id}`,
           target: `step-${stepB.step_id}`,
           type: "smoothstep",
-          label: shared.join(", "),
+          label: shared.length > 2
+            ? `${shared.slice(0, 2).join(", ")} +${shared.length - 2} more`
+            : shared.join(", "),
           style: { stroke: "#94a3b8", strokeWidth: 1.5 },
           markerEnd: { type: MarkerType.ArrowClosed, color: "#94a3b8" },
         });
@@ -498,6 +504,7 @@ function DataFlowDiagramInner({
   const { fitView } = useReactFlow();
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
 
   useEffect(() => {
     const { nodes: rawNodes, edges: rawEdges } = buildNodesAndEdges(
@@ -509,26 +516,36 @@ function DataFlowDiagramInner({
     const laidOut = applyDagreLayout(rawNodes, rawEdges);
     setNodes(laidOut);
     setEdges(rawEdges);
-    setTimeout(() => fitView({ padding: 0.2, duration: 300 }), 50);
+    requestAnimationFrame(() => fitView({ padding: 0.2, duration: 300 }));
   }, [lineage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setNodes((prev) =>
       prev.map((n) => {
         const d = n.data as FlowNodeData;
-        if (d.nodeType === "step") return n;
-        const isSelected = d.label === selectedTable;
+        if (d.nodeType === "step") {
+          return {
+            ...n,
+            data: {
+              ...d,
+              isSelected: n.id === selectedStepId,
+              onClick: () => setSelectedStepId((prev) => prev === n.id ? null : n.id),
+            },
+          };
+        }
         return {
           ...n,
           data: {
             ...d,
-            isSelected,
+            isSelected: d.label === selectedTable,
             onClick: () => onTableSelect(d.label),
           },
         };
       }),
     );
-  }, [selectedTable, onTableSelect, setNodes]);
+  }, [selectedTable, selectedStepId, onTableSelect, setNodes]);
+
+  const stepCount = nodes.filter((n) => (n.data as FlowNodeData).nodeType === "step").length;
 
   if (nodes.length === 0) {
     return (
@@ -539,23 +556,31 @@ function DataFlowDiagramInner({
   }
 
   return (
-    <div
-      className="rounded-md border border-border overflow-hidden w-full h-full"
-    >
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        nodeTypes={NODE_TYPES}
-        nodesDraggable
-        fitView
-        fitViewOptions={{ padding: 0.2 }}
-      >
-        <Controls />
-        <Background />
-      </ReactFlow>
-
+    <div className="flex flex-col w-full h-full min-h-0">
+      <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-border text-xs text-muted-foreground bg-muted/10">
+        <span>Dataset lineage</span>
+        {stepCount > 0 && (
+          <>
+            <span className="text-muted-foreground/40">·</span>
+            <span className="font-medium text-foreground">
+              {stepCount} migration {stepCount === 1 ? "step" : "steps"}
+            </span>
+          </>
+        )}
+      </div>
+      <div className="flex-1 min-h-0 rounded-md border border-border overflow-hidden">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          nodeTypes={NODE_TYPES}
+          nodesDraggable
+        >
+          <Controls />
+          <Background />
+        </ReactFlow>
+      </div>
     </div>
   );
 }
