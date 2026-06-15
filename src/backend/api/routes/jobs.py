@@ -515,7 +515,11 @@ async def get_job_schema(
     Raises:
         HTTPException: 404 if the job does not exist.
     """
-    from src.backend.api.schema_utils import map_sas_to_semantic_type  # SAS: schema_utils.py:1
+    from src.backend.api.schema_utils import (  # SAS: schema_utils.py:1
+        infer_pk_fk,
+        map_python_dtype_to_sql,
+        map_sas_to_semantic_type,
+    )
     from src.worker.engine.ddl_generator import generate_create_table  # SAS: ddl_generator.py:63
 
     result = await session.execute(select(Job).where(Job.id == str(job_id)))
@@ -529,6 +533,8 @@ async def get_job_schema(
     libname_map: dict[str, str] = plan.get("libname_map", {})
     data_schema: dict[str, dict[str, Any]] = plan.get("data_schema", {})
     relationships_raw: list[dict[str, Any]] = plan.get("relationships", [])
+    # SAS: jobs.py:output_schema — execution-time schema from ReconciliationService
+    output_schema: dict[str, list[dict[str, str]]] = plan.get("output_schema", {})
 
     tables: list[TableSchema] = []
     for path, schema_info in data_schema.items():
@@ -579,9 +585,6 @@ async def get_job_schema(
             )
 
         dataset_name = os.path.splitext(os.path.basename(path))[0]
-        # SAS: ddl_generator.py:63 — generate DDL at serve time from column metadata
-        ddl_columns = [{"name": c.name, "semantic_type": c.semantic_type} for c in columns]
-        ddl = generate_create_table(dataset_name, target_schema, ddl_columns)
         tables.append(
             TableSchema(
                 path=path,
@@ -590,7 +593,7 @@ async def get_job_schema(
                 target_schema=target_schema,
                 columns=columns,
                 row_count=row_count,
-                ddl=ddl,
+                ddl="",  # filled in below after pk/fk inference
             )
         )
 
@@ -608,6 +611,63 @@ async def get_job_schema(
             )
         )
     ]
+
+    # SAS: jobs.py:pk_fk_inference — build target_columns and infer pk/fk for each table
+    tables_for_inference = [
+        {
+            "dataset_name": t.dataset_name,
+            "columns": [c.name for c in t.target_columns] or [c.name for c in t.columns],
+            "column_types": {c.name: (c.python_type or "") for c in t.target_columns},
+            "target_columns": [],
+        }
+        for t in tables
+    ]
+    pk_fk = infer_pk_fk(
+        tables_for_inference,
+        [r.model_dump() for r in relationships],
+        user_pk_overrides=overrides.get("pk_overrides", {}),
+        user_fk_overrides=overrides.get("fk_overrides", {}),
+    )
+
+    # Enrich each table with target_columns, schema_status, ddl_source, and DDL
+    for t in tables:
+        raw_target_cols: list[dict[str, str]] = output_schema.get(t.dataset_name, [])
+        pk_fk_entry = pk_fk.get(t.dataset_name, {"pks": [], "fks": {}})
+        pks: list[str] = pk_fk_entry.get("pks", [])
+        fks: dict[str, str] = pk_fk_entry.get("fks", {})
+
+        if raw_target_cols:
+            target_columns: list[ColumnSchema] = [
+                ColumnSchema(
+                    name=col_info["name"],
+                    sas_type="",
+                    python_type=col_info.get("python_type"),
+                    sql_type=map_python_dtype_to_sql(col_info.get("python_type", "object")),
+                    is_pk=col_info["name"] in pks,
+                    is_fk=col_info["name"] in fks,
+                    fk_ref=fks.get(col_info["name"]),
+                )
+                for col_info in raw_target_cols
+            ]
+            t.target_columns = target_columns
+
+            if len(target_columns) == len(t.columns):
+                t.schema_status = "migrated"
+            else:
+                t.schema_status = "changed"
+            t.ddl_source = "target"
+
+            # Re-generate DDL from target columns
+            ddl_columns = [
+                {"name": c.name, "semantic_type": c.sql_type or "TEXT"} for c in target_columns
+            ]
+            t.ddl = generate_create_table(t.dataset_name, t.target_schema, ddl_columns)
+        else:
+            t.schema_status = "not_run"
+            t.ddl_source = "source_estimated"
+            # Generate DDL from source columns (original path)
+            ddl_columns = [{"name": c.name, "semantic_type": c.semantic_type} for c in t.columns]
+            t.ddl = generate_create_table(t.dataset_name, t.target_schema, ddl_columns)
 
     return JobSchemaResponse(
         job_id=job_id,
@@ -658,6 +718,20 @@ async def patch_job_schema(
         existing_col_overrides.update(col_overrides)
         path_entry["column_type_overrides"] = existing_col_overrides
         schema_overrides[path] = path_entry
+
+    # Apply PK overrides
+    if request.pk_overrides:
+        schema_overrides["pk_overrides"] = {
+            **schema_overrides.get("pk_overrides", {}),
+            **request.pk_overrides,
+        }
+
+    # Apply FK overrides
+    if request.fk_overrides:
+        schema_overrides["fk_overrides"] = {
+            **schema_overrides.get("fk_overrides", {}),
+            **request.fk_overrides,
+        }
 
     overrides["schema_overrides"] = schema_overrides
     await session.execute(update(Job).where(Job.id == str(job_id)).values(user_overrides=overrides))

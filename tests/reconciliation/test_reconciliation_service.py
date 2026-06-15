@@ -547,3 +547,75 @@ def test_safe_exec_raises_non_nameerror() -> None:
     ns: dict[str, object] = {}
     with pytest.raises(ZeroDivisionError):
         _safe_exec("x = 1 / 0", ns)
+
+
+# ── F35 P1-A: output_schema propagation ──────────────────────────────────────
+
+
+@pytest.mark.reconciliation
+def test_run_returns_output_schema_on_success() -> None:
+    """run() includes output_schema when pipeline executes and ref data loads successfully."""
+    ref_df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
+    backend = _make_backend(ref_df)
+    good_code = "import pandas as pd; result = pd.DataFrame({'a': [1, 2], 'b': [3, 4]})"
+    svc = ReconciliationService()
+    report = svc.run(ref_csv_path="ref.csv", python_code=good_code, backend=backend)
+
+    assert "output_schema" in report
+    schema = report["output_schema"]
+    assert "columns" in schema
+    assert "dtypes" in schema
+    assert "a" in schema["columns"]
+    assert "b" in schema["columns"]
+
+
+@pytest.mark.reconciliation
+def test_run_output_schema_absent_when_no_ref_paths() -> None:
+    """run() with no ref paths skips reconciliation — output_schema is not present."""
+    svc = ReconciliationService()
+    report = svc.run(ref_csv_path="", python_code="result = None", backend=MagicMock())
+    assert "output_schema" not in report
+
+
+@pytest.mark.reconciliation
+def test_run_output_schema_absent_when_execution_fails() -> None:
+    """run() execution failure returns no output_schema (pipeline did not produce a DataFrame)."""
+    backend = _make_backend(pd.DataFrame({"a": [1]}))
+    svc = ReconciliationService()
+    report = svc.run(
+        ref_csv_path="dummy.csv",
+        python_code="raise ValueError('pipeline failed')",
+        backend=backend,
+    )
+    assert "output_schema" not in report
+
+
+@pytest.mark.reconciliation
+def test_run_output_schema_present_when_ref_load_fails() -> None:
+    """run() includes output_schema even when reference data load fails (pipeline ran OK)."""
+    good_code = "import pandas as pd; result = pd.DataFrame({'x': [1, 2]})"
+    backend = _make_backend(raises=True)
+    svc = ReconciliationService()
+    report = svc.run(
+        ref_csv_path="missing.csv",
+        python_code=good_code,
+        backend=backend,
+    )
+    # Pipeline ran successfully → output_schema must be present
+    assert "output_schema" in report
+    schema = report["output_schema"]
+    assert "x" in schema["columns"]
+
+
+@pytest.mark.reconciliation
+def test_run_output_schema_dtypes_are_strings() -> None:
+    """output_schema.dtypes values are all strings (serialisable to JSONB)."""
+    ref_df = pd.DataFrame({"a": [1, 2]})
+    backend = _make_backend(ref_df)
+    good_code = "import pandas as pd; result = pd.DataFrame({'a': [1, 2]})"
+    svc = ReconciliationService()
+    report = svc.run(ref_csv_path="ref.csv", python_code=good_code, backend=backend)
+
+    assert "output_schema" in report
+    for dtype_val in report["output_schema"]["dtypes"].values():
+        assert isinstance(dtype_val, str)

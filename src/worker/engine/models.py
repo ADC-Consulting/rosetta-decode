@@ -308,6 +308,11 @@ class MigrationPlan(BaseModel):
     # Each entry: {left_table, right_table, key_column, via_block_id, relationship_type}
     # relationship_type is "merge" (DATA step MERGE BY) or "join" (PROC SQL JOIN ON)
     relationships: list[dict[str, str]] = Field(default_factory=list)  # SAS: models.py:rels
+    # keyed by dataset name (output_datasets[0] from the generating block)
+    # value: list of {name: str, python_type: str} dicts
+    # absent when the block has not been reconciled / executed
+    # SAS: models.py:output_schema
+    output_schema: dict[str, list[dict[str, str]]] = Field(default_factory=dict)
 
 
 class ColumnFlow(BaseModel):

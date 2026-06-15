@@ -263,6 +263,11 @@ class ColumnSchema(BaseModel):
     label: str | None = None  # human-readable label from pyreadstat
     semantic_type: str = "String"  # derived by map_sas_to_semantic_type
     override_type: str | None = None  # user-set override (from schema_overrides)
+    python_type: str | None = None  # pandas dtype string e.g. "object", "int64"
+    sql_type: str | None = None  # ANSI SQL type derived from python_type
+    is_pk: bool = False
+    is_fk: bool = False
+    fk_ref: str | None = None  # e.g. "sdtm_dm.usubjid"
 
 
 class TableSchema(BaseModel):
@@ -275,6 +280,9 @@ class TableSchema(BaseModel):
     columns: list[ColumnSchema] = []
     row_count: int | None = None
     ddl: str = ""  # generated DDL — empty until Phase 3
+    target_columns: list[ColumnSchema] = []  # from execution output; empty = not run
+    schema_status: str = "not_run"  # "migrated" | "changed" | "not_run"
+    ddl_source: str = "source_estimated"  # "target" | "source_estimated"
 
 
 class RelationshipSchema(BaseModel):
@@ -304,6 +312,12 @@ class PatchJobSchemaRequest(BaseModel):
 
     column_type_overrides: dict[str, dict[str, str]] = {}
     # keyed by file path: {"sas_pharma.../dm_raw.csv": {"AGE": "Integer"}}
+
+    pk_overrides: dict[str, list[str]] = {}
+    # e.g. {"sdtm_dm": ["usubjid"], "sdtm_ex": ["usubjid", "exseq"]}
+
+    fk_overrides: dict[str, str] = {}
+    # e.g. {"sdtm_ex.usubjid": "sdtm_dm.usubjid"}
 
 
 class JobPlanResponse(BaseModel):

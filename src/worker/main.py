@@ -1995,24 +1995,48 @@ async def _process_job(session: AsyncSession, job: Job) -> None:
             ref_sas7bdat_path,
         )
 
+        # SAS: main.py:output_schema — propagate execution output schema into migration_plan
+        raw_output_schema: dict[str, Any] = report.get("output_schema", {})
+        updated_migration_plan: dict[str, Any] | None = None
+        if raw_output_schema:
+            existing_plan: dict[str, Any] = dict(job.migration_plan or {})
+            # Determine dataset name from the last generated block's output_datasets
+            dataset_name: str = "output"
+            if generated:
+                last_block = generated[-1].source_block
+                if last_block.output_datasets:
+                    dataset_name = last_block.output_datasets[0]
+            # Build column list — copy existing plan to avoid mutating JSONB in-place
+            updated_migration_plan = {**existing_plan}
+            existing_output_schema: dict[str, Any] = dict(
+                updated_migration_plan.get("output_schema", {})
+            )
+            output_cols: list[str] = raw_output_schema.get("columns", [])
+            output_dtypes: dict[str, str] = raw_output_schema.get("dtypes", {})
+            existing_output_schema[dataset_name] = [
+                {"name": col, "python_type": output_dtypes.get(col, "object")}
+                for col in output_cols
+            ]
+            updated_migration_plan["output_schema"] = existing_output_schema
+
         doc: str | None = None
         try:
             doc = await DocGenerator().generate(job, client)
         except Exception as exc:
             logger.warning("Doc generation failed for job %s: %s", job.id, exc)
 
-        await session.execute(
-            update(Job)
-            .where(Job.id == job.id)
-            .values(
-                status="proposed",
-                python_code=python_code,
-                report=report,
-                llm_model=worker_settings.llm_model,
-                lineage=lineage_data,
-                doc=doc,
-            )
-        )
+        update_values: dict[str, Any] = {
+            "status": "proposed",
+            "python_code": python_code,
+            "report": report,
+            "llm_model": worker_settings.llm_model,
+            "lineage": lineage_data,
+            "doc": doc,
+        }
+        if updated_migration_plan is not None:
+            update_values["migration_plan"] = updated_migration_plan
+
+        await session.execute(update(Job).where(Job.id == job.id).values(**update_values))
         await session.commit()
         logger.info("Job %s completed successfully", job.id)
     except Exception as exc:

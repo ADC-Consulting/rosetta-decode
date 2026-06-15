@@ -263,7 +263,12 @@ class ReconciliationService:
             error_detail = str(exc)
             logger.warning("Reconciliation reference load error: %s", error_detail, exc_info=True)
             checks.append(_check_result("execution", passed=False, detail=error_detail))
-            return {"checks": checks}
+            # SAS: reconciliation.py:output_schema — pipeline ran; capture schema even if ref fails
+            output_schema_on_ref_fail: dict[str, Any] = {
+                "columns": list(actual_df.columns),
+                "dtypes": {col: str(dtype) for col, dtype in actual_df.dtypes.items()},
+            }
+            return {"checks": checks, "output_schema": output_schema_on_ref_fail}
 
         logger.debug(
             "recon ref   rows=%d cols=%s dtypes=%s",
@@ -293,7 +298,12 @@ class ReconciliationService:
         logger.info(
             "reconciliation summary: %s (%d checks)", "PASS" if all_passed else "FAIL", len(checks)
         )
-        return {"checks": checks}
+        # SAS: reconciliation.py:output_schema — capture actual output schema after execution
+        output_schema: dict[str, Any] = {
+            "columns": list(actual_df.columns),
+            "dtypes": {col: str(dtype) for col, dtype in actual_df.dtypes.items()},
+        }
+        return {"checks": checks, "output_schema": output_schema}
 
     @staticmethod
     def _exec_pipeline(python_code: str, backend: ComputeBackend) -> pd.DataFrame:
