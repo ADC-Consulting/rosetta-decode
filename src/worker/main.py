@@ -329,6 +329,54 @@ def _dataset_matches_file(
     return False
 
 
+def _normalise_lineage_ds(
+    ds: str,
+    data_schema: dict[str, Any],
+    context: "JobContext",
+) -> str:
+    """Map a SAS dataset name to the canonical basename used in data_schema keys."""
+    import os as _os
+
+    for path in data_schema:
+        if _dataset_matches_file([ds], path, context):
+            return _os.path.splitext(_os.path.basename(path))[0]
+    # Fallback: strip libname prefix and lowercase
+    return ds.split(".")[-1].lower()
+
+
+def _normalise_pipeline_step_datasets(
+    lineage_data: dict[str, Any],
+    data_schema: dict[str, Any],
+    context: "JobContext",
+) -> dict[str, Any]:
+    """Rewrite pipeline_step input/output names to match data_schema dataset_name values.
+
+    The lineage enricher records SAS logical names (e.g. 'work.dm'); the schema API
+    derives dataset_name from the file path basename (e.g. 'dm_raw'). This pass
+    resolves SAS names to their canonical file-basename equivalents so Data Flow nodes
+    and sidebar table names refer to the same string.
+    """
+    steps = lineage_data.get("pipeline_steps")
+    if not steps:
+        return lineage_data
+    return {
+        **lineage_data,
+        "pipeline_steps": [
+            {
+                **step,
+                "inputs": [
+                    _normalise_lineage_ds(ds, data_schema, context) for ds in step.get("inputs", [])
+                ],
+                "outputs": [
+                    _normalise_lineage_ds(ds, data_schema, context)
+                    for ds in step.get("outputs", [])
+                ],
+            }
+            for step in steps
+        ],
+    }
+
+
 def _build_recon_groups(
     blocks: list["SASBlock"],
     context: "JobContext",
@@ -1070,6 +1118,16 @@ class JobOrchestrator:
         # Inject data-file nodes + edges from the data_files catalogue
         if lineage_data is not None and context.data_files:
             lineage_data = _inject_data_file_nodes(lineage_data, blocks, context)
+
+        # Normalise pipeline step dataset names to match schema dataset_name convention
+        if (
+            lineage_data is not None
+            and context.migration_plan
+            and context.migration_plan.data_schema
+        ):
+            lineage_data = _normalise_pipeline_step_datasets(
+                lineage_data, context.migration_plan.data_schema, context
+            )
 
         # Step 10: Persist — use under_review if recon failed, proposed if all passed
         final_status = "under_review" if recon_failed else "proposed"
