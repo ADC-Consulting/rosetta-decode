@@ -15,7 +15,7 @@ import re
 from typing import Any
 
 from src.worker.engine.format_catalog import normalize_format_name
-from src.worker.engine.models import FormatDef
+from src.worker.engine.models import DataFileInfo, FormatDef
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +72,7 @@ operations with no PySpark equivalent. The final variable MUST be a Spark DataFr
   Preserve the natural PySpark type. If reconciliation flags a type mismatch,
   it means the reference CSV stored the column differently — the PySpark type
   is authoritative for the actual data.
+  F61: a deterministic post-processor automatically injects .cast("string"/"double") sourced from .sas7bdat declared metadata — do NOT hand-write load-time casts yourself.
 
 
 ## 2. Column Naming Convention — CRITICAL
@@ -189,11 +190,34 @@ For EVERY join key column: save the original type, normalise both sides, join, t
 
 Apply ONLY to identifier/key columns (IDs, codes, reference numbers).
 Do NOT apply to value columns (amounts, prices, quantities, dates, metrics).
+  Note: the F61 declared-type cast runs before this save/restore, so composition is correct — the save captures the already-cast type.
 
 After a join, always qualify ambiguous column references with DataFrame aliases to avoid
 AMBIGUOUS_REFERENCE errors:
     result = df1.alias("a").join(df2.alias("b"), on="customer_id", how="left").select(
         F.col("a.*"), F.col("b.extra_col"))
+
+### Prevent ambiguity at the source (equi-joins on shared keys) — CRITICAL
+
+For an equi-join on one or more shared key columns (e.g. a SAS ``merge ...; by USUBJID;``),
+ALWAYS use the ``on=[...]`` form. It collapses each duplicate key column into a SINGLE
+output column, so no ambiguity can ever arise:
+
+  ✅ Correct — on=[...] collapses the shared keys, leaving one `usubjid`:
+  result = df1.join(df2, on=["usubjid"], how="inner")
+  result = df1.join(df2, on=["studyid", "usubjid"], how="left")
+
+NEVER write a boolean/condition join for a simple equi-join on shared keys — it leaves
+BOTH copies of each key column and causes AMBIGUOUS_REFERENCE on any later bare reference:
+
+  ❌ Wrong — both `usubjid` columns survive → AMBIGUOUS_REFERENCE:
+  result = df1.alias("a").join(df2.alias("b"), F.col("a.usubjid") == F.col("b.usubjid"))
+  result = result.withColumn("flag", F.when(F.col("usubjid").isNotNull(), 1))  # ambiguous!
+
+After ANY join, never reference a shared column by its bare name. Either use the
+``on=[...]``-collapsed single column, or qualify with the alias (``F.col("a.usubjid")``).
+Reserve the boolean/condition join form ONLY for non-equi joins or joins on differently
+named keys, and always alias-qualify every shared column you reference afterwards.
 
 
 ## 6. Null Handling — CRITICAL
@@ -247,6 +271,8 @@ expressions, not Python booleans or numbers.
 
 
 ## 8. Explicit Type Casting
+
+Note: load-time declared-type casts for .sas7bdat columns are injected automatically (F61) — do not duplicate them here.
 
 SAS auto-coerces types; PySpark does not.
 
@@ -554,6 +580,75 @@ def render_format_section(referenced: list[str], catalog: dict[str, FormatDef]) 
     return "\n".join(lines)
 
 
+def detect_referenced_data_files(
+    block: Any,
+    data_files: dict[str, DataFileInfo],
+) -> list[str]:
+    """Return data_files keys whose basename appears in this block's inputs or SAS source.
+
+    Matches by comparing the extension-stripped, lowercased basename of each
+    DataFileInfo.path against block.input_datasets (primary) and block.raw_sas
+    (fallback). Only files with non-empty column_types are considered — files
+    without declared types (CSV, intermediate datasets) produce no section.
+
+    Args:
+        block: A SASBlock (or any object with .input_datasets: list[str] and .raw_sas: str).
+        data_files: The job's data-file catalog.
+
+    Returns:
+        List of data_files keys (i.e. norm_path strings) for files the block references
+        that have declared column_types, in deterministic (sorted) order.
+    """
+    import os  # SAS: shared.py:detect_referenced_data_files
+
+    candidates = {k: v for k, v in data_files.items() if v.column_types}
+    results: list[str] = []
+    for key, info in candidates.items():
+        basename = os.path.splitext(os.path.basename(info.path))[0].lower()
+        inputs_lower = [ds.lower() for ds in block.input_datasets]
+        raw_lower = block.raw_sas.lower()
+        if any(basename in ds for ds in inputs_lower) or basename in raw_lower:
+            results.append(key)
+    return sorted(results)
+
+
+def render_declared_types_section(
+    referenced: list[str],
+    data_files: dict[str, DataFileInfo],
+) -> str:
+    """Render a prompt section listing declared source column types.
+
+    Only files present in *referenced* (output of detect_referenced_data_files)
+    and with non-empty column_types are rendered. Rendering is deterministic.
+
+    Args:
+        referenced: Keys from data_files that the current block reads.
+        data_files: The job's data-file catalog.
+
+    Returns:
+        The rendered section under a ``## Declared source column types`` header,
+        or an empty string when *referenced* is empty or no referenced file has
+        column_types (so callers may skip the section entirely).
+    """
+    matched = [key for key in referenced if key in data_files and data_files[key].column_types]
+    if not matched:
+        return ""
+    lines: list[str] = ["## Declared source column types"]
+    for key in matched:
+        lines.append(f"### {key}")
+        for col, cast_type in sorted(data_files[key].column_types.items()):
+            if cast_type == "string":
+                lines.append(f"- {col}: character")
+            else:
+                lines.append(f"- {col}: numeric")
+    lines.append(
+        "Use these types when deciding join/compare/derivation logic."
+        " Do NOT write the load-time `.cast(...)` yourself —"
+        " it is injected automatically after the lowercase-normalization step."
+    )
+    return "\n".join(lines)
+
+
 def build_block_output_stems(all_blocks: list[Any]) -> dict[str, str]:
     """Map every prior-block output dataset (dot AND underscore form) → stem name.
 
@@ -705,4 +800,133 @@ def normalise_output_var_in_code(
                 stem,
             )
             python_code = re.sub(pattern, stem, python_code)
+    return python_code
+
+
+def inject_declared_casts(
+    python_code: str,
+    data_files: dict[str, DataFileInfo],
+    agent_name: str,
+) -> str:
+    """Inject `.withColumn(...cast(...))` blocks for declared SAS column types.
+
+    After the LLM generates Python code, this function locates each ``spark.read.*``
+    or ``pd.read_sas`` assignment that reads a ``.sas7bdat`` file, finds (or
+    synthesises) the ``toDF(lower)`` normalisation line, and splices in a grouped
+    ``.withColumn(col, F.col(col).cast(<type>))`` block sourced from the declared
+    types in ``DataFileInfo.column_types``.
+
+    The transform is idempotent: columns already cast to the correct type are skipped.
+
+    Args:
+        python_code: Generated Python source from the LLM.
+        data_files: Mapping of dataset name to ``DataFileInfo`` for the current job.
+        agent_name: Agent class name used in log messages (e.g. ``"DataStepAgent"``).
+
+    Returns:
+        Python source with cast blocks injected after each sas7bdat read assignment.
+    """
+    import os  # standard library — not imported at module level in this file
+
+    for info in data_files.values():
+        if not info.column_types:
+            continue
+
+        # Step 2a: derive the bare filename stem (e.g. "adsl" from "data/raw/ADSL.sas7bdat")
+        basename = os.path.splitext(os.path.basename(info.path))[0].lower()
+
+        # Step 2b: locate the read-assignment line for this .sas7bdat file
+        read_match = re.search(
+            r"^(\s*)(\w+)\s*=\s*.*?" + re.escape(basename) + r"[^/\n]*\.sas7bdat",
+            python_code,
+            re.IGNORECASE | re.MULTILINE,
+        )
+        if read_match is None:
+            logger.warning(
+                "inject_declared_casts [%s]: could not locate read assignment for %s — skipping",
+                agent_name,
+                info.path,
+            )
+            continue
+
+        indent = read_match.group(1)
+        varname = read_match.group(2)
+
+        # Step 2d: locate the toDF(lower) line for this variable
+        todf_match = re.search(
+            r"^\s*"
+            + re.escape(varname)
+            + r"\s*=\s*"
+            + re.escape(varname)
+            + r"\.toDF\(\*\[c\.lower\(\)",
+            python_code,
+            re.MULTILINE,
+        )
+
+        if todf_match is not None:
+            # Injection point is the end of the toDF line
+            injection_line = python_code[
+                python_code.rfind("\n", 0, todf_match.end()) + 1 : todf_match.end()
+            ]
+            # Use the full line text from line-start to end of match
+            line_start = python_code.rfind("\n", 0, todf_match.start()) + 1
+            injection_line = python_code[line_start : todf_match.end()]
+            # Extend to end of line
+            line_end = python_code.find("\n", todf_match.end())
+            if line_end == -1:
+                line_end = len(python_code)
+            injection_line = python_code[line_start:line_end]
+        else:
+            # Synthesise the toDF(lower) line after the read assignment and use it
+            read_line_end = python_code.find("\n", read_match.end())
+            if read_line_end == -1:
+                read_line_end = len(python_code)
+            synthesised = (
+                f"{indent}{varname} = {varname}.toDF(*[c.lower() for c in {varname}.columns])"
+            )
+            python_code = (
+                python_code[:read_line_end] + "\n" + synthesised + python_code[read_line_end:]
+            )
+            injection_line = synthesised
+
+        # Step 2e: build the cast lines (idempotence-guarded)
+        cast_lines: list[str] = []
+        for col, cast_type in sorted(info.column_types.items()):
+            already_cast = re.search(
+                rf'{re.escape(varname)}\.withColumn\("{re.escape(col)}".*?\.cast\("{re.escape(cast_type)}"\)',
+                python_code,
+            )
+            if already_cast is not None:
+                continue
+            cast_lines.append(
+                f'{indent}{varname} = {varname}.withColumn("{col}", F.col("{col}").cast("{cast_type}"))'
+            )
+
+        # Step 2f: nothing to inject
+        if not cast_lines:
+            continue
+
+        # Step 2g: splice the provenance comment + cast block after the injection line
+        provenance = f"{indent}# SAS: {info.path} (declared type)"
+        block = "\n".join([provenance, *cast_lines])
+
+        inject_pos = python_code.find(injection_line)
+        if inject_pos == -1:
+            logger.warning(
+                "inject_declared_casts [%s]: could not locate injection line for %s — skipping",
+                agent_name,
+                info.path,
+            )
+            continue
+        after_injection = inject_pos + len(injection_line)
+        python_code = python_code[:after_injection] + "\n" + block + python_code[after_injection:]
+
+        # Step 2h: log summary
+        logger.warning(
+            "inject_declared_casts [%s]: injected %d cast(s) for %s",
+            agent_name,
+            len(cast_lines),
+            info.path,
+        )
+
     return python_code

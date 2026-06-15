@@ -18,6 +18,63 @@ logger = logging.getLogger(__name__)
 # Relative tolerance for aggregate comparisons (0.001 = 0.1 %)
 _AGGREGATE_RTOL = 0.001
 
+# SAS stores dates as days since this epoch
+_SAS_EPOCH = pd.Timestamp("1960-01-01")
+
+
+def _coerce_sas_date_columns(
+    ref: pd.DataFrame, actual: pd.DataFrame
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Align type mismatches between ref and actual before recon checks.
+
+    Handles two cases:
+    - ref=object, actual=numeric: ref looks like formatted dates → convert both
+      to days-since-SAS-epoch floats.
+    - ref=numeric, actual=object: actual looks like numeric strings (e.g. IDs
+      cast to string by F61) → coerce actual to numeric for comparison.
+    """
+    ref = ref.copy()
+    actual = actual.copy()
+    for col in ref.columns:
+        if col not in actual.columns:
+            continue
+        # Detect by "not numeric" rather than "is object": pandas >=2 infers a
+        # dedicated StringDtype for text columns, for which is_object_dtype is
+        # False. is_numeric_dtype is the version-robust discriminator.
+        r_num = pd.api.types.is_numeric_dtype(ref[col])
+        a_num = pd.api.types.is_numeric_dtype(actual[col])
+
+        if not r_num and a_num:
+            # ref=non-numeric, actual=numeric — is the text column dates in disguise?
+            # Decide by the parseable fraction among NON-BLANK cells only: sparse
+            # clinical date columns (first AE date, death date) are legitimately
+            # mostly null, and blanks must not count as "not a date".
+            ref_as_dt = pd.to_datetime(ref[col], errors="coerce")
+            non_blank = ref[col].replace("", pd.NA).dropna()
+            if len(non_blank) == 0:
+                continue
+            parseable = pd.to_datetime(non_blank, errors="coerce").notna().mean()
+            if parseable < 0.8:
+                continue
+            actual_as_dt = pd.to_datetime(actual[col], unit="D", origin=_SAS_EPOCH, errors="coerce")
+            ref[col] = (ref_as_dt - _SAS_EPOCH).dt.days.astype("float64")
+            actual[col] = (actual_as_dt - _SAS_EPOCH).dt.days.astype("float64")
+            logger.debug("recon: normalised SAS date column '%s' to days-since-1960", col)
+
+        elif r_num and not a_num:
+            # ref=numeric, actual=non-numeric — coerce actual to numeric if its
+            # non-blank cells are predominantly numeric strings (e.g. F61 IDs).
+            non_blank = actual[col].replace("", pd.NA).dropna()
+            if len(non_blank) == 0:
+                continue
+            numeric_frac = pd.to_numeric(non_blank, errors="coerce").notna().mean()
+            if numeric_frac < 0.8:
+                continue
+            actual[col] = pd.to_numeric(actual[col], errors="coerce")
+            logger.debug("recon: coerced object column '%s' to numeric for comparison", col)
+
+    return ref, actual
+
 
 def _check_result(name: str, *, passed: bool, detail: str = "") -> dict[str, Any]:
     result: dict[str, Any] = {"name": name, "status": "pass" if passed else "fail"}
@@ -69,7 +126,7 @@ def _aggregate_parity(ref: pd.DataFrame, actual: pd.DataFrame) -> dict[str, Any]
         ref_sum = float(ref[col].sum())
         try:
             actual_sum = float(actual[col].sum())
-        except (KeyError, TypeError):
+        except (KeyError, TypeError, ValueError, OverflowError):
             mismatches.append(f"{col}: missing in actual")
             continue
         if ref_sum == 0.0:
@@ -155,6 +212,8 @@ def run_recon(
         list(actual_df.columns),
         actual_df.dtypes.to_dict(),
     )
+
+    ref_df, actual_df = _coerce_sas_date_columns(ref_df, actual_df)
 
     return [
         _schema_parity(ref_df, actual_df),

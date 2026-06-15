@@ -54,6 +54,24 @@
   - [x] F60 S-E: inject referenced formats into agent prompts + scoped `put()` rule (normalized name match, no built-in regression) → `agents/{shared,data_step,proc,generic_proc}.py`
   - [x] F60 S-F: tests for wiring + prompt injection (cross-file catalog, width/`$` refs, built-in negative case) → `tests/test_format_catalog.py`; router routing covered in `tests/test_translation_router.py`
   - [x] F60 S-G: `make test` exits 0 (all 7 gates green, coverage ≥90%)
+- [x] F61: Type-aware schema contract — bake source-declared column types into delivered PySpark → see `docs/plans/latest/F61-declared-column-types.md`
+  - [x] F61 S-A: `DataFileInfo.column_types` field → `src/worker/engine/models.py`
+  - [x] F61 S-B: `_map_readstat_type` + `_sniff_file` 3-tuple + catalog wiring → `src/worker/main.py`
+  - [x] F61 S-C: `inject_declared_casts` deterministic helper → `src/worker/engine/agents/shared.py`
+  - [x] F61 S-D: wire injector into DataStepAgent, ProcAgent, GenericProcAgent → `agents/{data_step,proc,generic_proc}.py`
+  - [x] F61 S-E: `detect_referenced_data_files` + `render_declared_types_section` → `src/worker/engine/agents/shared.py`
+  - [x] F61 S-F: reconcile rules 1/5/8 with F61 (informational notes, no new cast rule) → `src/worker/engine/agents/shared.py`
+  - [x] F61 S-G: wire declared-types section into all three prompt builders → `agents/{data_step,proc,generic_proc}.py`
+  - [x] F61 S-H/S-I: unit + e2e tests → `tests/test_shared_inject_declared_casts.py`, `tests/test_worker_main*.py`, `tests/test_format_catalog.py`
+  - [x] F61 S-J: `make test` exits 0 (all 7 gates green)
+- [x] F61-followups (discovered + fixed during F61 sandbox verification, 2026-06-15):
+  - [x] Recon dtype detection robust to pandas 3.0 `StringDtype` (`not is_numeric_dtype`) → `executor/recon.py`, `worker/validation/reconciliation.py`
+  - [x] Executor result date serialization `date_format='iso'` (was epoch-millis) → `src/executor/runner.py`
+  - [x] AMBIGUOUS_REFERENCE self-heal: §5 rule + bare→alias `F.col` rewrite in `_safe_exec` + executor bounded retry
+  - [x] Corrected stale golden `adsl_expected.csv` TRTEDT/TRTDURD from current `ex_raw.csv`
+- [ ] F61-debt: add a dedicated unit test for `_coerce_sas_date_columns` (validated manually this session; no committed regression test yet)
+- [ ] Agentic full-pipeline retry (runtime crashes only): attribute traceback → block via `# SAS:` provenance, re-run that block's refine with the pipeline error as hint. Do NOT auto-fix parity mismatches (gaming-the-golden risk). Needs reproducibility bound. See F19 agentic-refine-loop.
+- [ ] Date/datetime semantic typing (beyond char-vs-numeric): format-aware SAS date handling in delivered code (F61 out-of-scope item)
 - [ ] F1-ext: Macro definition + call expansion (`%MACRO` / `%MEND`) — superseded by F57 (call expansion) + F59 (control flow); close once verified end-to-end
 - [ ] F3-ext: Row-level hash diff check
 - [ ] F4: SAS log ingestion — parse log structure

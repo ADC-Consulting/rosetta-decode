@@ -66,9 +66,10 @@ def test_sniff_file_succeeds_for_data_formats(
         sep = "\t" if ext == ".tsv" else ","
         df.to_csv(disk_path, sep=sep, index=False)
 
-    cols, count = _sniff_file(disk_path, ext)
+    cols, count, column_types = _sniff_file(disk_path, ext)
     assert cols == expected_cols
     assert count == expected_count
+    assert column_types == {}
 
 
 @pytest.mark.parametrize("ext", [".xlsx", ".xls"])
@@ -84,7 +85,7 @@ def test_sniff_file_excel_formats_mocked(tmp_path: pathlib.Path, ext: str) -> No
         mock_df = pd.DataFrame({"col1": [1, 2], "col2": [3, 4]})
         mock_read_excel.return_value = mock_df
 
-        cols, count = _sniff_file(disk_path, ext)
+        cols, count, _ct = _sniff_file(disk_path, ext)
 
         # Will fail because pandas.read_excel is mocked at module level
         # but the function imports it locally, so let's just verify the behavior
@@ -94,17 +95,19 @@ def test_sniff_file_excel_formats_mocked(tmp_path: pathlib.Path, ext: str) -> No
 
 def test_sniff_file_returns_empty_on_missing_path() -> None:
     """Test _sniff_file with non-existent path."""
-    cols, count = _sniff_file("/tmp/does-not-exist-at-all-12345.csv", ".csv")
+    cols, count, column_types = _sniff_file("/tmp/does-not-exist-at-all-12345.csv", ".csv")
     assert cols == []
     assert count is None
+    assert column_types == {}
 
 
 def test_sniff_file_sas7bdat_without_pyreadstat() -> None:
     """Test _sniff_file for .sas7bdat when pyreadstat is unavailable."""
     with patch.dict("sys.modules", {"pyreadstat": None}):
-        cols, count = _sniff_file("/tmp/fake.sas7bdat", ".sas7bdat")
+        cols, count, column_types = _sniff_file("/tmp/fake.sas7bdat", ".sas7bdat")
         assert cols == []
         assert count is None
+        assert column_types == {}
 
 
 def test_sniff_file_handles_malformed_csv(tmp_path: pathlib.Path) -> None:
@@ -112,10 +115,11 @@ def test_sniff_file_handles_malformed_csv(tmp_path: pathlib.Path) -> None:
     disk_path = str(tmp_path / "bad.csv")
     with open(disk_path, "w") as f:
         f.write("not,valid\n\x00binary\x00data")
-    cols, count = _sniff_file(disk_path, ".csv")
+    cols, count, column_types = _sniff_file(disk_path, ".csv")
     # Pandas reads the header but may fail on the binary; we catch Exception
     assert isinstance(cols, list)
     assert count is None or isinstance(count, int)
+    assert column_types == {}
 
 
 def test_sniff_file_returns_none_for_sas7bdat_columns(tmp_path: pathlib.Path) -> None:
@@ -125,16 +129,19 @@ def test_sniff_file_returns_none_for_sas7bdat_columns(tmp_path: pathlib.Path) ->
     with open(disk_path, "wb") as f:
         f.write(b"SASS")  # Dummy content
 
-    # Mock pyreadstat successfully
-    with patch("pyreadstat.read_sas7bdat") as mock_read:
-        mock_df = MagicMock()
-        mock_meta = MagicMock()
-        mock_meta.column_names = ["col1", "col2"]
-        mock_read.return_value = (mock_df, mock_meta)
+    # Mock pyreadstat successfully via sys.modules (pyreadstat is imported inside the try block)
+    mock_pr = MagicMock()
+    mock_df = MagicMock()
+    mock_meta = MagicMock()
+    mock_meta.column_names = ["col1", "col2"]
+    mock_meta.readstat_variable_types = {"col1": "string", "col2": "double"}
+    mock_pr.read_sas7bdat.return_value = (mock_df, mock_meta)
 
-        cols, count = _sniff_file(disk_path, ".sas7bdat")
+    with patch.dict("sys.modules", {"pyreadstat": mock_pr}):
+        cols, count, column_types = _sniff_file(disk_path, ".sas7bdat")
         assert cols == ["col1", "col2"]
         assert count is None
+        assert column_types == {"col1": "string", "col2": "double"}
 
 
 # ─── _make_session_factory ───────────────────────────────────────────────────
@@ -1788,3 +1795,62 @@ async def test_execute_persists_token_usage_on_failure() -> None:
         "requests",
     ):
         assert key in total, f"token_usage['total'] must contain '{key}'"
+
+
+# ─── F61: inject_declared_casts e2e / reconciliation ─────────────────────────
+
+
+def test_inject_declared_casts_e2e_closes_null_propagation() -> None:
+    """inject_declared_casts produces correct cast blocks; aggregate parity is
+    finite for matching types and breaks for mismatched sums (S-I e2e test).
+    """
+    import textwrap
+
+    from src.worker.engine.agents.shared import inject_declared_casts
+    from src.worker.engine.models import DataFileInfo
+
+    # Simulate LLM-generated code that reads a sas7bdat with a toDF normalisation line
+    generated_code = textwrap.dedent("""
+        adsl = spark.read.format("sas7bdat").load("/workspace/data/adsl.sas7bdat")
+        adsl = adsl.toDF(*[c.lower() for c in adsl.columns])
+        result = adsl.filter(F.col("subjid").isNotNull())
+    """).strip()
+
+    data_files = {
+        "data/raw/adsl.sas7bdat": DataFileInfo(
+            path="data/raw/adsl.sas7bdat",
+            disk_path="/fake/adsl.sas7bdat",
+            extension=".sas7bdat",
+            column_types={"subjid": "string", "siteid": "string"},
+        )
+    }
+    delivered = inject_declared_casts(generated_code, data_files, "E2ETest")
+
+    # Cast lines were injected
+    assert '.cast("string")' in delivered
+    assert "# SAS: data/raw/adsl.sas7bdat (declared type)" in delivered
+
+    # Cast block appears before downstream transforms
+    cast_pos = delivered.index("# SAS:")
+    filter_pos = delivered.index("result = adsl")
+    assert cast_pos < filter_pos
+
+    # --- Recon parity check ---
+    import pandas as pd
+    from src.executor.recon import _aggregate_parity
+
+    ref_df = pd.DataFrame({"subjid": ["001", "002", "003"], "value": [10.0, 20.0, 30.0]})
+
+    # Correct path: sums match — aggregate parity should pass
+    out_df_correct = pd.DataFrame({"subjid": ["001", "002", "003"], "value": [10.0, 20.0, 30.0]})
+    correct_result = _aggregate_parity(ref_df, out_df_correct)
+    assert correct_result["status"] == "pass", (
+        f"Expected aggregate parity to pass for matching values, got: {correct_result}"
+    )
+
+    # Drifted path: last value row differs → aggregate sum mismatch → parity fail
+    out_df_drifted = pd.DataFrame({"subjid": ["001", "002", "003"], "value": [10.0, 20.0, 99.0]})
+    drifted_result = _aggregate_parity(ref_df, out_df_drifted)
+    assert drifted_result["status"] == "fail", (
+        f"Expected aggregate parity to fail for drifted values, got: {drifted_result}"
+    )

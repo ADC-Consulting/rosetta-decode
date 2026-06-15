@@ -900,9 +900,10 @@ async def test_sniff_file_csv_succeeds(tmp_path: Any) -> None:
     df = pd.DataFrame({"col1": [1, 2, 3], "col2": ["a", "b", "c"]})
     df.to_csv(disk_path, index=False)
 
-    cols, row_count = _sniff_file(disk_path, ".csv")
+    cols, row_count, column_types = _sniff_file(disk_path, ".csv")
     assert cols == ["col1", "col2"]
     assert row_count == 3
+    assert column_types == {}
 
 
 @pytest.mark.asyncio
@@ -914,16 +915,92 @@ async def test_sniff_file_tsv_succeeds(tmp_path: Any) -> None:
     df = pd.DataFrame({"x": [10, 20], "y": [30, 40]})
     df.to_csv(disk_path, sep="\t", index=False)
 
-    cols, row_count = _sniff_file(disk_path, ".tsv")
+    cols, row_count, column_types = _sniff_file(disk_path, ".tsv")
     assert cols == ["x", "y"]
     assert row_count == 2
+    assert column_types == {}
 
 
 def test_sniff_file_returns_empty_on_missing() -> None:
-    """Test _sniff_file returns ([], None) for missing files."""
-    cols, row_count = _sniff_file("/nonexistent/path/file.csv", ".csv")
+    """Test _sniff_file returns ([], None, {}) for missing files."""
+    cols, row_count, column_types = _sniff_file("/nonexistent/path/file.csv", ".csv")
     assert cols == []
     assert row_count is None
+    assert column_types == {}
+
+
+# ── _map_readstat_type ───────────────────────────────────────────────────────
+
+
+def test_map_readstat_type_string() -> None:
+    """'string' maps to 'string'."""
+    from src.worker.main import _map_readstat_type
+
+    assert _map_readstat_type("string") == "string"
+
+
+def test_map_readstat_type_double() -> None:
+    """'double' maps to 'double' (conservative numeric fallback)."""
+    from src.worker.main import _map_readstat_type
+
+    assert _map_readstat_type("double") == "double"
+
+
+def test_map_readstat_type_unknown_falls_back_to_double() -> None:
+    """Any unrecognised type returns 'double' as a conservative fallback."""
+    from src.worker.main import _map_readstat_type
+
+    assert _map_readstat_type("unknown") == "double"
+
+
+def test_map_readstat_type_int_falls_back_to_double() -> None:
+    """'int' (not a readstat type, but defensive) returns 'double'."""
+    from src.worker.main import _map_readstat_type
+
+    assert _map_readstat_type("int") == "double"
+
+
+# ── _sniff_file — .sas7bdat column_types branch ──────────────────────────────
+
+
+def test_sniff_file_sas7bdat_returns_column_types() -> None:
+    """_sniff_file returns lowercased column_types from pyreadstat metadata."""
+    from unittest.mock import MagicMock, patch
+
+    meta = MagicMock()
+    meta.column_names = ["SUBJID", "SITEID", "AGE"]
+    meta.readstat_variable_types = {"SUBJID": "string", "SITEID": "string", "AGE": "double"}
+    fake_df = MagicMock()
+
+    mock_pr = MagicMock()
+    mock_pr.read_sas7bdat.return_value = (fake_df, meta)
+
+    with patch.dict("sys.modules", {"pyreadstat": mock_pr}):
+        columns, row_count, column_types = _sniff_file("/fake/path/ADSL.sas7bdat", ".sas7bdat")
+
+    assert columns == ["SUBJID", "SITEID", "AGE"]
+    assert row_count is None
+    assert column_types == {"subjid": "string", "siteid": "string", "age": "double"}
+
+
+def test_sniff_file_csv_returns_empty_column_types(tmp_path: Any) -> None:
+    """_sniff_file returns column_types={} for CSV files (no declared types)."""
+    import pandas as pd
+
+    disk_path = str(tmp_path / "test.csv")
+    fake_df = pd.DataFrame({"A": [1], "B": [2]})
+    fake_df.to_csv(disk_path, index=False)
+
+    _columns, _row_count, column_types = _sniff_file(disk_path, ".csv")
+    assert column_types == {}
+
+
+def test_sniff_file_sas7bdat_import_error_returns_empty() -> None:
+    """When pyreadstat is unavailable, _sniff_file returns ([], None, {})."""
+    with patch.dict("sys.modules", {"pyreadstat": None}):
+        columns, _row_count, column_types = _sniff_file("/fake/path/test.sas7bdat", ".sas7bdat")
+    assert columns == []
+    assert column_types == {}
 
 
 def test_dict_to_recon_report_all_checks_pass() -> None:

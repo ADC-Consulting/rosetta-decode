@@ -27,6 +27,64 @@ logger = logging.getLogger(__name__)
 # Relative tolerance for aggregate comparisons (0.001 = 0.1%)
 _AGGREGATE_RTOL = 0.001
 
+# SAS stores dates as days since this epoch
+_SAS_EPOCH = pd.Timestamp("1960-01-01")
+
+
+def _coerce_sas_date_columns(
+    ref: pd.DataFrame, actual: pd.DataFrame
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Align type mismatches between ref and actual before recon checks.
+
+    Handles two cases:
+    - ref=object, actual=numeric: ref looks like formatted dates → convert both
+      to days-since-SAS-epoch floats.
+    - ref=numeric, actual=object: actual looks like numeric strings (e.g. IDs
+      cast to string by F61) → coerce actual to numeric for comparison.
+    """
+    ref = ref.copy()
+    actual = actual.copy()
+    for col in ref.columns:
+        if col not in actual.columns:
+            continue
+        # Detect by "not numeric" rather than "is object": pandas >=2 infers a
+        # dedicated StringDtype for text columns, for which is_object_dtype is
+        # False. is_numeric_dtype is the version-robust discriminator.
+        r_num = pd.api.types.is_numeric_dtype(ref[col])
+        a_num = pd.api.types.is_numeric_dtype(actual[col])
+
+        if not r_num and a_num:
+            # ref=non-numeric, actual=numeric — is the text column dates in disguise?
+            # Decide by the parseable fraction among NON-BLANK cells only: sparse
+            # clinical date columns (first AE date, death date) are legitimately
+            # mostly null, and blanks must not count as "not a date".
+            ref_as_dt = pd.to_datetime(ref[col], errors="coerce")
+            non_blank = ref[col].replace("", pd.NA).dropna()
+            if len(non_blank) == 0:
+                continue
+            parseable = pd.to_datetime(non_blank, errors="coerce").notna().mean()
+            if parseable < 0.8:
+                continue
+            actual_as_dt = pd.to_datetime(actual[col], unit="D", origin=_SAS_EPOCH, errors="coerce")
+            ref[col] = (ref_as_dt - _SAS_EPOCH).dt.days.astype("float64")
+            actual[col] = (actual_as_dt - _SAS_EPOCH).dt.days.astype("float64")
+            logger.debug("recon: normalised SAS date column '%s' to days-since-1960", col)
+
+        elif r_num and not a_num:
+            # ref=numeric, actual=non-numeric — coerce actual to numeric if its
+            # non-blank cells are predominantly numeric strings (e.g. F61 IDs).
+            non_blank = actual[col].replace("", pd.NA).dropna()
+            if len(non_blank) == 0:
+                continue
+            numeric_frac = pd.to_numeric(non_blank, errors="coerce").notna().mean()
+            if numeric_frac < 0.8:
+                continue
+            actual[col] = pd.to_numeric(actual[col], errors="coerce")
+            logger.debug("recon: coerced object column '%s' to numeric for comparison", col)
+
+    return ref, actual
+
+
 _spark_session: Any = None
 
 
@@ -79,6 +137,54 @@ def _add_column_to_spark_df(df: Any, col_name: str, spark: Any) -> Any:
         return df
 
 
+def qualify_ambiguous_column(code: str, err_str: str) -> str | None:
+    """Rewrite bare ``F.col("<col>")`` refs to the first alias-qualified candidate.
+
+    Parses a Spark ``AMBIGUOUS_REFERENCE`` error string to learn the ambiguous
+    column name and the first alias-qualified candidate from the message's
+    ``could be: [`a`.`col`, ...]`` list. It then rewrites every bare
+    ``F.col("<col>")`` / ``F.col('<col>')`` in *code* that is NOT already
+    alias-qualified into ``F.col("<alias>.<col>")``.
+
+    This deterministically self-heals generated PySpark where a condition-join
+    left two columns of the same name (see SHARED_TRANSLATION_RULES §5).
+
+    Args:
+        code: The generated Python source to patch.
+        err_str: The Spark exception string (or stderr) to parse.
+
+    Returns:
+        The patched code, or ``None`` if no ``AMBIGUOUS_REFERENCE`` / alias
+        candidate could be parsed (so the caller can stop / re-raise).
+    """
+    if "AMBIGUOUS_REFERENCE" not in err_str:
+        return None
+    ref_match = re.search(r"Reference `(\w+)` is ambiguous", err_str)
+    if ref_match is None:
+        return None
+    col = ref_match.group(1)
+    # Learn the first alias from the candidate list: could be: [`a`.`usubjid`, ...]
+    alias_match = re.search(r"could be:\s*\[`(\w+)`\.`" + re.escape(col) + r"`", err_str)
+    if alias_match is None:
+        return None
+    alias = alias_match.group(1)
+
+    # Replace bare F.col("col") / F.col('col') only — alias-qualified refs such as
+    # F.col("a.col") contain a dot and are not matched by this pattern.
+    pattern = re.compile(r'F\.col\(\s*(["\'])' + re.escape(col) + r"\1\s*\)")
+    replacement = f'F.col("{alias}.{col}")'
+    patched, n_subs = pattern.subn(replacement, code)
+    if n_subs == 0:
+        return None
+    logger.warning(
+        "recon: AMBIGUOUS_REFERENCE on '%s' — qualified %d bare ref(s) with alias '%s'",
+        col,
+        n_subs,
+        alias,
+    )
+    return patched
+
+
 def _safe_exec(code: str, ns: dict[str, Any]) -> None:
     """Exec *code* in *ns*, auto-injecting stubs for undefined names/columns.
 
@@ -87,14 +193,18 @@ def _safe_exec(code: str, ns: dict[str, Any]) -> None:
     - Spark AnalysisException (unresolved column) → find which DataFrame in the
       namespace was last assigned and add the missing column to it so the next
       exec attempt can proceed.
+    - Spark AMBIGUOUS_REFERENCE → rewrite the code string in place, alias-qualifying
+      bare ``F.col("<col>")`` refs with the first candidate alias from the message,
+      and re-exec the patched code on the next iteration.
 
     Args:
         code: Python source to execute.
         ns: Execution namespace (mutated in place).
     """
+    current_code = code
     for _ in range(20):
         try:
-            exec(code, ns)
+            exec(current_code, ns)
             return
         except NameError as exc:
             match = re.search(r"name '(\w+)' is not defined", str(exc))
@@ -110,8 +220,15 @@ def _safe_exec(code: str, ns: dict[str, Any]) -> None:
             else:
                 ns[missing_name] = pd.DataFrame()
         except Exception as exc:
-            # Spark AnalysisException: unresolved column — patch the offending DF stub
             err_str = str(exc)
+            # Spark AMBIGUOUS_REFERENCE — patch the code string, not the namespace.
+            if "AMBIGUOUS_REFERENCE" in err_str:
+                patched = qualify_ambiguous_column(current_code, err_str)
+                if patched is None or patched == current_code:
+                    raise
+                current_code = patched
+                continue
+            # Spark AnalysisException: unresolved column — patch the offending DF stub
             col_match = re.search(
                 r"UNRESOLVED_COLUMN[^`]*`(\w+)`|"
                 r"cannot be resolved.*name `(\w+)`|"
@@ -128,18 +245,18 @@ def _safe_exec(code: str, ns: dict[str, Any]) -> None:
             try:
                 from pyspark.sql import DataFrame as SparkDF  # type: ignore[import-not-found]
 
-                patched = False
+                patched_df = False
                 for k, v in list(ns.items()):
                     if isinstance(v, SparkDF):
                         col_names = [f.name for f in v.schema.fields]
                         if missing_col not in col_names:
                             ns[k] = _add_column_to_spark_df(v, missing_col, spark)
-                            patched = True
-                if not patched:
+                            patched_df = True
+                if not patched_df:
                     raise
             except ImportError:
                 raise
-    exec(code, ns)  # final attempt — let it raise
+    exec(current_code, ns)  # final attempt — let it raise
 
 
 def _check_result(name: str, *, passed: bool, detail: str = "") -> dict[str, Any]:
@@ -193,7 +310,7 @@ def _aggregate_parity(ref: pd.DataFrame, actual: pd.DataFrame) -> dict[str, Any]
         ref_sum = float(ref[col].sum())
         try:
             actual_sum = float(actual[col].sum())
-        except (KeyError, TypeError):
+        except (KeyError, TypeError, ValueError, OverflowError):
             mismatches.append(f"{col}: missing in actual")
             continue
         if ref_sum == 0.0:
@@ -277,6 +394,8 @@ class ReconciliationService:
             list(actual_df.columns),
             actual_df.dtypes.to_dict(),
         )
+
+        ref_df, actual_df = _coerce_sas_date_columns(ref_df, actual_df)
 
         checks.append(_schema_parity(ref_df, actual_df))
         checks.append(_row_count(ref_df, actual_df))

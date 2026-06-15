@@ -60,19 +60,34 @@ logging.getLogger("openai._base_client").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 
-def _sniff_file(disk_path: str, ext: str) -> tuple[list[str], int | None]:
-    """Sniff column headers and row count from a data file.
+def _map_readstat_type(rs_type: str) -> str:
+    """Map a readstat variable type string to a Spark cast type.
+
+    Args:
+        rs_type: The readstat type string from ``meta.readstat_variable_types``.
+
+    Returns:
+        ``"string"`` for string columns; ``"double"`` for all numeric/unknown types.
+    """
+    if rs_type == "string":
+        return "string"
+    return "double"
+
+
+def _sniff_file(disk_path: str, ext: str) -> tuple[list[str], int | None, dict[str, str]]:
+    """Sniff column headers, row count, and declared types from a data file.
 
     Supports ``.csv``, ``.tsv``, ``.xlsx``/``.xls``, and ``.sas7bdat``.
-    Any read error returns ``([], None)`` — this function is always non-blocking.
+    Any read error returns ``([], None, {})`` — this function is always non-blocking.
 
     Args:
         disk_path: Absolute path to the data file on disk.
         ext: File extension including the dot (e.g. ``".csv"``).
 
     Returns:
-        A 2-tuple of ``(columns, row_count)``. ``columns`` is an empty list and
-        ``row_count`` is ``None`` when the file cannot be read.
+        A 3-tuple of ``(columns, row_count, column_types)``. ``column_types`` maps
+        lowercased column name to Spark cast type (``"string"`` or ``"double"``),
+        populated only for ``.sas7bdat`` files; ``{}`` otherwise.
     """
     import pandas as pd  # local import — pandas may not be installed in all envs
 
@@ -82,24 +97,28 @@ def _sniff_file(disk_path: str, ext: str) -> tuple[list[str], int | None]:
             header_df = pd.read_csv(disk_path, nrows=0, sep=sep)
             columns = list(header_df.columns)
             full_df = pd.read_csv(disk_path, sep=sep)
-            return columns, len(full_df)
+            return columns, len(full_df), {}
         if ext in (".xlsx", ".xls"):
             header_df = pd.read_excel(disk_path, nrows=0)
             columns = list(header_df.columns)
             full_df = pd.read_excel(disk_path)
-            return columns, len(full_df)
+            return columns, len(full_df), {}
         if ext == ".sas7bdat":
             try:
                 import pyreadstat
 
                 _df, meta = pyreadstat.read_sas7bdat(disk_path, row_limit=0)
                 columns = list(meta.column_names)
-                return columns, None
+                column_types = {
+                    varname.lower(): _map_readstat_type(rs_type)
+                    for varname, rs_type in meta.readstat_variable_types.items()
+                }
+                return columns, None, column_types
             except ImportError:
-                return [], None
+                return [], None, {}
     except Exception:
         pass
-    return [], None
+    return [], None, {}
 
 
 def _make_session_factory() -> async_sessionmaker[AsyncSession]:
@@ -432,13 +451,14 @@ class JobOrchestrator:
             norm_path = inner[sep_idx + 1 :]
             if not norm_path:
                 continue
-            columns, row_count = _sniff_file(disk_path, file_ext)
+            columns, row_count, column_types = _sniff_file(disk_path, file_ext)
             data_files[norm_path] = DataFileInfo(
                 path=norm_path,
                 disk_path=disk_path,
                 extension=file_ext,
                 columns=columns,
                 row_count=row_count,
+                column_types=column_types,
             )
 
         if job.skip_llm:

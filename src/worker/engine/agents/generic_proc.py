@@ -25,10 +25,13 @@ from src.worker.core.config import worker_settings
 from src.worker.engine.agents.shared import (
     SHARED_TRANSLATION_RULES,
     build_block_output_stems,
+    detect_referenced_data_files,
     detect_referenced_formats,
+    inject_declared_casts,
     normalise_input_vars_in_code,
     normalise_output_var,
     normalise_output_var_in_code,
+    render_declared_types_section,
     render_format_section,
 )
 from src.worker.engine.models import GeneratedBlock, JobContext, SASBlock
@@ -420,6 +423,12 @@ def _build_prompt(block: SASBlock, windowed: JobContext, all_blocks: list[SASBlo
         lines.append("")
         lines.append(format_section)
 
+    types_refs = detect_referenced_data_files(block, windowed.data_files)
+    types_section = render_declared_types_section(types_refs, windowed.data_files)
+    if types_section:
+        lines.append("")
+        lines.append(types_section)
+
     lines.append(f"## SAS {block.block_type} block to translate")
     lines.append(f"Source: {block.source_file}, lines {block.start_line}-{block.end_line}")
     lines.append("")
@@ -549,6 +558,7 @@ class GenericProcAgent:
         )
         python_code = _fix_workspace_paths(python_code)
         python_code = _fix_excel_spark_reads(python_code)
+        python_code = inject_declared_casts(python_code, context.data_files, "GenericProcAgent")
         fixed_output_var = normalise_output_var(block.output_datasets, proc_result.output_var)
         logger.debug(
             "GenericProcAgent after normalise: output_var=%r, python_code has rawdir_customers=%s",

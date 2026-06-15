@@ -6,6 +6,38 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-15 — feat: F61 type-aware schema contract + full-pipeline reconciliation hardening
+**Duration:** ~1 session | **Focus:** bake declared `.sas7bdat` types into delivered PySpark, then drive the full pipeline to green
+
+### Done
+- **F61 implemented + committed (dab6bb3):** `DataFileInfo.column_types` captured from `meta.readstat_variable_types` in `_sniff_file`; deterministic `inject_declared_casts` adds `.cast(...)` + `# SAS:` provenance after each `toDF(lower)`; informational `render_declared_types_section`/`detect_referenced_data_files` prompt section wired into all 3 agents; §1/§5/§8 rule notes. Unit + e2e tests; all 7 gates green.
+- **Full-pipeline verification surfaced (and fixed) 3 latent issues F61's correct casting exposed — committed as `fix(recon)` (002ac6f):**
+  - **pandas 3.0 `StringDtype`** — recon's `is_object_dtype` guard never fired; switched to `not is_numeric_dtype`. Date/ID coercion gated by parseable-fraction over non-blank cells.
+  - **Executor date serialization** — `to_json` default encoded dates as epoch-millis (→ `firstaedt` object-vs-numeric + `OutOfBoundsDatetime`); fixed with `date_format='iso'`. This was the actual root cause; earlier recon-side patches were treating corrupted data.
+  - **AMBIGUOUS_REFERENCE** — sharpened §5 (mandate `on=[...]` equi-joins) + deterministic bare→alias `F.col` rewrite in `_safe_exec` and a new bounded retry in the executor subprocess runner.
+- **`trtdurd` drift diagnosed as a stale fixture, NOT a bug — committed as `test(fixture)` (c6b32aa):** generated `datediff+1` was faithful to `%m_first_dose`; golden `adsl_expected.csv` carried TRTEDT/TRTDURD from a richer exposure dataset. Regenerated both columns from current `ex_raw.csv`; all other columns byte-identical. Confirmed: golden trtedt ≥ raw max(exendtc) for 500/500, exceeding it in 414.
+- Full-pipeline reconciliation now green end-to-end (user confirmed). Three logical commits on `feat/F61-declared-column-types`.
+
+### Decisions
+- Deterministic injector (not LLM) authors declared-type casts; recon detects types via `not is_numeric_dtype`; dates serialized ISO; **never auto-fix parity mismatches with an agent** (gaming-the-golden); AMBIGUOUS_REFERENCE self-healed in both exec paths; stale synthetic fixtures regenerated from raw. See DECISIONS 2026-06-15.
+
+### Open Questions
+- Agentic full-pipeline retry: worth adding for **runtime crashes only** (attribute traceback → block via `# SAS:` provenance, re-run that block's refine). Needs reproducibility bound. Parity mismatches stay human-reviewed.
+
+### Next Session — Start Here
+1. Push `feat/F61-declared-column-types` and open the PR (3 commits: feat/fix/test).
+2. Add the deferred `_coerce_sas_date_columns` unit test (F61-debt in BACKLOG).
+3. If pursuing agentic full-pipeline retry, scope the traceback→block attribution mechanism first (see F19 plan).
+
+### Files Touched
+- `src/worker/engine/models.py`, `main.py`, `agents/{shared,data_step,proc,generic_proc}.py`
+- `src/worker/validation/reconciliation.py`, `src/executor/{recon,runner}.py`
+- `tests/test_shared_inject_declared_casts.py` (new), `tests/test_declared_types_section.py` (new), `tests/reconciliation/test_qualify_ambiguous_column.py` (new), `tests/{test_worker_main,test_worker_main_comprehensive,test_format_catalog,test_context_improvements,test_executor_runner}.py`
+- `data/medium_test/sas_pharma_sandbox/data/golden/adsl_expected.csv`
+- `docs/plans/latest/F61-declared-column-types.md` (new), `journal/{BACKLOG,DECISIONS}.md`
+
+---
+
 ## 2026-06-14 — feat: F60 PROC FORMAT translation + router guard + codegen hardening
 **Duration:** ~1 session | **Focus:** close the PROC FORMAT user-format gap end-to-end
 

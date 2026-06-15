@@ -110,8 +110,47 @@ if _result_path:
                 _result = _v.toPandas()
                 break
     if _result is not None:
-        _result.to_json(_result_path, orient='records')
+        # date_format='iso' keeps DateType/Timestamp columns as ISO strings
+        # (matching the golden CSV). The pandas default 'epoch' encodes them as
+        # millisecond integers, which recon then misreads as numeric SAS days.
+        _result.to_json(_result_path, orient='records', date_format='iso')
 """
+
+
+# Self-contained copy of the ambiguity-rewrite helper. The executor must NOT
+# import from src/worker, so the small parsing/rewrite logic is duplicated here
+# (it mirrors src/worker/validation/reconciliation.qualify_ambiguous_column).
+def _qualify_ambiguous_column(code: str, stderr: str) -> str | None:
+    """Alias-qualify bare ``F.col("<col>")`` refs from a Spark AMBIGUOUS_REFERENCE.
+
+    Parses *stderr* for the ambiguous column name and the first alias-qualified
+    candidate (``could be: [`a`.`col`, ...]``), then rewrites every bare
+    ``F.col("<col>")`` / ``F.col('<col>')`` in *code* that is not already
+    alias-qualified into ``F.col("<alias>.<col>")``.
+
+    Args:
+        code: The generated Python source to patch.
+        stderr: Subprocess stderr text to parse.
+
+    Returns:
+        The patched code, or ``None`` if no AMBIGUOUS_REFERENCE / alias candidate
+        could be parsed or nothing was rewritten.
+    """
+    if "AMBIGUOUS_REFERENCE" not in stderr:
+        return None
+    ref_match = re.search(r"Reference `(\w+)` is ambiguous", stderr)
+    if ref_match is None:
+        return None
+    col = ref_match.group(1)
+    alias_match = re.search(r"could be:\s*\[`(\w+)`\.`" + re.escape(col) + r"`", stderr)
+    if alias_match is None:
+        return None
+    alias = alias_match.group(1)
+    pattern = re.compile(r'F\.col\(\s*(["\'])' + re.escape(col) + r"\1\s*\)")
+    patched, n_subs = pattern.subn(f'F.col("{alias}.{col}")', code)
+    if n_subs == 0:
+        return None
+    return patched
 
 
 def run_code(
@@ -185,20 +224,31 @@ def run_code(
         if session_dir:
             env["_ROSETTA_SESSION_DIR"] = session_dir
 
-        proc = subprocess.run(
-            [sys.executable, tmp_path],
-            capture_output=True,
-            timeout=timeout,
-            text=True,
-            env=env,
-        )
-        stdout = proc.stdout
-        # Strip JVM noise that appears before log4j initialises.
-        stderr = "\n".join(
-            line
-            for line in proc.stderr.splitlines()
-            if "incubator modules" not in line and line.strip()
-        )
+        # Bounded retry: on AMBIGUOUS_REFERENCE, alias-qualify the offending bare
+        # column refs and re-run. Cap at 3 attempts to avoid infinite loops.
+        for _attempt in range(3):
+            proc = subprocess.run(
+                [sys.executable, tmp_path],
+                capture_output=True,
+                timeout=timeout,
+                text=True,
+                env=env,
+            )
+            stdout = proc.stdout
+            # Strip JVM noise that appears before log4j initialises.
+            stderr = "\n".join(
+                line
+                for line in proc.stderr.splitlines()
+                if "incubator modules" not in line and line.strip()
+            )
+
+            if proc.returncode != 0 and "AMBIGUOUS_REFERENCE" in stderr:
+                patched = _qualify_ambiguous_column(augmented, stderr)
+                if patched is not None and patched != augmented:
+                    augmented = patched
+                    pathlib.Path(tmp_path).write_text(augmented)
+                    continue
+            break
 
         # Read captured DataFrame result if it was written
         try:

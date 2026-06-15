@@ -330,3 +330,111 @@ def test_data_step_prompt_omits_section_for_builtin_format() -> None:
     prompt = _data_step_build_prompt(block, windowed, ctx.blocks)
 
     assert "## Available SAS formats" not in prompt
+
+
+# ---------------------------------------------------------------------------
+# F61: declared column types section in _build_prompt (data_step agent)
+# ---------------------------------------------------------------------------
+
+
+def test_build_prompt_includes_declared_types_section() -> None:
+    """_build_prompt includes declared-types section when block reads a typed sas7bdat."""
+    from src.worker.engine.models import DataFileInfo
+
+    block = SASBlock(
+        block_type=BlockType.DATA_STEP,
+        source_file="test.sas",
+        start_line=1,
+        end_line=5,
+        raw_sas="data out; set adsl; run;",
+        input_datasets=["adsl"],
+        output_datasets=["out"],
+    )
+    data_file = DataFileInfo(
+        path="data/raw/adsl.sas7bdat",
+        disk_path="/fake/adsl.sas7bdat",
+        extension=".sas7bdat",
+        column_types={"subjid": "string", "age": "double"},
+    )
+    ctx = JobContext(
+        source_files={},
+        blocks=[block],
+        resolved_macros=[],
+        dependency_order=[],
+        risk_flags=[],
+        generated=[],
+        libname_map={},
+        data_files={"data/raw/adsl.sas7bdat": data_file},
+    )
+    windowed = ctx.windowed_context(block)
+
+    prompt = _data_step_build_prompt(block, windowed, ctx.blocks)
+
+    assert "## Declared source column types" in prompt
+    assert "subjid: character" in prompt
+    assert "age: numeric" in prompt
+    assert "Do NOT write the load-time" in prompt
+
+
+def test_build_prompt_omits_declared_types_section_when_no_data_files() -> None:
+    """_build_prompt omits the declared-types section when data_files is empty."""
+    block = SASBlock(
+        block_type=BlockType.DATA_STEP,
+        source_file="test.sas",
+        start_line=1,
+        end_line=5,
+        raw_sas="data out; set adsl; run;",
+        input_datasets=["adsl"],
+        output_datasets=["out"],
+    )
+    ctx = JobContext(
+        source_files={},
+        blocks=[block],
+        resolved_macros=[],
+        dependency_order=[],
+        risk_flags=[],
+        generated=[],
+        libname_map={},
+        data_files={},  # empty — no typed files
+    )
+    windowed = ctx.windowed_context(block)
+
+    prompt = _data_step_build_prompt(block, windowed, ctx.blocks)
+
+    assert "## Declared source column types" not in prompt
+
+
+def test_build_prompt_omits_declared_types_section_when_column_types_empty() -> None:
+    """_build_prompt omits the declared-types section when column_types is empty ({})."""
+    from src.worker.engine.models import DataFileInfo
+
+    block = SASBlock(
+        block_type=BlockType.DATA_STEP,
+        source_file="test.sas",
+        start_line=1,
+        end_line=5,
+        raw_sas="data out; set adsl; run;",
+        input_datasets=["adsl"],
+        output_datasets=["out"],
+    )
+    data_file = DataFileInfo(
+        path="data/raw/adsl.sas7bdat",
+        disk_path="/fake/adsl.sas7bdat",
+        extension=".sas7bdat",
+        column_types={},  # no declared types (e.g. CSV)
+    )
+    ctx = JobContext(
+        source_files={},
+        blocks=[block],
+        resolved_macros=[],
+        dependency_order=[],
+        risk_flags=[],
+        generated=[],
+        libname_map={},
+        data_files={"data/raw/adsl.sas7bdat": data_file},
+    )
+    windowed = ctx.windowed_context(block)
+
+    prompt = _data_step_build_prompt(block, windowed, ctx.blocks)
+
+    assert "## Declared source column types" not in prompt
