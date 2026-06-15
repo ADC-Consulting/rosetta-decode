@@ -207,14 +207,22 @@ async def test_strategy_stub_adapter_empty_data_files() -> None:
 
 def _make_pandas_mock(columns: list[str], row_count: int) -> MagicMock:
     """Return a minimal mock for pandas with read_csv / read_excel."""
+    # CSV/TSV: _sniff_file now does a single read_csv call (no nrows=0 header read).
+    full_df = MagicMock()
+    full_df.columns = columns
+    full_df.__len__ = MagicMock(return_value=row_count)
+    # dtypes must be iterable and same length as columns
+    full_df.dtypes = ["object"] * len(columns)
+
+    # Excel still uses two calls: read_excel(nrows=0) then read_excel()
     header_df = MagicMock()
     header_df.columns = columns
-    full_df = MagicMock()
-    full_df.__len__ = MagicMock(return_value=row_count)
+    excel_full_df = MagicMock()
+    excel_full_df.__len__ = MagicMock(return_value=row_count)
 
     pd_mock = MagicMock()
-    pd_mock.read_csv.side_effect = [header_df, full_df]
-    pd_mock.read_excel.side_effect = [header_df, full_df]
+    pd_mock.read_csv.return_value = full_df
+    pd_mock.read_excel.side_effect = [header_df, excel_full_df]
     return pd_mock
 
 

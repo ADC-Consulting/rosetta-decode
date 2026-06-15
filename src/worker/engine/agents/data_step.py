@@ -20,6 +20,8 @@ from src.worker.engine.agents.shared import (
     build_block_output_stems,
     detect_referenced_data_files,
     detect_referenced_formats,
+    enforce_csv_read_schema,
+    enforce_padded_concat_keys,
     inject_declared_casts,
     normalise_input_vars_in_code,
     normalise_output_var,
@@ -322,8 +324,12 @@ class DataStepAgent:
                 build_block_output_stems(context.blocks),
                 "DataStepAgent",
             )
+            fixed_code = enforce_csv_read_schema(fixed_code, context.data_files, "DataStepAgent")
             fixed_code = inject_declared_casts(fixed_code, context.data_files, "DataStepAgent")
             fixed_output_var = normalise_output_var(block.output_datasets, output.output_var)
+            fixed_code = enforce_padded_concat_keys(
+                fixed_code, block.raw_sas, fixed_output_var, "DataStepAgent"
+            )
             if fixed_output_var and not _re.search(
                 rf"\b{_re.escape(fixed_output_var)}\s*=", fixed_code
             ):

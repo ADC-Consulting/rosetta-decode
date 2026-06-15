@@ -28,6 +28,8 @@ from src.worker.engine.agents.shared import (
     build_block_output_stems,
     detect_referenced_data_files,
     detect_referenced_formats,
+    enforce_csv_read_schema,
+    enforce_padded_concat_keys,
     inject_declared_casts,
     normalise_input_vars_in_code,
     normalise_output_var,
@@ -559,8 +561,12 @@ class GenericProcAgent:
         )
         python_code = _fix_workspace_paths(python_code)
         python_code = _fix_excel_spark_reads(python_code)
+        python_code = enforce_csv_read_schema(python_code, context.data_files, "GenericProcAgent")
         python_code = inject_declared_casts(python_code, context.data_files, "GenericProcAgent")
         fixed_output_var = normalise_output_var(block.output_datasets, proc_result.output_var)
+        python_code = enforce_padded_concat_keys(
+            python_code, block.raw_sas, fixed_output_var, "GenericProcAgent"
+        )
         logger.debug(
             "GenericProcAgent after normalise: output_var=%r, python_code has rawdir_customers=%s",
             fixed_output_var,

@@ -442,9 +442,11 @@ class DataFileInfo(BaseModel):
         columns: Column headers sniffed from the file; empty list if unreadable.
         row_count: Number of data rows, or ``None`` if not sniffable.
         column_types: Mapping of lowercased column name to Spark cast type
-            (``"string"``, ``"double"``, or ``"date"`` for columns declared with
-            a SAS date format), populated only for ``.sas7bdat`` files. Empty for
-            CSV/TSV/XLSX and derived datasets.
+            (``"string"``, ``"double"``, ``"long"``, ``"boolean"``). For
+            ``.sas7bdat`` files this reflects declared SAS types; for CSV/TSV
+            it is derived from pandas dtype inference with SAS-declared character
+            columns (``LENGTH var $w``) overridden to ``"string"`` to preserve
+            leading zeros at read time. Empty for XLSX and derived datasets.
     """
 
     path: str

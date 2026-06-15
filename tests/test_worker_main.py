@@ -903,7 +903,10 @@ async def test_sniff_file_csv_succeeds(tmp_path: Any) -> None:
     cols, row_count, column_types = _sniff_file(disk_path, ".csv")
     assert cols == ["col1", "col2"]
     assert row_count == 3
-    assert column_types == {}
+    # column_types is now populated for CSV: pandas infers int64 → "long", object → "string"
+    assert isinstance(column_types, dict)
+    assert column_types.get("col1") == "long"
+    assert column_types.get("col2") == "string"
 
 
 @pytest.mark.asyncio
@@ -918,7 +921,10 @@ async def test_sniff_file_tsv_succeeds(tmp_path: Any) -> None:
     cols, row_count, column_types = _sniff_file(disk_path, ".tsv")
     assert cols == ["x", "y"]
     assert row_count == 2
-    assert column_types == {}
+    # column_types is now populated for TSV
+    assert isinstance(column_types, dict)
+    assert column_types.get("x") == "long"
+    assert column_types.get("y") == "long"
 
 
 def test_sniff_file_returns_empty_on_missing() -> None:
@@ -1072,8 +1078,8 @@ def test_sniff_file_sas7bdat_missing_formats_falls_back_to_double() -> None:
     assert column_types == {"subjid": "string", "age": "double"}
 
 
-def test_sniff_file_csv_returns_empty_column_types(tmp_path: Any) -> None:
-    """_sniff_file returns column_types={} for CSV files (no declared types)."""
+def test_sniff_file_csv_populates_column_types(tmp_path: Any) -> None:
+    """_sniff_file returns a non-empty column_types dict for CSV files (pandas dtype inference)."""
     import pandas as pd
 
     disk_path = str(tmp_path / "test.csv")
@@ -1081,7 +1087,8 @@ def test_sniff_file_csv_returns_empty_column_types(tmp_path: Any) -> None:
     fake_df.to_csv(disk_path, index=False)
 
     _columns, _row_count, column_types = _sniff_file(disk_path, ".csv")
-    assert column_types == {}
+    assert isinstance(column_types, dict)
+    assert column_types == {"a": "long", "b": "long"}
 
 
 def test_sniff_file_sas7bdat_import_error_returns_empty() -> None:

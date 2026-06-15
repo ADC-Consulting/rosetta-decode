@@ -44,7 +44,7 @@ from src.worker.engine.models import (
     ReconciliationReport,
     SASBlock,
 )
-from src.worker.engine.parser import SASParser, extract_lineage
+from src.worker.engine.parser import SASParser, extract_declared_char_columns, extract_lineage
 from src.worker.engine.pii_scanner import scan_for_pii
 from src.worker.engine.router import TranslationRouter
 from src.worker.engine.stub_generator import StubGenerator
@@ -184,19 +184,35 @@ def _sniff_file(disk_path: str, ext: str) -> tuple[list[str], int | None, dict[s
 
     Returns:
         A 3-tuple of ``(columns, row_count, column_types)``. ``column_types`` maps
-        lowercased column name to Spark cast type (``"string"``, ``"double"``, or
-        ``"date"`` for date-formatted columns), populated only for ``.sas7bdat``
-        files; ``{}`` otherwise.
+        lowercased column name to Spark cast type (``"string"``, ``"double"``,
+        ``"long"``, ``"boolean"``). For ``.sas7bdat`` files this reflects declared
+        SAS types; for CSV/TSV it is derived from pandas dtype inference. Declared
+        SAS character columns are overridden to ``"string"`` by the caller after
+        this function returns. Empty for XLSX and derived datasets.
     """
     import pandas as pd  # local import — pandas may not be installed in all envs
 
     try:
         if ext in (".csv", ".tsv"):
             sep = "\t" if ext == ".tsv" else ","
-            header_df = pd.read_csv(disk_path, nrows=0, sep=sep)
-            columns = list(header_df.columns)
             full_df = pd.read_csv(disk_path, sep=sep)
-            return columns, len(full_df), {}
+            raw_columns = list(full_df.columns)
+            if raw_columns and raw_columns[0].startswith("﻿"):
+                raw_columns[0] = raw_columns[0].lstrip("﻿")
+            column_types: dict[str, str] = {}
+            for col, dtype in zip(raw_columns, full_df.dtypes, strict=True):
+                col_key = col.lower().lstrip("﻿")
+                dtype_str = str(dtype).lower()
+                if dtype_str.startswith("int") or dtype_str.startswith("uint"):
+                    col_type = "long"
+                elif dtype_str.startswith("float"):
+                    col_type = "double"
+                elif dtype_str == "bool":
+                    col_type = "boolean"
+                else:
+                    col_type = "string"
+                column_types[col_key] = col_type
+            return raw_columns, len(full_df), column_types
         if ext in (".xlsx", ".xls"):
             header_df = pd.read_excel(disk_path, nrows=0)
             columns = list(header_df.columns)
@@ -544,6 +560,13 @@ class JobOrchestrator:
         # Build data-file catalogue from __ref_* sentinel keys
         data_files: dict[str, DataFileInfo] = {}
         log_contents: dict[str, str] = {}
+        # Compute job-wide declared-character columns from all SAS source files so CSV
+        # reads can force these columns to StringType, preserving leading zeros.
+        _declared_char: set[str] = (
+            set().union(*(extract_declared_char_columns(src) for src in files.values()))
+            if files
+            else set()
+        )
         for key, disk_path in job.files.items():
             if not key.startswith("__ref_") or not key.endswith("__"):
                 continue
@@ -567,6 +590,10 @@ class JobOrchestrator:
             if not norm_path:
                 continue
             columns, row_count, column_types = _sniff_file(disk_path, file_ext)
+            if _declared_char and column_types and file_ext in (".csv", ".tsv"):
+                for _col_lower in list(column_types.keys()):
+                    if _col_lower in _declared_char:
+                        column_types[_col_lower] = "string"
             data_files[norm_path] = DataFileInfo(
                 path=norm_path,
                 disk_path=disk_path,
