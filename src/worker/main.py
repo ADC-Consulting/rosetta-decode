@@ -330,6 +330,99 @@ def _build_recon_groups(
     return assignment
 
 
+def _merge_source_column_schema(
+    blocks: list[SASBlock],
+    data_schema: dict[str, dict[str, Any]],
+) -> None:
+    """Merge block-level column_schema into data_schema for datasets without uploaded files.
+
+    For each DATA step block that declares output datasets and carries column_schema
+    extracted from LENGTH/FORMAT/ATTRIB statements, this function fills column type and
+    format information into ``data_schema`` entries that were not populated from a real
+    uploaded file (i.e. the columns list is empty).
+
+    Only fills gaps — does NOT overwrite entries already populated by pyreadstat.
+
+    Args:
+        blocks: Dependency-ordered SASBlock list from the parse + expand phases.
+        data_schema: Mutable dict keyed by normalized file path; modified in place.
+    """  # SAS: main.py:_merge_source_column_schema
+    for block in blocks:
+        if not block.column_schema or not block.output_datasets:
+            continue
+        for ds in block.output_datasets:
+            # Strip libname prefix: "outdir.sdtm_dm" → "sdtm_dm"
+            ds_stem = ds.lower().rsplit(".", 1)[-1]
+            # Find a matching data_schema entry (keyed by norm_path); the stem must
+            # match the final path component (minus extension).
+            for schema_key, schema_val in data_schema.items():
+                key_stem = schema_key.rsplit("/", 1)[-1].rsplit(".", 1)[0].lower()
+                if key_stem != ds_stem:
+                    continue
+                # Only fill if no column data already exists from pyreadstat
+                if schema_val.get("columns"):
+                    continue
+                col_names = list(block.column_schema.keys())
+                col_types: dict[str, str] = {}
+                col_formats: dict[str, str] = {}
+                col_labels: dict[str, str] = {}
+                for col, meta in block.column_schema.items():
+                    if "sas_type" in meta:
+                        col_types[col] = meta["sas_type"]
+                    if "sas_format" in meta:
+                        col_formats[col] = meta["sas_format"]
+                    if "label" in meta:
+                        col_labels[col] = meta["label"]
+                schema_val["columns"] = col_names
+                schema_val["column_types"] = col_types
+                schema_val["column_formats"] = col_formats
+                schema_val["column_labels"] = col_labels
+                logger.debug(
+                    "_merge_source_column_schema: filled %d columns for %s from block %s",
+                    len(col_names),
+                    schema_key,
+                    ds,
+                )
+
+        # Also handle datasets not yet present in data_schema at all (derived outputs with
+        # no uploaded file sentinel). Add a minimal entry so the Data Storage tab shows them.
+        for ds in block.output_datasets:
+            ds_stem = ds.lower().rsplit(".", 1)[-1]
+            already_present = any(
+                schema_key.rsplit("/", 1)[-1].rsplit(".", 1)[0].lower() == ds_stem
+                for schema_key in data_schema
+            )
+            if not already_present and block.column_schema:
+                col_names = list(block.column_schema.keys())
+                col_types = {
+                    col: meta["sas_type"]
+                    for col, meta in block.column_schema.items()
+                    if "sas_type" in meta
+                }
+                col_formats = {
+                    col: meta["sas_format"]
+                    for col, meta in block.column_schema.items()
+                    if "sas_format" in meta
+                }
+                col_labels = {
+                    col: meta["label"]
+                    for col, meta in block.column_schema.items()
+                    if "label" in meta
+                }
+                data_schema[ds_stem] = {
+                    "columns": col_names,
+                    "column_types": col_types,
+                    "column_formats": col_formats,
+                    "column_labels": col_labels,
+                    "row_count": None,
+                }
+                logger.debug(
+                    "_merge_source_column_schema: created new entry for %s with %d columns",
+                    ds_stem,
+                    len(col_names),
+                )
+
+
 class JobOrchestrator:
     """Runs the full agentic migration pipeline for a single job."""
 
@@ -626,6 +719,11 @@ class JobOrchestrator:
                 "row_count": info.row_count,
             }
         migration_plan.data_schema = data_schema
+
+        # Merge source-derived column schema for output datasets that have no uploaded file.
+        # Only fills gaps — never overwrites column data that already came from pyreadstat.
+        # SAS: main.py:_merge_source_column_schema
+        _merge_source_column_schema(expanded_blocks, migration_plan.data_schema)
 
         if tracer:
             await tracer.emit(

@@ -108,6 +108,11 @@ class SASBlock(BaseModel):
     output_targets: list[str] = Field(default_factory=list)
     arrays: list[dict[str, object]] = Field(default_factory=list)
 
+    # Column-level schema extracted from LENGTH/FORMAT/ATTRIB statements.
+    # Maps column name (lowercase) → dict with any subset of keys:
+    # {"sas_type": "character"|"numeric", "sas_format": str, "label": str}
+    column_schema: dict[str, dict[str, str]] = Field(default_factory=dict)  # SAS: models.py:110
+
 
 class MacroDef(BaseModel):
     """A SAS macro definition (%MACRO ... %MEND).

@@ -137,6 +137,29 @@ _ARRAY_RE = re.compile(
     re.IGNORECASE,
 )
 
+# ── Column-schema extraction regexes (LENGTH / FORMAT / ATTRIB) ───────────────
+
+# LENGTH statement: LENGTH col1 $40 col2 8 ...;
+# Captures the entire argument list between LENGTH and the terminating semicolon.
+_LENGTH_STMT_RE = re.compile(r"\bLENGTH\s+(.*?)\s*;", re.IGNORECASE | re.DOTALL)
+
+# FORMAT statement: FORMAT col1 date9. col2 comma12.2 ...;
+_FORMAT_STMT_RE = re.compile(r"\bFORMAT\s+(.*?)\s*;", re.IGNORECASE | re.DOTALL)
+
+# ATTRIB statement: ATTRIB col LENGTH=$40 FORMAT=$CHAR40. LABEL="Patient ID";
+# Captures the entire body between ATTRIB and the terminating semicolon.
+_ATTRIB_STMT_RE = re.compile(r"\bATTRIB\s+(.*?)\s*;", re.IGNORECASE | re.DOTALL)
+
+# Individual token regexes used to parse the argument bodies above.
+# LENGTH token: optional $ prefix followed by optional digits — e.g. $40, $, 8
+_LENGTH_TOKEN_RE = re.compile(r"(\$\d*|\d+)$")
+# FORMAT value: word chars + optional digits + optional period + optional chars/digits
+_FORMAT_VALUE_RE = re.compile(r"^[\w$][\w.]*\.$|^[\w$][\w.]*\.\d+$|^\$\w*\.$|^\$\w*\.\d+$")
+# ATTRIB attribute captures: LENGTH=, FORMAT=, LABEL=
+_ATTRIB_LENGTH_RE = re.compile(r"\bLENGTH\s*=\s*(\$?\d*|\d+)", re.IGNORECASE)
+_ATTRIB_FORMAT_RE = re.compile(r"\bFORMAT\s*=\s*([\w$][\w.]*\.[\w\d]*)", re.IGNORECASE)
+_ATTRIB_LABEL_RE = re.compile(r'\bLABEL\s*=\s*"([^"]*)"', re.IGNORECASE)
+
 # Unsupported PROC types that are not specifically handled above
 _UNSUPPORTED_PROC_RE = re.compile(
     r"(?i)(PROC\s+(?!SQL\b|SORT\b|MEANS\b|SUMMARY\b|FREQ\b|TRANSPOSE\b|IMPORT\b|APPEND\b|RANK\b|IML\b|FORMAT\b)\w+\b.*?(?:RUN|QUIT)\s*;)",
@@ -261,6 +284,145 @@ def _extract_includes(source: str) -> list[str]:
     return [m.group(1) for m in _INCLUDE_RE.finditer(source)]
 
 
+# ── Column-schema helpers ─────────────────────────────────────────────────────
+
+
+def _parse_length_stmt(body: str) -> dict[str, dict[str, str]]:
+    """Parse the argument list of a SAS LENGTH statement.
+
+    Handles multi-column declarations such as ``col $40 age 8``.
+
+    Args:
+        body: Text between ``LENGTH`` keyword and the terminating semicolon,
+              with leading/trailing whitespace stripped.
+
+    Returns:
+        Mapping of lowercased column name to a dict with ``sas_type`` and
+        ``sas_format`` keys. Only keys that are derivable are included.
+    """  # SAS: parser.py:_parse_length_stmt
+    result: dict[str, dict[str, str]] = {}
+    tokens = body.split()
+    pending_cols: list[str] = []
+    for token in tokens:
+        # A token is a length specifier if it starts with $ or is a bare integer
+        is_char_spec = token.startswith("$")
+        is_num_spec = token.isdigit()
+        if is_char_spec or is_num_spec:
+            sas_type = "character" if is_char_spec else "numeric"
+            entry: dict[str, str] = {"sas_type": sas_type, "sas_format": token}
+            for col in pending_cols:
+                result[col.lower()] = entry.copy()
+            pending_cols = []
+        else:
+            pending_cols.append(token)
+    return result
+
+
+def _parse_format_stmt(body: str) -> dict[str, dict[str, str]]:
+    """Parse the argument list of a SAS FORMAT statement.
+
+    Handles multi-pair declarations such as ``col date9. amount comma12.2``.
+    Format values are stored as uppercase strings.
+
+    Args:
+        body: Text between ``FORMAT`` keyword and the terminating semicolon.
+
+    Returns:
+        Mapping of lowercased column name to a dict with a ``sas_format`` key.
+    """  # SAS: parser.py:_parse_format_stmt
+    result: dict[str, dict[str, str]] = {}
+    tokens = body.split()
+    pending_cols: list[str] = []
+    for token in tokens:
+        # A format value ends with a period (possibly followed by digits).
+        if "." in token and not token.startswith("."):
+            fmt = token.upper()
+            for col in pending_cols:
+                result[col.lower()] = {"sas_format": fmt}
+            pending_cols = []
+        else:
+            pending_cols.append(token)
+    return result
+
+
+def _parse_attrib_stmt(body: str) -> dict[str, dict[str, str]]:
+    """Parse a SAS ATTRIB statement body.
+
+    Each ATTRIB statement declares attributes for a single variable with any
+    combination of LENGTH=, FORMAT=, and LABEL= sub-options.
+
+    Args:
+        body: Text between the ``ATTRIB`` keyword and the terminating semicolon.
+
+    Returns:
+        Mapping of lowercased column name to a dict with any subset of
+        ``sas_type``, ``sas_format``, and ``label`` keys.
+    """  # SAS: parser.py:_parse_attrib_stmt
+    result: dict[str, dict[str, str]] = {}
+    # Split on whitespace to get the leading column name
+    tokens = body.split()
+    if not tokens:
+        return result
+    col = tokens[0].lower()
+    entry: dict[str, str] = {}
+
+    len_m = _ATTRIB_LENGTH_RE.search(body)
+    if len_m:
+        raw_len = len_m.group(1)
+        if raw_len.startswith("$"):
+            entry["sas_type"] = "character"
+            entry["sas_format"] = raw_len
+        elif raw_len.isdigit():
+            entry["sas_type"] = "numeric"
+            entry["sas_format"] = raw_len
+
+    fmt_m = _ATTRIB_FORMAT_RE.search(body)
+    if fmt_m:
+        entry["sas_format"] = fmt_m.group(1).upper()
+
+    lbl_m = _ATTRIB_LABEL_RE.search(body)
+    if lbl_m:
+        entry["label"] = lbl_m.group(1)
+
+    if entry:
+        result[col] = entry
+    return result
+
+
+def _extract_column_schema(raw_sas: str) -> dict[str, dict[str, str]]:
+    """Extract column declarations from LENGTH, FORMAT, and ATTRIB statements.
+
+    Merges all three statement types, with later statements winning on
+    key-level conflicts (not column-level — entries from all statements
+    are merged per column).
+
+    Args:
+        raw_sas: Raw SAS source text for a single DATA step block.
+
+    Returns:
+        Mapping of lowercased column name to a dict with any subset of
+        ``sas_type``, ``sas_format``, and ``label`` keys.
+    """  # SAS: parser.py:_extract_column_schema
+    schema: dict[str, dict[str, str]] = {}
+
+    for m in _LENGTH_STMT_RE.finditer(raw_sas):
+        for col, entry in _parse_length_stmt(m.group(1)).items():
+            existing = schema.setdefault(col, {})
+            existing.update(entry)
+
+    for m in _FORMAT_STMT_RE.finditer(raw_sas):
+        for col, entry in _parse_format_stmt(m.group(1)).items():
+            existing = schema.setdefault(col, {})
+            existing.update(entry)
+
+    for m in _ATTRIB_STMT_RE.finditer(raw_sas):
+        for col, entry in _parse_attrib_stmt(m.group(1)).items():
+            existing = schema.setdefault(col, {})
+            existing.update(entry)
+
+    return schema
+
+
 # ── Block extractors ─────────────────────────────────────────────────────────
 
 
@@ -301,6 +463,9 @@ def _extract_data_steps(source: str, filename: str) -> Iterator[SASBlock]:
             {"name": m.group(1), "size": int(m.group(2)), "columns": m.group(3).split()}
             for m in _ARRAY_RE.finditer(raw)
         ]
+        # Column schema from LENGTH / FORMAT / ATTRIB declarations
+        # SAS: parser.py:_extract_data_steps
+        block.column_schema = _extract_column_schema(raw)
         yield block
 
 

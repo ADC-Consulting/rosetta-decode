@@ -94,7 +94,7 @@ Three internal development phases:
 - `FORMAT col date9. amount comma12.2;` → `{col: "DATE9.", amount: "COMMA12.2"}`
 - `ATTRIB col length=$40 format=$char40. label="Patient ID";` → combines all three
 New field on `SASBlock`: `column_schema: dict[str, dict[str, str]] = Field(default_factory=dict)` where each entry is `{col_name: {sas_type, sas_format, label}}`; worker pipeline merges source-derived column schema into `data_schema` for blocks that produce output datasets (output_datasets), filling in type/format/label for derived tables that have no `.sas7bdat` upload; unit tests covering LENGTH, FORMAT, ATTRIB extraction and at least one DATA step merge scenario
-- [ ] done
+- [x] done
 
 ### P2-D: Surface source-derived column schema in Data Storage tab
 **Files:** `src/backend/api/routes/jobs.py`, `src/frontend/src/components/JobDetail/DataStorageTab.tsx`
