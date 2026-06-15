@@ -332,8 +332,8 @@ Phase 2 — Column types + semantic type mapping:
 - [x] F34 P2-C: Extract column schema from SAS source (LENGTH/FORMAT/ATTRIB) for derived datasets
 - [x] F34 P2-D: Surface source-derived column schema in Data Storage tab
 Phase 3 — Relationships + ERD + DDL:
-- [ ] F34 P3-A: Add merge_by_vars and join_on_keys to SASBlock
-- [ ] F34 P3-B: Extract MERGE BY and JOIN ON in parser
+- [x] F34 P3-A: Add merge_by_vars and join_on_keys to SASBlock
+- [x] F34 P3-B: Extract MERGE BY and JOIN ON in parser
 - [ ] F34 P3-C: Build relationships list and persist to MigrationPlan
 - [ ] F34 P3-D: DDL generation module
 - [ ] F34 P3-E: Surface relationships and DDL in schema route

@@ -206,6 +206,26 @@ _SQL_FROM_RE = re.compile(r"(?i)\b(?:FROM|JOIN)\s+([\w.]+)")
 # Extract CREATE TABLE target in PROC SQL
 _SQL_CREATE_RE = re.compile(r"(?i)CREATE\s+TABLE\s+([\w.]+)\s+AS")
 
+# MERGE BY extraction (DATA step): "BY col1 col2;" following a MERGE statement.
+# Captures the column list between the BY keyword and the terminating semicolon.
+# SAS: parser.py:_MERGE_BY_RE
+_MERGE_BY_RE = re.compile(r"(?i)\bBY\s+([\w\s]+?)\s*;")
+
+# PROC SQL alias map: "FROM table_name alias" or "JOIN table_name alias"
+# Captures: table name (group 1) and optional alias (group 2).
+# Handles quoted/unquoted names, skips ON/SET/WHERE keywords as aliases.
+# SAS: parser.py:_SQL_ALIAS_RE
+_SQL_ALIAS_RE = re.compile(
+    r"(?i)\b(?:FROM|JOIN)\s+([\w.]+)\s+(?:AS\s+)?(\w+)(?=\s)",
+)
+
+# PROC SQL ON clause: "ON alias1.col = alias2.col"
+# Captures: left alias (group 1), left col (group 2), right alias (group 3), right col (group 4).
+# SAS: parser.py:_SQL_ON_RE
+_SQL_ON_RE = re.compile(
+    r"(?i)\bON\s+(\w+)\.(\w+)\s*=\s*(\w+)\.(\w+)",
+)
+
 # Extract DATA= dataset name (used by SORT, MEANS, FREQ, TRANSPOSE, RANK, …)
 _GENERIC_DATA_RE = re.compile(r"(?i)\bDATA\s*=\s*(\w[\w.]*)")
 
@@ -423,6 +443,110 @@ def _extract_column_schema(raw_sas: str) -> dict[str, dict[str, str]]:
     return schema
 
 
+# ── Relationship extractors ───────────────────────────────────────────────────
+
+
+def _extract_merge_by_vars(raw_sas: str) -> list[str]:
+    """Extract BY-clause column names from a DATA step MERGE statement.
+
+    Returns column names only when the DATA step body contains a ``MERGE``
+    statement. An empty list is returned when no MERGE is present, because
+    a bare ``BY`` without MERGE belongs to PROC SORT-style blocks.
+
+    Args:
+        raw_sas: Raw SAS source text for a single DATA step block.
+
+    Returns:
+        Lowercased column name list from the BY clause, or an empty list.
+    """  # SAS: parser.py:_extract_merge_by_vars
+    if not re.search(r"(?i)\bMERGE\b", raw_sas):
+        return []
+    by_vars: list[str] = []
+    for match in _MERGE_BY_RE.finditer(raw_sas):
+        by_vars.extend(col.strip().lower() for col in match.group(1).split() if col.strip())
+    return by_vars
+
+
+def _build_alias_map(raw_sql: str) -> dict[str, str]:
+    """Build a {alias: table_name} mapping from FROM/JOIN clauses in PROC SQL.
+
+    Handles both ``FROM tbl alias`` and ``FROM tbl AS alias`` forms.
+    Table names are lowercased; schema-qualified names (``lib.table``) use
+    only the member name as the key value for readability.
+
+    Args:
+        raw_sql: Raw SAS PROC SQL source text.
+
+    Returns:
+        Mapping of alias (lowercase) to table name (lowercase, member-only).
+    """  # SAS: parser.py:_build_alias_map
+    alias_map: dict[str, str] = {}
+    for m in _SQL_ALIAS_RE.finditer(raw_sql):
+        table_raw = m.group(1).lower()
+        alias = m.group(2).lower()
+        # Skip SQL reserved words that can appear after a table name
+        reserved = {
+            "where",
+            "on",
+            "set",
+            "group",
+            "having",
+            "order",
+            "inner",
+            "outer",
+            "left",
+            "right",
+            "full",
+            "cross",
+            "join",
+            "select",
+            "from",
+            "as",
+        }
+        if alias in reserved:
+            continue
+        # Use member name only (strip libref prefix e.g. "work.dm" → "dm")
+        table_name = table_raw.split(".")[-1]
+        alias_map[alias] = table_name
+    return alias_map
+
+
+def _extract_join_on_keys(raw_sql: str) -> list[dict[str, str]]:
+    """Extract JOIN ON predicates from a PROC SQL block, resolving aliases to table names.
+
+    Each ``ON left_alias.col = right_alias.col`` predicate is resolved using
+    the alias map built from FROM/JOIN clauses. Predicates whose aliases cannot
+    be resolved are skipped.
+
+    Args:
+        raw_sql: Raw SAS PROC SQL source text.
+
+    Returns:
+        List of dicts with keys ``left_table``, ``right_table``, ``left_col``,
+        ``right_col`` (all lowercase). Empty list when no JOIN ON is present.
+    """  # SAS: parser.py:_extract_join_on_keys
+    alias_map = _build_alias_map(raw_sql)
+    result: list[dict[str, str]] = []
+    for m in _SQL_ON_RE.finditer(raw_sql):
+        left_alias = m.group(1).lower()
+        left_col = m.group(2).lower()
+        right_alias = m.group(3).lower()
+        right_col = m.group(4).lower()
+        left_table = alias_map.get(left_alias)
+        right_table = alias_map.get(right_alias)
+        if left_table is None or right_table is None:
+            continue
+        result.append(
+            {
+                "left_table": left_table,
+                "right_table": right_table,
+                "left_col": left_col,
+                "right_col": right_col,
+            }
+        )
+    return result
+
+
 # ── Block extractors ─────────────────────────────────────────────────────────
 
 
@@ -466,6 +590,9 @@ def _extract_data_steps(source: str, filename: str) -> Iterator[SASBlock]:
         # Column schema from LENGTH / FORMAT / ATTRIB declarations
         # SAS: parser.py:_extract_data_steps
         block.column_schema = _extract_column_schema(raw)
+        # MERGE BY — relationship keys for ERD (F34)
+        # SAS: parser.py:_extract_data_steps:merge_by_vars
+        block.merge_by_vars = _extract_merge_by_vars(raw)
         yield block
 
 
@@ -488,6 +615,9 @@ def _extract_proc_sql(source: str, filename: str) -> Iterator[SASBlock]:
         )
         where_m = _WHERE_RE.search(raw)
         block.where_clause = where_m.group(1).strip() if where_m else None
+        # JOIN ON keys — relationship predicates for ERD (F34)
+        # SAS: parser.py:_extract_proc_sql:join_on_keys
+        block.join_on_keys = _extract_join_on_keys(raw)
         yield block
 
 

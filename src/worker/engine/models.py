@@ -77,6 +77,11 @@ class SASBlock(BaseModel):
         file_path: DATAFILE= path from PROC IMPORT.
         dbms: DBMS= value from PROC IMPORT (CSV / XLSX / DLM / …).
         sheet: SHEET= value from PROC IMPORT (Excel sheet name).
+        merge_by_vars: Column names from the BY clause of a DATA step MERGE statement
+            (lowercased). Empty list when no MERGE is present.
+        join_on_keys: Join predicates extracted from PROC SQL ON clauses with aliases
+            resolved to table names. Each entry is a dict with keys ``left_table``,
+            ``right_table``, ``left_col``, ``right_col``. Empty list when no JOIN is present.
     """
 
     block_type: BlockType
@@ -112,6 +117,14 @@ class SASBlock(BaseModel):
     # Maps column name (lowercase) → dict with any subset of keys:
     # {"sas_type": "character"|"numeric", "sas_format": str, "label": str}
     column_schema: dict[str, dict[str, str]] = Field(default_factory=dict)  # SAS: models.py:110
+
+    # Relationship extraction for ERD / Data Storage tab (F34).
+    # merge_by_vars: column names from BY clause in a DATA step MERGE statement.
+    #   e.g. MERGE dm(in=a) ex(in=b); BY USUBJID STUDYID; → ["usubjid", "studyid"]
+    merge_by_vars: list[str] = Field(default_factory=list)  # SAS: models.py:merge_by_vars
+    # join_on_keys: join predicates from PROC SQL ON clause, alias-resolved to table names.
+    #   Each entry: {left_table, right_table, left_col, right_col}
+    join_on_keys: list[dict[str, str]] = Field(default_factory=list)  # SAS: models.py:join_on_keys
 
 
 class MacroDef(BaseModel):

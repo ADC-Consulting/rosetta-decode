@@ -108,13 +108,13 @@ New field on `SASBlock`: `column_schema: dict[str, dict[str, str]] = Field(defau
 **File:** `src/worker/engine/models.py`
 **Depends on:** none
 **Done when:** `SASBlock` has `merge_by_vars: list[str] = Field(default_factory=list)` and `join_on_keys: list[dict[str, str]] = Field(default_factory=list)` (each entry: `{left_table, right_table, left_col, right_col}`)
-- [ ] done
+- [x] done
 
 ### P3-B: Extract MERGE BY keys and PROC SQL JOIN ON keys in parser
 **File:** `src/worker/engine/parser.py`
 **Depends on:** P3-A
 **Done when:** In `_extract_data_steps`, when a DATA step contains MERGE, a regex extracts the BY clause column names into `block.merge_by_vars`; in `_extract_proc_sql`, a regex extracts `ON left.col = right.col` predicates into `block.join_on_keys`; unit tests covering MERGE BY extraction and simple JOIN ON extraction
-- [ ] done
+- [x] done
 
 ### P3-C: Build relationships list and persist to MigrationPlan
 **File:** `src/worker/engine/models.py`, `src/worker/main.py`
