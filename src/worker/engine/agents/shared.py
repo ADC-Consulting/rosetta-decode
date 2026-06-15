@@ -12,7 +12,8 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, Literal
 
 from src.worker.engine.format_catalog import normalize_format_name
 from src.worker.engine.models import DataFileInfo, FormatDef, GeneratedBlock
@@ -50,6 +51,66 @@ _PUT_ZPAD_RE = re.compile(
 _CONCAT_OP_RE = re.compile(r"\|\|")
 _CATS_RE = re.compile(r"\bcat[st]\s*\(", re.IGNORECASE)
 _CATX_RE = re.compile(r"\bcatx\s*\(", re.IGNORECASE)
+
+# ── Deterministic zero-pad / concat KEY derivation (parser → generator → injector) ──
+#
+# A SAS character-key assignment such as
+#   ``usubjid = catx('-', studyid, put(siteid, z3.), put(subjid, z4.));``
+# has a single canonical PySpark translation whose zero-pad widths come straight
+# from the SAS source (``z3.``/``z4.``). The LLM occasionally drops the padding
+# (emitting ``ADC-XYZ-001-3-1`` instead of ``ADC-XYZ-001-003-0001``). These three
+# helpers parse the construct from the source, render the canonical expression, and
+# append it as a ``withColumn`` override — source-driven, never reading the reference.
+
+# A single ``put(<var>, z<w>[.<d>])`` zero-pad component, anchored start-to-end so it
+# matches only when the whole argument is a clean padded-put (no nesting).
+_PUT_ZPAD_FULL_RE = re.compile(
+    r"^put\s*\(\s*(?P<var>\w+)\s*,\s*z(?P<width>\d+)(?:\.\d*)?\s*\)$",
+    re.IGNORECASE,
+)
+# A bare SAS identifier (a lone column reference) used as a concat component.
+_BARE_IDENT_RE = re.compile(r"^\w+$")
+# A SAS single- or double-quoted string literal used as a concat component.
+_STR_LITERAL_RE = re.compile(r"""^(?P<q>['"]).*(?P=q)$""", re.DOTALL)
+# Macro / unresolved tokens that force a conservative skip.
+_MACRO_TOKEN_RE = re.compile(r"[&%]")
+
+
+@dataclass(frozen=True)
+class Component:
+    """One ordered argument of a parsed concat-key assignment.
+
+    Attributes:
+        kind: ``"lit"`` (string literal), ``"col"`` (bare column reference) or
+            ``"pad"`` (zero-padded ``put(var, zW.)`` column).
+        value: For ``"lit"``, the literal text WITHOUT its surrounding quotes.
+            ``None`` for ``"col"``/``"pad"``.
+        col: Lowercased column name for ``"col"``/``"pad"``. ``None`` for ``"lit"``.
+        width: Zero-pad width for ``"pad"``. ``None`` otherwise.
+    """
+
+    kind: Literal["lit", "col", "pad"]
+    value: str | None = None
+    col: str | None = None
+    width: int | None = None
+
+
+@dataclass(frozen=True)
+class PaddedKeyAssignment:
+    """A cleanly-parsed ``target = catx/cats/|| (...)`` character-key assignment.
+
+    Attributes:
+        target: Lowercased target column name.
+        kind: ``"concat_ws"`` (from ``catx``) or ``"concat"`` (from ``cats``/``catt``/``||``).
+        delimiter: Delimiter string for ``"concat_ws"`` (without quotes); ``None`` for ``"concat"``.
+        components: Ordered list of :class:`Component`.
+    """
+
+    target: str
+    kind: Literal["concat_ws", "concat"]
+    delimiter: str | None
+    components: list[Component] = field(default_factory=list)
+
 
 # ── Shared LLM prompt rules (injected into all three translation agents) ─────
 
@@ -1002,6 +1063,234 @@ def inject_declared_casts(
     return python_code
 
 
+def _split_top_level_args(arg_text: str) -> list[str] | None:
+    """Split a concat argument list on top-level commas, respecting parens/quotes.
+
+    Args:
+        arg_text: The text BETWEEN the outer ``catx(``/``cats(`` parentheses.
+
+    Returns:
+        The ordered, stripped argument strings, or ``None`` if the parentheses or
+        quotes are unbalanced (caller must then conservatively skip).
+    """
+    args: list[str] = []
+    depth = 0
+    quote: str | None = None
+    current: list[str] = []
+    for char in arg_text:
+        if quote is not None:
+            current.append(char)
+            if char == quote:
+                quote = None
+            continue
+        if char in "'\"":
+            quote = char
+            current.append(char)
+        elif char == "(":
+            depth += 1
+            current.append(char)
+        elif char == ")":
+            depth -= 1
+            if depth < 0:
+                return None
+            current.append(char)
+        elif char == "," and depth == 0:
+            args.append("".join(current).strip())
+            current = []
+        else:
+            current.append(char)
+    if depth != 0 or quote is not None:
+        return None
+    args.append("".join(current).strip())
+    return args
+
+
+def _parse_component(token: str) -> Component | None:
+    """Parse one concat argument into a :class:`Component`, or ``None`` if unclean.
+
+    A clean component is a string literal, a bare identifier, or a single
+    ``put(var, zW.)`` zero-pad call. Anything else (nested function, expression,
+    macro token) returns ``None`` so the whole assignment is skipped.
+    """
+    if _MACRO_TOKEN_RE.search(token):
+        return None
+    lit = _STR_LITERAL_RE.match(token)
+    if lit is not None:
+        return Component(kind="lit", value=token[1:-1])
+    pad = _PUT_ZPAD_FULL_RE.match(token)
+    if pad is not None:
+        return Component(kind="pad", col=pad.group("var").lower(), width=int(pad.group("width")))
+    if _BARE_IDENT_RE.match(token):
+        return Component(kind="col", col=token.lower())
+    return None
+
+
+def _parse_call_assignment(target: str, func: str, arg_text: str) -> PaddedKeyAssignment | None:
+    """Parse a ``catx``/``cats``/``catt`` call body into an assignment, or ``None``."""
+    args = _split_top_level_args(arg_text)
+    if args is None or not args:
+        return None
+    func_lower = func.lower()
+    if func_lower == "catx":
+        delim_tok = args[0]
+        if _STR_LITERAL_RE.match(delim_tok) is None:
+            return None
+        delimiter = delim_tok[1:-1]
+        raw_components = args[1:]
+        kind: Literal["concat_ws", "concat"] = "concat_ws"
+    else:  # cats / catt
+        delimiter = None
+        raw_components = args
+        kind = "concat"
+    if not raw_components:
+        return None
+    components: list[Component] = []
+    for tok in raw_components:
+        comp = _parse_component(tok)
+        if comp is None:
+            return None
+        components.append(comp)
+    return PaddedKeyAssignment(
+        target=target.lower(), kind=kind, delimiter=delimiter, components=components
+    )
+
+
+def _parse_concat_op_assignment(target: str, rhs: str) -> PaddedKeyAssignment | None:
+    """Parse a ``a || b || ...`` right-hand side into a ``concat`` assignment."""
+    parts = [p.strip() for p in rhs.split("||")]
+    if len(parts) < 2:
+        return None
+    components: list[Component] = []
+    for tok in parts:
+        comp = _parse_component(tok)
+        if comp is None:
+            return None
+        components.append(comp)
+    return PaddedKeyAssignment(
+        target=target.lower(), kind="concat", delimiter=None, components=components
+    )
+
+
+def parse_padded_concat_keys(raw_sas: str) -> list[PaddedKeyAssignment]:
+    """Parse cleanly-defined zero-pad/concat KEY assignments from SAS source.
+
+    Conservatively recognises single-statement assignments of the form
+    ``target = catx('-', ...)``, ``target = cats(...)``/``catt(...)``, or
+    ``target = a || b || ...;`` whose components are string literals, bare column
+    references, or ``put(var, zW.[d])`` zero-pads. ANY nested function beyond
+    ``put``, macro token (``&``/``%``), multi-statement RHS, or unbalanced
+    parens/quotes causes that assignment to be skipped entirely (it then falls back
+    to the §20 prompt rule + drift guard). Target and column names are lowercased.
+
+    Args:
+        raw_sas: Raw SAS source text for a block.
+
+    Returns:
+        Ordered list of cleanly-parsed assignments; empty when none qualify.
+    """
+    results: list[PaddedKeyAssignment] = []
+    # Each statement ends at a ';'. Split so a clean single assignment is isolated.
+    for statement in raw_sas.split(";"):
+        stmt = statement.strip()
+        if "=" not in stmt:
+            continue
+        target, _, rhs = stmt.partition("=")
+        target = target.strip()
+        rhs = rhs.strip()
+        if not _BARE_IDENT_RE.match(target) or _MACRO_TOKEN_RE.search(rhs):
+            continue
+        call = re.match(r"^(?P<func>cat[xst])\s*\((?P<body>.*)\)$", rhs, re.IGNORECASE | re.DOTALL)
+        if call is not None:
+            assignment = _parse_call_assignment(target, call.group("func"), call.group("body"))
+        elif "||" in rhs:
+            assignment = _parse_concat_op_assignment(target, rhs)
+        else:
+            assignment = None
+        if assignment is not None:
+            results.append(assignment)
+    return results
+
+
+def _render_component(component: Component) -> str:
+    """Render one :class:`Component` as a PySpark sub-expression."""
+    if component.kind == "lit":
+        return f'F.lit("{component.value}")'
+    if component.kind == "pad":
+        return f'F.lpad(F.col("{component.col}").cast("string"), {component.width}, "0")'
+    return f'F.col("{component.col}").cast("string")'
+
+
+def render_padded_key_expr(assignment: PaddedKeyAssignment) -> str:
+    """Build the canonical PySpark expression for a parsed concat-key assignment.
+
+    ``catx`` → ``F.concat_ws("<delim>", ...)``; ``cats``/``catt``/``||`` →
+    ``F.concat(...)``. Bare columns become ``F.col("c").cast("string")``, zero-pads
+    become ``F.lpad(F.col("c").cast("string"), W, "0")`` and ``||`` string literals
+    become ``F.lit("...")``. ``cast("string")`` is always correct here because
+    zero-pad/concat output is character data.
+
+    Args:
+        assignment: A :class:`PaddedKeyAssignment` from :func:`parse_padded_concat_keys`.
+
+    Returns:
+        The canonical PySpark expression string.
+    """
+    rendered = [_render_component(component) for component in assignment.components]
+    if assignment.kind == "concat_ws":
+        return f'F.concat_ws("{assignment.delimiter}", ' + ", ".join(rendered) + ")"
+    return "F.concat(" + ", ".join(rendered) + ")"
+
+
+def enforce_padded_concat_keys(
+    python_code: str, raw_sas: str, output_var: str | None, agent_name: str
+) -> str:
+    """Deterministically override zero-pad/concat KEY columns from the SAS source.
+
+    For each cleanly-parsed assignment in *raw_sas*, append a
+    ``<output_var> = <output_var>.withColumn("<target>", <expr>)`` override (Spark
+    ``withColumn`` replaces, so this supersedes whatever the LLM produced for that
+    column without surgically editing the LLM's nested expression). The pad widths
+    come from the SAS ``put(x, zW.)`` source, never the reference — faithful
+    translation, not golden-gaming. Idempotent: an identical override already
+    present is skipped. No-op (with a log) when *output_var* is unresolved.
+
+    Args:
+        python_code: Generated PySpark source (already output-var/cast normalised).
+        raw_sas: Raw SAS source text for the block.
+        output_var: Resolved output DataFrame variable to override on.
+        agent_name: Agent class name used in log messages.
+
+    Returns:
+        The (possibly extended) Python source.
+    """
+    assignments = parse_padded_concat_keys(raw_sas)
+    if not assignments:
+        return python_code
+    if not output_var:
+        logger.warning(
+            "enforce_padded_concat_keys [%s]: output_var unresolved — skipping %d key override(s)",
+            agent_name,
+            len(assignments),
+        )
+        return python_code
+
+    for assignment in assignments:
+        expr = render_padded_key_expr(assignment)
+        override = (
+            f'{output_var} = {output_var}.withColumn("{assignment.target}", {expr})'
+            f"  # enforced: SAS zero-pad key {assignment.target}"
+        )
+        if override in python_code:
+            continue
+        python_code = python_code.rstrip("\n") + "\n" + override + "\n"
+        logger.warning(
+            "enforce_padded_concat_keys [%s]: enforced zero-pad key %s deterministically",
+            agent_name,
+            assignment.target,
+        )
+    return python_code
+
+
 def check_mechanical_format_drift(raw_sas: str, python_code: str) -> list[str]:
     """Return human-readable warnings when a mechanical formatting primitive drifted.
 
@@ -1085,3 +1374,111 @@ def apply_mechanical_drift_guard(block: GeneratedBlock) -> GeneratedBlock:
         block.confidence_band,
     )
     return block
+
+
+def _render_struct_schema(stem: str, columns: list[str], column_types: dict[str, str]) -> str:
+    """Render a PySpark StructType schema variable definition for a CSV file.
+
+    Args:
+        stem: Lowercased filename stem used as the schema variable name (e.g. ``"dm_raw"``).
+        columns: CSV header column names in original casing (Spark matches against header row).
+        column_types: Lowercased column name → Spark type string from DataFileInfo.
+
+    Returns:
+        Python source string ``_<stem>_schema = StructType([...])``.
+    """
+    _type_map = {
+        "long": "LongType()",
+        "double": "DoubleType()",
+        "boolean": "BooleanType()",
+        "string": "StringType()",
+        "date": "StringType()",  # SAS date cols are raw strings at PROC IMPORT time
+    }
+    fields = []
+    for col in columns:
+        spark_type = _type_map.get(
+            column_types.get(col.lower().lstrip("﻿"), "string"), "StringType()"
+        )
+        fields.append(f'    StructField("{col}", {spark_type}, True),')
+    var_name = f"_{stem}_schema"
+    return "\n".join([f"{var_name} = StructType([", *fields, "])"])
+
+
+def enforce_csv_read_schema(
+    python_code: str,
+    data_files: dict[str, DataFileInfo],
+    agent_name: str,
+) -> str:
+    """Rewrite spark.read.csv calls to use an explicit StructType for declared-char CSV files.
+
+    For each ``spark.read.csv(<path>, ... inferSchema=True ...)`` in *python_code*,
+    finds the matching DataFileInfo by filename stem. If that file has non-empty
+    ``column_types``, rewrites the read to use an explicit StructType schema so that
+    zero-padded identifiers (e.g. SITEID=003, SUBJID=0001) are not silently cast to
+    integers. Idempotent: no-op when ``schema=`` is already present. No-op when the
+    file's ``column_types`` is empty.
+
+    Args:
+        python_code: Generated PySpark source from the LLM.
+        data_files: Mapping from normalized path to DataFileInfo for the job.
+        agent_name: Agent class name used in log messages.
+
+    Returns:
+        Python source with schema-enforced reads where applicable.
+    """
+    import os as _os
+
+    _import_line = (
+        "from pyspark.sql.types import ("
+        "StructType, StructField, StringType, LongType, DoubleType, BooleanType"
+        ")"
+    )
+
+    for info in data_files.values():
+        if not info.column_types or info.extension not in (".csv", ".tsv"):
+            continue
+
+        stem = _os.path.splitext(_os.path.basename(info.path))[0].lower()
+
+        read_re = re.compile(
+            r"^(\s*)(\w+)\s*=\s*spark\.read"
+            r"(?:\.option\s*\([^)]*\)\s*)*"
+            r"\.csv\s*\(([^)]*" + re.escape(stem) + r"[^)]*)\)",
+            re.MULTILINE | re.IGNORECASE,
+        )
+        for read_match in read_re.finditer(python_code):
+            call_args = read_match.group(3)
+            if "inferSchema=True" not in call_args:
+                continue
+            if "schema=" in call_args:
+                continue  # idempotent
+
+            indent = read_match.group(1)
+            varname = read_match.group(2)
+            schema_var = f"_{stem}_schema"
+
+            schema_def = _render_struct_schema(stem, info.columns, info.column_types)
+            new_args = (
+                re.sub(r",?\s*inferSchema\s*=\s*True", "", call_args).strip().strip(",").strip()
+            )
+            new_args = (new_args + f", schema={schema_var}") if new_args else f"schema={schema_var}"
+
+            new_read = f"{indent}{varname} = spark.read.csv({new_args})"
+
+            if "StructType" not in python_code:
+                python_code = _import_line + "\n" + python_code
+
+            old_read = read_match.group(0)
+            python_code = python_code.replace(
+                old_read,
+                f"{indent}{schema_def}\n{new_read}",
+                1,
+            )
+            logger.warning(
+                "enforce_csv_read_schema [%s]: rewrote spark.read.csv for '%s' "
+                "to use explicit StructType (preserves declared-char leading zeros)",
+                agent_name,
+                info.path,
+            )
+
+    return python_code
