@@ -609,17 +609,15 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                       ) : (
                         <ChevronRight className="w-3.5 h-3.5 shrink-0" />
                       )}
-                      {selectedTable.ddl_source === "target" ? (
-                        "Target DDL"
-                      ) : selectedTable.ddl_source === "source_estimated" ? (
+                      {selectedTable.ddl_source === "source_estimated" ? (
                         <span className="flex items-center gap-2">
-                          Source DDL
+                          Table definition
                           <span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-800">
-                            estimated
+                            estimated from SAS
                           </span>
                         </span>
                       ) : (
-                        "DDL"
+                        "Table definition"
                       )}
                     </CollapsibleTrigger>
                     <CollapsibleContent>
