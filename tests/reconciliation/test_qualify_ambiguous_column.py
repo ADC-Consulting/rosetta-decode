@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import pytest
 from src.worker.validation.reconciliation import qualify_ambiguous_column
+
+pytestmark = pytest.mark.reconciliation
 
 _AMBIGUOUS_ERR = (
     "[AMBIGUOUS_REFERENCE] Reference `usubjid` is ambiguous, could be: [`a`.`usubjid`, `usubjid`]."
