@@ -120,7 +120,7 @@ New field on `SASBlock`: `column_schema: dict[str, dict[str, str]] = Field(defau
 **File:** `src/worker/engine/models.py`, `src/worker/main.py`
 **Depends on:** P3-A, P3-B
 **Done when:** `MigrationPlan` has `relationships: list[dict[str, str]] = Field(default_factory=list)`; worker pipeline aggregates all non-empty `merge_by_vars` and `join_on_keys` from all blocks after planning and stores them on `migration_plan.relationships`; each entry: `{left_table, right_table, key_column, via_block_id, relationship_type: "merge" | "join"}`
-- [ ] done
+- [x] done
 
 ### P3-D: DDL generation module
 **File:** `src/worker/engine/ddl_generator.py` (new)

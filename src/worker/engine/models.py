@@ -305,6 +305,9 @@ class MigrationPlan(BaseModel):
     data_schema: dict[str, dict[str, Any]] = Field(default_factory=dict)
     # keyed by normalised file path e.g. "sas_pharma_sandbox/data/raw/dm_raw.csv"
     # value: {columns, column_types, column_labels, column_formats, row_count}
+    # Each entry: {left_table, right_table, key_column, via_block_id, relationship_type}
+    # relationship_type is "merge" (DATA step MERGE BY) or "join" (PROC SQL JOIN ON)
+    relationships: list[dict[str, str]] = Field(default_factory=list)  # SAS: models.py:rels
 
 
 class ColumnFlow(BaseModel):

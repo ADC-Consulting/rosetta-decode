@@ -423,6 +423,103 @@ def _merge_source_column_schema(
                 )
 
 
+def _strip_libname(table: str) -> str:
+    """Strip a libname prefix from a SAS dataset name.
+
+    Converts ``outdir.sdtm_dm`` to ``sdtm_dm``; a name with no dot is returned
+    unchanged.
+
+    Args:
+        table: Raw SAS dataset reference, e.g. ``"outdir.sdtm_dm"`` or ``"dm"``.
+
+    Returns:
+        The dataset name without its libname prefix, lowercased.
+    """  # SAS: main.py:_strip_libname
+    return table.lower().rsplit(".", 1)[-1]
+
+
+def _aggregate_relationships(
+    blocks: list[SASBlock],
+    migration_plan: MigrationPlan,
+) -> None:
+    """Aggregate merge and join relationships from all blocks into migration_plan.relationships.
+
+    Iterates all SASBlocks and collects:
+    - DATA step MERGE: one entry per (output_dataset, input_dataset, merge_by_var) triple,
+      using ``block.merge_by_vars`` and cross-product of ``block.output_datasets`` x
+      ``block.input_datasets``.
+    - PROC SQL JOIN: one entry per ``join_on_keys`` entry, using ``left_col`` as
+      ``key_column``.
+
+    Deduplication: the first entry wins for any ``(left_table, right_table, key_column,
+    relationship_type)`` combination.
+
+    Libname prefixes are stripped from all table names (e.g. ``outdir.dm`` → ``dm``).
+
+    Results are written to ``migration_plan.relationships`` in place.
+
+    Args:
+        blocks: Dependency-ordered SASBlock list (already macro-expanded).
+        migration_plan: The MigrationPlan to mutate; ``relationships`` is replaced.
+    """  # SAS: main.py:_aggregate_relationships
+    seen: set[tuple[str, str, str, str]] = set()
+    results: list[dict[str, str]] = []
+
+    for block in blocks:
+        block_id = f"{block.source_file}:{block.start_line}"
+
+        # DATA step MERGE relationships
+        if block.merge_by_vars:
+            left_tables = [_strip_libname(ds) for ds in block.output_datasets] or [""]
+            right_tables = [_strip_libname(ds) for ds in block.input_datasets] or [""]
+            for left in left_tables:
+                for right in right_tables:
+                    if left == right:
+                        continue
+                    for var in block.merge_by_vars:
+                        dedup_key = (left, right, var, "merge")
+                        if dedup_key in seen:
+                            continue
+                        seen.add(dedup_key)
+                        results.append(
+                            {
+                                "left_table": left,
+                                "right_table": right,
+                                "key_column": var,
+                                "via_block_id": block_id,
+                                "relationship_type": "merge",
+                            }
+                        )
+
+        # PROC SQL JOIN relationships
+        for entry in block.join_on_keys:
+            left = _strip_libname(entry.get("left_table", ""))
+            right = _strip_libname(entry.get("right_table", ""))
+            key_col = entry.get("left_col", "")
+            if not left or not right or not key_col:
+                continue
+            dedup_key = (left, right, key_col, "join")
+            if dedup_key in seen:
+                continue
+            seen.add(dedup_key)
+            results.append(
+                {
+                    "left_table": left,
+                    "right_table": right,
+                    "key_column": key_col,
+                    "via_block_id": block_id,
+                    "relationship_type": "join",
+                }
+            )
+
+    migration_plan.relationships = results
+    logger.debug(
+        "_aggregate_relationships: collected %d relationship(s) from %d block(s)",
+        len(results),
+        len(blocks),
+    )
+
+
 class JobOrchestrator:
     """Runs the full agentic migration pipeline for a single job."""
 
@@ -724,6 +821,10 @@ class JobOrchestrator:
         # Only fills gaps — never overwrites column data that already came from pyreadstat.
         # SAS: main.py:_merge_source_column_schema
         _merge_source_column_schema(expanded_blocks, migration_plan.data_schema)
+
+        # Aggregate merge/join relationships from all blocks into migration_plan.
+        # SAS: main.py:_aggregate_relationships
+        _aggregate_relationships(expanded_blocks, migration_plan)
 
         if tracer:
             await tracer.emit(
