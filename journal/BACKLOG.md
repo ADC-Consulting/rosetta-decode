@@ -317,7 +317,7 @@
 - [x] F33 S-F: Build ETLTab orchestrating component
 - [x] F33 S-G: Wire ETLTab into JobDetailPage
 - [x] F33 S-H: make test exits 0
-**F34 — Data Storage tab (#43) → see `docs/plans/latest/F34-data-storage-tab.md`**
+**F34 — Data Storage tab (#43) → PR #98 open → see `docs/plans/latest/F34-data-storage-tab.md`**
 Phase 1 — Schema hierarchy + table browser + LIBNAME editing:
 - [x] F34 P1-A: Extend _sniff_file and DataFileInfo with column metadata
 - [x] F34 P1-B: Persist libname_map and data_schema in MigrationPlan

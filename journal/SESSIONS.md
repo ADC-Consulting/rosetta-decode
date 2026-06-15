@@ -6,6 +6,54 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-15 — F34 Phase 2 + Phase 3 complete; PR #98 open
+**Duration:** ~4h | **Focus:** F34 P2-B through P3-H implementation + browser verification + PR
+
+### Done
+- P2-B: `map_sas_to_semantic_type` returns "Unknown" for empty sas_type; frontend renders "—" for Unknown badge
+- P2-C: Parser extracts column schema from LENGTH/FORMAT/ATTRIB statements; `SASBlock.column_schema` populated; worker merges into `data_schema` via `_merge_source_column_schema`
+- P2-D: Backend route serves source-derived columns for derived datasets; empty-state message updated
+- P3-A/B: `SASBlock.merge_by_vars` + `join_on_keys`; parser extracts MERGE BY keys and PROC SQL JOIN ON predicates with alias resolution
+- P3-C: `MigrationPlan.relationships` populated from all blocks via `_aggregate_relationships` (dedup by left_table/right_table/key_column/type)
+- P3-D: `ddl_generator.generate_create_table()` — ANSI SQL CREATE TABLE from semantic types; stub DDL for empty column lists
+- P3-E: Schema route populates `TableSchema.ddl` and `JobSchemaResponse.relationships` at serve time
+- P3-F/G: `DataStorageERD.tsx` (ReactFlow + dagre LR layout); Schema/ERD toggle; DDL collapsible with read-only MonacoEditor (theme-aware)
+- Fix: Monaco DDL panel now uses `useTheme()` → `sas-light`/`sas-dark` (was hardcoded dark)
+- Fix: ERD always renders nodes when tables exist; empty-relationships shown as Panel overlay, not empty canvas
+- All 7 test gates green; 90+ new unit tests across 5 new test files
+- PR #98 opened: https://github.com/ADC-Consulting/rosetta-decode/pull/98
+
+### Decisions
+- **`make docker-build` vs `docker compose build`:** make docker-build produces `rosetta-backend:dev`; compose uses `rosetta-decode-backend:latest`; always use `docker compose build backend && docker compose up -d backend` for runtime deploys · revisit never
+- **Relationships only for new jobs:** `_aggregate_relationships` runs at migration time; existing jobs won't have edges in ERD; DDL is served at request time so works for all jobs · revisit never
+
+### Open Questions
+- PR review pending
+
+### Next Session — Start Here
+1. Check PR #98 status; address review comments
+2. Next backlog item after F34 closes
+
+### Files Touched
+- `src/backend/api/schema_utils.py`
+- `src/backend/api/routes/jobs.py`
+- `src/worker/engine/models.py`
+- `src/worker/engine/parser.py`
+- `src/worker/engine/ddl_generator.py` (new)
+- `src/worker/main.py`
+- `src/frontend/src/components/JobDetail/DataStorageTab.tsx`
+- `src/frontend/src/components/JobDetail/DataStorageERD.tsx` (new)
+- `tests/test_schema_utils.py`
+- `tests/test_column_schema_extraction.py` (new)
+- `tests/test_parser_relationships.py` (new)
+- `tests/test_aggregate_relationships.py` (new)
+- `tests/test_ddl_generator.py` (new)
+- `tests/test_schema_route.py`
+- `docs/plans/latest/F34-data-storage-tab.md` (status: complete)
+- `journal/BACKLOG.md`
+
+---
+
 ## 2026-06-12 — F34 Phase 2 plan expanded; SAS source column extraction scoped
 **Duration:** ~30min | **Focus:** F34 Phase 2 planning
 
