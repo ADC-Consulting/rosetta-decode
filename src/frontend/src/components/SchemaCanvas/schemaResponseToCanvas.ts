@@ -1,5 +1,5 @@
-import { GraphNode, GraphEdge } from "./graph-types";
-import { TableNodeData, CanvasColumn, CanvasEdgeData } from "./types";
+import type { GraphNode, GraphEdge } from "./graph-types";
+import type { TableNodeData, CanvasColumn, CanvasEdgeData } from "./types";
 import {
   DATA_MODEL_LAYOUT_BASE_X,
   DATA_MODEL_LAYOUT_BASE_Y,
@@ -8,7 +8,7 @@ import {
   DATA_MODEL_LAYOUT_VERTICAL_GAP,
   getDataModelNodeHeight,
 } from "./layout-constants";
-import { JobSchemaResponse, ColumnSchema } from "../../api/types";
+import type { JobSchemaResponse, ColumnSchema } from "../../api/types";
 
 export type CanvasData = {
   nodes: GraphNode<TableNodeData>[];

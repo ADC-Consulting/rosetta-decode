@@ -451,6 +451,8 @@ export interface TableSchema {
 }
 
 export interface PatchJobSchemaRequest {
+  libname_overrides?: Record<string, string>;
+  column_type_overrides?: Record<string, Record<string, string>>;
   pk_overrides?: Record<string, string[]>;
   fk_overrides?: Record<string, string>;
 }

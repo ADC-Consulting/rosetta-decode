@@ -7,7 +7,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight, Pencil } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useMemo, useState } from "react";
-import DataStorageERD from "./DataStorageERD";
+import DataModelERD from "./DataModelERD";
+import DataFlowDiagram from "./DataFlowDiagram";
 
 interface DataStorageTabProps {
   jobId: string;
@@ -58,10 +59,12 @@ function sortedGroupKeys(groups: GroupedTables): (string | null)[] {
 // ── Main component ────────────────────────────────────────────────────────────
 
 type PanelView = "schema" | "erd";
+type ErdView = "data-model" | "data-flow";
 
 export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabProps) {
   const [manualSelectedPath, setSelectedPath] = useState<string | null>(null);
   const [panelView, setPanelView] = useState<PanelView>("schema");
+  const [erdView, setErdView] = useState<ErdView>("data-model");
   const [ddlOpen, setDdlOpen] = useState(false);
   const queryClient = useQueryClient();
   const { resolvedTheme } = useTheme();
@@ -211,16 +214,61 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
         </div>
 
         {panelView === "erd" ? (
-          <div className="flex-1 min-h-0 overflow-auto p-4">
-            <DataStorageERD
-              tables={schemaData.tables}
-              relationships={schemaData.relationships}
-              selectedTable={selectedTable?.dataset_name ?? null}
-              onTableSelect={(name) => {
-                const match = schemaData.tables.find((t) => t.dataset_name === name);
-                if (match) setSelectedPath(match.path);
-              }}
-            />
+          <div className="flex-1 min-h-0 flex flex-col">
+            <div className="flex items-center gap-1 px-4 py-2 border-b border-border shrink-0">
+              <div
+                className="inline-flex rounded-md border border-border overflow-hidden text-xs font-medium"
+                role="group"
+                aria-label="ERD view toggle"
+              >
+                <button
+                  type="button"
+                  onClick={() => setErdView("data-model")}
+                  aria-pressed={erdView === "data-model"}
+                  className={`px-3 py-1.5 transition-colors ${
+                    erdView === "data-model"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-background text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  Data model
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setErdView("data-flow")}
+                  aria-pressed={erdView === "data-flow"}
+                  className={`px-3 py-1.5 border-l border-border transition-colors ${
+                    erdView === "data-flow"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-background text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  Data flow
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 min-h-0">
+              {erdView === "data-model" ? (
+                <DataModelERD
+                  schema={schemaData}
+                  selectedTable={selectedTable?.dataset_name ?? null}
+                  onTableSelect={(name) => {
+                    const match = schemaData.tables.find((t) => t.dataset_name === name);
+                    if (match) setSelectedPath(match.path);
+                  }}
+                />
+              ) : (
+                <DataFlowDiagram
+                  jobId={jobId}
+                  selectedTable={selectedTable?.dataset_name ?? null}
+                  onTableSelect={(name) => {
+                    const match = schemaData.tables.find((t) => t.dataset_name === name);
+                    if (match) setSelectedPath(match.path);
+                  }}
+                />
+              )}
+            </div>
           </div>
         ) : (
           <div className="flex-1 min-h-0 overflow-y-auto">
