@@ -66,11 +66,13 @@ def _sniff_file(
 ) -> tuple[list[str], int | None, dict[str, str], dict[str, str], dict[str, str]]:
     """Sniff column headers and row count from a data file.
 
-    Supports ``.csv``, ``.tsv``, ``.xlsx``/``.xls``, and ``.sas7bdat``.
+    Supports ``.csv``, ``.tsv``, ``.xlsx``/``.xls``, ``.sas7bdat``, and ``.xpt``/``.xport``.
     Any read error returns ``([], None, {}, {}, {})`` — this function is always non-blocking.
 
     For ``.sas7bdat`` files, additional SAS metadata is extracted using
     ``metadataonly=True`` (faster than ``row_limit=0`` — skips row decoding entirely).
+    For ``.xpt``/``.xport`` files, the full dataset is read (XPORT format does not support
+    metadata-only mode) and ``row_count`` is derived from ``len(_df)``.
 
     Args:
         disk_path: Absolute path to the data file on disk.
@@ -107,6 +109,8 @@ def _sniff_file(
             return columns, len(full_df), {}, {}, {}
         if ext == ".sas7bdat":
             return _sniff_sas7bdat(disk_path)
+        elif ext in {".xpt", ".xport"}:
+            return _sniff_xport(disk_path)
     except Exception:
         pass
     return _empty
@@ -156,6 +160,56 @@ def _sniff_sas7bdat(
         # column_formats: SAS format strings (e.g. "DATE9.", "$40.", "COMMA12.2")
         # original_variable_types carries the raw SAS format name; prefer that over
         # variable_display_width (which is an integer width, not a format string).
+        raw_formats: dict[str, object] = getattr(meta, "original_variable_types", None) or {}
+        column_formats = {k: str(v) for k, v in raw_formats.items() if v}
+
+        return columns, row_count, column_types, column_labels, column_formats
+    except Exception:
+        return [], None, {}, {}, {}
+
+
+def _sniff_xport(  # SAS: src/worker/main.py
+    disk_path: str,
+) -> tuple[list[str], int | None, dict[str, str], dict[str, str], dict[str, str]]:
+    """Extract column metadata from a ``.xpt`` / ``.xport`` (SAS Transport) file.
+
+    Unlike ``.sas7bdat``, the XPORT format does not support metadata-only mode, so
+    the full dataset is read and ``row_count`` is derived from ``len(_df)``.
+
+    Args:
+        disk_path: Absolute path to the ``.xpt`` or ``.xport`` file.
+
+    Returns:
+        A 5-tuple of ``(columns, row_count, column_types, column_labels, column_formats)``.
+        Returns ``([], None, {}, {}, {})`` on any error, including missing pyreadstat.
+    """
+    try:
+        import pyreadstat
+    except ImportError:
+        return [], None, {}, {}, {}
+
+    try:
+        _df, meta = pyreadstat.read_xport(disk_path)
+        columns = list(meta.column_names)
+        row_count: int | None = len(_df)
+
+        # column_types: readstat type per column — "character" or "double"
+        raw_types: dict[str, str] = getattr(meta, "readstat_variable_types", None) or {}
+        column_types = {k: str(v) for k, v in raw_types.items()}
+
+        # column_labels: prefer column_names_to_labels dict; fall back to parallel list
+        names_to_labels: dict[str, str] = getattr(meta, "column_names_to_labels", None) or {}
+        if names_to_labels:
+            column_labels = {k: str(v) for k, v in names_to_labels.items()}
+        else:
+            raw_label_list: list[str] = getattr(meta, "column_labels", None) or []
+            column_labels = {
+                col: str(lbl)
+                for col, lbl in zip(columns, raw_label_list, strict=False)
+                if lbl  # skip empty labels
+            }
+
+        # column_formats: SAS format strings (e.g. "DATE9.", "$40.", "COMMA12.2")
         raw_formats: dict[str, object] = getattr(meta, "original_variable_types", None) or {}
         column_formats = {k: str(v) for k, v in raw_formats.items() if v}
 

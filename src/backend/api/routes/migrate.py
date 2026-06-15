@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-_ACCEPTED_ZIP_EXTS = {".sas", ".sas7bdat", ".csv", ".log", ".xlsx", ".xls"}
+_ACCEPTED_ZIP_EXTS = {".sas", ".sas7bdat", ".xpt", ".xport", ".csv", ".log", ".xlsx", ".xls"}
 
 
 def _unpack_zip(

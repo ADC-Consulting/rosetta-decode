@@ -28,6 +28,7 @@ from src.worker.main import (
     _recon_summary,
     _sniff_file,
     _sniff_sas7bdat,
+    _sniff_xport,
 )
 
 
@@ -216,6 +217,118 @@ def test_sniff_sas7bdat_returns_empty_on_read_error() -> None:
     assert ctypes == {}
     assert clabels == {}
     assert cfmts == {}
+
+
+# ─── _sniff_xport ────────────────────────────────────────────────────────────
+
+
+def test_sniff_xport_returns_metadata_and_row_count(tmp_path: pathlib.Path) -> None:
+    """_sniff_xport extracts columns, row count from len(df), types, labels, formats."""
+    disk_path = str(tmp_path / "test.xpt")
+    with open(disk_path, "wb") as f:
+        f.write(b"HEADER")
+
+    with patch("pyreadstat.read_xport") as mock_read:
+        mock_df = MagicMock()
+        mock_df.__len__ = MagicMock(return_value=42)
+        mock_meta = MagicMock()
+        mock_meta.column_names = ["subj", "dose"]
+        mock_meta.column_names_to_labels = {"subj": "Subject ID", "dose": "Dose (mg)"}
+        mock_meta.readstat_variable_types = {"subj": "character", "dose": "double"}
+        mock_meta.original_variable_types = {"subj": "$10.", "dose": "BEST12."}
+        mock_read.return_value = (mock_df, mock_meta)
+
+        cols, count, ctypes, clabels, cfmts = _sniff_xport(disk_path)
+
+    assert cols == ["subj", "dose"]
+    assert count == 42
+    assert ctypes == {"subj": "character", "dose": "double"}
+    assert clabels == {"subj": "Subject ID", "dose": "Dose (mg)"}
+    assert cfmts == {"subj": "$10.", "dose": "BEST12."}
+    # Verify read_xport was called WITHOUT metadataonly kwarg
+    mock_read.assert_called_once_with(disk_path)
+
+
+def test_sniff_xport_uses_column_labels_fallback(tmp_path: pathlib.Path) -> None:
+    """_sniff_xport falls back to parallel column_labels list when name-to-label map absent."""
+    disk_path = str(tmp_path / "test.xport")
+    with open(disk_path, "wb") as f:
+        f.write(b"HEADER")
+
+    with patch("pyreadstat.read_xport") as mock_read:
+        mock_df = MagicMock()
+        mock_df.__len__ = MagicMock(return_value=5)
+        mock_meta = MagicMock()
+        mock_meta.column_names = ["age", "wt"]
+        mock_meta.column_names_to_labels = {}  # empty — triggers parallel-list fallback
+        mock_meta.column_labels = ["Age in years", "Weight kg"]
+        mock_meta.readstat_variable_types = {}
+        mock_meta.original_variable_types = {}
+        mock_read.return_value = (mock_df, mock_meta)
+
+        cols, count, _ctypes, clabels, _cfmts = _sniff_xport(disk_path)
+
+    assert cols == ["age", "wt"]
+    assert count == 5
+    assert clabels == {"age": "Age in years", "wt": "Weight kg"}
+
+
+def test_sniff_xport_returns_empty_on_read_error() -> None:
+    """_sniff_xport returns ([], None, {}, {}, {}) when pyreadstat raises."""
+    with patch("pyreadstat.read_xport", side_effect=OSError("corrupt xport")):
+        cols, count, _ctypes, _clabels, _cfmts = _sniff_xport("/tmp/bad.xpt")
+    assert cols == []
+    assert count is None
+    assert _ctypes == {}
+    assert _clabels == {}
+    assert _cfmts == {}
+
+
+def test_sniff_xport_returns_empty_when_pyreadstat_missing() -> None:
+    """_sniff_xport returns ([], None, {}, {}, {}) when pyreadstat is not installed."""
+    import builtins
+
+    real_import = builtins.__import__
+
+    def mock_import(name: str, *args: object, **kwargs: object) -> object:
+        if name == "pyreadstat":
+            raise ImportError("No module named 'pyreadstat'")
+        return real_import(name, *args, **kwargs)  # type: ignore[arg-type]
+
+    with patch("builtins.__import__", side_effect=mock_import):
+        cols, count, _ctypes, _clabels, _cfmts = _sniff_xport("/tmp/any.xpt")
+    assert cols == []
+    assert count is None
+
+
+def test_sniff_file_dispatches_xpt_extension(tmp_path: pathlib.Path) -> None:
+    """_sniff_file routes .xpt extension to _sniff_xport."""
+    disk_path = str(tmp_path / "data.xpt")
+    with open(disk_path, "wb") as f:
+        f.write(b"HEADER")
+
+    with patch("src.worker.main._sniff_xport") as mock_xport:
+        mock_xport.return_value = (["col1"], 10, {}, {}, {})
+        cols, count, *_ = _sniff_file(disk_path, ".xpt")
+
+    mock_xport.assert_called_once_with(disk_path)
+    assert cols == ["col1"]
+    assert count == 10
+
+
+def test_sniff_file_dispatches_xport_extension(tmp_path: pathlib.Path) -> None:
+    """_sniff_file routes .xport extension to _sniff_xport."""
+    disk_path = str(tmp_path / "data.xport")
+    with open(disk_path, "wb") as f:
+        f.write(b"HEADER")
+
+    with patch("src.worker.main._sniff_xport") as mock_xport:
+        mock_xport.return_value = (["a", "b"], 3, {}, {}, {})
+        cols, count, *_ = _sniff_file(disk_path, ".xport")
+
+    mock_xport.assert_called_once_with(disk_path)
+    assert cols == ["a", "b"]
+    assert count == 3
 
 
 # ─── _make_session_factory ───────────────────────────────────────────────────

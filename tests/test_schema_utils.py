@@ -68,3 +68,7 @@ def test_empty_sas_type_is_unknown() -> None:
 def test_empty_sas_type_with_format_is_unknown() -> None:
     """Empty sas_type takes priority over any format hint."""
     assert map_sas_to_semantic_type("", "DATE9.") == "Unknown"
+
+
+def test_xport_string_type_maps_to_string() -> None:
+    assert map_sas_to_semantic_type("string", None) == "String"

@@ -24,7 +24,7 @@ def map_sas_to_semantic_type(sas_type: str, sas_format: str | None) -> str:
     """Map a SAS storage type and display format to a semantic target type.
 
     Args:
-        sas_type: "character" or "double" (from readstat_variable_types)
+        sas_type: "character"/"string" (SAS7BDAT/XPORT) or "double" (from readstat_variable_types)
         sas_format: SAS format name e.g. "DATE9.", "$40.", "DATETIME20." (may be empty/None)
 
     Returns:
@@ -33,7 +33,7 @@ def map_sas_to_semantic_type(sas_type: str, sas_format: str | None) -> str:
     if not sas_type:
         return "Unknown"
     fmt = (sas_format or "").strip().lstrip("$").rstrip(".")
-    if sas_type == "character":
+    if sas_type in {"character", "string"}:
         return "String"
     # numeric — check format for semantic hint
     # Datetime must be tested before date: DATETIME... starts with DATE...
