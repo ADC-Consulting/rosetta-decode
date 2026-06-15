@@ -79,6 +79,8 @@
 - [ ] F10: Artefact versioning — group jobs by input_hash, expose version history per migration
 - [ ] F11: Plain-language documentation — LLM-generated business-readable summary per job → see `docs/plans/F-backend-postmvp.md` S-BE4
 - [x] F15: Record-level reconciliation — row-by-row diff with configurable keys and tolerances (row_hash_diff + ReconConfig + LLM key resolution; `feat/F15-record-level-reconciliation`)
+- [x] fix: preserve leading zeros by honoring SAS `LENGTH var $w` char declarations at CSV read time (`fix/csv-declared-char-zeros`)
+- [ ] follow-up: add `dtype={col: str}` for declared-char columns in `stub_generator.py` `pd.read_csv` scaffold (untranslatable PROC IMPORT fallback path)
 - [ ] F18: Refine conversion action — re-submit with previous output + reconciliation report as context → see `docs/plans/F-backend-postmvp.md` S-BE6
 
 **F2-improvements — Agentic pipeline overhaul (`docs/plans/F2-agentic-workflow-improvements.md`)**

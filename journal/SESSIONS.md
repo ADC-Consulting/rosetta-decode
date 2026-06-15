@@ -6,6 +6,45 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-15 — fix: preserve leading zeros via SAS LENGTH char declarations + F15 PR prep
+
+**Duration:** ~1 session | **Focus:** diagnose and fix USUBJID zero-padding regression; commit F15 leftovers; generate PR summary
+
+### Done
+- **Root-cause analysis:** record-level diff showed `USUBJID=ADC-XYZ-001-3-1` vs `ADC-XYZ-001-003-0001`. Traced to `spark.read.csv(inferSchema=True)` reading `SITEID=003`→int `3` and `SUBJID=0001`→int `1` before the `catx` concat runs. The existing `enforce_padded_concat_keys` (F15) correctly rebuilds the concat but cannot recover zeros already lost at read time.
+- **`extract_declared_char_columns` (parser.py):** scans all `LENGTH var $w` statements job-wide; returns lowercased char column names. Conservative text scan — no PROC IMPORT→DATA-step dependency tracing.
+- **`_sniff_file` extended (main.py):** CSV/TSV branch now builds a full pandas-dtype→Spark-type map (int→`long`, float→`double`, bool→`boolean`, else→`string`) instead of returning `{}`. Build loop overrides declared-char columns to `"string"` before constructing `DataFileInfo`.
+- **`enforce_csv_read_schema` (shared.py):** deterministic post-processor that rewrites `spark.read.csv(..., inferSchema=True)` to an explicit `StructType` for any CSV with declared-char columns. Idempotent; no-op when `column_types` is empty. Wired in `GenericProcAgent`, `DataStepAgent`, `ProcAgent` before `inject_declared_casts`.
+- **`DataFileInfo.column_types` docstring updated** to reflect CSV/TSV coverage.
+- **10 new reconciliation tests** in `test_csv_declared_char_schema.py`; updated existing assertions in 3 test files.
+- **Committed F15 leftovers:** `enforce_padded_concat_keys` shared functions + agent wiring, `test_shared_normalisers.py` coverage, `DECISIONS.md` entry, tensorzero digest pin.
+- **3 clean commits** on `fix/csv-declared-char-zeros`; all 7 gates green, 89% coverage.
+- **PR summary generated** (ready to paste into GitHub).
+
+### Decisions
+- Generalizable fix uses job-wide `LENGTH $` scan (not per-PROC IMPORT tracing) — false positives benign for pharma identifier data; documented as known limitation.
+- `_sniff_file` now always returns a type map for CSV/TSV; the SAS-char override is applied in `_execute` where the source text is in scope, keeping `_sniff_file` SAS-agnostic.
+
+### Open Questions
+- `stub_generator.py` `pd.read_csv` fallback still reads declared-char columns as inferred types — noted as follow-up, not addressed here.
+
+### Next Session — Start Here
+1. Open PR for `fix/csv-declared-char-zeros` → `main` (PR summary already generated).
+2. After merge, open PR for `feat/F15-record-level-reconciliation` → `main` (or cherry-pick; both branches diverge from pre-F15 main).
+3. Consider follow-up: add `dtype={col: str}` for declared-char columns in `stub_generator.py` `pd.read_csv` scaffold.
+
+### Files Touched
+- `src/worker/engine/parser.py` — `extract_declared_char_columns`
+- `src/worker/main.py` — `_sniff_file`, `_execute` build loop
+- `src/worker/engine/agents/shared.py` — `_render_struct_schema`, `enforce_csv_read_schema`, `enforce_padded_concat_keys` + helpers
+- `src/worker/engine/agents/generic_proc.py`, `data_step.py`, `proc.py` — wiring
+- `src/worker/engine/models.py` — docstring
+- `tests/reconciliation/test_csv_declared_char_schema.py` — new
+- `tests/test_shared_normalisers.py`, `test_worker_main.py`, `test_worker_main_comprehensive.py`, `test_context_improvements.py` — updated
+- `journal/DECISIONS.md`, `docker-compose.yml`
+
+---
+
 ## 2026-06-15 — feat: F15 record-level reconciliation (row_hash_diff) + deterministic mechanical fixes
 **Duration:** ~1 session | **Focus:** add row-by-row reconciliation, then harden everything dogfooding it surfaced
 
