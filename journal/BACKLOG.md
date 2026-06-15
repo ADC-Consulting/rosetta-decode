@@ -341,6 +341,26 @@ Phase 3 — Relationships + ERD + DDL:
 - [x] F34 P3-G: Add DDL panel and ERD toggle to DataStorageTab
 - [x] F34 P3-H: make test exits 0
 Backlog: user-selectable DDL target platform (Databricks Delta, Snowflake, etc.)
+
+**F35 — Migration Output Catalog → see `docs/plans/latest/F35-migration-output-catalog.md`**
+Phase 1 — Backend: capture execution output schema:
+- [ ] F35 P1-A: Return output schema from ReconciliationService
+- [ ] F35 P1-B: Persist output_schema on MigrationPlan
+- [ ] F35 P1-C: Infer PK/FK from output schema
+- [ ] F35 P1-D: Map Python dtypes → SQL types
+- [ ] F35 P1-E: Extend schema route with target_columns and schema_status
+- [ ] F35 P1-F: PATCH schema accepts pk/fk overrides
+Phase 2 — Frontend: port structor canvas:
+- [ ] F35 P2-A: Port structor canvas components
+- [ ] F35 P2-B: Adapter — schema response → canvas format
+- [ ] F35 P2-C: DataModelERD component
+- [ ] F35 P2-D: DataFlowDiagram component
+- [ ] F35 P2-E: ERD panel toggle — Data Model / Data Flow
+Phase 3 — Column diff panel and sidebar indicators:
+- [ ] F35 P3-A: Source / target column diff table
+- [ ] F35 P3-B: Table sidebar status indicators
+- [ ] F35 P3-C: DDL label reflects source
+- [ ] F35 P3-D: make test exits 0
 - [x] #40: Chevron tab shell — delivered by F28, issue closed
 - [x] #44: BI tab placeholder — empty state delivered in F28 S-C, issue closed
 - [x] #45: AI tab placeholder — empty state delivered in F28 S-C, issue closed
