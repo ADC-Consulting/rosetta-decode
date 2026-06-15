@@ -6,6 +6,48 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-15 — F35 Data Storage tab polish — Data Model, Data Flow, dataset name alignment
+
+**Branch:** `feat/F35-migration-output-catalog`
+
+**What we did:**
+
+Post-ship polish pass on the Data Storage tab (F35 already marked complete). 6 frontend commits + 2 backend commits:
+
+- **Data Model ERD — PK/FK badges**: Replaced plain text "pk fk" flags in `SchemaCanvasNodesLayer.tsx` with coloured pill badges (PK amber, FK blue, UQ purple, NN slate). Removed duplicate "PK " text prefix before column names.
+- **Data Model ERD — scroll to node**: Added `useEffect` in `SchemaCanvas.tsx` that smooth-scrolls the canvas viewport to centre the selected node whenever `selectedNodeId` changes.
+- **Data Model ERD — output-only filter**: `DataModelERD.tsx` now filters `schema.tables` to `libname === null` before passing to `schemaResponseToCanvas`. Cross-boundary FK edges drop automatically. When source tables are present but filtered, a notice strip reads "N output tables · Source SAS tables are not shown here — see the left sidebar". The ERD shows only the migration deliverable schema, not legacy source tables.
+- **Data Flow — all issues fixed**: Tooltips on clipped node labels; step→step edge labels capped at 2 names (+N more); step nodes now interactive (indigo selection state, toggle click); `requestAnimationFrame` replaces fragile `setTimeout(50)` for fitView; "Generated migration pipeline · N steps" header above canvas.
+- **Data Flow — clarified labels**: Node type subtitles changed from generic ("source", "step", "output") to intent-specific ("SAS input", "Python step", "output table") so users know immediately they're viewing the proposed migration, not the original SAS program.
+- **Dataset name alignment — worker**: `_normalise_pipeline_step_datasets()` added to `worker/main.py`. After lineage is built, rewrites each `pipeline_step.inputs[]`/`outputs[]` from SAS logical names (e.g. `work.dm`) to file-basename equivalents (e.g. `dm_raw`) via `_dataset_matches_file()` lookup. Applied to all new jobs.
+- **Dataset name alignment — backend read-time**: `_normalise_pipeline_step_names()` added to `backend/api/routes/jobs.py`. Same normalisation applied at GET `/jobs/{id}/lineage` read time so existing jobs also benefit. However: **open issue** — old jobs where `migration_plan.data_schema` is empty ({}) are not normalised because there's no lookup table available. Newly submitted jobs will have correct names.
+
+**Commits:** 7 committed; `src/backend/api/routes/jobs.py` staged but not yet committed (interrupted mid-debug).
+
+**Decisions:**
+- Data Model ERD should show output tables only (not source SAS tables) — source tables are input artefacts; the ERD's purpose is to document what the migration produced.
+- Data Flow should keep source nodes — it IS a lineage view; hiding source nodes would make the diagram meaningless.
+- Dataset name normalisation belongs at both write time (worker) and read time (backend API) to cover existing + future jobs.
+
+**Open Questions / Blockers:**
+- Old jobs with empty `data_schema` in `migration_plan` cannot be normalised at read time — the lookup table doesn't exist. Root cause: these jobs predate the `data_schema` persistence change. No fix without re-running the jobs.
+- The uncommitted `jobs.py` change (read-time normalisation) works for jobs that have `data_schema` populated, but has no effect on older jobs.
+
+### Next Session — Start Here
+1. Commit the staged `src/backend/api/routes/jobs.py` change (read-time pipeline step name normalisation).
+2. Verify the normalisation works on a newly submitted job end-to-end (Data Flow node names match sidebar names).
+3. Consider opening the F35 PR once the dataset name issue is confirmed working on new jobs.
+
+### Files Touched
+- `src/frontend/src/components/SchemaCanvas/SchemaCanvas.tsx`
+- `src/frontend/src/components/SchemaCanvas/SchemaCanvasNodesLayer.tsx`
+- `src/frontend/src/components/JobDetail/DataModelERD.tsx`
+- `src/frontend/src/components/JobDetail/DataFlowDiagram.tsx`
+- `src/worker/main.py`
+- `src/backend/api/routes/jobs.py` (staged, uncommitted)
+
+---
+
 ## 2026-06-15 — F35 Phase 3 complete; feature branch ready for PR
 
 **Branch:** `feat/F35-migration-output-catalog` (10 commits ahead of F34 base)

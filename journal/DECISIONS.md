@@ -6,6 +6,14 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-06-15 — F35 Data Storage tab design decisions
+
+- **Data Model ERD shows output tables only:** Source SAS tables are input artefacts, not migration deliverables. Mixing them into the ERD dilutes the diagram's purpose. A notice strip explains the filter when source tables were removed. · revisit never
+- **Data Flow keeps source nodes:** Unlike the ERD, Data Flow is a lineage view — hiding source nodes would make it meaningless. Source tables correctly appear as "SAS input" nodes showing where data originates. · revisit never
+- **Dataset name normalisation at both write time and read time:** Worker normalises SAS logical names (work.dm) to file-basename equivalents (dm_raw) via _dataset_matches_file() after lineage is built. Backend applies the same pass at GET /jobs/{id}/lineage read time so existing jobs also benefit where data_schema is populated. Jobs with empty data_schema (pre-F34 jobs) cannot be normalised without re-running. · revisit never
+
+---
+
 ## 2026-06-12 — F34 Phase 2 column schema
 
 - **Phase 2 must include SAS source parsing for column schema:** pyreadstat covers uploaded `.sas7bdat` files; derived datasets (sdtm_dm, adsl_output) only get column types from SAS source declarations (LENGTH, FORMAT, ATTRIB statements); without this, derived tables show no column data at all · revisit never

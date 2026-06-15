@@ -362,6 +362,12 @@ Phase 3 — Column diff panel and sidebar indicators — **complete**
 - [x] F35 P3-B: Table sidebar status indicators
 - [x] F35 P3-C: DDL label reflects source
 - [x] F35 P3-D: make test exits 0
+- [x] F35 post-ship: PK/FK styled badges in SchemaCanvasNodesLayer; scroll-to-selected-node in SchemaCanvas
+- [x] F35 post-ship: Data Model ERD filtered to output tables only; source-table notice strip
+- [x] F35 post-ship: Data Flow — tooltips, edge label truncation, step interactivity, rAF fitView, pipeline header, clarified node labels ("SAS input" / "Python step" / "output table")
+- [x] F35 post-ship: Worker normalises pipeline_step dataset names at write time (_normalise_pipeline_step_datasets)
+- [x] F35 post-ship: Backend normalises pipeline_step dataset names at read time (GET /jobs/{id}/lineage) — committed, deployed
+- [ ] F35 open: Old jobs with empty data_schema cannot be normalised — Data Flow node names won't match sidebar on pre-existing jobs; fix requires re-running the job
 - [x] #40: Chevron tab shell — delivered by F28, issue closed
 - [x] #44: BI tab placeholder — empty state delivered in F28 S-C, issue closed
 - [x] #45: AI tab placeholder — empty state delivered in F28 S-C, issue closed
