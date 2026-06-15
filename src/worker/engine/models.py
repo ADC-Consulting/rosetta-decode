@@ -438,6 +438,9 @@ class DataFileInfo(BaseModel):
         extension: File extension including the dot (e.g. ``".csv"``).
         columns: Column headers sniffed from the file; empty list if unreadable.
         row_count: Number of data rows, or ``None`` if not sniffable.
+        column_types: Mapping of lowercased column name to Spark cast type
+            (``"string"`` or ``"double"``), populated only for ``.sas7bdat``
+            files. Empty for CSV/TSV/XLSX and derived datasets.
     """
 
     path: str
@@ -445,6 +448,7 @@ class DataFileInfo(BaseModel):
     extension: str
     columns: list[str] = Field(default_factory=list)
     row_count: int | None = None
+    column_types: dict[str, str] = Field(default_factory=dict)
 
 
 class JobContext(BaseModel):

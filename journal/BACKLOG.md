@@ -54,6 +54,16 @@
   - [x] F60 S-E: inject referenced formats into agent prompts + scoped `put()` rule (normalized name match, no built-in regression) → `agents/{shared,data_step,proc,generic_proc}.py`
   - [x] F60 S-F: tests for wiring + prompt injection (cross-file catalog, width/`$` refs, built-in negative case) → `tests/test_format_catalog.py`; router routing covered in `tests/test_translation_router.py`
   - [x] F60 S-G: `make test` exits 0 (all 7 gates green, coverage ≥90%)
+- [x] F61: Type-aware schema contract — bake source-declared column types into delivered PySpark → see `docs/plans/latest/F61-declared-column-types.md`
+  - [x] F61 S-A: `DataFileInfo.column_types` field → `src/worker/engine/models.py`
+  - [x] F61 S-B: `_map_readstat_type` + `_sniff_file` 3-tuple + catalog wiring → `src/worker/main.py`
+  - [x] F61 S-C: `inject_declared_casts` deterministic helper → `src/worker/engine/agents/shared.py`
+  - [x] F61 S-D: wire injector into DataStepAgent, ProcAgent, GenericProcAgent → `agents/{data_step,proc,generic_proc}.py`
+  - [x] F61 S-E: `detect_referenced_data_files` + `render_declared_types_section` → `src/worker/engine/agents/shared.py`
+  - [x] F61 S-F: reconcile rules 1/5/8 with F61 (informational notes, no new cast rule) → `src/worker/engine/agents/shared.py`
+  - [x] F61 S-G: wire declared-types section into all three prompt builders → `agents/{data_step,proc,generic_proc}.py`
+  - [x] F61 S-H/S-I: unit + e2e tests → `tests/test_shared_inject_declared_casts.py`, `tests/test_worker_main*.py`, `tests/test_format_catalog.py`
+  - [x] F61 S-J: `make test` exits 0 (all 7 gates green)
 - [ ] F1-ext: Macro definition + call expansion (`%MACRO` / `%MEND`) — superseded by F57 (call expansion) + F59 (control flow); close once verified end-to-end
 - [ ] F3-ext: Row-level hash diff check
 - [ ] F4: SAS log ingestion — parse log structure

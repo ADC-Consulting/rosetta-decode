@@ -17,10 +17,13 @@ from src.worker.core.config import worker_settings
 from src.worker.engine.agents.shared import (
     SHARED_TRANSLATION_RULES,
     build_block_output_stems,
+    detect_referenced_data_files,
     detect_referenced_formats,
+    inject_declared_casts,
     normalise_input_vars_in_code,
     normalise_output_var,
     normalise_output_var_in_code,
+    render_declared_types_section,
     render_format_section,
 )
 from src.worker.engine.models import BlockType, GeneratedBlock, JobContext, SASBlock
@@ -220,6 +223,12 @@ def _build_prompt(block: SASBlock, windowed: JobContext, all_blocks: list[SASBlo
         lines.append("")
         lines.append(format_section)
 
+    types_refs = detect_referenced_data_files(block, windowed.data_files)
+    types_section = render_declared_types_section(types_refs, windowed.data_files)
+    if types_section:
+        lines.append("")
+        lines.append(types_section)
+
     lines.append("")
     lines.append("## SAS PROC SQL to translate")
     lines.append(f"Source: {block.source_file}, lines {block.start_line}-{block.end_line}")
@@ -326,6 +335,7 @@ class ProcAgent:
                 build_block_output_stems(context.blocks),
                 "ProcAgent",
             )
+            fixed_code = inject_declared_casts(fixed_code, context.data_files, "ProcAgent")
             fixed_output_var = normalise_output_var(block.output_datasets, output.output_var)
             if fixed_output_var and not _re.search(
                 rf"\b{_re.escape(fixed_output_var)}\s*=", fixed_code
