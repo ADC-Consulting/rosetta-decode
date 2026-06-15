@@ -301,7 +301,7 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                   : "bg-background text-muted-foreground hover:bg-muted"
               }`}
             >
-              ERD
+              Diagram
             </button>
           </div>
         </div>
