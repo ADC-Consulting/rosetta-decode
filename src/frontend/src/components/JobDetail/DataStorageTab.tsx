@@ -15,6 +15,16 @@ interface DataStorageTabProps {
   isReviewable: boolean;
 }
 
+const SEMANTIC_TO_PG: Record<string, string> = {
+  String: "TEXT",
+  Integer: "BIGINT",
+  Float: "DOUBLE PRECISION",
+  Decimal: "DECIMAL",
+  Date: "DATE",
+  DateTime: "TIMESTAMP",
+  Boolean: "BOOLEAN",
+};
+
 // ── Semantic type badge colours ───────────────────────────────────────────────
 
 const SEMANTIC_COLORS: Record<string, string> = {
@@ -584,20 +594,24 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                     </>
                   ) : selectedTable.columns.length > 0 ? (
                     <>
-                      <div className="px-3 py-2 border-b border-border bg-muted/10 text-xs">
+                      <div className="px-3 py-2 border-b border-border bg-muted/10 text-xs flex items-center gap-2">
                         <span className="font-medium">Proposed output schema</span>
-                        <span className="text-muted-foreground"> · inferred from source columns</span>
+                        <span className="text-muted-foreground">· inferred from source columns</span>
+                        <span className="inline-flex items-center rounded px-1.5 py-0.5 font-medium bg-blue-100 text-blue-700">
+                          PostgreSQL
+                        </span>
                       </div>
                       <table className="w-full text-sm border-collapse">
                         <thead className="sticky top-0 bg-background z-10">
                           <tr className="border-b border-border">
                             <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Column</th>
-                            <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Proposed type</th>
+                            <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">PostgreSQL type</th>
                           </tr>
                         </thead>
                         <tbody>
                           {selectedTable.columns.map((col) => {
-                            const displayType = col.override_type ?? col.semantic_type;
+                            const semanticType = col.override_type ?? col.semantic_type;
+                            const pgType = SEMANTIC_TO_PG[semanticType];
                             const isOverridden = col.override_type !== null;
                             return (
                               <tr key={col.name} className="border-b border-border last:border-0">
@@ -605,17 +619,17 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                                   {col.name}
                                 </td>
                                 <td className="px-3 py-2 whitespace-nowrap">
-                                  {displayType === "Unknown" ? (
-                                    <span className="text-xs text-muted-foreground">—</span>
-                                  ) : (
+                                  {pgType ? (
                                     <span
-                                      className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium ${semanticBadgeClasses(displayType)}`}
+                                      className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium ${semanticBadgeClasses(semanticType)}`}
                                     >
-                                      {displayType}
+                                      {pgType}
                                       {isOverridden && (
                                         <Pencil className="w-3 h-3" aria-label="Overridden type" />
                                       )}
                                     </span>
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground">—</span>
                                   )}
                                 </td>
                               </tr>
@@ -650,9 +664,6 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                         )}
                         <span className="flex items-center gap-2">
                           Table definition
-                          <span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-blue-100 text-blue-700">
-                            PostgreSQL
-                          </span>
                           {selectedTable.ddl_source === "source_estimated" && (
                             <span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-800">
                               estimated from SAS
