@@ -41,8 +41,10 @@ class Job(Base):
     lineage: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     doc: Mapped[str | None] = mapped_column(Text, nullable=True)
     migration_plan: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    migration_plan_post_run: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     generated_files: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     user_overrides: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    token_usage: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True, default=None)
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     skip_llm: Mapped[bool] = mapped_column(
         sa.Boolean, nullable=False, default=False, server_default=sa.text("false")
@@ -160,3 +162,19 @@ class ExplainSession(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
+
+
+def effective_migration_plan(job: "Job") -> dict[str, Any] | None:
+    """Return the migration plan that consumers should display.
+
+    Prefers the post-run, rule-enriched plan when present, otherwise falls
+    back to the pre-run planner estimate (older jobs have no post-run column).
+
+    Args:
+        job: The job whose migration plan should be resolved.
+
+    Returns:
+        The post-run enriched plan dict if set, else the pre-run plan dict,
+        else ``None`` when neither is available.
+    """
+    return job.migration_plan_post_run or job.migration_plan

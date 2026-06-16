@@ -82,6 +82,47 @@ async def test_get_job_plan_returns_plan_when_available(
 
 
 @pytest.mark.asyncio
+async def test_get_job_plan_returns_post_run_risk_when_set(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Endpoint returns the POST-RUN risk when migration_plan_post_run is set."""
+    job_id = str(uuid.uuid4())
+    pre_run_plan = {
+        "summary": "pre-run estimate",
+        "overall_risk": "medium",
+        "block_plans": [],
+        "recommended_review_blocks": [],
+        "cross_file_dependencies": [],
+    }
+    post_run_plan = {
+        "summary": "post-run enriched",
+        "overall_risk": "high",
+        "block_plans": [],
+        "recommended_review_blocks": [],
+        "cross_file_dependencies": [],
+    }
+
+    job = Job(
+        id=job_id,
+        status="proposed",
+        input_hash="test_hash",
+        files={"test.sas": "data a; run;"},
+        python_code="# test",
+        migration_plan=pre_run_plan,
+        migration_plan_post_run=post_run_plan,
+    )
+    db_session.add(job)
+    await db_session.commit()
+
+    response = await client.get(f"/jobs/{job_id}/plan")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["overall_risk"] == "high"
+    assert data["summary"] == "post-run enriched"
+
+
+@pytest.mark.asyncio
 async def test_get_job_plan_returns_202_when_plan_unavailable(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:

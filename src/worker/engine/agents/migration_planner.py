@@ -24,6 +24,7 @@ from src.worker.engine.models import (
     SASBlock,
     TranslationStrategy,
 )
+from src.worker.engine.usage import record_usage
 
 logger = logging.getLogger("src.worker.engine.agents.migration_planner")
 
@@ -231,6 +232,7 @@ class MigrationPlannerAgent:
                 prompt,
                 model_settings={"max_tokens": 6000},
             )
+            record_usage(result.usage())
         except Exception as exc:
             logger.exception("MigrationPlannerAgent LLM call failed")
             raise MigrationPlannerError(f"MigrationPlannerAgent failed: {exc}", cause=exc) from exc

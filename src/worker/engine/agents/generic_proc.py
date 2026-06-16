@@ -24,10 +24,21 @@ from pydantic_ai.providers.openai import OpenAIProvider
 from src.worker.core.config import worker_settings
 from src.worker.engine.agents.shared import (
     SHARED_TRANSLATION_RULES,
+    apply_mechanical_drift_guard,
+    build_block_output_stems,
+    detect_referenced_data_files,
+    detect_referenced_formats,
+    enforce_csv_read_schema,
+    enforce_padded_concat_keys,
+    inject_declared_casts,
+    normalise_input_vars_in_code,
     normalise_output_var,
     normalise_output_var_in_code,
+    render_declared_types_section,
+    render_format_section,
 )
 from src.worker.engine.models import GeneratedBlock, JobContext, SASBlock
+from src.worker.engine.usage import record_usage
 
 logger = logging.getLogger("src.worker.engine.agents.generic_proc")
 
@@ -409,6 +420,18 @@ def _build_prompt(block: SASBlock, windowed: JobContext, all_blocks: list[SASBlo
                 f"- /workspace/data/{basename}  ({info.extension}, {info.row_count or '?'} rows)"
             )
 
+    referenced = detect_referenced_formats(block.raw_sas)
+    format_section = render_format_section(referenced, windowed.format_catalog)
+    if format_section:
+        lines.append("")
+        lines.append(format_section)
+
+    types_refs = detect_referenced_data_files(block, windowed.data_files)
+    types_section = render_declared_types_section(types_refs, windowed.data_files)
+    if types_section:
+        lines.append("")
+        lines.append(types_section)
+
     lines.append(f"## SAS {block.block_type} block to translate")
     lines.append(f"Source: {block.source_file}, lines {block.start_line}-{block.end_line}")
     lines.append("")
@@ -501,6 +524,7 @@ class GenericProcAgent:
                 prompt,
                 model_settings={"max_tokens": 8000},
             )
+            record_usage(result.usage())
         except Exception as exc:
             logger.exception("GenericProcAgent LLM call failed for %s", block.block_type)
             raise GenericProcError(
@@ -522,9 +546,27 @@ class GenericProcAgent:
         python_code = normalise_output_var_in_code(
             proc_result.python_code, block.output_datasets, "GenericProcAgent"
         )
+        logger.debug(
+            "GenericProcAgent block %s:%s input_datasets=%s output_datasets=%s",
+            block.source_file,
+            block.start_line,
+            block.input_datasets,
+            block.output_datasets,
+        )
+        python_code = normalise_input_vars_in_code(
+            python_code,
+            block.input_datasets,
+            build_block_output_stems(context.blocks),
+            "GenericProcAgent",
+        )
         python_code = _fix_workspace_paths(python_code)
         python_code = _fix_excel_spark_reads(python_code)
+        python_code = enforce_csv_read_schema(python_code, context.data_files, "GenericProcAgent")
+        python_code = inject_declared_casts(python_code, context.data_files, "GenericProcAgent")
         fixed_output_var = normalise_output_var(block.output_datasets, proc_result.output_var)
+        python_code = enforce_padded_concat_keys(
+            python_code, block.raw_sas, fixed_output_var, "GenericProcAgent"
+        )
         logger.debug(
             "GenericProcAgent after normalise: output_var=%r, python_code has rawdir_customers=%s",
             fixed_output_var,
@@ -539,15 +581,17 @@ class GenericProcAgent:
                 fixed_output_var,
             )
 
-        return GeneratedBlock(
-            source_block=block,
-            python_code=python_code,
-            output_var=fixed_output_var,
-            is_untranslatable=is_untranslatable,
-            confidence=proc_result.confidence_band,
-            confidence_score=proc_result.confidence_score,
-            confidence_band=proc_result.confidence_band,
-            uncertainty_notes=proc_result.uncertainty_notes,
-            assumptions=proc_result.assumptions,
-            strategy_used=proc_result.strategy_used,
+        return apply_mechanical_drift_guard(
+            GeneratedBlock(
+                source_block=block,
+                python_code=python_code,
+                output_var=fixed_output_var,
+                is_untranslatable=is_untranslatable,
+                confidence=proc_result.confidence_band,
+                confidence_score=proc_result.confidence_score,
+                confidence_band=proc_result.confidence_band,
+                uncertainty_notes=proc_result.uncertainty_notes,
+                assumptions=proc_result.assumptions,
+                strategy_used=proc_result.strategy_used,
+            )
         )

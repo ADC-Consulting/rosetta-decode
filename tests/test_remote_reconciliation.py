@@ -37,9 +37,29 @@ async def test_remote_recon_returns_checks_on_success() -> None:
             python_code="x = 1",
             backend=LocalBackend(),
         )
-    # result_columns is non-empty so output_schema is now included (F35 P1)
+    # Both output_schema (F35) and result_json (F15) are threaded through
     assert result["checks"] == [{"name": "row_count", "status": "pass"}]
     assert result["output_schema"] == {"columns": ["x"], "dtypes": {}}
+    assert result["result_json"] == [{"x": 1}]
+    assert result["result_columns"] == ["x"]
+
+
+@pytest.mark.asyncio
+async def test_remote_recon_omits_result_json_when_absent() -> None:
+    """When the executor returns no result_json, the key is absent (optional)."""
+    fake_payload = {
+        "stdout": "",
+        "stderr": "",
+        "checks": [{"name": "row_count", "status": "pass"}],
+        "error": None,
+        "elapsed_ms": 10,
+    }
+    with patch.object(RemoteReconciliationService, "_post_execute", return_value=fake_payload):
+        svc = RemoteReconciliationService()
+        result = await svc.run(
+            ref_csv_path="/tmp/ref.csv", python_code="x = 1", backend=LocalBackend()
+        )
+    assert result == {"checks": [{"name": "row_count", "status": "pass"}], "result_columns": []}
 
 
 @pytest.mark.asyncio

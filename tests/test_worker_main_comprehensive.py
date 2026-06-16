@@ -68,9 +68,15 @@ def test_sniff_file_succeeds_for_data_formats(
         sep = "\t" if ext == ".tsv" else ","
         df.to_csv(disk_path, sep=sep, index=False)
 
-    cols, count, _ctypes, _clabels, _cfmts = _sniff_file(disk_path, ext)
+    cols, count, ctypes, _clabels, _cfmts = _sniff_file(disk_path, ext)
     assert cols == expected_cols
     assert count == expected_count
+    # CSV/TSV: column_types is now populated from pandas dtype inference
+    if ext in (".csv", ".tsv"):
+        assert isinstance(ctypes, dict)
+        assert set(ctypes.keys()) == {c.lower() for c in expected_cols}
+    else:
+        assert ctypes == {}
 
 
 @pytest.mark.parametrize("ext", [".xlsx", ".xls"])
@@ -329,6 +335,21 @@ def test_sniff_file_dispatches_xport_extension(tmp_path: pathlib.Path) -> None:
     mock_xport.assert_called_once_with(disk_path)
     assert cols == ["a", "b"]
     assert count == 3
+
+    # Mock pyreadstat successfully via sys.modules (pyreadstat is imported inside the try block)
+    mock_pr = MagicMock()
+    mock_df = MagicMock()
+    mock_meta = MagicMock()
+    mock_meta.column_names = ["col1", "col2"]
+    mock_meta.number_rows = None
+    mock_meta.readstat_variable_types = {"col1": "string", "col2": "double"}
+    mock_pr.read_sas7bdat.return_value = (mock_df, mock_meta)
+
+    with patch.dict("sys.modules", {"pyreadstat": mock_pr}):
+        cols, count, column_types, _clabels, _cfmts = _sniff_file(disk_path, ".sas7bdat")
+        assert cols == ["col1", "col2"]
+        assert count is None
+        assert column_types == {"col1": "string", "col2": "double"}
 
 
 # ─── _make_session_factory ───────────────────────────────────────────────────
@@ -1774,6 +1795,26 @@ async def test_execute_no_ref_data_skips_block_reconciliation() -> None:
     # Since no ref paths, _reconcile_initial_blocks should not have been called
     assert reconcile_called == []
 
+    # --- token_usage assertions ---
+    # Step-10a is the first session.execute call: update(Job).values(status=..., token_usage=...)
+    assert session.execute.called, "session.execute should have been called at least once"
+    step_10a_stmt = session.execute.call_args_list[0].args[0]
+    values = {k.key: v.value for k, v in step_10a_stmt._values.items()}
+    assert "token_usage" in values, "step-10a update must include token_usage"
+    token_usage = values["token_usage"]
+    assert token_usage is not None, "token_usage must not be None on successful job completion"
+    assert "phases" in token_usage, "token_usage must have a 'phases' key"
+    assert "total" in token_usage, "token_usage must have a 'total' key"
+    total = token_usage["total"]
+    for key in (
+        "input_tokens",
+        "output_tokens",
+        "cache_read_tokens",
+        "cache_write_tokens",
+        "requests",
+    ):
+        assert key in total, f"token_usage['total'] must contain '{key}'"
+
 
 @pytest.mark.asyncio
 async def test_reconcile_initial_blocks_skips_strategy_in_skip_set() -> None:
@@ -1915,3 +1956,109 @@ async def test_process_job_direct_call() -> None:
 
     assert session.execute.called
     assert session.commit.called
+
+
+# ─── token_usage persistence ──────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_execute_persists_token_usage_on_failure() -> None:
+    """except-Exception branch in run() writes non-None token_usage when _execute
+    sets self._usage_tracker before raising.
+
+    _execute always assigns self._usage_tracker at line 390 before any agent call,
+    so even a failure partway through the pipeline yields a real UsageTracker whose
+    snapshot() is a non-None dict with the required shape.
+    """
+    orchestrator = JobOrchestrator()
+    fake_job = _make_job(files={"main.sas": "data out; set in; run;"})
+    session = AsyncMock()
+
+    # Let _analysis_agent.analyse raise — _execute will have already set
+    # self._usage_tracker = UsageTracker() at line 390 before calling the agent.
+    with patch.object(orchestrator, "_analysis_agent") as mock_analysis:
+        mock_analysis.analyse = AsyncMock(side_effect=RuntimeError("analysis exploded"))
+        await orchestrator.run(session, fake_job)
+
+    # run() should have caught the exception and called session.execute to persist failed status
+    assert session.execute.called
+
+    # Find the update statement that writes the failed status (contains token_usage)
+    failed_stmt = session.execute.call_args_list[0].args[0]
+    failed_values = {k.key: v.value for k, v in failed_stmt._values.items()}
+
+    assert "token_usage" in failed_values, "failed-status update must include token_usage key"
+    token_usage = failed_values["token_usage"]
+    assert token_usage is not None, (
+        "token_usage must not be None — UsageTracker was created before the failure"
+    )
+    assert "phases" in token_usage, "token_usage must have a 'phases' key"
+    assert "total" in token_usage, "token_usage must have a 'total' key"
+    total = token_usage["total"]
+    for key in (
+        "input_tokens",
+        "output_tokens",
+        "cache_read_tokens",
+        "cache_write_tokens",
+        "requests",
+    ):
+        assert key in total, f"token_usage['total'] must contain '{key}'"
+
+
+# ─── F61: inject_declared_casts e2e / reconciliation ─────────────────────────
+
+
+def test_inject_declared_casts_e2e_closes_null_propagation() -> None:
+    """inject_declared_casts produces correct cast blocks; aggregate parity is
+    finite for matching types and breaks for mismatched sums (S-I e2e test).
+    """
+    import textwrap
+
+    from src.worker.engine.agents.shared import inject_declared_casts
+    from src.worker.engine.models import DataFileInfo
+
+    # Simulate LLM-generated code that reads a sas7bdat with a toDF normalisation line
+    generated_code = textwrap.dedent("""
+        adsl = spark.read.format("sas7bdat").load("/workspace/data/adsl.sas7bdat")
+        adsl = adsl.toDF(*[c.lower() for c in adsl.columns])
+        result = adsl.filter(F.col("subjid").isNotNull())
+    """).strip()
+
+    data_files = {
+        "data/raw/adsl.sas7bdat": DataFileInfo(
+            path="data/raw/adsl.sas7bdat",
+            disk_path="/fake/adsl.sas7bdat",
+            extension=".sas7bdat",
+            column_types={"subjid": "string", "siteid": "string"},
+        )
+    }
+    delivered = inject_declared_casts(generated_code, data_files, "E2ETest")
+
+    # Cast lines were injected
+    assert '.cast("string")' in delivered
+    assert "# SAS: data/raw/adsl.sas7bdat (declared type)" in delivered
+
+    # Cast block appears before downstream transforms
+    cast_pos = delivered.index("# SAS:")
+    filter_pos = delivered.index("result = adsl")
+    assert cast_pos < filter_pos
+
+    # --- Recon parity check ---
+    import pandas as pd
+    from src.executor.recon import _aggregate_parity
+
+    ref_df = pd.DataFrame({"subjid": ["001", "002", "003"], "value": [10.0, 20.0, 30.0]})
+
+    # Correct path: sums match — aggregate parity should pass
+    out_df_correct = pd.DataFrame({"subjid": ["001", "002", "003"], "value": [10.0, 20.0, 30.0]})
+    correct_result = _aggregate_parity(ref_df, out_df_correct)
+    assert correct_result["status"] == "pass", (
+        f"Expected aggregate parity to pass for matching values, got: {correct_result}"
+    )
+
+    # Drifted path: last value row differs → aggregate sum mismatch → parity fail
+    out_df_drifted = pd.DataFrame({"subjid": ["001", "002", "003"], "value": [10.0, 20.0, 99.0]})
+    drifted_result = _aggregate_parity(ref_df, out_df_drifted)
+    assert drifted_result["status"] == "fail", (
+        f"Expected aggregate parity to fail for drifted values, got: {drifted_result}"
+    )

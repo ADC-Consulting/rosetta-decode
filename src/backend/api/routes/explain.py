@@ -28,7 +28,7 @@ from src.backend.api.schemas import (
     ExplainResponse,
     ExplainSessionResponse,
 )
-from src.backend.db.models import ExplainSession, Job
+from src.backend.db.models import ExplainSession, Job, effective_migration_plan
 from src.backend.db.session import AsyncSessionLocal, get_async_session
 from src.worker.engine.chatbot import ExplainAgent
 
@@ -293,8 +293,9 @@ async def explain_job(
         raise HTTPException(status_code=404, detail=f"Job {req.job_id} not found")
 
     parts: list[str] = []
-    if job.migration_plan:
-        parts.append(f"Migration plan:\n{json.dumps(job.migration_plan, indent=2)}")
+    eff_plan = effective_migration_plan(job)
+    if eff_plan:
+        parts.append(f"Migration plan:\n{json.dumps(eff_plan, indent=2)}")
     if job.python_code:
         parts.append(f"Generated Python:\n```python\n{job.python_code}\n```")
     if job.doc:

@@ -45,13 +45,42 @@
 
 **Remaining Phase 2**
 
-- [ ] F1-ext: Macro definition + call expansion (`%MACRO` / `%MEND`)
+- [ ] F60: PROC FORMAT translation (user formats → when/otherwise) → see `docs/plans/latest/F60-proc-format-translation.md` (code complete + green, pending commit; end-to-end sandbox evidence still to capture per S-F)
+  - [x] F60 S-A: format-catalog data model (`FormatDef`/`FormatEntry` + `format_catalog` on ParseResult/JobContext) → `src/worker/engine/models.py`
+  - [x] F60 S-B: deterministic extractor (`extract_format_catalog` + `normalize_format_name`; line-bounded mapping regex) → `src/worker/engine/format_catalog.py`
+  - [x] F60 S-C: unit tests for extractor → `tests/test_format_catalog.py`
+  - [x] F60 S-D: wire extraction into parser (on `expanded_source`) + JobContext → `src/worker/engine/parser.py`, `src/worker/main.py`
+  - [x] F60 S-E0: router guard — `is_simple()` allowlist so `put()` DATA steps route to `DataStepAgent`, not `_SimpleCopyHelper` → `src/worker/engine/router.py`
+  - [x] F60 S-E: inject referenced formats into agent prompts + scoped `put()` rule (normalized name match, no built-in regression) → `agents/{shared,data_step,proc,generic_proc}.py`
+  - [x] F60 S-F: tests for wiring + prompt injection (cross-file catalog, width/`$` refs, built-in negative case) → `tests/test_format_catalog.py`; router routing covered in `tests/test_translation_router.py`
+  - [x] F60 S-G: `make test` exits 0 (all 7 gates green, coverage ≥90%)
+- [x] F61: Type-aware schema contract — bake source-declared column types into delivered PySpark → see `docs/plans/latest/F61-declared-column-types.md`
+  - [x] F61 S-A: `DataFileInfo.column_types` field → `src/worker/engine/models.py`
+  - [x] F61 S-B: `_map_readstat_type` + `_sniff_file` 3-tuple + catalog wiring → `src/worker/main.py`
+  - [x] F61 S-C: `inject_declared_casts` deterministic helper → `src/worker/engine/agents/shared.py`
+  - [x] F61 S-D: wire injector into DataStepAgent, ProcAgent, GenericProcAgent → `agents/{data_step,proc,generic_proc}.py`
+  - [x] F61 S-E: `detect_referenced_data_files` + `render_declared_types_section` → `src/worker/engine/agents/shared.py`
+  - [x] F61 S-F: reconcile rules 1/5/8 with F61 (informational notes, no new cast rule) → `src/worker/engine/agents/shared.py`
+  - [x] F61 S-G: wire declared-types section into all three prompt builders → `agents/{data_step,proc,generic_proc}.py`
+  - [x] F61 S-H/S-I: unit + e2e tests → `tests/test_shared_inject_declared_casts.py`, `tests/test_worker_main*.py`, `tests/test_format_catalog.py`
+  - [x] F61 S-J: `make test` exits 0 (all 7 gates green)
+- [x] F61-followups (discovered + fixed during F61 sandbox verification, 2026-06-15):
+  - [x] Recon dtype detection robust to pandas 3.0 `StringDtype` (`not is_numeric_dtype`) → `executor/recon.py`, `worker/validation/reconciliation.py`
+  - [x] Executor result date serialization `date_format='iso'` (was epoch-millis) → `src/executor/runner.py`
+  - [x] AMBIGUOUS_REFERENCE self-heal: §5 rule + bare→alias `F.col` rewrite in `_safe_exec` + executor bounded retry
+  - [x] Corrected stale golden `adsl_expected.csv` TRTEDT/TRTDURD from current `ex_raw.csv`
+- [ ] F61-debt: add a dedicated unit test for `_coerce_sas_date_columns` (validated manually this session; no committed regression test yet)
+- [ ] Agentic full-pipeline retry (runtime crashes only): attribute traceback → block via `# SAS:` provenance, re-run that block's refine with the pipeline error as hint. Do NOT auto-fix parity mismatches (gaming-the-golden risk). Needs reproducibility bound. See F19 agentic-refine-loop.
+- [ ] Date/datetime semantic typing (beyond char-vs-numeric): format-aware SAS date handling in delivered code (F61 out-of-scope item)
+- [ ] F1-ext: Macro definition + call expansion (`%MACRO` / `%MEND`) — superseded by F57 (call expansion) + F59 (control flow); close once verified end-to-end
 - [ ] F3-ext: Row-level hash diff check
 - [ ] F4: SAS log ingestion — parse log structure
 - [ ] F4: LLM call for runtime logic reconstruction from log
 - [ ] F10: Artefact versioning — group jobs by input_hash, expose version history per migration
 - [ ] F11: Plain-language documentation — LLM-generated business-readable summary per job → see `docs/plans/F-backend-postmvp.md` S-BE4
-- [ ] F15: Record-level reconciliation — row-by-row diff with configurable keys and tolerances
+- [x] F15: Record-level reconciliation — row-by-row diff with configurable keys and tolerances (row_hash_diff + ReconConfig + LLM key resolution; `feat/F15-record-level-reconciliation`)
+- [x] fix: preserve leading zeros by honoring SAS `LENGTH var $w` char declarations at CSV read time (`fix/csv-declared-char-zeros`)
+- [ ] follow-up: add `dtype={col: str}` for declared-char columns in `stub_generator.py` `pd.read_csv` scaffold (untranslatable PROC IMPORT fallback path)
 - [ ] F18: Refine conversion action — re-submit with previous output + reconciliation report as context → see `docs/plans/F-backend-postmvp.md` S-BE6
 
 **F2-improvements — Agentic pipeline overhaul (`docs/plans/F2-agentic-workflow-improvements.md`)**
@@ -223,7 +252,7 @@
 - [x] fix(worker): cumulative code execution — prior-block NameErrors fixed; Parquet session cache removed; `result = <output_var>` injected for correct recon capture
 - [x] fix(prompt): `.schema[col]` introspection on inter-block DataFrames suppressed via `SHARED_TRANSLATION_RULES`
 - [x] fix(planner): `block_type` authoritative from parser; PROC_IML no longer shows as UNTRANSLATABLE
-- [ ] feat(planner): post-run risk+rationale enrichment — `_enrich_block_plan_post_run` in `main.py`; rule-based, no LLM call; re-persists `job.migration_plan` after `_persist_initial_revisions`
+- [x] feat(planner): post-run risk+rationale enrichment — `_enrich_block_plan_post_run` in `main.py`; rule-based, no LLM call; writes new `migration_plan_post_run` column after `_persist_initial_revisions` (two-column; pre-run preserved) → see #56
 - [ ] F20 Stream B: ExecutionOutputPanel improvements + Trust tab in EditorTab → see `docs/plans/latest/F20-live-trace-popup.md`
 
 ---
@@ -317,57 +346,32 @@
 - [x] F33 S-F: Build ETLTab orchestrating component
 - [x] F33 S-G: Wire ETLTab into JobDetailPage
 - [x] F33 S-H: make test exits 0
-**F34 — Data Storage tab (#43) → PR #98 open → see `docs/plans/latest/F34-data-storage-tab.md`**
-Phase 1 — Schema hierarchy + table browser + LIBNAME editing:
-- [x] F34 P1-A: Extend _sniff_file and DataFileInfo with column metadata
-- [x] F34 P1-B: Persist libname_map and data_schema in MigrationPlan
-- [x] F34 P1-C: Add GET /jobs/{id}/schema backend route
-- [x] F34 P1-D: Add PATCH /jobs/{id}/schema for user overrides
-- [x] F34 P1-E: Add getJobSchema API client + TypeScript types
-- [x] F34 P1-F: Build DataStorageTab component
-- [x] F34 P1-G: Wire into JobDetailPage
-Phase 2 — Column types + semantic type mapping:
-- [x] F34 P2-A: Semantic type mapping function
-- [x] F34 P2-B: Fix semantic type default for CSV columns (Unknown not Number)
-- [x] F34 P2-C: Extract column schema from SAS source (LENGTH/FORMAT/ATTRIB) for derived datasets
-- [x] F34 P2-D: Surface source-derived column schema in Data Storage tab
-Phase 3 — Relationships + ERD + DDL:
-- [x] F34 P3-A: Add merge_by_vars and join_on_keys to SASBlock
-- [x] F34 P3-B: Extract MERGE BY and JOIN ON in parser
-- [x] F34 P3-C: Build relationships list and persist to MigrationPlan
-- [x] F34 P3-D: DDL generation module
-- [x] F34 P3-E: Surface relationships and DDL in schema route
-- [x] F34 P3-F: Build DataStorageERD component
-- [x] F34 P3-G: Add DDL panel and ERD toggle to DataStorageTab
-- [x] F34 P3-H: make test exits 0
-Backlog: user-selectable DDL target platform (Databricks Delta, Snowflake, etc.)
 
-**F35 — Migration Output Catalog → see `docs/plans/latest/F35-migration-output-catalog.md`**
-Phase 1 — Backend: capture execution output schema — **complete**
-- [x] F35 P1-A: Return output schema from ReconciliationService
-- [x] F35 P1-B: Persist output_schema on MigrationPlan
-- [x] F35 P1-C: Infer PK/FK from output schema
-- [x] F35 P1-D: Map Python dtypes → SQL types
-- [x] F35 P1-E: Extend schema route with target_columns and schema_status
-- [x] F35 P1-F: PATCH schema accepts pk/fk overrides
-Phase 2 — Frontend: port structor canvas — **complete**
-- [x] F35 P2-0: Extend TS types (ColumnSchema/TableSchema/PatchJobSchemaRequest)
-- [x] F35 P2-A: Port structor canvas components (SchemaCanvas/)
-- [x] F35 P2-B: Adapter — schema response → canvas format
-- [x] F35 P2-C: DataModelERD component
-- [x] F35 P2-D: DataFlowDiagram component
-- [x] F35 P2-E: ERD panel toggle — Data Model / Data Flow
-Phase 3 — Column diff panel and sidebar indicators — **complete**
-- [x] F35 P3-A: Source / target column diff table
-- [x] F35 P3-B: Table sidebar status indicators
-- [x] F35 P3-C: DDL label reflects source
-- [x] F35 P3-D: make test exits 0
-- [x] F35 post-ship: PK/FK styled badges in SchemaCanvasNodesLayer; scroll-to-selected-node in SchemaCanvas
-- [x] F35 post-ship: Data Model ERD filtered to output tables only; source-table notice strip
-- [x] F35 post-ship: Data Flow — tooltips, edge label truncation, step interactivity, rAF fitView, pipeline header, clarified node labels ("SAS input" / "Python step" / "output table")
-- [x] F35 post-ship: Worker normalises pipeline_step dataset names at write time (_normalise_pipeline_step_datasets)
-- [x] F35 post-ship: Backend normalises pipeline_step dataset names at read time (GET /jobs/{id}/lineage) — committed, deployed
-- [ ] F35 open: Old jobs with empty data_schema cannot be normalised — Data Flow node names won't match sidebar on pre-existing jobs; fix requires re-running the job
+**F34 — Token usage & BOM scoping summary (#25) → see `docs/plans/latest/F34-token-usage-scoping.md`**
+- [x] F34 S-A: Alembic migration 018 + Job model column
+- [x] F34 S-B: UsageTracker + contextvars module
+- [x] F34 S-C: Tracker unit tests
+- [x] F34 S-D: Instrument 12 LLM call sites
+- [x] F34 S-E: Orchestrator activate/set_phase/persist
+- [x] F34 S-F: Worker integration test
+- [x] F34 S-G: Pricing module (LiteLLM fetch + static fallback)
+- [x] F34 S-H: Pricing unit tests
+- [x] F34 S-I: API schemas (PhaseTokens, TokenUsageStats, CostEstimate, BomSummary, ScopingSummaryResponse)
+- [x] F34 S-J: Extract _build_trust_blocks() helper
+- [x] F34 S-K: Markdown renderer + tests
+- [x] F34 S-L: GET /jobs/{id}/scoping route
+- [x] F34 S-M: Route tests
+- [x] F34 S-N: Frontend API client types + getJobScopingSummary
+- [x] F34 S-O: ScopingSummaryPanel component
+- [x] F34 S-P: Wire panel into PlanTab
+- [x] F34 S-Q: make test exits 0 + close-out
+
+- [x] #43: Data Storage tab — schema browser, ERD, data flow, output catalog → `feat/F35-migration-output-catalog` (PR #102)
+  - [x] Column metadata extraction from SAS/XPT/CSV files; semantic type mapping; GET /jobs/{id}/schema + PATCH
+  - [x] DataStorageTab: source / migration output sidebar sections; column schema detail panel; DDL collapsible
+  - [x] SchemaCanvas ERD (PK/FK badges, fit-to-view, scroll-to-selected); DataModelERD (output tables only)
+  - [x] DataFlowDiagram: ReactFlow + dagre LR, step interactivity, tooltips, dataset name normalisation
+  - [x] Right panel differentiated: source tables → SAS metadata read-only; output tables → proposed schema / diff view
 - [x] #40: Chevron tab shell — delivered by F28, issue closed
 - [x] #44: BI tab placeholder — empty state delivered in F28 S-C, issue closed
 - [x] #45: AI tab placeholder — empty state delivered in F28 S-C, issue closed
@@ -376,8 +380,20 @@ Phase 3 — Column diff panel and sidebar indicators — **complete**
 - [ ] #52: Revisit sidebar navigation — blocked on persona validation
 - [x] fix(frontend): PlanTab review queue — removed `.slice(0, 10)` cap; all items now render sorted by criticality
 
+**F35 — Remediation runbook (#19) → see plan at .claude/plans/generate-runbook-for-high-risk-expressive-kernighan.md**
+- [x] F35 S-A: runbook_templates.py — rule-based remediation_outline() + why_risky()
+- [x] F35 S-B: RunbookEntry + RunbookResponse schemas
+- [x] F35 S-C: _build_runbook_entries() + _render_runbook_markdown() helpers
+- [x] F35 S-D: GET /jobs/{id}/runbook route
+- [x] F35 S-E: test_runbook_templates.py unit tests
+- [x] F35 S-F: test_runbook_routes.py async route tests
+- [x] F35 S-G: RunbookEntry / RunbookResponse TypeScript types + getJobRunbook()
+- [x] F35 S-H: RunbookPanel component — collapsible, lazy-loaded, Copy-as-Markdown
+- [x] F35 S-I: Wire RunbookPanel into PlanTab below ScopingSummaryPanel
+- [x] F35 S-J: make test exits 0
+
 **GitHub issue priority queue (unblocked — source of truth is GitHub)**
-- [ ] #19: Runbook for high-risk / non-convertible blocks → generate per-block remediation view
+- [x] #19: Runbook for high-risk / non-convertible blocks → delivered by F35
 - [ ] #25: Token usage + bill-of-materials / scoping summary
 **F30 — Reads/Produces row (#60) → see `docs/plans/latest/F30-reads-produces-row.md`**
 - [x] F30 S-A: Add input/output_datasets to BlockPlan model
@@ -405,9 +421,27 @@ Phase 3 — Column diff panel and sidebar indicators — **complete**
 - [x] F32 S-E: Update TypeScript type
 - [x] F32 S-F: Render warning banner on Plan tab
 - [x] F32 S-G: make test exits 0
-- [ ] #56: Post-run risk + rationale enrichment (rule-based, already designed)
-- [ ] #57: Macro definition + call expansion (%MACRO/%MEND)
-- [ ] #58: Record-level reconciliation (row-by-row diff)
+- [x] #56: Post-run risk + rationale enrichment (rule-based) — `_enrich_block_plan_post_run` + `migration_plan_post_run` column + `effective_migration_plan` accessor; branch `feat/F56-blockplan-risk-rationale`
+- [ ] frontend: Plan-tab Strategy label vs `needs_attention` flag inconsistency for `translated_with_review` (fix B+) — issue text drafted 2026-06-15; surfaced during F56 verification
+- [x] #57: Macro definition + call expansion (%MACRO/%MEND) → see `docs/plans/latest/F57-macro-call-expansion.md`
+  - [x] F57 S-A: macro signature + call-arg parsing helpers → `src/worker/engine/macro_call_expander.py`
+  - [x] F57 S-B: expandability guard (`_is_expandable`) → `src/worker/engine/macro_call_expander.py`
+  - [x] F57 S-C: core `expand_macro_calls()` → `src/worker/engine/macro_call_expander.py`
+  - [x] F57 S-D: two-pass expansion wired into `SASParser.parse` → `src/worker/engine/parser.py`
+  - [x] F57 S-E: unit tests → `tests/test_macro_call_expander.py`
+  - [x] F57 S-F: reconciliation/integration test → `tests/reconciliation/test_macro_expansion.py`
+  - [x] F57 S-G: `make test` exits 0
+- [x] F59: Macro control-flow & variable evaluation (%if/%do/%let/%global) → see `docs/plans/latest/F59-macro-control-flow.md`
+  - [x] F59 S-A0: tokenizer (`_tokenize`, `Token`, `CannotResolveMacroLogic`) → `src/worker/engine/macro_logic.py`
+  - [x] F59 S-A: macro condition evaluator (`evaluate_condition`) → `src/worker/engine/macro_logic.py`
+  - [x] F59 S-B: macro body logic resolver (`resolve_macro_body`) → `src/worker/engine/macro_logic.py`
+  - [x] F59 S-B2: iterative `%do %to` loop unrolling → `src/worker/engine/macro_logic.py`
+  - [x] F59 S-C: unit tests for tokenizer + evaluator + resolver → `tests/test_macro_logic.py`
+  - [x] F59 S-D: integrate logic resolution into `expand_macro_calls` → `src/worker/engine/macro_call_expander.py`
+  - [x] F59 S-E: unit tests for integrated expansion → `tests/test_macro_call_expander.py`
+  - [x] F59 S-F: reconciliation test through parser → `tests/reconciliation/test_macro_control_flow.py`
+  - [x] F59 S-G: `make test` exits 0
+- [x] #58: Record-level reconciliation (row-by-row diff) — row_hash_diff + ReconConfig + LLM key resolution
 - [ ] #59: Artefact versioning — group jobs by input_hash
 - [ ] #21: Consolidate lineage into a single primary view — `backlog` label
 - [ ] #20: Rollback / versioning based on lineage — `backlog` label

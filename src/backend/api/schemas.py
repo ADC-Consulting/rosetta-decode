@@ -556,6 +556,37 @@ class TrustReportResponse(BaseModel):
     review_queue: list[TrustReportBlock]  # only needs_attention=True blocks
 
 
+# S8 — Remediation runbook schemas
+
+
+class RunbookEntry(BaseModel):
+    """One high-risk block entry in the remediation runbook."""
+
+    block_id: str
+    source_file: str
+    start_line: int
+    block_type: str
+    strategy: str
+    criticality: str  # "critical" | "high"
+    effective_confidence_band: str
+    reconciliation_status: str | None
+    blast_radius: int | None
+    input_datasets: list[str]
+    output_datasets: list[str]
+    description: str  # BlockPlan.rationale, or a fallback template string
+    why_risky: list[str]  # from runbook_templates.why_risky()
+    remediation_outline: list[str]  # from runbook_templates.remediation_outline()
+
+
+class RunbookResponse(BaseModel):
+    """Response body for GET /jobs/{id}/runbook."""
+
+    job_id: str
+    total_entries: int
+    entries: list[RunbookEntry]
+    markdown: str  # full pre-rendered Markdown for copy-paste export
+
+
 # Attachment schemas
 
 
@@ -643,3 +674,57 @@ class ExecuteResponse(BaseModel):
     checks: list[dict[str, Any]] | None = None
     error: str | None = None
     elapsed_ms: int
+
+
+class PhaseTokens(BaseModel):
+    """Token usage counters for a single LLM pipeline phase."""
+
+    input_tokens: int
+    output_tokens: int
+    cache_read_tokens: int
+    cache_write_tokens: int
+    requests: int
+
+
+class TokenUsageStats(BaseModel):
+    """Aggregated token usage across all phases and a rolled-up total."""
+
+    phases: dict[str, PhaseTokens]
+    total: PhaseTokens
+    translation_by_block: dict[str, PhaseTokens] = {}
+
+
+class CostEstimate(BaseModel):
+    """USD cost estimate derived from token usage and model pricing."""
+
+    total_usd: float
+    per_phase_usd: dict[str, float]
+    prices: dict[str, float]  # {"input_usd_per_mtok": ..., "output_usd_per_mtok": ...}
+    price_source: str  # "litellm" | "static"
+
+
+class BomSummary(BaseModel):
+    """Bill-of-materials summary produced during the scoping phase."""
+
+    total_blocks: int
+    data_steps: int
+    procs: int
+    macros: int
+    untranslatable: int
+    proc_counts: dict[str, int]  # e.g. {"PROC SQL": 3, "PROC MEANS": 1}
+    risk_buckets: dict[str, int]  # e.g. {"low": 5, "medium": 3, "high": 2}
+    criticality_buckets: dict[str, int]  # e.g. {"critical": 2, "high": 1, "medium": 4}
+    strategy_counts: dict[str, int]  # e.g. {"direct_translate": 6, "manual_review": 4}
+    human_review_required: int  # count of blocks needing human review
+
+
+class ScopingSummaryResponse(BaseModel):
+    """Response body for GET /jobs/{id}/scoping-summary."""
+
+    job_id: str
+    job_name: str
+    llm_model: str
+    token_usage: TokenUsageStats | None
+    cost: CostEstimate | None
+    bom: BomSummary
+    markdown: str

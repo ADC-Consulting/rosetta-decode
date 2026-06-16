@@ -140,9 +140,57 @@ class MacroDef(BaseModel):
 
     name: str
     params: list[str] = Field(default_factory=list)
+    param_str: str = ""
     body: str
     source_file: str
     line: int = Field(ge=1)
+
+
+class FormatEntry(BaseModel):
+    """One mapping line of a SAS PROC FORMAT ``value`` statement.
+
+    Exactly one of three shapes is represented:
+
+    - Single value: ``value`` is set (e.g. ``"1"`` or ``"'M'"``);
+      ``low``/``high`` are ``None`` and ``is_other`` is ``False``.
+    - Range: ``low`` and ``high`` are set (e.g. ``"0"``/``"100"``, or the
+      keyword literals ``"low"``/``"high"``); ``exclusive_upper`` is ``True``
+      when the range used the ``-<`` operator. ``value`` is ``None``.
+    - Catch-all: ``is_other`` is ``True``; all operand fields are ``None``.
+
+    Operand fields are stored as raw strings to preserve quoting (e.g.
+    ``"'M'"``) and the ``low``/``high`` keyword literals verbatim.
+
+    Attributes:
+        value: The single source value, or ``None`` for range/other entries.
+        low: Lower bound of a range, or ``None``.
+        high: Upper bound of a range, or ``None``.
+        exclusive_upper: ``True`` when the range used ``-<`` (upper exclusive).
+        is_other: ``True`` for the ``other`` catch-all entry.
+        label: The resulting formatted label string.
+    """
+
+    value: str | None = None
+    low: str | None = None
+    high: str | None = None
+    exclusive_upper: bool = False
+    is_other: bool = False
+    label: str
+
+
+class FormatDef(BaseModel):
+    """A single SAS user-defined format from a PROC FORMAT ``value`` statement.
+
+    Attributes:
+        name: Normalized format name (lowercased; ``$`` prefix preserved for
+            character formats).
+        is_char: ``True`` for character formats (``$``-prefixed).
+        entries: Ordered mapping lines comprising the format definition.
+    """
+
+    name: str
+    is_char: bool
+    entries: list[FormatEntry] = Field(default_factory=list)
 
 
 class ParseResult(BaseModel):
@@ -153,6 +201,8 @@ class ParseResult(BaseModel):
         macro_vars: Macro variables declared via %LET in the files.
         libname_map: {libref: path} for all LIBNAME statements found.
         includes: List of paths referenced by %INCLUDE statements.
+        format_catalog: {format_name: FormatDef} for all PROC FORMAT ``value``
+            definitions found.
     """
 
     blocks: list[SASBlock] = Field(default_factory=list)
@@ -161,6 +211,7 @@ class ParseResult(BaseModel):
     includes: list[str] = Field(default_factory=list)
     macro_defs: list[MacroDef] = Field(default_factory=list)
     filename_map: dict[str, str] = Field(default_factory=dict)
+    format_catalog: dict[str, FormatDef] = Field(default_factory=dict)
 
 
 class GeneratedBlock(BaseModel):
@@ -193,6 +244,9 @@ class GeneratedBlock(BaseModel):
     verified_confidence: str | None = None
     output_var: str | None = None
     exec_ok: bool = True
+    # Final per-block reconciliation checks (revived for the BlockRevision audit
+    # trail). A key-resolved row_hash_diff pass carries ``resolved_join_key``.
+    recon_checks: list[dict[str, Any]] | None = None
 
 
 class ReconciliationReport(BaseModel):
@@ -418,13 +472,16 @@ class DataFileInfo(BaseModel):
         extension: File extension including the dot (e.g. ``".csv"``).
         columns: Column headers sniffed from the file; empty list if unreadable.
         row_count: Number of data rows, or ``None`` if not sniffable.
-        column_types: Mapping of column name to readstat type string (e.g. ``"character"``,
-            ``"double"``). Only populated for ``.sas7bdat`` files.
+        column_types: Mapping of column name to type string. For ``.sas7bdat``/``.xpt``
+            files this is the readstat type (e.g. ``"character"``, ``"double"``); for
+            CSV/TSV it is the Spark cast type (``"string"``, ``"double"``, ``"long"``,
+            ``"boolean"``) inferred from pandas dtypes, with SAS-declared character
+            columns (``LENGTH var $w``) overridden to ``"string"`` to preserve leading zeros.
         column_labels: Mapping of column name to human-readable SAS label.
-            Only populated for ``.sas7bdat`` files.
+            Only populated for ``.sas7bdat`` and ``.xpt`` files.
         column_formats: Mapping of column name to SAS format string
             (e.g. ``"DATE9."``, ``"$40."``, ``"COMMA12.2"``).
-            Only populated for ``.sas7bdat`` files.
+            Only populated for ``.sas7bdat`` and ``.xpt`` files.
     """
 
     path: str
@@ -453,6 +510,7 @@ class JobContext(BaseModel):
     enriched_lineage: EnrichedLineage | None = None
     data_files: dict[str, "DataFileInfo"] = Field(default_factory=dict)
     libname_map: dict[str, str] = Field(default_factory=dict)
+    format_catalog: dict[str, FormatDef] = Field(default_factory=dict)
     log_contents: dict[str, str] = Field(default_factory=dict)
 
     def windowed_context(self, block: SASBlock) -> "JobContext":
@@ -466,7 +524,8 @@ class JobContext(BaseModel):
         - blocks: only this block
         - generated: empty (not needed during per-block translation)
         - reconciliation, retry_count, llm_call_count: preserved as-is
-        - data_files, libname_map: passed through so agents see folder structure
+        - data_files, libname_map, format_catalog: passed through so agents see
+          folder structure and user-defined formats
         """
         relevant_datasets = set(block.input_datasets) | set(block.output_datasets)
         macro_source_files = {
@@ -487,5 +546,6 @@ class JobContext(BaseModel):
             migration_plan=self.migration_plan,
             data_files=self.data_files,
             libname_map=self.libname_map,
+            format_catalog=self.format_catalog,
             log_contents=self.log_contents,
         )

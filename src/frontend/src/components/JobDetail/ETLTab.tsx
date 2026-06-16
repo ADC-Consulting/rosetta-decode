@@ -141,18 +141,18 @@ export default function ETLTab({
           "text-xs text-muted-foreground border-b border-border shrink-0",
         ].join(" ")}
       >
-        <span>{new Set(blockPlans.map((b) => b.source_file)).size} files</span>
-        <span>{blockPlans.length} blocks</span>
+        <span>files: {new Set(blockPlans.map((b) => b.source_file)).size}</span>
+        <span>blocks: {blockPlans.length}</span>
         {trustReport && (
           <>
             <span className="text-green-700">
-              {trustReport.auto_verified + humanVerifiedBlocks.size} verified
+              ✓ verified: {trustReport.auto_verified + humanVerifiedBlocks.size}
             </span>
             <span className="text-amber-700">
-              {trustReport.needs_review} review
+              ⚠ review: {trustReport.needs_review}
             </span>
             <span className="text-red-700">
-              {trustReport.manual_todo} manual
+              ✗ manual: {trustReport.manual_todo}
             </span>
           </>
         )}
@@ -174,6 +174,7 @@ export default function ETLTab({
               lineage={etlLineage}
               blockPlans={blockPlans}
               trustFiles={trustReport?.files}
+              trustBlocks={trustBlocks}
               onFileNodeClick={handleFileNodeClick}
               initialView="files"
             />

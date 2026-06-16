@@ -240,18 +240,274 @@ Phase 2 (frontend) completed this session — 6 commits:
 - `src/worker/engine/models.py`
 - `src/worker/main.py`
 - `src/backend/api/schema_utils.py` (new)
+
+---
+
+## 2026-06-15 — F56: post-run risk & rationale enrichment for BlockPlan (two-column)
+
+**Duration:** ~1 session | **Focus:** implement #56 — recompute per-block risk/rationale post-run (rule-based, no LLM) into a new `migration_plan_post_run` column
+
+### Done
+- **New DB column + migration:** `Job.migration_plan_post_run` (JSON, nullable) in `models.py`; Alembic `019_add_migration_plan_post_run` (rev `019`, down `018`). Backend entrypoint runs `alembic upgrade head`, so it applies on stack start.
+- **`effective_migration_plan(job)` accessor** in `models.py` — returns post-run plan when present, else pre-run. Pre-run estimate in `migration_plan` is preserved untouched.
+- **`_enrich_block_plan_post_run` helper** (`worker/main.py`, module-level, pure, deep-copy — never mutates input). Rule precedence per block: MANUAL→HIGH; recon_fail→HIGH; recon_pass+high-conf→LOW; no-recon+low/very_low→HIGH; else risk unchanged (medium never synthesized). Also overwrites `confidence_band` with the post-run band, recomputes `overall_risk`, and appends an idempotent ` · post-run: recon=…, confidence=… → risk=…` rationale suffix.
+- **Wired as best-effort Step 10d** in `_execute` (after `_persist_initial_revisions`) — wrapped in try/except so cosmetic enrichment can never fail a completed job.
+- **API read sites swapped to `effective_migration_plan`:** plan endpoint (`jobs.py`), BOM, runbook, explain LLM-context (`explain.py`). Trust-report / criticality paths deliberately left on `migration_plan` (already post-run-aware via `reconciliation_status`).
+- **Tests:** new `tests/test_block_plan_enrichment.py` (every rule branch, precedence, idempotency, non-mutation, confidence overwrite, overall_risk recompute, accessor fallback) + API test in `test_fallback_plan_endpoint.py`. `make test` green (all 7 gates, coverage ≥90%).
+- **Live Docker verification:** ran the pharma sandbox job through the running stack; confirmed `migration_plan` (pre) vs `migration_plan_post_run` (post) in Postgres. Block `03_build_sdtm_ae.sas:9` flipped medium→low (recon pass + high conf); several blocks got confidence medium→high; `overall_risk` stayed HIGH (macro blocks remain HIGH).
+
+### Decisions
+- **Scope extension to the 2026-05-04 F56 design** (logged in DECISIONS.md): two-column storage (preserve pre-run in `migration_plan`, enriched in `migration_plan_post_run`) instead of re-persisting in place; also overwrite `confidence_band` with the post-run band and recompute `MigrationPlan.overall_risk`.
+
+### Open Questions
+- **Plan-tab UI inconsistency (NOT F56):** Strategy column relabels `translated_with_review`→"Translated" on recon pass, but the ⚠ attention flag (`needs_attention`) still fires on the real strategy — so label and flag contradict (e.g. `02_build_sdtm_ex.sas:3`). Issue text drafted; fix recommendation = "B+" (frontend label = true strategy, recon-fail still overrides to "Review needed"). Not yet filed/implemented.
+
+### Next Session — Start Here
+1. File the drafted GitHub issue for the Strategy-label vs attention-flag inconsistency, then implement fix B+ (frontend-only, `BlockPlanTable.tsx:696-705`) + a frontend test asserting `translated_with_review` renders "Review needed" regardless of `reconciliation_status`.
+2. Open the F56 PR off `feat/F56-blockplan-risk-rationale`.
+
+### Files Touched
+- `src/backend/db/models.py`, `alembic/versions/019_add_migration_plan_post_run.py`
+- `src/worker/main.py`
+- `src/backend/api/routes/jobs.py`, `src/backend/api/routes/explain.py`
+- `tests/test_block_plan_enrichment.py` (new), `tests/test_fallback_plan_endpoint.py`
+- `journal/SESSIONS.md`, `journal/BACKLOG.md`, `journal/DECISIONS.md`
+
+---
+
+## 2026-06-15 — fix: preserve leading zeros via SAS LENGTH char declarations + F15 PR prep
+
+**Duration:** ~1 session | **Focus:** diagnose and fix USUBJID zero-padding regression; commit F15 leftovers; generate PR summary
+
+### Done
+- **Root-cause analysis:** record-level diff showed `USUBJID=ADC-XYZ-001-3-1` vs `ADC-XYZ-001-003-0001`. Traced to `spark.read.csv(inferSchema=True)` reading `SITEID=003`→int `3` and `SUBJID=0001`→int `1` before the `catx` concat runs. The existing `enforce_padded_concat_keys` (F15) correctly rebuilds the concat but cannot recover zeros already lost at read time.
+- **`extract_declared_char_columns` (parser.py):** scans all `LENGTH var $w` statements job-wide; returns lowercased char column names. Conservative text scan — no PROC IMPORT→DATA-step dependency tracing.
+- **`_sniff_file` extended (main.py):** CSV/TSV branch now builds a full pandas-dtype→Spark-type map (int→`long`, float→`double`, bool→`boolean`, else→`string`) instead of returning `{}`. Build loop overrides declared-char columns to `"string"` before constructing `DataFileInfo`.
+- **`enforce_csv_read_schema` (shared.py):** deterministic post-processor that rewrites `spark.read.csv(..., inferSchema=True)` to an explicit `StructType` for any CSV with declared-char columns. Idempotent; no-op when `column_types` is empty. Wired in `GenericProcAgent`, `DataStepAgent`, `ProcAgent` before `inject_declared_casts`.
+- **`DataFileInfo.column_types` docstring updated** to reflect CSV/TSV coverage.
+- **10 new reconciliation tests** in `test_csv_declared_char_schema.py`; updated existing assertions in 3 test files.
+- **Committed F15 leftovers:** `enforce_padded_concat_keys` shared functions + agent wiring, `test_shared_normalisers.py` coverage, `DECISIONS.md` entry, tensorzero digest pin.
+- **3 clean commits** on `fix/csv-declared-char-zeros`; all 7 gates green, 89% coverage.
+- **PR summary generated** (ready to paste into GitHub).
+
+### Decisions
+- Generalizable fix uses job-wide `LENGTH $` scan (not per-PROC IMPORT tracing) — false positives benign for pharma identifier data; documented as known limitation.
+- `_sniff_file` now always returns a type map for CSV/TSV; the SAS-char override is applied in `_execute` where the source text is in scope, keeping `_sniff_file` SAS-agnostic.
+
+### Open Questions
+- `stub_generator.py` `pd.read_csv` fallback still reads declared-char columns as inferred types — noted as follow-up, not addressed here.
+
+### Next Session — Start Here
+1. Open PR for `fix/csv-declared-char-zeros` → `main` (PR summary already generated).
+2. After merge, open PR for `feat/F15-record-level-reconciliation` → `main` (or cherry-pick; both branches diverge from pre-F15 main).
+3. Consider follow-up: add `dtype={col: str}` for declared-char columns in `stub_generator.py` `pd.read_csv` scaffold.
+
+### Files Touched
+- `src/worker/engine/parser.py` — `extract_declared_char_columns`
+- `src/worker/main.py` — `_sniff_file`, `_execute` build loop
+- `src/worker/engine/agents/shared.py` — `_render_struct_schema`, `enforce_csv_read_schema`, `enforce_padded_concat_keys` + helpers
+- `src/worker/engine/agents/generic_proc.py`, `data_step.py`, `proc.py` — wiring
+- `src/worker/engine/models.py` — docstring
+- `tests/reconciliation/test_csv_declared_char_schema.py` — new
+- `tests/test_shared_normalisers.py`, `test_worker_main.py`, `test_worker_main_comprehensive.py`, `test_context_improvements.py` — updated
+- `journal/DECISIONS.md`, `docker-compose.yml`
+
+---
+
+## 2026-06-15 — feat: F15 record-level reconciliation (row_hash_diff) + deterministic mechanical fixes
+**Duration:** ~1 session | **Focus:** add row-by-row reconciliation, then harden everything dogfooding it surfaced
+
+### Done (all on `feat/F15-record-level-reconciliation`, all 7 gates green, coverage 89%, gate 82)
+- **F15 `row_hash_diff`:** new record-level check joining ref/actual on keys (explicit → inferred → positional), per-column compare within float tolerance; typed `ReconConfig` (`join_keys`, `float_tolerance`, `resolve_key_with_llm`, `max_key_attempts`) sourced from the `__recon_config__` job sentinel; threaded through both `ReconciliationService` and the executor `run_recon`. Gates `reconciliation_status`; never feeds the agentic retry (parity = human-review).
+- **§20 mechanical-format drift guard:** prompt rule (`put z<w>.`→`lpad`, `||`/`cats`→`concat`, `catx`→`concat_ws`) + `check_mechanical_format_drift` that downgrades drifting blocks to review (root cause of the `usubjid` zero-pad regression).
+- **Datetime-equivalence in `_values_match`:** `2025-06-10` ≡ `2025-06-10T00:00:00.000` (stop false positives), worker + executor.
+- **Date-format output fidelity:** `_map_readstat_type` recovers SAS date formats → declared `date` type → `DateType` cast; executor serializes pure-date columns as bare `YYYY-MM-DD`.
+- **Hardened `_infer_join_keys`:** null + uniqueness gates, composite search (≤ arity 3), explicit-key quality warning; empty-string treated as null in `_null_fraction`.
+- **LLM join-key resolution (per-block):** `ReconKeyResolverAgent` proposes the correct business key when `row_hash_diff` fails on a unique-but-wrong key (AE `(subjid,aestdtc)` swapped-pair case); worker re-compares IN-PROCESS from the executor's `result_json` (no re-execution, no translation attempt), ≤3 tries with closest-attempt feedback; proposed keys validated at EXACT uniqueness + zero nulls in both frames; resolved key persisted to `__recon_config__` (whole-dict merge) + `BlockRevision.recon_checks` revived for all checks.
+- **Frontend:** `row_hash_diff` renders as "Record-Level Diff" in LiveTraceDialog.
+
+### Decisions (see DECISIONS 2026-06-15)
+- LLM may resolve the comparison KEY, never the output (recon verdict non-reproducible tradeoff accepted; key persisted for stability). Mechanical invariants belong in deterministic code, not soft prompt rules — next: enforce zero-pad/concat keys deterministically in codegen (planned).
+
+### Next Session — Start Here
+1. Implement the deterministic zero-pad/concat-key codegen enforcement (plan approved; overrides LLM output for cleanly-parsed `catx`/`cats`/`||` + `put zW.` keys, source-driven).
+2. Unrelated stray change on the branch: `docker-compose.yml` pins tensorzero to a sha256 digest — decide whether to keep/commit separately (needs `make docker-build`).
+3. Push branch + open PR for #58 / F15.
+
+---
+
+## 2026-06-15 — feat: F61 type-aware schema contract + full-pipeline reconciliation hardening
+**Duration:** ~1 session | **Focus:** bake declared `.sas7bdat` types into delivered PySpark, then drive the full pipeline to green
+
+### Done
+- **F61 implemented + committed (dab6bb3):** `DataFileInfo.column_types` captured from `meta.readstat_variable_types` in `_sniff_file`; deterministic `inject_declared_casts` adds `.cast(...)` + `# SAS:` provenance after each `toDF(lower)`; informational `render_declared_types_section`/`detect_referenced_data_files` prompt section wired into all 3 agents; §1/§5/§8 rule notes. Unit + e2e tests; all 7 gates green.
+- **Full-pipeline verification surfaced (and fixed) 3 latent issues F61's correct casting exposed — committed as `fix(recon)` (002ac6f):**
+  - **pandas 3.0 `StringDtype`** — recon's `is_object_dtype` guard never fired; switched to `not is_numeric_dtype`. Date/ID coercion gated by parseable-fraction over non-blank cells.
+  - **Executor date serialization** — `to_json` default encoded dates as epoch-millis (→ `firstaedt` object-vs-numeric + `OutOfBoundsDatetime`); fixed with `date_format='iso'`. This was the actual root cause; earlier recon-side patches were treating corrupted data.
+  - **AMBIGUOUS_REFERENCE** — sharpened §5 (mandate `on=[...]` equi-joins) + deterministic bare→alias `F.col` rewrite in `_safe_exec` and a new bounded retry in the executor subprocess runner.
+- **`trtdurd` drift diagnosed as a stale fixture, NOT a bug — committed as `test(fixture)` (c6b32aa):** generated `datediff+1` was faithful to `%m_first_dose`; golden `adsl_expected.csv` carried TRTEDT/TRTDURD from a richer exposure dataset. Regenerated both columns from current `ex_raw.csv`; all other columns byte-identical. Confirmed: golden trtedt ≥ raw max(exendtc) for 500/500, exceeding it in 414.
+- Full-pipeline reconciliation now green end-to-end (user confirmed). Three logical commits on `feat/F61-declared-column-types`.
+
+### Decisions
+- Deterministic injector (not LLM) authors declared-type casts; recon detects types via `not is_numeric_dtype`; dates serialized ISO; **never auto-fix parity mismatches with an agent** (gaming-the-golden); AMBIGUOUS_REFERENCE self-healed in both exec paths; stale synthetic fixtures regenerated from raw. See DECISIONS 2026-06-15.
+
+### Open Questions
+- Agentic full-pipeline retry: worth adding for **runtime crashes only** (attribute traceback → block via `# SAS:` provenance, re-run that block's refine). Needs reproducibility bound. Parity mismatches stay human-reviewed.
+
+### Next Session — Start Here
+1. Push `feat/F61-declared-column-types` and open the PR (3 commits: feat/fix/test).
+2. Add the deferred `_coerce_sas_date_columns` unit test (F61-debt in BACKLOG).
+3. If pursuing agentic full-pipeline retry, scope the traceback→block attribution mechanism first (see F19 plan).
+
+### Files Touched
+- `src/worker/engine/models.py`, `main.py`, `agents/{shared,data_step,proc,generic_proc}.py`
+- `src/worker/validation/reconciliation.py`, `src/executor/{recon,runner}.py`
+- `tests/test_shared_inject_declared_casts.py` (new), `tests/test_declared_types_section.py` (new), `tests/reconciliation/test_qualify_ambiguous_column.py` (new), `tests/{test_worker_main,test_worker_main_comprehensive,test_format_catalog,test_context_improvements,test_executor_runner}.py`
+- `data/medium_test/sas_pharma_sandbox/data/golden/adsl_expected.csv`
+- `docs/plans/latest/F61-declared-column-types.md` (new), `journal/{BACKLOG,DECISIONS}.md`
+
+---
+
+## 2026-06-14 — feat: F60 PROC FORMAT translation + router guard + codegen hardening
+**Duration:** ~1 session | **Focus:** close the PROC FORMAT user-format gap end-to-end
+
+### Done
+- **Validated the F60 plan against code first** — caught a critical blind spot: the triggering block (`AGEGR1 = put(AGE, agegr1f.)`) was classified "simple" by `_SimpleCopyHelper` and diverted to the no-LLM copy path, so prompt injection alone would never have fixed it. Added S-E0 (router guard) as the gating subtask.
+- **F60 implemented + committed (256ee51):** `format_catalog.py` (`extract_format_catalog` + `normalize_format_name`), `FormatDef`/`FormatEntry` models + `format_catalog` on `ParseResult`/`JobContext` (threaded through `windowed_context`), parser wiring on `expanded_source`, `JobContext` wiring in `main.py`, prompt injection (`detect_referenced_formats`/`render_format_section` + scoped `put()` rule) across all 3 agents.
+- **Router guard:** `_SimpleCopyHelper.is_simple` rewritten to a strict allowlist.
+- **Codegen hardening:** added a column-lifecycle/ordering rule to `SHARED_TRANSLATION_RULES` after a sandbox run surfaced `UNRESOLVED_COLUMN: studyid` (keys dropped by a narrowing select before a derived column needed them).
+- **Tests:** new `test_format_catalog.py`, routing tests in `test_translation_router.py`, rule-presence tests in `test_shared_normalisers.py`. All 7 gates green, coverage ≥90%.
+
+### Decisions
+- PROC FORMAT gap marked FIXED; router allowlist locked; "mechanical invariants belong in deterministic code, not soft prompt rules" recorded as an open principle (see DECISIONS).
+
+### Open Questions
+- The full-pipeline sandbox run revealed two genuine derivation bugs (NOT F60): `firstaedt` comes out numeric (should be character ISO date), and `trtdurd` sums to ~38% of reference (nulls propagating from the dose aggregation/join).
+- Per-block reconciliation passes while full-pipeline fails — integration drift across block boundaries (string keys not cast back, null propagation) is invisible to per-block checks.
+
+### Next Session — Start Here
+1. Decide how to attack the integration-drift class: the deferred **type-aware schema contract** (capture `.sas7bdat` source types into `DataFileInfo.column_types`, bake auditable cast-backs into delivered code) was scoped this session but stopped by the user — revisit if approved.
+2. Fix `firstaedt`/`trtdurd` via the per-block refine loop feeding the full-pipeline recon report back.
+3. Capture documented end-to-end sandbox evidence for F60 (agegr1 column produced, no `UNRESOLVED_COLUMN`) — the one outstanding F60 acceptance item.
+4. Push `feat/F60-proc-format-translation` and open the PR (summary already drafted) when ready.
+
+### Files Touched
+- `src/worker/engine/format_catalog.py` (new), `models.py`, `parser.py`, `router.py`, `main.py`
+- `src/worker/engine/agents/{shared,data_step,proc,generic_proc}.py`
+- `tests/test_format_catalog.py` (new), `test_translation_router.py`, `test_shared_normalisers.py`
+- `docs/plans/latest/F60-proc-format-translation.md` (new), `journal/{BACKLOG,DECISIONS}.md`
+
+---
+
+## 2026-06-14 — feat: F57 macro call expansion + F59 macro control-flow + SET/MERGE option fix
+
+**Branch:** `feat/F57-macro-call-expansion` → `feat/F59-macro-control-flow`
+
+**What we did:**
+- **SET/MERGE/DATA dataset-option parser fix** (`parser.py`): the regexes used `[\w\s.]`, which could not span `(in=indm)` options, so `merge sdtm.dm(in=indm) ...` matched nothing → empty `input_datasets` → the input-var normaliser never rewrote `sdtm_dm` → `NameError`. Widened the three regexes (non-greedy + DOTALL) and strip balanced option parens in `_extract_names`. Fixes the `sdtm_dm` crash class.
+- **F57 — macro call expansion** (`macro_call_expander.py`, new): deterministic textual expansion of control-flow-free macro calls before block extraction. Param/arg parsing, binding, `&param` substitution, fixed-point inlining with provenance markers. Two-pass `SASParser.parse` (collect all defs across files, then expand) for cross-file resolution; `MacroDef.param_str` added. Fixes the `dose` crash class.
+- **F59 — macro control-flow evaluation** (`macro_logic.py`, new): pure tokenizer + recursive-descent resolver. `evaluate_condition` (`%length`, comparison ops, `and`/`or`, parentheses, numeric-vs-string rule); `resolve_macro_body` (`%if/%then/%else` nested + depth-matched `%end` + stack-paired `%else`, `%do i=a %to b` loop unrolling capped at `MAX_UNROLL`, `%let/%global`, `%return`, `%put`). All-or-nothing: any unresolvable construct → left unexpanded. Integrated into `expand_macro_calls` with within-file `%global` propagation. Fixes the `adsl_age` crash class.
+- DEBUG logging added to the input-var normaliser and the three translation agents (was the diagnostic that pinpointed the empty-`input_datasets` root cause).
+- ~110 new unit tests + 2 reconciliation guards (`dose`, `adsl_age`); `make test` green throughout.
+- Diagnosed the NEXT crash (`UNRESOLVED_COLUMN: agegr1`): user-defined PROC FORMAT (`agegr1f.`) value maps are parsed as blocks but never fed to the DATA/PROC translation agents, so `put(AGE, agegr1f.)` cannot be rendered and the derived column is missing. New feature needed (not macros).
+
+**Decisions:**
+- Macro control-flow evaluation is deterministic (tokenizer + recursive descent), never LLM — consistent with the reproducibility constraint; all-or-nothing fallback prevents wrong-but-runnable output. See DECISIONS.
+- Cross-file `%global` propagation is out of scope (parser expands each file independently); within-file only.
+- F59 enhances only the parse-time `expand_macro_calls` path; legacy `MacroExpander` (main.py) left untouched — no consolidation.
+- PROC FORMAT translation will be deterministic catalog extraction + LLM prompt-injection (recommended) — not yet decided/started.
+
+**Open Questions:**
+- PROC FORMAT fix: deterministic-catalog + LLM-injection vs. hybrid (deterministic `put()→when/otherwise` for simple value maps)? Awaiting user decision.
+
+### Next Session — Start Here
+1. Decide PROC FORMAT approach, then `/plan-feature` for it (the `agegr1` crash). Branch off `feat/F59-macro-control-flow` (unmerged dependency chain F57→F59).
+2. Optionally open the PR for `feat/F59-macro-control-flow` → main (PR summary already generated).
+
+### Files Touched
+- `src/worker/engine/parser.py`, `models.py`, `macro_call_expander.py` (new), `macro_logic.py` (new)
+- `src/worker/engine/agents/{shared,generic_proc,data_step,proc}.py` (DEBUG logging)
+- `tests/test_macro_logic.py` (new), `tests/test_macro_call_expander.py`, `tests/test_parser.py`, `tests/reconciliation/test_macro_expansion.py` (new), `tests/reconciliation/test_macro_control_flow.py` (new)
+- `docs/plans/latest/F57-macro-call-expansion.md` (new), `docs/plans/latest/F59-macro-control-flow.md` (new), `journal/BACKLOG.md`
+
+---
+
+## 2026-06-14 — fix: PROC SQL HAVING agg-alias rule + retry error-feed strengthening; macro-expansion diagnosis
+
+**Branch:** `fix/cross-block-input-names`
+
+**What we did:**
+- Diagnosed `UNRESOLVED_COLUMN: count(1)` crash — LLM emitted `F.col("count(1)")` after a DataFrame-API `.agg()` (a Spark-SQL auto-name that the API never creates), mistranslating a SAS `HAVING COUNT(*)` clause. Fix: added a mandatory aggregate-alias rule to the PROC SQL agent prompt (`proc.py`) forbidding SQL auto-names and tautological count filters; unit test asserts the rule text.
+- Strengthened the per-block retry error feed in `_translate_blocks` (`main.py`): (#1) corrective hints now surface as a high-salience `MANDATORY FIX (attempt N)` directive; (#3) the failing attempt's code is fed back in a fenced python block so the model patches instead of regenerating from scratch. Reuses the existing job-level `prior_python_code` mechanism. Test added to `test_refine_loop.py`.
+- Diagnosed `NameError: name 'dose' is not defined`: root cause is unexpanded macro **calls** — `%m_first_dose(out=work.dose)` is never expanded into a block, so `dose` is never produced. Macro call expansion (#57 / F1-ext) is still unimplemented. Deferred to a dedicated feature.
+- Planned F36 (phase-2 retry loop) — plan file written, not yet implemented.
+
+**Decisions:**
+- Macro call expansion is the real fix for the `dose` crash class — to be tackled as a feature (#57), not an inline patch
+- Secondary hygiene bug noted: `_ProcSortHelper` (router.py) never sets `output_var` nor runs the input-var normalizer — fold in when next touching PROC SORT
+
+---
+
+## 2026-06-13 — fix: cross-block input name mismatch + _SimpleCopyHelper Spark compat
+
+**Branch:** `fix/cross-block-input-names`
+
+**What we did:**
+- Diagnosed `NameError: name 'work_ex_dedup' is not defined` on `sas_pharma_sandbox` pipeline
+- Root cause 1: no post-processing normalizer for input variable names — LLM emitted `work_ex_dedup` instead of stem `ex_dedup`. Fixed by adding `build_block_output_stems` + `normalise_input_vars_in_code` to `shared.py` and calling them in DataStepAgent, ProcAgent, GenericProcAgent
+- Root cause 2: `_SimpleCopyHelper` (no-LLM shortcut) was also generating the wrong name AND emitting pandas `.copy()` on a Spark DataFrame. Fixed variable name resolution and replaced `.copy()` / `df[cols]` with PySpark `.select()` / `.drop()` / direct assignment
+- Fixed stale `startMsRef.current = null` in `LiveTraceDialog.tsx` (crash introduced by F35 merge) that was breaking the Migrate button
+- 12 tests added/updated; all green
+
+**Decisions:**
+- `_SimpleCopyHelper` is a maintenance liability (caused 2 bugs this session) — flagged for deletion; GH issue to be filed
+
+---
+
+## 2026-06-13 — F35 remediation runbook implemented; #19 closed
+**Duration:** ~2h | **Focus:** F35 planning and full-stack implementation
+
+### Done
+- Session-start confirmed F34 merged (PR #87); main clean, no in-progress plan
+- F35 planned: remediation runbook for high-risk/non-convertible blocks (#19)
+  - Key design choices settled via user Q&A: rule-based templates (not LLM), collapsible panel in Plan tab (not new tab), filter = criticality in (critical, high)
+- F35 implemented in full — 10 subtasks, single commit (9fbdabd):
+  - S-A: `src/backend/api/runbook_templates.py` — `remediation_outline()` + `why_risky()`, pure/deterministic
+  - S-B: `RunbookEntry` + `RunbookResponse` Pydantic schemas
+  - S-C: `_build_runbook_entries()` + `_render_runbook_markdown()` helpers in jobs.py
+  - S-D: `GET /jobs/{id}/runbook` endpoint
+  - S-E/S-F: `tests/test_runbook_templates.py` + `tests/test_runbook_routes.py` (31 tests)
+  - S-G: TypeScript types + `getJobRunbook()` API client
+  - S-H: `RunbookPanel.tsx` — collapsible, lazy-loaded, per-entry cards, Copy-as-Markdown
+  - S-I: Wired into `PlanTab.tsx` below `ScopingSummaryPanel`
+  - S-J: `make test` exits 0 (all 7 gates green, 90%+ coverage)
+- Bug fix mid-session: `why_risky()` was dumping raw `&in`, `&out` macro variable refs; fixed to render human-readable "Block uses macro parameters as dataset/library names (&in, &out) — context not available at translation time"
+- Diagnosed executor `FileNotFoundError` log: expected behavior — LLM faithfully mirrors a SAS step that failed in the original run (broken test fixture `06_broken_step.sas`)
+
+### Decisions
+- Runbook remediation is rule-based only (no LLM) — reproducible, zero token cost · revisit never
+- Runbook lives as a Plan tab panel, not a new chevron tab — respects locked single-surface decision · revisit never
+- `&`-prefixed items in `detected_features` are macro variable refs, not SAS pattern names — `why_risky()` branches on the `&` prefix to produce readable output · revisit never
+
+### Open Questions
+- None
+
+### Next Session — Start Here
+1. Open PR `feat/F35-remediation-runbook → main` for #19
+2. Next from priority queue: #56 (post-run risk + rationale enrichment, rule-based, design already in DECISIONS.md) or #43 (Data Storage tab, wireframe still pending)
+
+### Files Touched
+- `src/backend/api/runbook_templates.py` (new)
 - `src/backend/api/schemas.py`
 - `src/backend/api/routes/jobs.py`
 - `src/frontend/src/api/types.ts`
 - `src/frontend/src/api/jobs.ts`
-- `tests/test_schema_utils.py` (new)
-- `tests/test_schema_route.py` (new)
-- `tests/test_worker_main_comprehensive.py`
-- `tests/test_worker_main.py`
-- `tests/test_context_improvements.py`
-- `docs/plans/latest/F34-data-storage-tab.md`
-- `journal/SESSIONS.md`
+- `src/frontend/src/components/JobDetail/RunbookPanel.tsx` (new)
+- `src/frontend/src/components/JobDetail/PlanTab.tsx`
+- `tests/test_runbook_templates.py` (new)
+- `tests/test_runbook_routes.py` (new)
 - `journal/BACKLOG.md`
+- `journal/SESSIONS.md`
 - `journal/DECISIONS.md`
 
 ---

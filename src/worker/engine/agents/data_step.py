@@ -16,10 +16,21 @@ from pydantic_ai.providers.openai import OpenAIProvider
 from src.worker.core.config import worker_settings
 from src.worker.engine.agents.shared import (
     SHARED_TRANSLATION_RULES,
+    apply_mechanical_drift_guard,
+    build_block_output_stems,
+    detect_referenced_data_files,
+    detect_referenced_formats,
+    enforce_csv_read_schema,
+    enforce_padded_concat_keys,
+    inject_declared_casts,
+    normalise_input_vars_in_code,
     normalise_output_var,
     normalise_output_var_in_code,
+    render_declared_types_section,
+    render_format_section,
 )
 from src.worker.engine.models import GeneratedBlock, JobContext, SASBlock
+from src.worker.engine.usage import record_usage
 
 logger = logging.getLogger("src.worker.engine.agents.data_step")
 
@@ -165,12 +176,7 @@ def _build_prompt(block: SASBlock, windowed: JobContext, all_blocks: list[SASBlo
     # Maps both dot form (rawdir.customers) and underscore form (rawdir_customers) → stem (customers).
     # Must use ALL blocks (not just the windowed single block) so that upstream PROC IMPORT outputs
     # are visible when resolving input variable names for downstream DATA steps.
-    block_output_stems: dict[str, str] = {}
-    for b in all_blocks:
-        for ds in b.output_datasets:
-            stem = ds.lower().split(".")[-1]
-            block_output_stems[ds.lower()] = stem
-            block_output_stems[ds.lower().replace(".", "_")] = stem
+    block_output_stems = build_block_output_stems(all_blocks)
 
     lines.append("")
     lines.append("## Input datasets (already-loaded Spark DataFrame variables)")
@@ -205,6 +211,18 @@ def _build_prompt(block: SASBlock, windowed: JobContext, all_blocks: list[SASBlo
             lines.append(f"### {log_path}")
             log_lines = content.splitlines()
             lines.append("\n".join(log_lines[:200]))
+
+    referenced = detect_referenced_formats(block.raw_sas)
+    format_section = render_format_section(referenced, windowed.format_catalog)
+    if format_section:
+        lines.append("")
+        lines.append(format_section)
+
+    types_refs = detect_referenced_data_files(block, windowed.data_files)
+    types_section = render_declared_types_section(types_refs, windowed.data_files)
+    if types_section:
+        lines.append("")
+        lines.append(types_section)
 
     lines.append("")
     lines.append("## SAS DATA step to translate")
@@ -288,11 +306,30 @@ class DataStepAgent:
             windowed = context.windowed_context(block)
             user_prompt = _build_prompt(block, windowed, context.blocks)
             result = await self._agent.run(user_prompt, model_settings={"max_tokens": 4000})
+            record_usage(result.usage())
             output: DataStepResult = result.output  # type: ignore[assignment]
             fixed_code = normalise_output_var_in_code(
                 output.python_code, block.output_datasets, "DataStepAgent"
             )
+            logger.debug(
+                "DataStepAgent block %s:%s input_datasets=%s output_datasets=%s",
+                block.source_file,
+                block.start_line,
+                block.input_datasets,
+                block.output_datasets,
+            )
+            fixed_code = normalise_input_vars_in_code(
+                fixed_code,
+                block.input_datasets,
+                build_block_output_stems(context.blocks),
+                "DataStepAgent",
+            )
+            fixed_code = enforce_csv_read_schema(fixed_code, context.data_files, "DataStepAgent")
+            fixed_code = inject_declared_casts(fixed_code, context.data_files, "DataStepAgent")
             fixed_output_var = normalise_output_var(block.output_datasets, output.output_var)
+            fixed_code = enforce_padded_concat_keys(
+                fixed_code, block.raw_sas, fixed_output_var, "DataStepAgent"
+            )
             if fixed_output_var and not _re.search(
                 rf"\b{_re.escape(fixed_output_var)}\s*=", fixed_code
             ):
@@ -301,17 +338,19 @@ class DataStepAgent:
                     " after rename — check LLM output",
                     fixed_output_var,
                 )
-            return GeneratedBlock(
-                source_block=block,
-                python_code=fixed_code,
-                output_var=fixed_output_var,
-                confidence=output.confidence_band,
-                confidence_score=output.confidence_score,
-                confidence_band=output.confidence_band,
-                uncertainty_notes=output.uncertainty_notes,
-                assumptions=output.assumptions,
-                strategy_used=output.strategy_used,
-                is_untranslatable=False,
+            return apply_mechanical_drift_guard(
+                GeneratedBlock(
+                    source_block=block,
+                    python_code=fixed_code,
+                    output_var=fixed_output_var,
+                    confidence=output.confidence_band,
+                    confidence_score=output.confidence_score,
+                    confidence_band=output.confidence_band,
+                    uncertainty_notes=output.uncertainty_notes,
+                    assumptions=output.assumptions,
+                    strategy_used=output.strategy_used,
+                    is_untranslatable=False,
+                )
             )
         except Exception as e:
             raise DataStepError(message=str(e), cause=e) from e

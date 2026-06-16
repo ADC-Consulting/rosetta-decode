@@ -291,7 +291,7 @@ async def test_strategy_stub_adapter_init_and_translate() -> None:
 
 @pytest.mark.asyncio
 async def test_simple_copy_helper_keep_branch() -> None:
-    """_SimpleCopyHelper emits .copy() with column filter when KEEP is present (lines 183-186)."""
+    """_SimpleCopyHelper emits .select() with column filter when KEEP is present."""
     from src.worker.engine.router import _SimpleCopyHelper
 
     raw = "DATA out; SET in; KEEP col1 col2; RUN;"
@@ -305,8 +305,9 @@ async def test_simple_copy_helper_keep_branch() -> None:
         generated=[],
     )
     result = await _SimpleCopyHelper().translate(block, ctx)
-    assert "['col1', 'col2']" in result.python_code
-    assert ".copy()" in result.python_code
+    assert ".select(" in result.python_code
+    assert "col1" in result.python_code
+    assert "col2" in result.python_code
 
 
 @pytest.mark.asyncio
@@ -331,7 +332,7 @@ async def test_simple_copy_helper_drop_branch() -> None:
 
 @pytest.mark.asyncio
 async def test_simple_copy_helper_plain_copy() -> None:
-    """_SimpleCopyHelper emits plain .copy() when no KEEP or DROP (lines 194-195)."""
+    """_SimpleCopyHelper emits direct assignment (no .copy()) for plain SET."""
     from src.worker.engine.router import _SimpleCopyHelper
 
     raw = "DATA out; SET in; RUN;"
@@ -345,7 +346,8 @@ async def test_simple_copy_helper_plain_copy() -> None:
         generated=[],
     )
     result = await _SimpleCopyHelper().translate(block, ctx)
-    assert "out = in.copy()" in result.python_code
+    assert "out = in  " in result.python_code
+    assert ".copy()" not in result.python_code
 
 
 # ── router.route() simple DATA step returns _simple_copy (line 289) ─────────
@@ -360,6 +362,42 @@ def test_routes_simple_data_step_to_simple_copy_helper() -> None:
     result = router.route(block)
     assert isinstance(result, _SimpleCopyHelper)
     assert result is not data_step_agent
+
+
+# ── S-E0: is_simple() allowlist guard against put()/assignment DATA steps ────
+
+
+def test_put_assignment_data_step_routes_to_agent_not_simple_copy() -> None:
+    """A put()-bearing DATA step must route to DataStepAgent, not _SimpleCopyHelper."""
+    from src.worker.engine.router import _SimpleCopyHelper
+
+    router, data_step_agent, _, _ = _make_router()
+    raw = "data out; set in; length AGEGR1 $8; AGEGR1 = put(AGE, agegr1f.); run;"
+    block = _make_block(BlockType.DATA_STEP, raw_sas=raw, input_datasets=["in"])
+    result = router.route(block)
+    assert result is data_step_agent
+    assert not isinstance(result, _SimpleCopyHelper)
+    assert _SimpleCopyHelper.is_simple(block) is False
+
+
+def test_pure_set_keep_data_step_remains_simple() -> None:
+    """Regression: a pure SET+KEEP DATA step must still be classified simple."""
+    from src.worker.engine.router import _SimpleCopyHelper
+
+    block = _make_block(
+        BlockType.DATA_STEP, raw_sas="data out; set in; keep a b; run;", input_datasets=["in"]
+    )
+    assert _SimpleCopyHelper.is_simple(block) is True
+
+
+def test_plain_assignment_data_step_not_simple() -> None:
+    """A plain assignment (x = a + 1) makes the DATA step non-simple."""
+    from src.worker.engine.router import _SimpleCopyHelper
+
+    block = _make_block(
+        BlockType.DATA_STEP, raw_sas="data out; set in; x = a + 1; run;", input_datasets=["in"]
+    )
+    assert _SimpleCopyHelper.is_simple(block) is False
 
 
 # ── router.route() with non-MANUAL block_plan falls through (lines 283-284) ──

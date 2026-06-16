@@ -6,6 +6,7 @@ import logging
 import re
 from typing import Any
 
+from src.worker.engine.agents.shared import build_block_output_stems
 from src.worker.engine.models import (
     BlockPlan,
     BlockType,
@@ -139,20 +140,26 @@ class _SimpleCopyHelper:
     routed to the full DataStepAgent instead.
     """
 
-    # Patterns that indicate the block requires full LLM translation
-    _COMPLEX_PATTERNS: tuple[str, ...] = (
-        "IF ",
-        "DO ",
-        "DO;",
-        "MERGE ",
-        "RETAIN ",
-        "ARRAY ",
-        "OUTPUT;",
-    )
+    # Leading keywords of statements this helper can faithfully reproduce
+    # without an LLM. Anything else (assignments, LENGTH, FORMAT, put(...),
+    # IF/DO/MERGE/RETAIN/ARRAY/OUTPUT, ...) forces full DataStepAgent routing.
+    _ALLOWED_STATEMENT_KEYWORDS: tuple[str, ...] = ("DATA", "SET", "KEEP", "DROP")
+
+    # Matches a SAS line comment (``* ... ;``) or a block comment (``/* ... */``).
+    _COMMENT_RE = re.compile(r"/\*.*?\*/|^\s*\*[^;]*;", re.DOTALL | re.MULTILINE)
 
     @classmethod
     def is_simple(cls, block: SASBlock) -> bool:  # SAS: src/worker/engine/router.py:111
-        """Return True when *block* is a pure SET+KEEP/DROP DATA step.
+        """Return True only for a genuinely pure SET (+KEEP/DROP) DATA step.
+
+        Uses a positive allowlist: after stripping comments, every
+        semicolon-terminated statement must begin with one of
+        ``DATA``/``SET``/``KEEP``/``DROP`` (``RUN`` is implicit — it leaves an
+        empty trailing fragment). Any other statement — including an assignment
+        such as ``AGEGR1 = put(AGE, agegr1f.)``, a ``LENGTH``/``FORMAT``
+        declaration, or an ``IF``/``DO``/``MERGE`` — makes the block NOT simple,
+        so it is routed to the full ``DataStepAgent`` instead of the no-LLM copy
+        path (which would silently drop the derived column).
 
         Args:
             block: The SAS block to inspect.
@@ -160,8 +167,17 @@ class _SimpleCopyHelper:
         Returns:
             True if the block can be handled without LLM translation.
         """
-        raw_upper = block.raw_sas.upper()
-        return not any(pat in raw_upper for pat in cls._COMPLEX_PATTERNS)
+        without_comments = cls._COMMENT_RE.sub("", block.raw_sas)
+        for statement in without_comments.split(";"):
+            stripped = statement.strip()
+            if not stripped:
+                continue  # empty fragment (e.g. trailing RUN; or blank lines)
+            keyword = stripped.split(None, 1)[0].upper().rstrip(";")
+            if keyword == "RUN":
+                continue
+            if keyword not in cls._ALLOWED_STATEMENT_KEYWORDS:
+                return False
+        return True
 
     # SAS: src/worker/engine/router.py:127
     async def translate(self, block: SASBlock, context: JobContext) -> GeneratedBlock:
@@ -181,22 +197,27 @@ class _SimpleCopyHelper:
         keep_match = re.search(r"KEEP\s+([\w\s]+)\s*;", raw)
         drop_match = re.search(r"DROP\s+([\w\s]+)\s*;", raw)
 
-        out_ds = data_match.group(1).lower().replace(".", "_") if data_match else "output"
-        in_ds = set_match.group(1).lower().replace(".", "_") if set_match else "input"
+        stems = build_block_output_stems(context.blocks)
 
+        # Output: always stem-only (strip libname prefix)
+        raw_out = data_match.group(1).lower() if data_match else "output"
+        out_ds = raw_out.split(".")[-1]
+
+        # Input: stem-only if produced by a prior block, else underscore form for external
+        raw_in = set_match.group(1).lower() if set_match else "input"
+        in_ds = stems.get(raw_in, stems.get(raw_in.replace(".", "_"), raw_in.replace(".", "_")))
+
+        provenance = f"# SAS: {block.source_file}:{block.start_line}"
         if keep_match:
             cols = [c.lower() for c in keep_match.group(1).split()]
-            code = (
-                f"{out_ds} = {in_ds}[{cols}].copy()  # SAS: {block.source_file}:{block.start_line}"
-            )
+            cols_expr = ", ".join(f'"{c}"' for c in cols)
+            code = f"{out_ds} = {in_ds}.select({cols_expr})  {provenance}"
         elif drop_match:
             cols = [c.lower() for c in drop_match.group(1).split()]
-            code = (
-                f"{out_ds} = {in_ds}.drop(columns={cols}).copy()"
-                f"  # SAS: {block.source_file}:{block.start_line}"
-            )
+            cols_expr = ", ".join(f'"{c}"' for c in cols)
+            code = f"{out_ds} = {in_ds}.drop({cols_expr})  {provenance}"
         else:
-            code = f"{out_ds} = {in_ds}.copy()  # SAS: {block.source_file}:{block.start_line}"
+            code = f"{out_ds} = {in_ds}  {provenance}"
 
         return GeneratedBlock(source_block=block, python_code=code, confidence="high")
 

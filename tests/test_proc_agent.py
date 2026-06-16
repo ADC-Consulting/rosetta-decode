@@ -3,7 +3,12 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from src.worker.engine.agents.proc import ProcAgent, ProcError, ProcResult
+from src.worker.engine.agents.proc import (
+    _SYSTEM_PROMPT,
+    ProcAgent,
+    ProcError,
+    ProcResult,
+)
 from src.worker.engine.models import BlockType, GeneratedBlock, JobContext, MacroVar, SASBlock
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -109,6 +114,14 @@ async def test_windowed_context_used(
     call_args = mock_run.call_args
     prompt: str = call_args[0][0]
     assert isinstance(prompt, str)
+
+
+def test_system_prompt_forbids_spark_sql_auto_names() -> None:
+    """The PROC SQL prompt must forbid F.col on Spark-SQL auto-generated agg names."""
+    assert 'F.col("count(1)").isNotNull()' in _SYSTEM_PROMPT
+    assert "UNRESOLVED_COLUMN" in _SYSTEM_PROMPT
+    assert "MUST be materialised inside" in _SYSTEM_PROMPT
+    assert 'F.count("*").alias("grp_n")' in _SYSTEM_PROMPT
 
 
 async def test_llm_failure_raises_proc_error() -> None:
