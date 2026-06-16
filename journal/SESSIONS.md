@@ -6,6 +6,46 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-16 — Azure Terraform infrastructure for self-hosted AI Foundry
+
+**Branch:** `feat/infra-azure-terraform`
+
+**What we did:**
+
+Built `infra/` Terraform to replace the borrowed LLM endpoint with our own Azure resources, and fixed the worker's connection to it.
+
+- **IaC scaffold** — one root config + reusable modules (`resource_group`, `network`, `storage`, `key_vault`, `ai_foundry`). Provisions per-env (dev/prd) AI Foundry hub + project, the `gpt-5.4` deployment (Data Zone Standard for EU residency), Key Vault, storage, and a private-endpoint subnet. Optional second deployment (Claude) gated behind `deploy_claude`.
+- **Config model** — single config, environments are tfvars: `env/common.tfvars` (shared) + `env/<env>.tfvars` (only `environment` + `subscription_id`). No hardcoded `default`s in `variables.tf`. Resource names derived from `project` + `environment`; storage name gets a subscription-hash suffix for global uniqueness.
+- **State backend** — `scripts/bootstrap-backend.sh` creates `rg-rosetta-decode-tfstate` + a derived-name storage account, writes `infra/backend.hcl` (gitignored). Single backend, per-env state keys. Made idempotent (reuses existing account).
+- **Make targets** — `tf-bootstrap`, `tf-init/plan/apply/destroy ENV=`, `tf-nuke`, `tf-fmt`, `tf-validate`.
+- **Worker fix** — TensorZero gateway was hardcoded to the old `ash-pls` endpoint → 401 against the new key. Switched `config/tensorzero.toml` endpoints to `${AZURE_AI_FOUNDRY_ENDPOINT}` / `${AZURE_ANTHROPIC_ENDPOINT}`, substituted at gateway startup in `docker-compose.yml`. Endpoint + key now come from the same env vars and can't drift.
+- **Docs** — root README "Infrastructure (Azure / Terraform)" section with concrete deploy steps; `infra/README.md` for module detail.
+
+**Decisions:**
+- Key Vault uses **access policies, not RBAC** — a Contributor can self-grant secret access during apply (no User Access Administrator). TODO in `modules/key_vault/main.tf` to switch back to RBAC once an admin can assign `Key Vault Secrets Officer`.
+- Network module trimmed to **VNet + private-endpoint subnet only** — compute subnets (ACI/App Service/ACR/Search) dropped until a compute host is actually chosen.
+- Endpoint stored as a **Terraform output**, not a Key Vault secret (it's a URL, not a credential); only the API key lives in Key Vault.
+
+**Commits:** `feat(infra)`, `fix(tensorzero)`, `docs` — 3 atomic, on `feat/infra-azure-terraform`. Not pushed.
+
+**Open Questions / Blockers:**
+- `gpt-5.4` rejects `max_tokens` (wants `max_completion_tokens`) — not yet hit through the worker, but likely the next error once a job runs against the live deployment.
+- Claude deployment coords in `common.tfvars` are placeholders (`claude-opus-4-1` / version `1`); Anthropic not enabled in tenant yet (`deploy_claude = false`).
+- `infra/env/*.tfvars` carry the subscription ID (identifier, not secret) — now in history.
+
+### Next Session — Start Here
+1. `make tf-bootstrap` then `make tf-apply ENV=dev`; grant the deploy principal Secrets Officer or rely on the access policy.
+2. Run a job end-to-end against the live `gpt-5.4`; if it 400s on `max_tokens`, fix the agent calls to use `max_completion_tokens`.
+3. Decide push / open PR for `feat/infra-azure-terraform`.
+
+### Files Touched
+- `infra/**` (new — modules, env tfvars, bootstrap script)
+- `Makefile`, `.gitignore`
+- `config/tensorzero.toml`, `docker-compose.yml`
+- `README.md`
+
+---
+
 ## 2026-06-16 — F35 Data tab final polish, drag-to-pan fix, and automated tests
 
 **Branch:** `feat/F35-migration-output-catalog`

@@ -611,6 +611,87 @@ CREATE TABLE explain_sessions (
 
 ---
 
+## Infrastructure (Azure / Terraform)
+
+The Azure resources that back the hosted LLM live in [`infra/`](infra/), managed with
+Terraform. This replaces the borrowed model endpoint with our own.
+
+### What it provisions
+
+One resource group per environment owning:
+
+- **AI Foundry** — AI Services account (`AIServices`) + Foundry hub + project, and the
+  model deployment (`gpt-5.4`, Global/Data-Zone Standard). An optional second
+  deployment (Claude) is gated behind `deploy_claude`.
+- **Key Vault** — stores the model API key (`model-api-key`); the endpoint is a
+  Terraform output, not a secret.
+- **Storage account** — required backing store for the Foundry hub.
+- **Network** — VNet + a private-endpoint subnet; the AI Services account is reached
+  over a private endpoint with a private DNS zone.
+
+### Layout
+
+```
+infra/
+├── modules/          # resource_group, network, storage, key_vault, ai_foundry
+├── env/
+│   ├── common.tfvars        # shared values (region, model, capacity, …)
+│   ├── dev.tfvars           # per-env: environment + subscription_id only
+│   └── prd.tfvars
+│   └── *.backend.hcl        # per-env remote-state key
+├── main.tf           # wires the modules together
+└── scripts/bootstrap-backend.sh   # creates the remote-state backend
+```
+
+One root config; `dev` and `prd` differ only by their `*.tfvars` / `*.backend.hcl`.
+Resource names are derived from `project` + `environment`.
+
+### Deploy
+
+All commands are Make targets (run from repo root); `ENV` is `dev` or `prd`.
+
+```bash
+# 0. Log into the ADC subscription
+az login
+
+# 1. Create the remote-state backend (one-time, shared by dev+prd).
+#    Derives a globally-unique storage account name and writes infra/backend.hcl.
+make tf-bootstrap
+
+# 2. Init + review + apply for an environment
+make tf-init  ENV=dev
+make tf-plan  ENV=dev      # read the plan
+make tf-apply ENV=dev      # type yes if you agree
+
+# 3. Read outputs (endpoint is here; key is in Key Vault)
+cd infra && terraform output ai_services_endpoint && cd ..
+az keyvault secret show --vault-name kv-rosetta-decode-dev \
+  --name model-api-key --query value -o tsv
+```
+
+Wire the worker to the deployed model via `.env`:
+
+```
+AZURE_AI_FOUNDRY_ENDPOINT=<terraform output ai_services_endpoint>
+AZURE_AI_FOUNDRY_API_KEY=<Key Vault: model-api-key>
+LLM_MODEL=openai:gpt-5.4
+```
+
+### Tear down
+
+```bash
+make tf-destroy ENV=dev    # one environment
+make tf-nuke               # destroy dev + prd, then the state backend
+```
+
+> **Key Vault auth:** the vault uses access policies (not RBAC) so a `Contributor`
+> can self-grant secret access during apply. Switch to RBAC once an admin can assign
+> `Key Vault Secrets Officer` — see the note in `modules/key_vault/main.tf`.
+
+See [`infra/README.md`](infra/README.md) for module-level detail and backend config.
+
+---
+
 ## Quality gates: pre-commit and CI
 
 ### Pre-commit hooks (run on every `git commit`)
