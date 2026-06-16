@@ -10,6 +10,8 @@ import type {
     JobHistoryResponse,
     JobLineageResponse,
     JobPlanResponse,
+    JobSchemaResponse,
+    PatchJobSchemaRequest,
     JobSourcesResponse,
     JobStatus,
     JobSummary,
@@ -288,4 +290,25 @@ export async function cancelJob(jobId: string): Promise<void> {
     const body = await res.json().catch(() => ({}));
     throw new Error((body as { detail?: string }).detail ?? `Cancel failed: ${res.status}`);
   }
+}
+
+// ── F34: Data Storage schema ──────────────────────────────────────────────────
+
+export async function getJobSchema(jobId: string): Promise<JobSchemaResponse> {
+  const res = await fetch(`${BASE}/jobs/${jobId}/schema`);
+  if (!res.ok) throw new Error(await extractApiError(res));
+  return res.json() as Promise<JobSchemaResponse>;
+}
+
+export async function patchJobSchema(
+  jobId: string,
+  overrides: PatchJobSchemaRequest
+): Promise<JobSchemaResponse> {
+  const res = await fetch(`${BASE}/jobs/${jobId}/schema`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(overrides),
+  });
+  if (!res.ok) throw new Error(await extractApiError(res));
+  return res.json() as Promise<JobSchemaResponse>;
 }

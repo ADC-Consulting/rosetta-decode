@@ -27,6 +27,8 @@ from src.worker.main import (
     _make_session_factory,
     _recon_summary,
     _sniff_file,
+    _sniff_sas7bdat,
+    _sniff_xport,
 )
 
 
@@ -66,15 +68,15 @@ def test_sniff_file_succeeds_for_data_formats(
         sep = "\t" if ext == ".tsv" else ","
         df.to_csv(disk_path, sep=sep, index=False)
 
-    cols, count, column_types = _sniff_file(disk_path, ext)
+    cols, count, ctypes, _clabels, _cfmts = _sniff_file(disk_path, ext)
     assert cols == expected_cols
     assert count == expected_count
     # CSV/TSV: column_types is now populated from pandas dtype inference
     if ext in (".csv", ".tsv"):
-        assert isinstance(column_types, dict)
-        assert set(column_types.keys()) == {c.lower() for c in expected_cols}
+        assert isinstance(ctypes, dict)
+        assert set(ctypes.keys()) == {c.lower() for c in expected_cols}
     else:
-        assert column_types == {}
+        assert ctypes == {}
 
 
 @pytest.mark.parametrize("ext", [".xlsx", ".xls"])
@@ -90,7 +92,7 @@ def test_sniff_file_excel_formats_mocked(tmp_path: pathlib.Path, ext: str) -> No
         mock_df = pd.DataFrame({"col1": [1, 2], "col2": [3, 4]})
         mock_read_excel.return_value = mock_df
 
-        cols, count, _ct = _sniff_file(disk_path, ext)
+        cols, count, _ctypes, _clabels, _cfmts = _sniff_file(disk_path, ext)
 
         # Will fail because pandas.read_excel is mocked at module level
         # but the function imports it locally, so let's just verify the behavior
@@ -100,19 +102,24 @@ def test_sniff_file_excel_formats_mocked(tmp_path: pathlib.Path, ext: str) -> No
 
 def test_sniff_file_returns_empty_on_missing_path() -> None:
     """Test _sniff_file with non-existent path."""
-    cols, count, column_types = _sniff_file("/tmp/does-not-exist-at-all-12345.csv", ".csv")
+    missing = "/tmp/does-not-exist-at-all-12345.csv"
+    cols, count, ctypes, clabels, cfmts = _sniff_file(missing, ".csv")
     assert cols == []
     assert count is None
-    assert column_types == {}
+    assert ctypes == {}
+    assert clabels == {}
+    assert cfmts == {}
 
 
 def test_sniff_file_sas7bdat_without_pyreadstat() -> None:
     """Test _sniff_file for .sas7bdat when pyreadstat is unavailable."""
     with patch.dict("sys.modules", {"pyreadstat": None}):
-        cols, count, column_types = _sniff_file("/tmp/fake.sas7bdat", ".sas7bdat")
+        cols, count, ctypes, clabels, cfmts = _sniff_file("/tmp/fake.sas7bdat", ".sas7bdat")
         assert cols == []
         assert count is None
-        assert column_types == {}
+        assert ctypes == {}
+        assert clabels == {}
+        assert cfmts == {}
 
 
 def test_sniff_file_handles_malformed_csv(tmp_path: pathlib.Path) -> None:
@@ -120,31 +127,226 @@ def test_sniff_file_handles_malformed_csv(tmp_path: pathlib.Path) -> None:
     disk_path = str(tmp_path / "bad.csv")
     with open(disk_path, "w") as f:
         f.write("not,valid\n\x00binary\x00data")
-    cols, count, column_types = _sniff_file(disk_path, ".csv")
+    cols, count, ctypes, clabels, cfmts = _sniff_file(disk_path, ".csv")
     # Pandas reads the header but may fail on the binary; we catch Exception
     assert isinstance(cols, list)
     assert count is None or isinstance(count, int)
-    # column_types may be {} (on error) or a dict of inferred types (on partial success)
-    assert isinstance(column_types, dict)
+    assert isinstance(ctypes, dict)
+    assert isinstance(clabels, dict)
+    assert isinstance(cfmts, dict)
 
 
 def test_sniff_file_returns_none_for_sas7bdat_columns(tmp_path: pathlib.Path) -> None:
-    """Test _sniff_file returns None for row_count on .sas7bdat."""
+    """Test _sniff_file returns column metadata and row_count for .sas7bdat."""
     # Create a minimal file
     disk_path = str(tmp_path / "test.sas7bdat")
     with open(disk_path, "wb") as f:
         f.write(b"SASS")  # Dummy content
+
+    # Mock pyreadstat successfully — supply realistic metadata attrs
+    with patch("pyreadstat.read_sas7bdat") as mock_read:
+        mock_df = MagicMock()
+        mock_meta = MagicMock()
+        mock_meta.column_names = ["col1", "col2"]
+        mock_meta.number_rows = 42
+        mock_meta.readstat_variable_types = {"col1": "double", "col2": "character"}
+        mock_meta.column_names_to_labels = {"col1": "Column One", "col2": "Column Two"}
+        mock_meta.original_variable_types = {"col1": "COMMA12.2", "col2": "$40."}
+        mock_read.return_value = (mock_df, mock_meta)
+
+        cols, count, ctypes, clabels, cfmts = _sniff_file(disk_path, ".sas7bdat")
+        assert cols == ["col1", "col2"]
+        assert count == 42
+        assert ctypes == {"col1": "double", "col2": "character"}
+        assert clabels == {"col1": "Column One", "col2": "Column Two"}
+        assert cfmts == {"col1": "COMMA12.2", "col2": "$40."}
+
+
+# ─── _sniff_sas7bdat ─────────────────────────────────────────────────────────
+
+
+def test_sniff_sas7bdat_uses_column_labels_fallback(tmp_path: pathlib.Path) -> None:
+    """_sniff_sas7bdat falls back to parallel column_labels when name-to-label map absent."""
+    disk_path = str(tmp_path / "test.sas7bdat")
+    with open(disk_path, "wb") as f:
+        f.write(b"SASS")
+
+    with patch("pyreadstat.read_sas7bdat") as mock_read:
+        mock_df = MagicMock()
+        mock_meta = MagicMock()
+        mock_meta.column_names = ["age", "weight"]
+        mock_meta.number_rows = 100
+        # column_names_to_labels empty — triggers parallel-list fallback
+        mock_meta.column_names_to_labels = {}
+        mock_meta.column_labels = ["Age in years", "Weight in kg"]
+        mock_meta.readstat_variable_types = {"age": "double", "weight": "double"}
+        mock_meta.original_variable_types = {"age": "BEST12.", "weight": "COMMA10."}
+        mock_read.return_value = (mock_df, mock_meta)
+
+        cols, count, ctypes, clabels, cfmts = _sniff_sas7bdat(disk_path)
+
+    assert cols == ["age", "weight"]
+    assert count == 100
+    assert clabels == {"age": "Age in years", "weight": "Weight in kg"}
+    assert ctypes == {"age": "double", "weight": "double"}
+    assert cfmts == {"age": "BEST12.", "weight": "COMMA10."}
+
+
+def test_sniff_sas7bdat_graceful_degradation_on_missing_attrs(tmp_path: pathlib.Path) -> None:
+    """_sniff_sas7bdat returns empty dicts when metadata attrs are absent or falsy."""
+    disk_path = str(tmp_path / "test.sas7bdat")
+    with open(disk_path, "wb") as f:
+        f.write(b"SASS")
+
+    with patch("pyreadstat.read_sas7bdat") as mock_read:
+        mock_df = MagicMock()
+        # Build a meta object with only minimal attrs — no type/label/format data
+        mock_meta = MagicMock(spec=[])  # empty spec: getattr returns AttributeError
+        mock_meta.column_names = ["x"]
+        # All extra attrs missing → getattr(..., None) or {} fallback kicks in
+        mock_read.return_value = (mock_df, mock_meta)
+
+        cols, _count, ctypes, clabels, cfmts = _sniff_sas7bdat(disk_path)
+
+    assert cols == ["x"]
+    assert isinstance(ctypes, dict)
+    assert isinstance(clabels, dict)
+    assert isinstance(cfmts, dict)
+
+
+def test_sniff_sas7bdat_returns_empty_on_read_error() -> None:
+    """_sniff_sas7bdat returns ([], None, {}, {}, {}) when pyreadstat raises."""
+    with patch("pyreadstat.read_sas7bdat", side_effect=OSError("corrupt file")):
+        cols, count, ctypes, clabels, cfmts = _sniff_sas7bdat("/tmp/bad.sas7bdat")
+    assert cols == []
+    assert count is None
+    assert ctypes == {}
+    assert clabels == {}
+    assert cfmts == {}
+
+
+# ─── _sniff_xport ────────────────────────────────────────────────────────────
+
+
+def test_sniff_xport_returns_metadata_and_row_count(tmp_path: pathlib.Path) -> None:
+    """_sniff_xport extracts columns, row count from len(df), types, labels, formats."""
+    disk_path = str(tmp_path / "test.xpt")
+    with open(disk_path, "wb") as f:
+        f.write(b"HEADER")
+
+    with patch("pyreadstat.read_xport") as mock_read:
+        mock_df = MagicMock()
+        mock_df.__len__ = MagicMock(return_value=42)
+        mock_meta = MagicMock()
+        mock_meta.column_names = ["subj", "dose"]
+        mock_meta.column_names_to_labels = {"subj": "Subject ID", "dose": "Dose (mg)"}
+        mock_meta.readstat_variable_types = {"subj": "character", "dose": "double"}
+        mock_meta.original_variable_types = {"subj": "$10.", "dose": "BEST12."}
+        mock_read.return_value = (mock_df, mock_meta)
+
+        cols, count, ctypes, clabels, cfmts = _sniff_xport(disk_path)
+
+    assert cols == ["subj", "dose"]
+    assert count == 42
+    assert ctypes == {"subj": "character", "dose": "double"}
+    assert clabels == {"subj": "Subject ID", "dose": "Dose (mg)"}
+    assert cfmts == {"subj": "$10.", "dose": "BEST12."}
+    # Verify read_xport was called WITHOUT metadataonly kwarg
+    mock_read.assert_called_once_with(disk_path)
+
+
+def test_sniff_xport_uses_column_labels_fallback(tmp_path: pathlib.Path) -> None:
+    """_sniff_xport falls back to parallel column_labels list when name-to-label map absent."""
+    disk_path = str(tmp_path / "test.xport")
+    with open(disk_path, "wb") as f:
+        f.write(b"HEADER")
+
+    with patch("pyreadstat.read_xport") as mock_read:
+        mock_df = MagicMock()
+        mock_df.__len__ = MagicMock(return_value=5)
+        mock_meta = MagicMock()
+        mock_meta.column_names = ["age", "wt"]
+        mock_meta.column_names_to_labels = {}  # empty — triggers parallel-list fallback
+        mock_meta.column_labels = ["Age in years", "Weight kg"]
+        mock_meta.readstat_variable_types = {}
+        mock_meta.original_variable_types = {}
+        mock_read.return_value = (mock_df, mock_meta)
+
+        cols, count, _ctypes, clabels, _cfmts = _sniff_xport(disk_path)
+
+    assert cols == ["age", "wt"]
+    assert count == 5
+    assert clabels == {"age": "Age in years", "wt": "Weight kg"}
+
+
+def test_sniff_xport_returns_empty_on_read_error() -> None:
+    """_sniff_xport returns ([], None, {}, {}, {}) when pyreadstat raises."""
+    with patch("pyreadstat.read_xport", side_effect=OSError("corrupt xport")):
+        cols, count, _ctypes, _clabels, _cfmts = _sniff_xport("/tmp/bad.xpt")
+    assert cols == []
+    assert count is None
+    assert _ctypes == {}
+    assert _clabels == {}
+    assert _cfmts == {}
+
+
+def test_sniff_xport_returns_empty_when_pyreadstat_missing() -> None:
+    """_sniff_xport returns ([], None, {}, {}, {}) when pyreadstat is not installed."""
+    import builtins
+
+    real_import = builtins.__import__
+
+    def mock_import(name: str, *args: object, **kwargs: object) -> object:
+        if name == "pyreadstat":
+            raise ImportError("No module named 'pyreadstat'")
+        return real_import(name, *args, **kwargs)  # type: ignore[arg-type]
+
+    with patch("builtins.__import__", side_effect=mock_import):
+        cols, count, _ctypes, _clabels, _cfmts = _sniff_xport("/tmp/any.xpt")
+    assert cols == []
+    assert count is None
+
+
+def test_sniff_file_dispatches_xpt_extension(tmp_path: pathlib.Path) -> None:
+    """_sniff_file routes .xpt extension to _sniff_xport."""
+    disk_path = str(tmp_path / "data.xpt")
+    with open(disk_path, "wb") as f:
+        f.write(b"HEADER")
+
+    with patch("src.worker.main._sniff_xport") as mock_xport:
+        mock_xport.return_value = (["col1"], 10, {}, {}, {})
+        cols, count, *_ = _sniff_file(disk_path, ".xpt")
+
+    mock_xport.assert_called_once_with(disk_path)
+    assert cols == ["col1"]
+    assert count == 10
+
+
+def test_sniff_file_dispatches_xport_extension(tmp_path: pathlib.Path) -> None:
+    """_sniff_file routes .xport extension to _sniff_xport."""
+    disk_path = str(tmp_path / "data.xport")
+    with open(disk_path, "wb") as f:
+        f.write(b"HEADER")
+
+    with patch("src.worker.main._sniff_xport") as mock_xport:
+        mock_xport.return_value = (["a", "b"], 3, {}, {}, {})
+        cols, count, *_ = _sniff_file(disk_path, ".xport")
+
+    mock_xport.assert_called_once_with(disk_path)
+    assert cols == ["a", "b"]
+    assert count == 3
 
     # Mock pyreadstat successfully via sys.modules (pyreadstat is imported inside the try block)
     mock_pr = MagicMock()
     mock_df = MagicMock()
     mock_meta = MagicMock()
     mock_meta.column_names = ["col1", "col2"]
+    mock_meta.number_rows = None
     mock_meta.readstat_variable_types = {"col1": "string", "col2": "double"}
     mock_pr.read_sas7bdat.return_value = (mock_df, mock_meta)
 
     with patch.dict("sys.modules", {"pyreadstat": mock_pr}):
-        cols, count, column_types = _sniff_file(disk_path, ".sas7bdat")
+        cols, count, column_types, _clabels, _cfmts = _sniff_file(disk_path, ".sas7bdat")
         assert cols == ["col1", "col2"]
         assert count is None
         assert column_types == {"col1": "string", "col2": "double"}

@@ -140,6 +140,29 @@ _ARRAY_RE = re.compile(
     re.IGNORECASE,
 )
 
+# ── Column-schema extraction regexes (LENGTH / FORMAT / ATTRIB) ───────────────
+
+# LENGTH statement: LENGTH col1 $40 col2 8 ...;
+# Captures the entire argument list between LENGTH and the terminating semicolon.
+_LENGTH_STMT_RE = re.compile(r"\bLENGTH\s+(.*?)\s*;", re.IGNORECASE | re.DOTALL)
+
+# FORMAT statement: FORMAT col1 date9. col2 comma12.2 ...;
+_FORMAT_STMT_RE = re.compile(r"\bFORMAT\s+(.*?)\s*;", re.IGNORECASE | re.DOTALL)
+
+# ATTRIB statement: ATTRIB col LENGTH=$40 FORMAT=$CHAR40. LABEL="Patient ID";
+# Captures the entire body between ATTRIB and the terminating semicolon.
+_ATTRIB_STMT_RE = re.compile(r"\bATTRIB\s+(.*?)\s*;", re.IGNORECASE | re.DOTALL)
+
+# Individual token regexes used to parse the argument bodies above.
+# LENGTH token: optional $ prefix followed by optional digits — e.g. $40, $, 8
+_LENGTH_TOKEN_RE = re.compile(r"(\$\d*|\d+)$")
+# FORMAT value: word chars + optional digits + optional period + optional chars/digits
+_FORMAT_VALUE_RE = re.compile(r"^[\w$][\w.]*\.$|^[\w$][\w.]*\.\d+$|^\$\w*\.$|^\$\w*\.\d+$")
+# ATTRIB attribute captures: LENGTH=, FORMAT=, LABEL=
+_ATTRIB_LENGTH_RE = re.compile(r"\bLENGTH\s*=\s*(\$?\d*|\d+)", re.IGNORECASE)
+_ATTRIB_FORMAT_RE = re.compile(r"\bFORMAT\s*=\s*([\w$][\w.]*\.[\w\d]*)", re.IGNORECASE)
+_ATTRIB_LABEL_RE = re.compile(r'\bLABEL\s*=\s*"([^"]*)"', re.IGNORECASE)
+
 # Unsupported PROC types that are not specifically handled above
 _UNSUPPORTED_PROC_RE = re.compile(
     r"(?i)(PROC\s+(?!SQL\b|SORT\b|MEANS\b|SUMMARY\b|FREQ\b|TRANSPOSE\b|IMPORT\b|APPEND\b|RANK\b|IML\b|FORMAT\b)\w+\b.*?(?:RUN|QUIT)\s*;)",
@@ -186,6 +209,26 @@ _SQL_FROM_RE = re.compile(r"(?i)\b(?:FROM|JOIN)\s+([\w.]+)")
 
 # Extract CREATE TABLE target in PROC SQL
 _SQL_CREATE_RE = re.compile(r"(?i)CREATE\s+TABLE\s+([\w.]+)\s+AS")
+
+# MERGE BY extraction (DATA step): "BY col1 col2;" following a MERGE statement.
+# Captures the column list between the BY keyword and the terminating semicolon.
+# SAS: parser.py:_MERGE_BY_RE
+_MERGE_BY_RE = re.compile(r"(?i)\bBY\s+([\w\s]+?)\s*;")
+
+# PROC SQL alias map: "FROM table_name alias" or "JOIN table_name alias"
+# Captures: table name (group 1) and optional alias (group 2).
+# Handles quoted/unquoted names, skips ON/SET/WHERE keywords as aliases.
+# SAS: parser.py:_SQL_ALIAS_RE
+_SQL_ALIAS_RE = re.compile(
+    r"(?i)\b(?:FROM|JOIN)\s+([\w.]+)\s+(?:AS\s+)?(\w+)(?=\s)",
+)
+
+# PROC SQL ON clause: "ON alias1.col = alias2.col"
+# Captures: left alias (group 1), left col (group 2), right alias (group 3), right col (group 4).
+# SAS: parser.py:_SQL_ON_RE
+_SQL_ON_RE = re.compile(
+    r"(?i)\bON\s+(\w+)\.(\w+)\s*=\s*(\w+)\.(\w+)",
+)
 
 # Extract DATA= dataset name (used by SORT, MEANS, FREQ, TRANSPOSE, RANK, …)
 _GENERIC_DATA_RE = re.compile(r"(?i)\bDATA\s*=\s*(\w[\w.]*)")
@@ -305,6 +348,249 @@ def _extract_includes(source: str) -> list[str]:
     return [m.group(1) for m in _INCLUDE_RE.finditer(source)]
 
 
+# ── Column-schema helpers ─────────────────────────────────────────────────────
+
+
+def _parse_length_stmt(body: str) -> dict[str, dict[str, str]]:
+    """Parse the argument list of a SAS LENGTH statement.
+
+    Handles multi-column declarations such as ``col $40 age 8``.
+
+    Args:
+        body: Text between ``LENGTH`` keyword and the terminating semicolon,
+              with leading/trailing whitespace stripped.
+
+    Returns:
+        Mapping of lowercased column name to a dict with ``sas_type`` and
+        ``sas_format`` keys. Only keys that are derivable are included.
+    """  # SAS: parser.py:_parse_length_stmt
+    result: dict[str, dict[str, str]] = {}
+    tokens = body.split()
+    pending_cols: list[str] = []
+    for token in tokens:
+        # A token is a length specifier if it starts with $ or is a bare integer
+        is_char_spec = token.startswith("$")
+        is_num_spec = token.isdigit()
+        if is_char_spec or is_num_spec:
+            sas_type = "character" if is_char_spec else "numeric"
+            entry: dict[str, str] = {"sas_type": sas_type, "sas_format": token}
+            for col in pending_cols:
+                result[col.lower()] = entry.copy()
+            pending_cols = []
+        else:
+            pending_cols.append(token)
+    return result
+
+
+def _parse_format_stmt(body: str) -> dict[str, dict[str, str]]:
+    """Parse the argument list of a SAS FORMAT statement.
+
+    Handles multi-pair declarations such as ``col date9. amount comma12.2``.
+    Format values are stored as uppercase strings.
+
+    Args:
+        body: Text between ``FORMAT`` keyword and the terminating semicolon.
+
+    Returns:
+        Mapping of lowercased column name to a dict with a ``sas_format`` key.
+    """  # SAS: parser.py:_parse_format_stmt
+    result: dict[str, dict[str, str]] = {}
+    tokens = body.split()
+    pending_cols: list[str] = []
+    for token in tokens:
+        # A format value ends with a period (possibly followed by digits).
+        if "." in token and not token.startswith("."):
+            fmt = token.upper()
+            for col in pending_cols:
+                result[col.lower()] = {"sas_format": fmt}
+            pending_cols = []
+        else:
+            pending_cols.append(token)
+    return result
+
+
+def _parse_attrib_stmt(body: str) -> dict[str, dict[str, str]]:
+    """Parse a SAS ATTRIB statement body.
+
+    Each ATTRIB statement declares attributes for a single variable with any
+    combination of LENGTH=, FORMAT=, and LABEL= sub-options.
+
+    Args:
+        body: Text between the ``ATTRIB`` keyword and the terminating semicolon.
+
+    Returns:
+        Mapping of lowercased column name to a dict with any subset of
+        ``sas_type``, ``sas_format``, and ``label`` keys.
+    """  # SAS: parser.py:_parse_attrib_stmt
+    result: dict[str, dict[str, str]] = {}
+    # Split on whitespace to get the leading column name
+    tokens = body.split()
+    if not tokens:
+        return result
+    col = tokens[0].lower()
+    entry: dict[str, str] = {}
+
+    len_m = _ATTRIB_LENGTH_RE.search(body)
+    if len_m:
+        raw_len = len_m.group(1)
+        if raw_len.startswith("$"):
+            entry["sas_type"] = "character"
+            entry["sas_format"] = raw_len
+        elif raw_len.isdigit():
+            entry["sas_type"] = "numeric"
+            entry["sas_format"] = raw_len
+
+    fmt_m = _ATTRIB_FORMAT_RE.search(body)
+    if fmt_m:
+        entry["sas_format"] = fmt_m.group(1).upper()
+
+    lbl_m = _ATTRIB_LABEL_RE.search(body)
+    if lbl_m:
+        entry["label"] = lbl_m.group(1)
+
+    if entry:
+        result[col] = entry
+    return result
+
+
+def _extract_column_schema(raw_sas: str) -> dict[str, dict[str, str]]:
+    """Extract column declarations from LENGTH, FORMAT, and ATTRIB statements.
+
+    Merges all three statement types, with later statements winning on
+    key-level conflicts (not column-level — entries from all statements
+    are merged per column).
+
+    Args:
+        raw_sas: Raw SAS source text for a single DATA step block.
+
+    Returns:
+        Mapping of lowercased column name to a dict with any subset of
+        ``sas_type``, ``sas_format``, and ``label`` keys.
+    """  # SAS: parser.py:_extract_column_schema
+    schema: dict[str, dict[str, str]] = {}
+
+    for m in _LENGTH_STMT_RE.finditer(raw_sas):
+        for col, entry in _parse_length_stmt(m.group(1)).items():
+            existing = schema.setdefault(col, {})
+            existing.update(entry)
+
+    for m in _FORMAT_STMT_RE.finditer(raw_sas):
+        for col, entry in _parse_format_stmt(m.group(1)).items():
+            existing = schema.setdefault(col, {})
+            existing.update(entry)
+
+    for m in _ATTRIB_STMT_RE.finditer(raw_sas):
+        for col, entry in _parse_attrib_stmt(m.group(1)).items():
+            existing = schema.setdefault(col, {})
+            existing.update(entry)
+
+    return schema
+
+
+# ── Relationship extractors ───────────────────────────────────────────────────
+
+
+def _extract_merge_by_vars(raw_sas: str) -> list[str]:
+    """Extract BY-clause column names from a DATA step MERGE statement.
+
+    Returns column names only when the DATA step body contains a ``MERGE``
+    statement. An empty list is returned when no MERGE is present, because
+    a bare ``BY`` without MERGE belongs to PROC SORT-style blocks.
+
+    Args:
+        raw_sas: Raw SAS source text for a single DATA step block.
+
+    Returns:
+        Lowercased column name list from the BY clause, or an empty list.
+    """  # SAS: parser.py:_extract_merge_by_vars
+    if not re.search(r"(?i)\bMERGE\b", raw_sas):
+        return []
+    by_vars: list[str] = []
+    for match in _MERGE_BY_RE.finditer(raw_sas):
+        by_vars.extend(col.strip().lower() for col in match.group(1).split() if col.strip())
+    return by_vars
+
+
+def _build_alias_map(raw_sql: str) -> dict[str, str]:
+    """Build a {alias: table_name} mapping from FROM/JOIN clauses in PROC SQL.
+
+    Handles both ``FROM tbl alias`` and ``FROM tbl AS alias`` forms.
+    Table names are lowercased; schema-qualified names (``lib.table``) use
+    only the member name as the key value for readability.
+
+    Args:
+        raw_sql: Raw SAS PROC SQL source text.
+
+    Returns:
+        Mapping of alias (lowercase) to table name (lowercase, member-only).
+    """  # SAS: parser.py:_build_alias_map
+    alias_map: dict[str, str] = {}
+    for m in _SQL_ALIAS_RE.finditer(raw_sql):
+        table_raw = m.group(1).lower()
+        alias = m.group(2).lower()
+        # Skip SQL reserved words that can appear after a table name
+        reserved = {
+            "where",
+            "on",
+            "set",
+            "group",
+            "having",
+            "order",
+            "inner",
+            "outer",
+            "left",
+            "right",
+            "full",
+            "cross",
+            "join",
+            "select",
+            "from",
+            "as",
+        }
+        if alias in reserved:
+            continue
+        # Use member name only (strip libref prefix e.g. "work.dm" → "dm")
+        table_name = table_raw.split(".")[-1]
+        alias_map[alias] = table_name
+    return alias_map
+
+
+def _extract_join_on_keys(raw_sql: str) -> list[dict[str, str]]:
+    """Extract JOIN ON predicates from a PROC SQL block, resolving aliases to table names.
+
+    Each ``ON left_alias.col = right_alias.col`` predicate is resolved using
+    the alias map built from FROM/JOIN clauses. Predicates whose aliases cannot
+    be resolved are skipped.
+
+    Args:
+        raw_sql: Raw SAS PROC SQL source text.
+
+    Returns:
+        List of dicts with keys ``left_table``, ``right_table``, ``left_col``,
+        ``right_col`` (all lowercase). Empty list when no JOIN ON is present.
+    """  # SAS: parser.py:_extract_join_on_keys
+    alias_map = _build_alias_map(raw_sql)
+    result: list[dict[str, str]] = []
+    for m in _SQL_ON_RE.finditer(raw_sql):
+        left_alias = m.group(1).lower()
+        left_col = m.group(2).lower()
+        right_alias = m.group(3).lower()
+        right_col = m.group(4).lower()
+        left_table = alias_map.get(left_alias)
+        right_table = alias_map.get(right_alias)
+        if left_table is None or right_table is None:
+            continue
+        result.append(
+            {
+                "left_table": left_table,
+                "right_table": right_table,
+                "left_col": left_col,
+                "right_col": right_col,
+            }
+        )
+    return result
+
+
 # ── Block extractors ─────────────────────────────────────────────────────────
 
 
@@ -345,6 +631,12 @@ def _extract_data_steps(source: str, filename: str) -> Iterator[SASBlock]:
             {"name": m.group(1), "size": int(m.group(2)), "columns": m.group(3).split()}
             for m in _ARRAY_RE.finditer(raw)
         ]
+        # Column schema from LENGTH / FORMAT / ATTRIB declarations
+        # SAS: parser.py:_extract_data_steps
+        block.column_schema = _extract_column_schema(raw)
+        # MERGE BY — relationship keys for ERD (F34)
+        # SAS: parser.py:_extract_data_steps:merge_by_vars
+        block.merge_by_vars = _extract_merge_by_vars(raw)
         yield block
 
 
@@ -367,6 +659,9 @@ def _extract_proc_sql(source: str, filename: str) -> Iterator[SASBlock]:
         )
         where_m = _WHERE_RE.search(raw)
         block.where_clause = where_m.group(1).strip() if where_m else None
+        # JOIN ON keys — relationship predicates for ERD (F34)
+        # SAS: parser.py:_extract_proc_sql:join_on_keys
+        block.join_on_keys = _extract_join_on_keys(raw)
         yield block
 
 

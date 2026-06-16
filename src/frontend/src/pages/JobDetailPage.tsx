@@ -11,6 +11,7 @@ import {
 import type { BlockOverride, JobStatusValue } from "@/api/types";
 // import ChangelogFeed from "@/components/JobDetail/ChangelogFeed";
 import ChevronTabBar from "@/components/JobDetail/ChevronTabBar";
+import DataStorageTab from "@/components/JobDetail/DataStorageTab";
 import ETLTab from "@/components/JobDetail/ETLTab";
 import PlanTab from "@/components/JobDetail/PlanTab";
 // import ReportTab from "@/components/JobDetail/ReportTab"; // restored in #41
@@ -317,12 +318,9 @@ export default function JobDetailPage(): React.ReactElement {
               </div>
             </TabsContent> */}
 
-            {/* data-storage tab: placeholder */}
+            {/* data-storage tab */}
             <TabsContent value="data-storage" className="mt-0 flex-1 min-h-0">
-              <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2">
-                <span className="text-sm font-medium">Data Storage</span>
-                <span className="text-xs">Coming soon</span>
-              </div>
+              <DataStorageTab jobId={id} isReviewable={isReviewable} />
             </TabsContent>
 
             {/* bi tab: placeholder */}

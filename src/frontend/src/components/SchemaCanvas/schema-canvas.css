@@ -1,0 +1,316 @@
+.rosetta-schema-canvas {
+  --font-system: var(--font-sans, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif);
+  --font-mono: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
+  --text-base: 1rem;
+  --text-sm: 0.875rem;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --tracking-base: 0.005em;
+  --tracking-md: -0.005em;
+  --leading-normal: 1.5;
+  --leading-snug: 1.25;
+  --radius-sm: 0.25rem;
+  --radius-md: 8px;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --blur-sm: 8px;
+  --blur-md: 12px;
+  --duration: 0.15s;
+  --duration-slow: 0.25s;
+  --ease-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Map rosetta-canvas design tokens to shadcn/ui CSS variables */
+  --surface-raised: var(--card);
+  --surface-subtle: var(--muted);
+  --surface-hover: var(--accent);
+  --text-primary: var(--foreground);
+  --text-secondary: var(--muted-foreground);
+  --text-tertiary: color-mix(in oklch, var(--muted-foreground) 70%, transparent);
+  --border-default: var(--border);
+  --border-strong: var(--border);
+  --brand-primary: var(--primary);
+  --brand-primary-hover: color-mix(in oklch, var(--primary) 80%, transparent);
+  --brand-primary-border: color-mix(in oklch, var(--primary) 50%, transparent);
+  --brand-primary-softer: color-mix(in oklch, var(--primary) 10%, transparent);
+
+  --ink: var(--text-primary);
+  --ink-soft: var(--text-secondary);
+  --panel: var(--surface-raised);
+  --line: var(--border-default);
+  --warn: var(--function-error, #dc2626);
+}
+
+.rosetta-schema-canvas * {
+  box-sizing: border-box;
+}
+
+.rosetta-schema-canvas {
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  position: relative;
+  background:
+    radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--text-secondary) 38%, transparent) 1px, transparent 0),
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--surface-subtle) 92%, var(--surface-raised) 8%) 0%,
+      color-mix(in srgb, var(--surface-subtle) 76%, var(--surface-raised) 24%) 100%);
+  background-size: 24px 24px;
+}
+
+.rosetta-schema-canvas .canvas-stage {
+  position: relative;
+}
+
+.rosetta-schema-canvas .canvas-zoom-layer {
+  position: relative;
+}
+
+.rosetta-schema-canvas .canvas-links {
+  position: absolute;
+  inset: 0;
+  pointer-events: auto;
+}
+
+.rosetta-schema-canvas .canvas-link {
+  fill: none;
+  stroke: color-mix(in srgb, var(--text-secondary) 42%, transparent);
+  stroke-width: 2;
+  pointer-events: none;
+  transition:
+    stroke var(--duration-slow) var(--ease-out),
+    opacity var(--duration-slow) var(--ease-out),
+    stroke-width var(--duration-slow) var(--ease-out);
+}
+
+.rosetta-schema-canvas .canvas-link-selected {
+  stroke: var(--brand-primary);
+  stroke-width: 2.4;
+}
+
+.rosetta-schema-canvas .canvas-link-focus-upstream {
+  stroke: var(--brand-primary-hover);
+  stroke-width: 2.2;
+}
+
+.rosetta-schema-canvas .canvas-link-focus-downstream {
+  stroke: var(--brand-primary);
+  stroke-width: 2.3;
+}
+
+.rosetta-schema-canvas .canvas-link-dim {
+  stroke: color-mix(in srgb, var(--text-primary) 10%, transparent);
+  opacity: 0.3;
+}
+
+.rosetta-schema-canvas .canvas-link-hitbox {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+  pointer-events: stroke;
+}
+
+.rosetta-schema-canvas .canvas-link-label {
+  fill: var(--text-secondary);
+  font-size: 11px;
+  paint-order: stroke;
+  stroke: color-mix(in oklab, var(--panel) 90%, transparent);
+  stroke-width: 4px;
+  pointer-events: all;
+  transition:
+    opacity var(--duration-slow) var(--ease-out),
+    fill var(--duration-slow) var(--ease-out);
+}
+
+.rosetta-schema-canvas .canvas-link-label-upstream {
+  fill: var(--brand-primary-hover);
+}
+
+.rosetta-schema-canvas .canvas-link-label-downstream {
+  fill: var(--brand-primary);
+}
+
+.rosetta-schema-canvas .canvas-link-label-dim {
+  opacity: 0.4;
+}
+
+.rosetta-schema-canvas .table-node {
+  min-width: 220px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  position: absolute;
+  user-select: none;
+  transition:
+    border-color var(--duration-slow) var(--ease-out),
+    box-shadow var(--duration-slow) var(--ease-out),
+    opacity var(--duration-slow) var(--ease-out),
+    transform var(--duration-slow) var(--ease-out),
+    filter var(--duration-slow) var(--ease-out);
+}
+
+.rosetta-schema-canvas .table-node-selected {
+  border-color: var(--brand-primary-border);
+  box-shadow: 0 0 0 1px var(--brand-primary-border), 0 8px 22px rgba(0, 0, 0, 0.12);
+}
+
+.rosetta-schema-canvas .table-node-focus-selected {
+  border-color: var(--brand-primary-border);
+  box-shadow:
+    0 0 0 1px var(--brand-primary-border),
+    0 0 0 4px var(--brand-primary-softer),
+    0 16px 28px rgba(0, 0, 0, 0.14);
+}
+
+.rosetta-schema-canvas .table-node-focus-upstream {
+  border-color: color-mix(in srgb, var(--brand-primary-hover) 52%, var(--border-default) 48%);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--brand-primary-hover) 26%, transparent);
+}
+
+.rosetta-schema-canvas .table-node-focus-downstream {
+  border-color: color-mix(in srgb, var(--brand-primary) 54%, var(--border-default) 46%);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--brand-primary) 26%, transparent);
+}
+
+.rosetta-schema-canvas .table-node-dim {
+  opacity: 0.46;
+  filter: saturate(0.82);
+}
+
+.rosetta-schema-canvas .table-node-title {
+  min-height: 46px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.9rem;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: var(--tracking-md);
+  background: var(--surface-subtle);
+  border-bottom: 1px solid var(--line);
+}
+
+.rosetta-schema-canvas .table-node-title-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.rosetta-schema-canvas .table-node-title-text {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rosetta-schema-canvas .table-node-collapse-btn {
+  border: 1px solid var(--border-default);
+  background: var(--surface-raised);
+  color: var(--text-tertiary);
+  font-size: 0.62rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 3px 7px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.rosetta-schema-canvas .table-node-collapse-btn:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.rosetta-schema-canvas .table-node-drag-handle {
+  cursor: grab;
+}
+
+.rosetta-schema-canvas .table-node-drag-handle:active {
+  cursor: grabbing;
+}
+
+.rosetta-schema-canvas .table-node-columns {
+  margin: 0;
+  padding: 6px 6px 10px;
+  list-style: none;
+  display: grid;
+  gap: 0;
+}
+
+.rosetta-schema-canvas .table-node-collapsed .table-node-title {
+  border-bottom: 0;
+}
+
+.rosetta-schema-canvas .table-node-collapsed-summary {
+  border-top: 1px solid var(--line);
+  padding: 6px 10px 8px;
+  font-size: 0.68rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.rosetta-schema-canvas .table-node-column-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  font-size: 0.75rem;
+  border-radius: 8px;
+  padding: 0 10px;
+  position: relative;
+}
+
+.rosetta-schema-canvas .table-node-column-row:hover {
+  background: var(--surface-hover-soft, color-mix(in srgb, var(--surface-hover) 60%, transparent));
+}
+
+.rosetta-schema-canvas .table-node-column-row-selected {
+  background: var(--brand-primary-softer);
+  box-shadow: inset 0 0 0 1px var(--brand-primary-border);
+}
+
+.rosetta-schema-canvas .col-name {
+  color: var(--ink);
+  min-width: 0;
+  flex: 1 1 auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rosetta-schema-canvas .col-type {
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  font-size: 0.68rem;
+  min-width: 0;
+  max-width: 122px;
+  flex: 0 1 96px;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rosetta-schema-canvas .col-flags {
+  min-width: 56px;
+  flex: 0 0 56px;
+  text-align: right;
+  font-size: 0.64rem;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  letter-spacing: 0.02em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rosetta-schema-canvas * {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}

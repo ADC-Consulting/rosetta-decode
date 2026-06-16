@@ -175,26 +175,41 @@ def _map_readstat_type(rs_type: str, sas_format: str | None = None) -> str:
     return "double"
 
 
-def _sniff_file(disk_path: str, ext: str) -> tuple[list[str], int | None, dict[str, str]]:
-    """Sniff column headers, row count, and declared types from a data file.
+def _sniff_file(
+    disk_path: str, ext: str
+) -> tuple[list[str], int | None, dict[str, str], dict[str, str], dict[str, str]]:
+    """Sniff column headers and row count from a data file.
 
-    Supports ``.csv``, ``.tsv``, ``.xlsx``/``.xls``, and ``.sas7bdat``.
-    Any read error returns ``([], None, {})`` — this function is always non-blocking.
+    Supports ``.csv``, ``.tsv``, ``.xlsx``/``.xls``, ``.sas7bdat``, and ``.xpt``/``.xport``.
+    Any read error returns ``([], None, {}, {}, {})`` — this function is always non-blocking.
+
+    For ``.sas7bdat`` files, additional SAS metadata is extracted using
+    ``metadataonly=True`` (faster than ``row_limit=0`` — skips row decoding entirely).
+    For ``.xpt``/``.xport`` files, the full dataset is read (XPORT format does not support
+    metadata-only mode) and ``row_count`` is derived from ``len(_df)``.
 
     Args:
         disk_path: Absolute path to the data file on disk.
         ext: File extension including the dot (e.g. ``".csv"``).
 
     Returns:
-        A 3-tuple of ``(columns, row_count, column_types)``. ``column_types`` maps
-        lowercased column name to Spark cast type (``"string"``, ``"double"``,
-        ``"long"``, ``"boolean"``). For ``.sas7bdat`` files this reflects declared
-        SAS types; for CSV/TSV it is derived from pandas dtype inference. Declared
-        SAS character columns are overridden to ``"string"`` by the caller after
-        this function returns. Empty for XLSX and derived datasets.
+        A 5-tuple of ``(columns, row_count, column_types, column_labels, column_formats)``.
+        ``column_types``: for CSV/TSV, Spark cast types (``"string"``, ``"double"``, ``"long"``,
+        ``"boolean"``) from pandas dtype inference; for SAS7BDAT/XPT, readstat types
+        (``"character"`` / ``"double"``). ``column_labels`` and ``column_formats`` are SAS
+        metadata only populated for ``.sas7bdat`` and ``.xpt`` files.
+        Non-SAS file types return empty dicts for the last three elements.
+        All fields are empty / ``None`` when the file cannot be read.
     """
     import pandas as pd  # local import — pandas may not be installed in all envs
 
+    _empty: tuple[list[str], int | None, dict[str, str], dict[str, str], dict[str, str]] = (
+        [],
+        None,
+        {},
+        {},
+        {},
+    )
     try:
         if ext in (".csv", ".tsv"):
             sep = "\t" if ext == ".tsv" else ","
@@ -215,31 +230,121 @@ def _sniff_file(disk_path: str, ext: str) -> tuple[list[str], int | None, dict[s
                 else:
                     col_type = "string"
                 column_types[col_key] = col_type
-            return raw_columns, len(full_df), column_types
+            return raw_columns, len(full_df), column_types, {}, {}
         if ext in (".xlsx", ".xls"):
             header_df = pd.read_excel(disk_path, nrows=0)
             columns = list(header_df.columns)
             full_df = pd.read_excel(disk_path)
-            return columns, len(full_df), {}
+            return columns, len(full_df), {}, {}, {}
         if ext == ".sas7bdat":
-            try:
-                import pyreadstat
-
-                _df, meta = pyreadstat.read_sas7bdat(disk_path, row_limit=0)
-                columns = list(meta.column_names)
-                # original_variable_types carries the declared SAS display format
-                # (e.g. DATE9., DATETIME20.) used to distinguish dates from datetimes.
-                formats: dict[str, str] = dict(getattr(meta, "original_variable_types", {}) or {})
-                column_types = {
-                    varname.lower(): _map_readstat_type(rs_type, formats.get(varname))
-                    for varname, rs_type in meta.readstat_variable_types.items()
-                }
-                return columns, None, column_types
-            except ImportError:
-                return [], None, {}
+            return _sniff_sas7bdat(disk_path)
+        elif ext in {".xpt", ".xport"}:
+            return _sniff_xport(disk_path)
     except Exception:
         pass
-    return [], None, {}
+    return _empty
+
+
+def _sniff_sas7bdat(
+    disk_path: str,
+) -> tuple[list[str], int | None, dict[str, str], dict[str, str], dict[str, str]]:
+    """Extract column metadata from a ``.sas7bdat`` file using metadata-only mode.
+
+    Uses ``metadataonly=True`` to avoid decoding any rows — significantly faster
+    than ``row_limit=0`` for large files.
+
+    Args:
+        disk_path: Absolute path to the ``.sas7bdat`` file.
+
+    Returns:
+        A 5-tuple of ``(columns, row_count, column_types, column_labels, column_formats)``.
+        Returns ``([], None, {}, {}, {})`` on any error, including missing pyreadstat.
+    """
+    try:
+        import pyreadstat
+    except ImportError:
+        return [], None, {}, {}, {}
+
+    try:
+        _df, meta = pyreadstat.read_sas7bdat(disk_path, metadataonly=True)
+        columns = list(meta.column_names)
+        row_count: int | None = getattr(meta, "number_rows", None)
+
+        # column_types: readstat type per column — "character" or "double"
+        raw_types: dict[str, str] = getattr(meta, "readstat_variable_types", None) or {}
+        column_types = {k: str(v) for k, v in raw_types.items()}
+
+        # column_labels: prefer column_names_to_labels dict; fall back to parallel list
+        names_to_labels: dict[str, str] = getattr(meta, "column_names_to_labels", None) or {}
+        if names_to_labels:
+            column_labels = {k: str(v) for k, v in names_to_labels.items()}
+        else:
+            raw_label_list: list[str] = getattr(meta, "column_labels", None) or []
+            column_labels = {
+                col: str(lbl)
+                for col, lbl in zip(columns, raw_label_list, strict=False)
+                if lbl  # skip empty labels
+            }
+
+        # column_formats: SAS format strings (e.g. "DATE9.", "$40.", "COMMA12.2")
+        # original_variable_types carries the raw SAS format name; prefer that over
+        # variable_display_width (which is an integer width, not a format string).
+        raw_formats: dict[str, object] = getattr(meta, "original_variable_types", None) or {}
+        column_formats = {k: str(v) for k, v in raw_formats.items() if v}
+
+        return columns, row_count, column_types, column_labels, column_formats
+    except Exception:
+        return [], None, {}, {}, {}
+
+
+def _sniff_xport(  # SAS: src/worker/main.py
+    disk_path: str,
+) -> tuple[list[str], int | None, dict[str, str], dict[str, str], dict[str, str]]:
+    """Extract column metadata from a ``.xpt`` / ``.xport`` (SAS Transport) file.
+
+    Unlike ``.sas7bdat``, the XPORT format does not support metadata-only mode, so
+    the full dataset is read and ``row_count`` is derived from ``len(_df)``.
+
+    Args:
+        disk_path: Absolute path to the ``.xpt`` or ``.xport`` file.
+
+    Returns:
+        A 5-tuple of ``(columns, row_count, column_types, column_labels, column_formats)``.
+        Returns ``([], None, {}, {}, {})`` on any error, including missing pyreadstat.
+    """
+    try:
+        import pyreadstat
+    except ImportError:
+        return [], None, {}, {}, {}
+
+    try:
+        _df, meta = pyreadstat.read_xport(disk_path)
+        columns = list(meta.column_names)
+        row_count: int | None = len(_df)
+
+        # column_types: readstat type per column — "character" or "double"
+        raw_types: dict[str, str] = getattr(meta, "readstat_variable_types", None) or {}
+        column_types = {k: str(v) for k, v in raw_types.items()}
+
+        # column_labels: prefer column_names_to_labels dict; fall back to parallel list
+        names_to_labels: dict[str, str] = getattr(meta, "column_names_to_labels", None) or {}
+        if names_to_labels:
+            column_labels = {k: str(v) for k, v in names_to_labels.items()}
+        else:
+            raw_label_list: list[str] = getattr(meta, "column_labels", None) or []
+            column_labels = {
+                col: str(lbl)
+                for col, lbl in zip(columns, raw_label_list, strict=False)
+                if lbl  # skip empty labels
+            }
+
+        # column_formats: SAS format strings (e.g. "DATE9.", "$40.", "COMMA12.2")
+        raw_formats: dict[str, object] = getattr(meta, "original_variable_types", None) or {}
+        column_formats = {k: str(v) for k, v in raw_formats.items() if v}
+
+        return columns, row_count, column_types, column_labels, column_formats
+    except Exception:
+        return [], None, {}, {}, {}
 
 
 def _make_session_factory() -> async_sessionmaker[AsyncSession]:
@@ -353,6 +458,54 @@ def _dataset_matches_file(
     return False
 
 
+def _normalise_lineage_ds(
+    ds: str,
+    data_schema: dict[str, Any],
+    context: "JobContext",
+) -> str:
+    """Map a SAS dataset name to the canonical basename used in data_schema keys."""
+    import os as _os
+
+    for path in data_schema:
+        if _dataset_matches_file([ds], path, context):
+            return _os.path.splitext(_os.path.basename(path))[0]
+    # Fallback: strip libname prefix and lowercase
+    return ds.split(".")[-1].lower()
+
+
+def _normalise_pipeline_step_datasets(
+    lineage_data: dict[str, Any],
+    data_schema: dict[str, Any],
+    context: "JobContext",
+) -> dict[str, Any]:
+    """Rewrite pipeline_step input/output names to match data_schema dataset_name values.
+
+    The lineage enricher records SAS logical names (e.g. 'work.dm'); the schema API
+    derives dataset_name from the file path basename (e.g. 'dm_raw'). This pass
+    resolves SAS names to their canonical file-basename equivalents so Data Flow nodes
+    and sidebar table names refer to the same string.
+    """
+    steps = lineage_data.get("pipeline_steps")
+    if not steps:
+        return lineage_data
+    return {
+        **lineage_data,
+        "pipeline_steps": [
+            {
+                **step,
+                "inputs": [
+                    _normalise_lineage_ds(ds, data_schema, context) for ds in step.get("inputs", [])
+                ],
+                "outputs": [
+                    _normalise_lineage_ds(ds, data_schema, context)
+                    for ds in step.get("outputs", [])
+                ],
+            }
+            for step in steps
+        ],
+    }
+
+
 def _build_recon_groups(
     blocks: list["SASBlock"],
     context: "JobContext",
@@ -406,6 +559,196 @@ def _build_recon_groups(
 
     logger.debug("[recon_groups] final assignment=%s", {k: v[0] for k, v in assignment.items()})
     return assignment
+
+
+def _merge_source_column_schema(
+    blocks: list[SASBlock],
+    data_schema: dict[str, dict[str, Any]],
+) -> None:
+    """Merge block-level column_schema into data_schema for datasets without uploaded files.
+
+    For each DATA step block that declares output datasets and carries column_schema
+    extracted from LENGTH/FORMAT/ATTRIB statements, this function fills column type and
+    format information into ``data_schema`` entries that were not populated from a real
+    uploaded file (i.e. the columns list is empty).
+
+    Only fills gaps — does NOT overwrite entries already populated by pyreadstat.
+
+    Args:
+        blocks: Dependency-ordered SASBlock list from the parse + expand phases.
+        data_schema: Mutable dict keyed by normalized file path; modified in place.
+    """  # SAS: main.py:_merge_source_column_schema
+    for block in blocks:
+        if not block.column_schema or not block.output_datasets:
+            continue
+        for ds in block.output_datasets:
+            # Strip libname prefix: "outdir.sdtm_dm" → "sdtm_dm"
+            ds_stem = ds.lower().rsplit(".", 1)[-1]
+            # Find a matching data_schema entry (keyed by norm_path); the stem must
+            # match the final path component (minus extension).
+            for schema_key, schema_val in data_schema.items():
+                key_stem = schema_key.rsplit("/", 1)[-1].rsplit(".", 1)[0].lower()
+                if key_stem != ds_stem:
+                    continue
+                # Only fill if no column data already exists from pyreadstat
+                if schema_val.get("columns"):
+                    continue
+                col_names = list(block.column_schema.keys())
+                col_types: dict[str, str] = {}
+                col_formats: dict[str, str] = {}
+                col_labels: dict[str, str] = {}
+                for col, meta in block.column_schema.items():
+                    if "sas_type" in meta:
+                        col_types[col] = meta["sas_type"]
+                    if "sas_format" in meta:
+                        col_formats[col] = meta["sas_format"]
+                    if "label" in meta:
+                        col_labels[col] = meta["label"]
+                schema_val["columns"] = col_names
+                schema_val["column_types"] = col_types
+                schema_val["column_formats"] = col_formats
+                schema_val["column_labels"] = col_labels
+                logger.debug(
+                    "_merge_source_column_schema: filled %d columns for %s from block %s",
+                    len(col_names),
+                    schema_key,
+                    ds,
+                )
+
+        # Also handle datasets not yet present in data_schema at all (derived outputs with
+        # no uploaded file sentinel). Add a minimal entry so the Data Storage tab shows them.
+        for ds in block.output_datasets:
+            ds_stem = ds.lower().rsplit(".", 1)[-1]
+            already_present = any(
+                schema_key.rsplit("/", 1)[-1].rsplit(".", 1)[0].lower() == ds_stem
+                for schema_key in data_schema
+            )
+            if not already_present and block.column_schema:
+                col_names = list(block.column_schema.keys())
+                col_types = {
+                    col: meta["sas_type"]
+                    for col, meta in block.column_schema.items()
+                    if "sas_type" in meta
+                }
+                col_formats = {
+                    col: meta["sas_format"]
+                    for col, meta in block.column_schema.items()
+                    if "sas_format" in meta
+                }
+                col_labels = {
+                    col: meta["label"]
+                    for col, meta in block.column_schema.items()
+                    if "label" in meta
+                }
+                data_schema[ds_stem] = {
+                    "columns": col_names,
+                    "column_types": col_types,
+                    "column_formats": col_formats,
+                    "column_labels": col_labels,
+                    "row_count": None,
+                }
+                logger.debug(
+                    "_merge_source_column_schema: created new entry for %s with %d columns",
+                    ds_stem,
+                    len(col_names),
+                )
+
+
+def _strip_libname(table: str) -> str:
+    """Strip a libname prefix from a SAS dataset name.
+
+    Converts ``outdir.sdtm_dm`` to ``sdtm_dm``; a name with no dot is returned
+    unchanged.
+
+    Args:
+        table: Raw SAS dataset reference, e.g. ``"outdir.sdtm_dm"`` or ``"dm"``.
+
+    Returns:
+        The dataset name without its libname prefix, lowercased.
+    """  # SAS: main.py:_strip_libname
+    return table.lower().rsplit(".", 1)[-1]
+
+
+def _aggregate_relationships(
+    blocks: list[SASBlock],
+    migration_plan: MigrationPlan,
+) -> None:
+    """Aggregate merge and join relationships from all blocks into migration_plan.relationships.
+
+    Iterates all SASBlocks and collects:
+    - DATA step MERGE: one entry per (output_dataset, input_dataset, merge_by_var) triple,
+      using ``block.merge_by_vars`` and cross-product of ``block.output_datasets`` x
+      ``block.input_datasets``.
+    - PROC SQL JOIN: one entry per ``join_on_keys`` entry, using ``left_col`` as
+      ``key_column``.
+
+    Deduplication: the first entry wins for any ``(left_table, right_table, key_column,
+    relationship_type)`` combination.
+
+    Libname prefixes are stripped from all table names (e.g. ``outdir.dm`` → ``dm``).
+
+    Results are written to ``migration_plan.relationships`` in place.
+
+    Args:
+        blocks: Dependency-ordered SASBlock list (already macro-expanded).
+        migration_plan: The MigrationPlan to mutate; ``relationships`` is replaced.
+    """  # SAS: main.py:_aggregate_relationships
+    seen: set[tuple[str, str, str, str]] = set()
+    results: list[dict[str, str]] = []
+
+    for block in blocks:
+        block_id = f"{block.source_file}:{block.start_line}"
+
+        # DATA step MERGE relationships
+        if block.merge_by_vars:
+            left_tables = [_strip_libname(ds) for ds in block.output_datasets] or [""]
+            right_tables = [_strip_libname(ds) for ds in block.input_datasets] or [""]
+            for left in left_tables:
+                for right in right_tables:
+                    if left == right:
+                        continue
+                    for var in block.merge_by_vars:
+                        dedup_key = (left, right, var, "merge")
+                        if dedup_key in seen:
+                            continue
+                        seen.add(dedup_key)
+                        results.append(
+                            {
+                                "left_table": left,
+                                "right_table": right,
+                                "key_column": var,
+                                "via_block_id": block_id,
+                                "relationship_type": "merge",
+                            }
+                        )
+
+        # PROC SQL JOIN relationships
+        for entry in block.join_on_keys:
+            left = _strip_libname(entry.get("left_table", ""))
+            right = _strip_libname(entry.get("right_table", ""))
+            key_col = entry.get("left_col", "")
+            if not left or not right or not key_col:
+                continue
+            dedup_key = (left, right, key_col, "join")
+            if dedup_key in seen:
+                continue
+            seen.add(dedup_key)
+            results.append(
+                {
+                    "left_table": left,
+                    "right_table": right,
+                    "key_column": key_col,
+                    "via_block_id": block_id,
+                    "relationship_type": "join",
+                }
+            )
+
+    migration_plan.relationships = results
+    logger.debug(
+        "_aggregate_relationships: collected %d relationship(s) from %d block(s)",
+        len(results),
+        len(blocks),
+    )
 
 
 def _enrich_block_plan_post_run(
@@ -654,7 +997,9 @@ class JobOrchestrator:
             norm_path = inner[sep_idx + 1 :]
             if not norm_path:
                 continue
-            columns, row_count, column_types = _sniff_file(disk_path, file_ext)
+            columns, row_count, column_types, column_labels, column_formats = _sniff_file(
+                disk_path, file_ext
+            )
             if _declared_char and column_types and file_ext in (".csv", ".tsv"):
                 for _col_lower in list(column_types.keys()):
                     if _col_lower in _declared_char:
@@ -666,6 +1011,8 @@ class JobOrchestrator:
                 columns=columns,
                 row_count=row_count,
                 column_types=column_types,
+                column_labels=column_labels,
+                column_formats=column_formats,
             )
 
         if job.skip_llm:
@@ -772,6 +1119,53 @@ class JobOrchestrator:
                 parse_result.blocks, context.data_files
             )
 
+        # Persist libname_map and data_schema into the plan so the frontend can
+        # display schema context without a separate API call.  # SAS: main.py:592
+        # Guarantee these fields are always written regardless of whether the LLM
+        # planner succeeded.  If migration_plan is None (planner failed or was
+        # skipped), create a minimal fallback so the schema metadata is never lost.
+        if context.migration_plan is None:  # SAS: main.py:597
+            context = context.model_copy(
+                update={
+                    "migration_plan": MigrationPlan(
+                        summary="",
+                        overall_risk=BlockRisk.MEDIUM,
+                        block_plans=[],
+                        recommended_review_blocks=[],
+                        cross_file_dependencies=[],
+                        risk_explanation="",
+                    )
+                }
+            )
+
+        # Narrow type for mypy — guard above guarantees non-None  # SAS: main.py:612
+        migration_plan = context.migration_plan
+        assert migration_plan is not None  # guaranteed by guard above
+
+        # Persist libname_map
+        migration_plan.libname_map = dict(context.libname_map or {})
+
+        # Persist data_schema from context.data_files
+        data_schema: dict[str, dict[str, Any]] = {}
+        for path, info in (context.data_files or {}).items():
+            data_schema[path] = {
+                "columns": info.columns,
+                "column_types": info.column_types,
+                "column_labels": info.column_labels,
+                "column_formats": info.column_formats,
+                "row_count": info.row_count,
+            }
+        migration_plan.data_schema = data_schema
+
+        # Merge source-derived column schema for output datasets that have no uploaded file.
+        # Only fills gaps — never overwrites column data that already came from pyreadstat.
+        # SAS: main.py:_merge_source_column_schema
+        _merge_source_column_schema(expanded_blocks, migration_plan.data_schema)
+
+        # Aggregate merge/join relationships from all blocks into migration_plan.
+        # SAS: main.py:_aggregate_relationships
+        _aggregate_relationships(expanded_blocks, migration_plan)
+
         if tracer:
             await tracer.emit(
                 "plan_result",
@@ -866,6 +1260,23 @@ class JobOrchestrator:
             recon_config=recon_config,
         )
 
+        # SAS: worker/main.py:output_schema — persist execution output schema into migration_plan
+        # so the schema route can surface target_columns for the LLM job path
+        _raw_output_schema = report.get("output_schema")
+        if _raw_output_schema and context.migration_plan is not None:
+            _output_cols: list[str] = _raw_output_schema.get("columns", [])
+            _output_dtypes: dict[str, str] = _raw_output_schema.get("dtypes", {})
+            if _output_cols:
+                _dataset_name = "output"
+                for _gb in reversed(generated):
+                    if _gb.source_block.output_datasets:
+                        _dataset_name = _gb.source_block.output_datasets[0].lower()
+                        break
+                context.migration_plan.output_schema[_dataset_name] = [
+                    {"name": col, "python_type": _output_dtypes.get(col, "object")}
+                    for col in _output_cols
+                ]
+
         if tracer:
             await tracer.emit(
                 "phase_done",
@@ -950,6 +1361,16 @@ class JobOrchestrator:
         # Inject data-file nodes + edges from the data_files catalogue
         if lineage_data is not None and context.data_files:
             lineage_data = _inject_data_file_nodes(lineage_data, blocks, context)
+
+        # Normalise pipeline step dataset names to match schema dataset_name convention
+        if (
+            lineage_data is not None
+            and context.migration_plan
+            and context.migration_plan.data_schema
+        ):
+            lineage_data = _normalise_pipeline_step_datasets(
+                lineage_data, context.migration_plan.data_schema, context
+            )
 
         # Step 10: Persist — use under_review if recon failed, proposed if all passed
         final_status = "under_review" if recon_failed else "proposed"
@@ -2307,24 +2728,48 @@ async def _process_job(session: AsyncSession, job: Job) -> None:
             ref_sas7bdat_path,
         )
 
+        # SAS: main.py:output_schema — propagate execution output schema into migration_plan
+        raw_output_schema: dict[str, Any] = report.get("output_schema", {})
+        updated_migration_plan: dict[str, Any] | None = None
+        if generated and raw_output_schema:
+            existing_plan: dict[str, Any] = dict(job.migration_plan or {})
+            # Determine dataset name from the last generated block's output_datasets
+            dataset_name: str = "output"
+            if generated:
+                last_block = generated[-1].source_block
+                if last_block.output_datasets:
+                    dataset_name = last_block.output_datasets[0]
+            # Build column list — copy existing plan to avoid mutating JSONB in-place
+            updated_migration_plan = {**existing_plan}
+            existing_output_schema: dict[str, Any] = dict(
+                updated_migration_plan.get("output_schema", {})
+            )
+            output_cols: list[str] = raw_output_schema.get("columns", [])
+            output_dtypes: dict[str, str] = raw_output_schema.get("dtypes", {})
+            existing_output_schema[dataset_name] = [
+                {"name": col, "python_type": output_dtypes.get(col, "object")}
+                for col in output_cols
+            ]
+            updated_migration_plan["output_schema"] = existing_output_schema
+
         doc: str | None = None
         try:
             doc = await DocGenerator().generate(job, client)
         except Exception as exc:
             logger.warning("Doc generation failed for job %s: %s", job.id, exc)
 
-        await session.execute(
-            update(Job)
-            .where(Job.id == job.id)
-            .values(
-                status="proposed",
-                python_code=python_code,
-                report=report,
-                llm_model=worker_settings.llm_model,
-                lineage=lineage_data,
-                doc=doc,
-            )
-        )
+        update_values: dict[str, Any] = {
+            "status": "proposed",
+            "python_code": python_code,
+            "report": report,
+            "llm_model": worker_settings.llm_model,
+            "lineage": lineage_data,
+            "doc": doc,
+        }
+        if updated_migration_plan is not None:
+            update_values["migration_plan"] = updated_migration_plan
+
+        await session.execute(update(Job).where(Job.id == job.id).values(**update_values))
         await session.commit()
         logger.info("Job %s completed successfully", job.id)
     except Exception as exc:

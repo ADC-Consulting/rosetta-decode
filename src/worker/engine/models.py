@@ -77,6 +77,11 @@ class SASBlock(BaseModel):
         file_path: DATAFILE= path from PROC IMPORT.
         dbms: DBMS= value from PROC IMPORT (CSV / XLSX / DLM / …).
         sheet: SHEET= value from PROC IMPORT (Excel sheet name).
+        merge_by_vars: Column names from the BY clause of a DATA step MERGE statement
+            (lowercased). Empty list when no MERGE is present.
+        join_on_keys: Join predicates extracted from PROC SQL ON clauses with aliases
+            resolved to table names. Each entry is a dict with keys ``left_table``,
+            ``right_table``, ``left_col``, ``right_col``. Empty list when no JOIN is present.
     """
 
     block_type: BlockType
@@ -107,6 +112,19 @@ class SASBlock(BaseModel):
     where_clause: str | None = None
     output_targets: list[str] = Field(default_factory=list)
     arrays: list[dict[str, object]] = Field(default_factory=list)
+
+    # Column-level schema extracted from LENGTH/FORMAT/ATTRIB statements.
+    # Maps column name (lowercase) → dict with any subset of keys:
+    # {"sas_type": "character"|"numeric", "sas_format": str, "label": str}
+    column_schema: dict[str, dict[str, str]] = Field(default_factory=dict)  # SAS: models.py:110
+
+    # Relationship extraction for ERD / Data Storage tab (F34).
+    # merge_by_vars: column names from BY clause in a DATA step MERGE statement.
+    #   e.g. MERGE dm(in=a) ex(in=b); BY USUBJID STUDYID; → ["usubjid", "studyid"]
+    merge_by_vars: list[str] = Field(default_factory=list)  # SAS: models.py:merge_by_vars
+    # join_on_keys: join predicates from PROC SQL ON clause, alias-resolved to table names.
+    #   Each entry: {left_table, right_table, left_col, right_col}
+    join_on_keys: list[dict[str, str]] = Field(default_factory=list)  # SAS: models.py:join_on_keys
 
 
 class MacroDef(BaseModel):
@@ -336,6 +354,19 @@ class MigrationPlan(BaseModel):
     risk_explanation: str = ""
     missing_dependencies: list[MissingDependency] = Field(default_factory=list)
     sensitive_data_findings: list[SensitiveDataFinding] = Field(default_factory=list)
+    libname_map: dict[str, str] = Field(default_factory=dict)
+    # e.g. {"rawdir": "/data/raw", "outdir": "/data/out"}
+    data_schema: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    # keyed by normalised file path e.g. "sas_pharma_sandbox/data/raw/dm_raw.csv"
+    # value: {columns, column_types, column_labels, column_formats, row_count}
+    # Each entry: {left_table, right_table, key_column, via_block_id, relationship_type}
+    # relationship_type is "merge" (DATA step MERGE BY) or "join" (PROC SQL JOIN ON)
+    relationships: list[dict[str, str]] = Field(default_factory=list)  # SAS: models.py:rels
+    # keyed by dataset name (output_datasets[0] from the generating block)
+    # value: list of {name: str, python_type: str} dicts
+    # absent when the block has not been reconciled / executed
+    # SAS: models.py:output_schema
+    output_schema: dict[str, list[dict[str, str]]] = Field(default_factory=dict)
 
 
 class ColumnFlow(BaseModel):
@@ -441,12 +472,16 @@ class DataFileInfo(BaseModel):
         extension: File extension including the dot (e.g. ``".csv"``).
         columns: Column headers sniffed from the file; empty list if unreadable.
         row_count: Number of data rows, or ``None`` if not sniffable.
-        column_types: Mapping of lowercased column name to Spark cast type
-            (``"string"``, ``"double"``, ``"long"``, ``"boolean"``). For
-            ``.sas7bdat`` files this reflects declared SAS types; for CSV/TSV
-            it is derived from pandas dtype inference with SAS-declared character
-            columns (``LENGTH var $w``) overridden to ``"string"`` to preserve
-            leading zeros at read time. Empty for XLSX and derived datasets.
+        column_types: Mapping of column name to type string. For ``.sas7bdat``/``.xpt``
+            files this is the readstat type (e.g. ``"character"``, ``"double"``); for
+            CSV/TSV it is the Spark cast type (``"string"``, ``"double"``, ``"long"``,
+            ``"boolean"``) inferred from pandas dtypes, with SAS-declared character
+            columns (``LENGTH var $w``) overridden to ``"string"`` to preserve leading zeros.
+        column_labels: Mapping of column name to human-readable SAS label.
+            Only populated for ``.sas7bdat`` and ``.xpt`` files.
+        column_formats: Mapping of column name to SAS format string
+            (e.g. ``"DATE9."``, ``"$40."``, ``"COMMA12.2"``).
+            Only populated for ``.sas7bdat`` and ``.xpt`` files.
     """
 
     path: str
@@ -455,6 +490,8 @@ class DataFileInfo(BaseModel):
     columns: list[str] = Field(default_factory=list)
     row_count: int | None = None
     column_types: dict[str, str] = Field(default_factory=dict)
+    column_labels: dict[str, str] = Field(default_factory=dict)
+    column_formats: dict[str, str] = Field(default_factory=dict)
 
 
 class JobContext(BaseModel):

@@ -6,6 +6,15 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-06-15 — F35 Data Storage tab design decisions
+
+- **Data Model ERD shows output tables only:** Source SAS tables are input artefacts, not migration deliverables. Mixing them into the ERD dilutes the diagram's purpose. A notice strip explains the filter when source tables were removed. · revisit never
+- **Data Flow keeps source nodes:** Unlike the ERD, Data Flow is a lineage view — hiding source nodes would make it meaningless. Source tables correctly appear as "SAS input" nodes showing where data originates. · revisit never
+- **Dataset name normalisation at both write time and read time:** Worker normalises SAS logical names (work.dm) to file-basename equivalents (dm_raw) via _dataset_matches_file() after lineage is built. Backend applies the same pass at GET /jobs/{id}/lineage read time so existing jobs also benefit where data_schema is populated. Jobs with empty data_schema (pre-F34 jobs) cannot be normalised without re-running. · revisit never
+- **Right panel differentiated by table type:** Source SAS tables show SAS metadata read-only (no migration state). Output tables in "not run" state show a proposed schema (column name + inferred type). Output tables post-migration show the source-vs-target diff view. · revisit never
+
+---
+
 ## 2026-06-15 — F15 deterministic zero-pad / concat KEY derivation in codegen
 
 - **Mechanical zero-pad/concat KEY derivation is now enforced deterministically from the SAS source, overriding the LLM output when cleanly parsed:** `parse_padded_concat_keys` recognises single-statement `target = catx('-', ...)` / `cats(...)`/`catt(...)` / `a || b || ...` assignments whose components are string literals, bare columns, or `put(var, zW.)` zero-pads; `render_padded_key_expr` builds the canonical PySpark (`F.concat_ws`/`F.concat` + `F.lpad(F.col("c").cast("string"), W, "0")`); `enforce_padded_concat_keys` APPENDS `<outvar> = <outvar>.withColumn("<target>", <expr>)` (Spark `withColumn` replaces, so append-override supersedes the LLM expression without a fragile nested-edit). Wired in all three agents immediately after `inject_declared_casts` and before `apply_mechanical_drift_guard`. Fixes the usubjid regression where `catx('-', studyid, put(siteid,z3.), put(subjid,z4.))` → `ADC-XYZ-001-003-0001` but the LLM emitted unpadded `...-3-1` · revisit never
@@ -54,6 +63,22 @@ Format: date · decision · rationale · revisit?
 - **Runbook placed as a collapsible panel in Plan tab:** Follows the locked "Plan tab is the single decision surface" decision; mirrors the F34 ScopingSummaryPanel pattern (lazy-loaded, Copy-as-Markdown) · revisit never
 - **Runbook inclusion filter = criticality in (critical, high):** Equivalent to existing `human_review_required` flag; targets the ~20% that can't be safely auto-migrated; excludes translated_with_review and unknown-confidence blocks that are merely flagged for review · revisit if clients want a broader export
 - **detected_features with `&`-prefixed items are macro variable refs, not pattern names:** The MigrationPlannerAgent is instructed to put macro parameter names (e.g. `&in`, `&out`) into detected_features for manual-strategy blocks; `why_risky()` now detects the `&` prefix and renders "Block uses macro parameters as dataset/library names" rather than dumping raw identifiers · revisit never
+
+---
+
+## 2026-06-12 — F34 Phase 2 column schema
+
+- **Phase 2 must include SAS source parsing for column schema:** pyreadstat covers uploaded `.sas7bdat` files; derived datasets (sdtm_dm, adsl_output) only get column types from SAS source declarations (LENGTH, FORMAT, ATTRIB statements); without this, derived tables show no column data at all · revisit never
+- **CSV columns must show "Unknown" not "Number":** Defaulting to "Number" when `sas_type` is empty string is wrong — USUBJID, ARM, SEX etc. are clearly strings; "Unknown" is the honest fallback when no SAS metadata is available · revisit never
+
+---
+
+## 2026-06-12 — F34 Data Storage tab design
+
+- **Data Storage tab is a single feature covering all 3 phases:** Schema browser + column type extraction + ERD + DDL are one feature with 3 internal dev phases — not separate features; coherent design from the start · revisit never
+- **Target-agnostic ANSI SQL DDL first:** DDL generation uses generic SQL types (TEXT, DATE, TIMESTAMP, DECIMAL, DOUBLE PRECISION, BIGINT); user-selectable platform (Databricks Delta, Snowflake) deferred to backlog · revisit after first client feedback
+- **Schema overrides in user_overrides, machine data in migration_plan:** `libname_map` and `data_schema` are worker-generated and stored in `migration_plan`; user edits (target schema names, column type overrides) stored under `schema_overrides` key in `user_overrides` — consistent with existing human/machine data separation · revisit never
+- **DATETIME format checked before DATE in semantic type mapping:** SAS `DATETIME` format starts with `DATE`, so DATETIME regex must be tested first to prevent false Date matches · revisit never
 
 ---
 

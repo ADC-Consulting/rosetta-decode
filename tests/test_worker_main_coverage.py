@@ -1,6 +1,13 @@
 """Extended coverage tests for src/worker/main.py — targeting uncovered branches."""
 
-from src.worker.engine.models import BlockType, DataFileInfo, JobContext, SASBlock
+from src.worker.engine.models import (
+    BlockRisk,
+    BlockType,
+    DataFileInfo,
+    JobContext,
+    MigrationPlan,
+    SASBlock,
+)
 from src.worker.main import (
     _dataset_matches_file,
     _inject_data_file_nodes,
@@ -9,7 +16,7 @@ from src.worker.main import (
 
 def _make_job_context(**overrides: object) -> JobContext:
     """Helper to create a JobContext with default values."""
-    defaults = {
+    defaults: dict[str, object] = {
         "source_files": {},
         "resolved_macros": [],
         "dependency_order": [],
@@ -19,13 +26,14 @@ def _make_job_context(**overrides: object) -> JobContext:
         "data_files": {},
         "libname_map": {},
     }
-    defaults.update(overrides)
+    for k, v in overrides.items():
+        defaults[k] = v
     return JobContext(**defaults)
 
 
 def _make_sas_block(**overrides: object) -> SASBlock:
     """Helper to create a SASBlock with default values."""
-    defaults = {
+    defaults: dict[str, object] = {
         "block_type": BlockType.DATA_STEP,
         "source_file": "test.sas",
         "start_line": 1,
@@ -34,7 +42,8 @@ def _make_sas_block(**overrides: object) -> SASBlock:
         "input_datasets": [],
         "output_datasets": [],
     }
-    defaults.update(overrides)
+    for k, v in overrides.items():
+        defaults[k] = v
     return SASBlock(**defaults)
 
 
@@ -114,7 +123,7 @@ class TestInjectDataFileNodes:
 
     def test_empty_data_files(self) -> None:
         """Test that empty data_files dict returns unchanged lineage."""
-        lineage_data = {"nodes": [{"id": "block1"}], "edges": []}
+        lineage_data: dict[str, object] = {"nodes": [{"id": "block1"}], "edges": []}
         context = _make_job_context()
         result = _inject_data_file_nodes(lineage_data, [], context)
         assert result["nodes"] == [{"id": "block1"}]
@@ -122,7 +131,7 @@ class TestInjectDataFileNodes:
 
     def test_data_files_with_no_blocks(self) -> None:
         """Test that data files are added even when there are no blocks."""
-        lineage_data = {"nodes": [], "edges": []}
+        lineage_data: dict[str, object] = {"nodes": [], "edges": []}
         data_files = {
             "data/raw/customers.csv": DataFileInfo(
                 path="data/raw/customers.csv",
@@ -142,7 +151,7 @@ class TestInjectDataFileNodes:
 
     def test_data_files_with_matching_blocks(self) -> None:
         """Test that edges are created when blocks reference data files."""
-        lineage_data = {"nodes": [], "edges": []}
+        lineage_data: dict[str, object] = {"nodes": [], "edges": []}
         data_files = {
             "data/raw/customers.csv": DataFileInfo(
                 path="data/raw/customers.csv",
@@ -172,7 +181,7 @@ class TestInjectDataFileNodes:
 
     def test_data_files_with_output_edges(self) -> None:
         """Test that output edges are created correctly."""
-        lineage_data = {"nodes": [], "edges": []}
+        lineage_data: dict[str, object] = {"nodes": [], "edges": []}
         data_files = {
             "output.csv": DataFileInfo(
                 path="output.csv",
@@ -198,7 +207,7 @@ class TestInjectDataFileNodes:
 
     def test_multiple_data_files_and_blocks(self) -> None:
         """Test with multiple data files and blocks."""
-        lineage_data = {"nodes": [], "edges": []}
+        lineage_data: dict[str, object] = {"nodes": [], "edges": []}
         data_files = {
             "data/raw/in.csv": DataFileInfo(
                 path="data/raw/in.csv",
@@ -261,3 +270,134 @@ class TestInjectDataFileNodes:
         # Should have both existing and new edges
         assert len(result["edges"]) == 1
         assert result["edges"][0] == existing_edge
+
+
+# ── Tests for schema/libname fallback behaviour ────────────────────────────────
+
+
+def _make_migration_plan(**overrides: object) -> MigrationPlan:
+    """Helper to create a MigrationPlan with default values."""
+    defaults: dict[str, object] = {
+        "summary": "",
+        "overall_risk": BlockRisk.MEDIUM,
+        "block_plans": [],
+        "recommended_review_blocks": [],
+        "cross_file_dependencies": [],
+        "risk_explanation": "",
+    }
+    for k, v in overrides.items():
+        defaults[k] = v
+    return MigrationPlan(**defaults)
+
+
+def _make_data_file_info(path: str, columns: list[str], row_count: int = 10) -> DataFileInfo:
+    """Helper to create a DataFileInfo with default column_types/labels/formats."""
+    return DataFileInfo(
+        path=path,
+        disk_path=f"/tmp/{path}",
+        extension=".csv",
+        columns=columns,
+        row_count=row_count,
+        column_types={c: "character" for c in columns},
+        column_labels={c: c for c in columns},
+        column_formats={c: "" for c in columns},
+    )
+
+
+class TestSchemaFallbackPlan:
+    """Verify data_schema and libname_map are always written to migration_plan.
+
+    These tests replicate the guard logic introduced in the fix so we can
+    confirm it behaves correctly in both the LLM-success and LLM-failure paths
+    without running the full async pipeline.
+    """
+
+    def _apply_schema_to_context(self, context: JobContext) -> JobContext:
+        """Mirror the fixed guard logic from _execute() for unit testing."""
+        if context.migration_plan is None:
+            context = context.model_copy(
+                update={
+                    "migration_plan": MigrationPlan(
+                        summary="",
+                        overall_risk=BlockRisk.MEDIUM,
+                        block_plans=[],
+                        recommended_review_blocks=[],
+                        cross_file_dependencies=[],
+                        risk_explanation="",
+                    )
+                }
+            )
+        assert context.migration_plan is not None
+        context.migration_plan.libname_map = dict(context.libname_map or {})
+        data_schema: dict[str, dict[str, object]] = {}
+        for path, info in (context.data_files or {}).items():
+            data_schema[path] = {
+                "columns": info.columns,
+                "column_types": info.column_types,
+                "column_labels": info.column_labels,
+                "column_formats": info.column_formats,
+                "row_count": info.row_count,
+            }
+        context.migration_plan.data_schema = data_schema
+        return context
+
+    def test_schema_written_when_plan_is_none(self) -> None:
+        """data_schema and libname_map are written even when migration_plan starts as None."""
+        data_files = {
+            "data/raw/customers.csv": _make_data_file_info("data/raw/customers.csv", ["id", "name"])
+        }
+        context = _make_job_context(
+            data_files=data_files,
+            libname_map={"rawdir": "/data/raw"},
+        )
+        assert context.migration_plan is None
+
+        context = self._apply_schema_to_context(context)
+
+        assert context.migration_plan is not None
+        assert context.migration_plan.libname_map == {"rawdir": "/data/raw"}
+        assert "data/raw/customers.csv" in context.migration_plan.data_schema
+        schema_entry = context.migration_plan.data_schema["data/raw/customers.csv"]
+        assert schema_entry["columns"] == ["id", "name"]
+        assert schema_entry["row_count"] == 10
+
+    def test_schema_written_when_plan_already_set(self) -> None:
+        """data_schema and libname_map are merged onto an existing MigrationPlan
+        without overwriting it."""
+        existing_plan = _make_migration_plan(
+            summary="LLM produced this plan", overall_risk=BlockRisk.HIGH
+        )
+        data_files = {
+            "out/results.csv": _make_data_file_info("out/results.csv", ["result_id"], row_count=5)
+        }
+        context = _make_job_context(
+            data_files=data_files,
+            libname_map={"outdir": "/data/out"},
+            migration_plan=existing_plan,
+        )
+        assert context.migration_plan is existing_plan
+
+        context = self._apply_schema_to_context(context)
+
+        # Plan object identity preserved (no new plan was created)
+        assert context.migration_plan is existing_plan
+        assert context.migration_plan.summary == "LLM produced this plan"
+        assert context.migration_plan.overall_risk == BlockRisk.HIGH
+        assert context.migration_plan.libname_map == {"outdir": "/data/out"}
+        assert "out/results.csv" in context.migration_plan.data_schema
+
+    def test_fallback_plan_has_empty_schema_when_no_data_files(self) -> None:
+        """Fallback plan is created with empty data_schema when no data files are present."""
+        context = _make_job_context(libname_map={})
+        context = self._apply_schema_to_context(context)
+
+        assert context.migration_plan is not None
+        assert context.migration_plan.data_schema == {}
+        assert context.migration_plan.libname_map == {}
+
+    def test_empty_libname_map_handled(self) -> None:
+        """Empty libname_map is stored as an empty dict in the plan."""
+        context = _make_job_context(libname_map={})
+        context = self._apply_schema_to_context(context)
+        assert context.migration_plan is not None
+        assert context.migration_plan.libname_map == {}

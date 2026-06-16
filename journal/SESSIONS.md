@@ -6,6 +6,243 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-15 — F35 Data Storage tab polish — Data Model, Data Flow, dataset name alignment
+
+**Branch:** `feat/F35-migration-output-catalog`
+
+**What we did:**
+
+Post-ship polish pass on the Data Storage tab (F35 already marked complete). 6 frontend commits + 2 backend commits:
+
+- **Data Model ERD — PK/FK badges**: Replaced plain text "pk fk" flags in `SchemaCanvasNodesLayer.tsx` with coloured pill badges (PK amber, FK blue, UQ purple, NN slate). Removed duplicate "PK " text prefix before column names.
+- **Data Model ERD — scroll to node**: Added `useEffect` in `SchemaCanvas.tsx` that smooth-scrolls the canvas viewport to centre the selected node whenever `selectedNodeId` changes.
+- **Data Model ERD — output-only filter**: `DataModelERD.tsx` now filters `schema.tables` to `libname === null` before passing to `schemaResponseToCanvas`. Cross-boundary FK edges drop automatically. When source tables are present but filtered, a notice strip reads "N output tables · Source SAS tables are not shown here — see the left sidebar". The ERD shows only the migration deliverable schema, not legacy source tables.
+- **Data Flow — all issues fixed**: Tooltips on clipped node labels; step→step edge labels capped at 2 names (+N more); step nodes now interactive (indigo selection state, toggle click); `requestAnimationFrame` replaces fragile `setTimeout(50)` for fitView; "Generated migration pipeline · N steps" header above canvas.
+- **Data Flow — clarified labels**: Node type subtitles changed from generic ("source", "step", "output") to intent-specific ("SAS input", "Python step", "output table") so users know immediately they're viewing the proposed migration, not the original SAS program.
+- **Dataset name alignment — worker**: `_normalise_pipeline_step_datasets()` added to `worker/main.py`. After lineage is built, rewrites each `pipeline_step.inputs[]`/`outputs[]` from SAS logical names (e.g. `work.dm`) to file-basename equivalents (e.g. `dm_raw`) via `_dataset_matches_file()` lookup. Applied to all new jobs.
+- **Dataset name alignment — backend read-time**: `_normalise_pipeline_step_names()` added to `backend/api/routes/jobs.py`. Same normalisation applied at GET `/jobs/{id}/lineage` read time so existing jobs also benefit. However: **open issue** — old jobs where `migration_plan.data_schema` is empty ({}) are not normalised because there's no lookup table available. Newly submitted jobs will have correct names.
+
+**Commits:** 7 committed; `src/backend/api/routes/jobs.py` staged but not yet committed (interrupted mid-debug).
+
+**Decisions:**
+- Data Model ERD should show output tables only (not source SAS tables) — source tables are input artefacts; the ERD's purpose is to document what the migration produced.
+- Data Flow should keep source nodes — it IS a lineage view; hiding source nodes would make the diagram meaningless.
+- Dataset name normalisation belongs at both write time (worker) and read time (backend API) to cover existing + future jobs.
+
+**Open Questions / Blockers:**
+- Old jobs with empty `data_schema` in `migration_plan` cannot be normalised at read time — the lookup table doesn't exist. Root cause: these jobs predate the `data_schema` persistence change. No fix without re-running the jobs.
+- The uncommitted `jobs.py` change (read-time normalisation) works for jobs that have `data_schema` populated, but has no effect on older jobs.
+
+### Next Session — Start Here
+1. Commit the staged `src/backend/api/routes/jobs.py` change (read-time pipeline step name normalisation).
+2. Verify the normalisation works on a newly submitted job end-to-end (Data Flow node names match sidebar names).
+3. Consider opening the F35 PR once the dataset name issue is confirmed working on new jobs.
+
+### Files Touched
+- `src/frontend/src/components/SchemaCanvas/SchemaCanvas.tsx`
+- `src/frontend/src/components/SchemaCanvas/SchemaCanvasNodesLayer.tsx`
+- `src/frontend/src/components/JobDetail/DataModelERD.tsx`
+- `src/frontend/src/components/JobDetail/DataFlowDiagram.tsx`
+- `src/worker/main.py`
+- `src/backend/api/routes/jobs.py` (staged, uncommitted)
+
+---
+
+## 2026-06-15 — F35 Phase 3 complete; feature branch ready for PR
+
+**Branch:** `feat/F35-migration-output-catalog` (10 commits ahead of F34 base)
+
+**What we did:**
+
+Completed F35 Phase 3 — all in `DataStorageTab.tsx`, one commit:
+- **P3-B** (sidebar status dots): `statusDotClass()` helper; coloured dot (green/amber/muted) prepended to each table row; Migrated/Changed/Not run legend pinned to sidebar bottom with `mt-auto`
+- **P3-A** (column diff table): `buildColumnDiff()` pure function computes unified diff between source and target columns; four-way branch in column panel: diff table (with +/✗/✓ status badges, green/red row tints, SAS type, SQL type, PK/FK flag chips) when `target_columns.length > 0`; original source-only table as fallback; empty-state for not-run tables
+- **P3-C** (DDL label): CollapsibleTrigger text becomes "Target DDL" / "Source DDL + amber estimated badge" / "DDL" fallback based on `ddl_source`
+
+**F35 is now fully complete.** All 3 phases, all 7 make test gates green, 10 commits on branch.
+
+**Next:** Open PR for F35 against `feat/F34-data-storage-tab` (not main — F34 PR #98 still open)
+
+---
+
+## 2026-06-15 — F35 Phase 1 + Phase 2 complete; Phase 3 next
+
+**Branch:** `feat/F35-migration-output-catalog` (8 commits ahead of F34 base)
+
+**What we did:**
+
+Phase 1 (backend) completed last session:
+- `ReconciliationService` + executor now return `output_schema` (column names + dtypes) from real execution
+- `RemoteReconciliationService` propagates `output_schema` through full chain (executor → recon → main.py → DB)
+- `infer_pk_fk()` in `schema_utils.py` with SDTM-aware heuristics (USUBJID, STUDYID, *SEQ, *ID, relationship hints, user overrides) — all keys normalised to lowercase
+- `map_python_dtype_to_sql()` maps pandas dtypes to ANSI SQL types
+- Schema route extended: `target_columns`, `schema_status`, `ddl_source`, `is_pk`, `is_fk`, `fk_ref` per column
+- `PATCH /jobs/{id}/schema` accepts `pk_overrides` + `fk_overrides`
+
+Phase 2 (frontend) completed this session — 6 commits:
+- **P2-0**: Extended `ColumnSchema`/`TableSchema`/`PatchJobSchemaRequest` TS types with all P1-E fields
+- **P2-A**: Ported structor canvas (10 files) to `src/frontend/src/components/SchemaCanvas/` — read-only mode (no connection drag, no rename), `rosetta-schema-canvas` CSS scope, `import type` for all type-only imports
+- **P2-B**: Created `schemaResponseToCanvas.ts` adapter — 4-col grid layout, target_columns fallback to columns, FK edges from both relationships and fk_ref fields, deduplication by key string
+- **P2-C**: Created `DataModelERD.tsx` — wraps SchemaCanvas with API data; `key={schemaKey}` remount pattern avoids useEffect-setState lint errors
+- **P2-D**: Created `DataFlowDiagram.tsx` — ReactFlow + dagre LR; 3 custom node types (source/step/output); uses `getJobLineage`; falls back between `pipeline_steps` and `nodes/edges` lineage formats
+- **P2-E**: Updated `DataStorageTab.tsx` — "ERD" view now has `[Data Model] [Data Flow]` sub-toggle; replaced `DataStorageERD` with `DataModelERD` + `DataFlowDiagram`
+
+**Fixes during session:**
+- `DataModelERD`: ESLint `react-hooks/set-state-in-effect` — solved with `key={schemaKey}` remount pattern + derived `selectedNodeId = localSelectedNode ?? selectedTable`
+- `schemaResponseToCanvas.ts`: rolldown `MISSING_EXPORT` build error — all type-only imports changed to `import type { ... }`
+
+**Next:** F35 Phase 3 — column diff panel (P3-A), sidebar status dots (P3-B), DDL label (P3-C), all in `DataStorageTab.tsx`
+
+---
+
+## 2026-06-15 — F34 Phase 2 + Phase 3 complete; PR #98 open
+**Duration:** ~4h | **Focus:** F34 P2-B through P3-H implementation + browser verification + PR
+
+### Done
+- P2-B: `map_sas_to_semantic_type` returns "Unknown" for empty sas_type; frontend renders "—" for Unknown badge
+- P2-C: Parser extracts column schema from LENGTH/FORMAT/ATTRIB statements; `SASBlock.column_schema` populated; worker merges into `data_schema` via `_merge_source_column_schema`
+- P2-D: Backend route serves source-derived columns for derived datasets; empty-state message updated
+- P3-A/B: `SASBlock.merge_by_vars` + `join_on_keys`; parser extracts MERGE BY keys and PROC SQL JOIN ON predicates with alias resolution
+- P3-C: `MigrationPlan.relationships` populated from all blocks via `_aggregate_relationships` (dedup by left_table/right_table/key_column/type)
+- P3-D: `ddl_generator.generate_create_table()` — ANSI SQL CREATE TABLE from semantic types; stub DDL for empty column lists
+- P3-E: Schema route populates `TableSchema.ddl` and `JobSchemaResponse.relationships` at serve time
+- P3-F/G: `DataStorageERD.tsx` (ReactFlow + dagre LR layout); Schema/ERD toggle; DDL collapsible with read-only MonacoEditor (theme-aware)
+- Fix: Monaco DDL panel now uses `useTheme()` → `sas-light`/`sas-dark` (was hardcoded dark)
+- Fix: ERD always renders nodes when tables exist; empty-relationships shown as Panel overlay, not empty canvas
+- All 7 test gates green; 90+ new unit tests across 5 new test files
+- PR #98 opened: https://github.com/ADC-Consulting/rosetta-decode/pull/98
+
+### Decisions
+- **`make docker-build` vs `docker compose build`:** make docker-build produces `rosetta-backend:dev`; compose uses `rosetta-decode-backend:latest`; always use `docker compose build backend && docker compose up -d backend` for runtime deploys · revisit never
+- **Relationships only for new jobs:** `_aggregate_relationships` runs at migration time; existing jobs won't have edges in ERD; DDL is served at request time so works for all jobs · revisit never
+
+### Open Questions
+- PR review pending
+
+### Next Session — Start Here
+1. Check PR #98 status; address review comments
+2. Next backlog item after F34 closes
+
+### Files Touched
+- `src/backend/api/schema_utils.py`
+- `src/backend/api/routes/jobs.py`
+- `src/worker/engine/models.py`
+- `src/worker/engine/parser.py`
+- `src/worker/engine/ddl_generator.py` (new)
+- `src/worker/main.py`
+- `src/frontend/src/components/JobDetail/DataStorageTab.tsx`
+- `src/frontend/src/components/JobDetail/DataStorageERD.tsx` (new)
+- `tests/test_schema_utils.py`
+- `tests/test_column_schema_extraction.py` (new)
+- `tests/test_parser_relationships.py` (new)
+- `tests/test_aggregate_relationships.py` (new)
+- `tests/test_ddl_generator.py` (new)
+- `tests/test_schema_route.py`
+- `docs/plans/latest/F34-data-storage-tab.md` (status: complete)
+- `journal/BACKLOG.md`
+
+---
+
+## 2026-06-12 — F34 Phase 2 plan expanded; SAS source column extraction scoped
+**Duration:** ~30min | **Focus:** F34 Phase 2 planning
+
+### Done
+- Identified that SAS types and formats are not showing in Data Storage tab
+- Root cause: CSV files have no SAS type metadata; all columns incorrectly default to "Number"; derived datasets (sdtm_dm, adsl_output) have no column data at all
+- Expanded Phase 2 plan with 3 new subtasks: P2-B (CSV type fix), P2-C (SAS source column schema extraction from LENGTH/FORMAT/ATTRIB), P2-D (surface in frontend)
+- Updated BACKLOG.md with new P2 subtasks
+
+### Decisions
+- **Phase 2 must include SAS source parsing for column schema:** Derived datasets only get column types from SAS source declarations (LENGTH, FORMAT, ATTRIB statements); pyreadstat only covers uploaded .sas7bdat files; this is required for the Data Storage tab to be useful · revisit never
+- **CSV columns should show "Unknown" not "Number":** Defaulting to "Number" when no SAS type is available is semantically wrong (USUBJID is not a number); "Unknown" is honest · revisit never
+
+### Open Questions
+- None blocking Phase 2
+
+### Next Session — Start Here
+1. Implement P2-B (quick fix: CSV type default) and P2-C (SAS source LENGTH/FORMAT/ATTRIB extraction) — plan at `docs/plans/latest/F34-data-storage-tab.md`
+2. Then P2-D (surface in frontend) + open PR for all of Phase 1 + Phase 2
+
+### Files Touched
+- `docs/plans/latest/F34-data-storage-tab.md`
+- `journal/BACKLOG.md`
+- `journal/SESSIONS.md`
+- `journal/DECISIONS.md`
+
+---
+
+## 2026-06-12 — F34 Phase 1 complete; Data Storage tab live end-to-end
+**Duration:** ~5h | **Focus:** F34 full Phase 1 implementation + Docker rebuild + browser verification
+
+### Done
+- F34 P1-F: `DataStorageTab.tsx` — LIBNAME tree left panel + column schema detail right panel; auto-selects first table via useMemo (not useEffect)
+- F34 P1-G: `DataStorageTab` wired into `JobDetailPage` replacing "Coming soon" placeholder
+- Fixed: `data_schema`/`libname_map` always persisted regardless of LLM planner outcome (fallback MigrationPlan created when planner fails); 4 unit tests
+- Fixed: `libname_map` key/value order in schema route path matching (was `{path: libname}`, should be `{libname: path}`)
+- Docker rebuild required (`make docker-build`) to pick up new backend route — `GET /jobs/{id}/schema` was not registering via bind mount
+- Browser verified: Data Storage tab renders 6 tables with column names and row counts for pharma-sandbox-v3 job
+- All 7 test gates green; pushed to `feat/F34-data-storage-tab`
+
+### Decisions
+- **Backend changes require `make docker-build`:** Backend does not have a bind-mount override in `docker-compose.override.yml` (only worker does); new routes/code require image rebuild · revisit when adding backend bind mount to override file
+
+### Open Questions
+- Phase 3 (relationships + ERD + DDL) is next — should we open a PR for Phase 1 first?
+
+### Next Session — Start Here
+1. Open PR for F34 Phase 1 (all P1 subtasks + P2-A complete)
+2. Begin Phase 3: P3-A (SASBlock fields) → P3-B (parser extraction) → P3-C (relationships) → P3-D (DDL) → P3-E/F/G (frontend ERD + DDL panel)
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/DataStorageTab.tsx` (new)
+- `src/frontend/src/pages/JobDetailPage.tsx`
+- `src/backend/api/routes/jobs.py`
+- `src/worker/main.py`
+- `tests/test_worker_main_coverage.py`
+- `tests/test_schema_route.py`
+- `docs/plans/latest/F34-data-storage-tab.md`
+- `journal/SESSIONS.md`
+- `journal/BACKLOG.md`
+- `journal/DECISIONS.md`
+
+---
+
+## 2026-06-12 — F34 Data Storage tab — Phase 1 backend complete; P1-F pending
+**Duration:** ~3h | **Focus:** F34 planning, backend implementation, PR #66 merged
+
+### Done
+- PR #66 (F33 ETL tab) merged; main synced
+- F34 Data Storage tab designed: single feature covering 3 dev phases (schema browser, column types, ERD + DDL)
+- Target-agnostic ANSI SQL for DDL; user-selectable target platform deferred to backlog
+- F34 planned (16 subtasks), branch `feat/F34-data-storage-tab` created
+- P1-A: `_sniff_file` extended to return 5-tuple with column_types/labels/formats; `DataFileInfo` extended; all test call sites updated
+- P1-B: `libname_map` and `data_schema` added to `MigrationPlan`; worker pipeline populates them
+- P2-A: `schema_utils.map_sas_to_semantic_type` (DATETIME checked before DATE to prevent prefix match bug); 8 unit tests
+- P1-C: `GET /jobs/{id}/schema` route with `ColumnSchema`, `TableSchema`, `JobSchemaResponse`; 8 integration tests
+- P1-D: `PATCH /jobs/{id}/schema` for libname + column type overrides; 2 tests
+- P1-E: `getJobSchema` + `patchJobSchema` API client; TypeScript types
+- Session hit org spend limit before P1-F (DataStorageTab component) could be delegated
+
+### Decisions
+- **F34 is a single feature covering all 3 phases:** Table browser (Phase 1), column type extraction (Phase 2), ERD + DDL (Phase 3) are built together — phased only for development sequencing · revisit never
+- **Target-agnostic ANSI SQL DDL first:** User-selectable platform (Databricks, Snowflake) tracked in backlog · revisit after first client feedback
+- **Schema overrides stored in user_overrides JSON column:** `libname_map` (machine-generated) in `migration_plan`; `schema_overrides` (user edits) in `user_overrides` — consistent with existing pattern for human vs machine data · revisit never
+
+### Open Questions
+- None blocking next session
+
+### Next Session — Start Here
+1. Implement P1-F: `DataStorageTab.tsx` component (LIBNAME tree + schema panel) — plan at `docs/plans/latest/F34-data-storage-tab.md`
+2. Then P1-G: wire into `JobDetailPage`
+3. Then Phase 3 (P3-A through P3-H): parser relationship extraction + ERD + DDL
+
+### Files Touched
+- `src/worker/engine/models.py`
+- `src/worker/main.py`
+- `src/backend/api/schema_utils.py` (new)
+
+---
+
 ## 2026-06-15 — F56: post-run risk & rationale enrichment for BlockPlan (two-column)
 
 **Duration:** ~1 session | **Focus:** implement #56 — recompute per-block risk/rationale post-run (rule-based, no LLM) into a new `migration_plan_post_run` column

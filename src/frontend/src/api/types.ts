@@ -421,6 +421,57 @@ export type TraceEvent =
   | PlanResultEvent
   | EnrichmentItemDoneEvent;
 
+// ── F34: Data Storage schema types ────────────────────────────────────────────
+
+export interface ColumnSchema {
+  name: string;
+  sas_type: string;
+  sas_format: string | null;
+  label: string | null;
+  semantic_type: string;
+  override_type: string | null;
+  python_type: string | null;
+  sql_type: string | null;
+  is_pk: boolean;
+  is_fk: boolean;
+  fk_ref: string | null;
+}
+
+export interface TableSchema {
+  path: string;
+  dataset_name: string;
+  libname: string | null;
+  target_schema: string;
+  columns: ColumnSchema[];
+  row_count: number | null;
+  ddl: string;
+  target_columns: ColumnSchema[];
+  schema_status: string;
+  ddl_source: string;
+}
+
+export interface PatchJobSchemaRequest {
+  libname_overrides?: Record<string, string>;
+  column_type_overrides?: Record<string, Record<string, string>>;
+  pk_overrides?: Record<string, string[]>;
+  fk_overrides?: Record<string, string>;
+}
+
+export interface RelationshipSchema {
+  left_table: string;
+  right_table: string;
+  key_column: string;
+  via_block_id: string;
+  relationship_type: string;
+}
+
+export interface JobSchemaResponse {
+  job_id: string;
+  libname_map: Record<string, string>;
+  tables: TableSchema[];
+  relationships: RelationshipSchema[];
+}
+
 // ── F34: Scoping summary ──────────────────────────────────────────────────────
 
 export interface PhaseTokens {

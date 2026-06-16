@@ -12,7 +12,7 @@ interface Step {
 const STEPS: Step[] = [
   { key: "plan", label: "Plan" },
   { key: "etl", label: "ETL" },
-  { key: "data-storage", label: "Data Storage" },
+  { key: "data-storage", label: "Data" },
   { key: "bi", label: "BI" },
   { key: "ai", label: "AI" },
 ];

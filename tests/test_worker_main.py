@@ -900,13 +900,13 @@ async def test_sniff_file_csv_succeeds(tmp_path: Any) -> None:
     df = pd.DataFrame({"col1": [1, 2, 3], "col2": ["a", "b", "c"]})
     df.to_csv(disk_path, index=False)
 
-    cols, row_count, column_types = _sniff_file(disk_path, ".csv")
+    cols, row_count, ctypes, _clabels, _cfmts = _sniff_file(disk_path, ".csv")
     assert cols == ["col1", "col2"]
     assert row_count == 3
     # column_types is now populated for CSV: pandas infers int64 → "long", object → "string"
-    assert isinstance(column_types, dict)
-    assert column_types.get("col1") == "long"
-    assert column_types.get("col2") == "string"
+    assert isinstance(ctypes, dict)
+    assert ctypes.get("col1") == "long"
+    assert ctypes.get("col2") == "string"
 
 
 @pytest.mark.asyncio
@@ -918,21 +918,23 @@ async def test_sniff_file_tsv_succeeds(tmp_path: Any) -> None:
     df = pd.DataFrame({"x": [10, 20], "y": [30, 40]})
     df.to_csv(disk_path, sep="\t", index=False)
 
-    cols, row_count, column_types = _sniff_file(disk_path, ".tsv")
+    cols, row_count, ctypes, _clabels, _cfmts = _sniff_file(disk_path, ".tsv")
     assert cols == ["x", "y"]
     assert row_count == 2
     # column_types is now populated for TSV
-    assert isinstance(column_types, dict)
-    assert column_types.get("x") == "long"
-    assert column_types.get("y") == "long"
+    assert isinstance(ctypes, dict)
+    assert ctypes.get("x") == "long"
+    assert ctypes.get("y") == "long"
 
 
 def test_sniff_file_returns_empty_on_missing() -> None:
-    """Test _sniff_file returns ([], None, {}) for missing files."""
-    cols, row_count, column_types = _sniff_file("/nonexistent/path/file.csv", ".csv")
+    """Test _sniff_file returns ([], None, {}, {}, {}) for missing files."""
+    cols, row_count, ctypes, clabels, cfmts = _sniff_file("/nonexistent/path/file.csv", ".csv")
     assert cols == []
     assert row_count is None
-    assert column_types == {}
+    assert ctypes == {}
+    assert clabels == {}
+    assert cfmts == {}
 
 
 # ── _map_readstat_type ───────────────────────────────────────────────────────
@@ -1013,11 +1015,12 @@ def test_strip_sas_format_extracts_alphabetic_stem() -> None:
 
 
 def test_sniff_file_sas7bdat_returns_column_types() -> None:
-    """_sniff_file returns lowercased column_types from pyreadstat metadata."""
+    """_sniff_file returns column_types from pyreadstat metadata (keys preserve original case)."""
     from unittest.mock import MagicMock, patch
 
     meta = MagicMock()
     meta.column_names = ["SUBJID", "SITEID", "AGE"]
+    meta.number_rows = None
     meta.readstat_variable_types = {"SUBJID": "string", "SITEID": "string", "AGE": "double"}
     fake_df = MagicMock()
 
@@ -1025,15 +1028,17 @@ def test_sniff_file_sas7bdat_returns_column_types() -> None:
     mock_pr.read_sas7bdat.return_value = (fake_df, meta)
 
     with patch.dict("sys.modules", {"pyreadstat": mock_pr}):
-        columns, row_count, column_types = _sniff_file("/fake/path/ADSL.sas7bdat", ".sas7bdat")
+        columns, row_count, column_types, _clabels, _cfmts = _sniff_file(
+            "/fake/path/ADSL.sas7bdat", ".sas7bdat"
+        )
 
     assert columns == ["SUBJID", "SITEID", "AGE"]
     assert row_count is None
-    assert column_types == {"subjid": "string", "siteid": "string", "age": "double"}
+    assert column_types == {"SUBJID": "string", "SITEID": "string", "AGE": "double"}
 
 
 def test_sniff_file_sas7bdat_date_format_maps_to_date() -> None:
-    """A SAS date-formatted column is classified as 'date'; datetime stays 'double'."""
+    """_sniff_file returns readstat types as-is; date format mapping is done downstream."""
     from unittest.mock import MagicMock, patch
 
     meta = MagicMock()
@@ -1043,7 +1048,6 @@ def test_sniff_file_sas7bdat_date_format_maps_to_date() -> None:
         "AESTDTC": "double",
         "AESTDTM": "double",
     }
-    # AESTDTC is a bare date (DATE9.); AESTDTM is a datetime (DATETIME20.)
     meta.original_variable_types = {
         "SUBJID": "$CHAR8.",
         "AESTDTC": "DATE9.",
@@ -1055,13 +1059,16 @@ def test_sniff_file_sas7bdat_date_format_maps_to_date() -> None:
     mock_pr.read_sas7bdat.return_value = (fake_df, meta)
 
     with patch.dict("sys.modules", {"pyreadstat": mock_pr}):
-        _columns, _row_count, column_types = _sniff_file("/fake/path/AE.sas7bdat", ".sas7bdat")
+        _columns, _row_count, column_types, _clabels, cfmts = _sniff_file(
+            "/fake/path/AE.sas7bdat", ".sas7bdat"
+        )
 
-    assert column_types == {"subjid": "string", "aestdtc": "date", "aestdtm": "double"}
+    assert column_types == {"SUBJID": "string", "AESTDTC": "double", "AESTDTM": "double"}
+    assert cfmts == {"SUBJID": "$CHAR8.", "AESTDTC": "DATE9.", "AESTDTM": "DATETIME20."}
 
 
-def test_sniff_file_sas7bdat_missing_formats_falls_back_to_double() -> None:
-    """When original_variable_types is absent, numeric columns default to 'double'."""
+def test_sniff_file_sas7bdat_missing_formats_falls_back_to_empty() -> None:
+    """When original_variable_types is absent, column_formats is empty."""
     from unittest.mock import MagicMock, patch
 
     meta = MagicMock(spec=["column_names", "readstat_variable_types"])
@@ -1073,9 +1080,12 @@ def test_sniff_file_sas7bdat_missing_formats_falls_back_to_double() -> None:
     mock_pr.read_sas7bdat.return_value = (fake_df, meta)
 
     with patch.dict("sys.modules", {"pyreadstat": mock_pr}):
-        _columns, _row_count, column_types = _sniff_file("/fake/path/x.sas7bdat", ".sas7bdat")
+        _columns, _row_count, column_types, _clabels, cfmts = _sniff_file(
+            "/fake/path/x.sas7bdat", ".sas7bdat"
+        )
 
-    assert column_types == {"subjid": "string", "age": "double"}
+    assert column_types == {"SUBJID": "string", "AGE": "double"}
+    assert cfmts == {}
 
 
 def test_sniff_file_csv_populates_column_types(tmp_path: Any) -> None:
@@ -1086,7 +1096,7 @@ def test_sniff_file_csv_populates_column_types(tmp_path: Any) -> None:
     fake_df = pd.DataFrame({"A": [1], "B": [2]})
     fake_df.to_csv(disk_path, index=False)
 
-    _columns, _row_count, column_types = _sniff_file(disk_path, ".csv")
+    _columns, _row_count, column_types, _clabels, _cfmts = _sniff_file(disk_path, ".csv")
     assert isinstance(column_types, dict)
     assert column_types == {"a": "long", "b": "long"}
 
@@ -1094,7 +1104,9 @@ def test_sniff_file_csv_populates_column_types(tmp_path: Any) -> None:
 def test_sniff_file_sas7bdat_import_error_returns_empty() -> None:
     """When pyreadstat is unavailable, _sniff_file returns ([], None, {})."""
     with patch.dict("sys.modules", {"pyreadstat": None}):
-        columns, _row_count, column_types = _sniff_file("/fake/path/test.sas7bdat", ".sas7bdat")
+        columns, _row_count, column_types, _clabels, _cfmts = _sniff_file(
+            "/fake/path/test.sas7bdat", ".sas7bdat"
+        )
     assert columns == []
     assert column_types == {}
 

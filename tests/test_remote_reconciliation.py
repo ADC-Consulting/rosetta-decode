@@ -37,9 +37,9 @@ async def test_remote_recon_returns_checks_on_success() -> None:
             python_code="x = 1",
             backend=LocalBackend(),
         )
-    # F15: the executor's actual rows are now threaded through so the worker can
-    # run an in-process re-comparison without re-executing the pipeline.
+    # Both output_schema (F35) and result_json (F15) are threaded through
     assert result["checks"] == [{"name": "row_count", "status": "pass"}]
+    assert result["output_schema"] == {"columns": ["x"], "dtypes": {}}
     assert result["result_json"] == [{"x": 1}]
     assert result["result_columns"] == ["x"]
 
@@ -59,7 +59,7 @@ async def test_remote_recon_omits_result_json_when_absent() -> None:
         result = await svc.run(
             ref_csv_path="/tmp/ref.csv", python_code="x = 1", backend=LocalBackend()
         )
-    assert result == {"checks": [{"name": "row_count", "status": "pass"}]}
+    assert result == {"checks": [{"name": "row_count", "status": "pass"}], "result_columns": []}
 
 
 @pytest.mark.asyncio

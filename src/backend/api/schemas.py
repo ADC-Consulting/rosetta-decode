@@ -254,6 +254,72 @@ class SensitiveDataFinding(BaseModel):
     source: str
 
 
+class ColumnSchema(BaseModel):
+    """Column-level metadata for a SAS dataset."""
+
+    name: str
+    sas_type: str  # "character" | "double" | ""
+    sas_format: str | None = None  # e.g. "DATE9.", "$40."
+    label: str | None = None  # human-readable label from pyreadstat
+    semantic_type: str = "String"  # derived by map_sas_to_semantic_type
+    override_type: str | None = None  # user-set override (from schema_overrides)
+    python_type: str | None = None  # pandas dtype string e.g. "object", "int64"
+    sql_type: str | None = None  # ANSI SQL type derived from python_type
+    is_pk: bool = False
+    is_fk: bool = False
+    fk_ref: str | None = None  # e.g. "sdtm_dm.usubjid"
+
+
+class TableSchema(BaseModel):
+    """Schema metadata for a single SAS dataset table."""
+
+    path: str  # normalised file path key
+    dataset_name: str  # basename without extension
+    libname: str | None = None  # e.g. "rawdir"
+    target_schema: str = "public"  # user-editable, defaults to libname or "public"
+    columns: list[ColumnSchema] = []
+    row_count: int | None = None
+    ddl: str = ""  # generated DDL — empty until Phase 3
+    target_columns: list[ColumnSchema] = []  # from execution output; empty = not run
+    schema_status: str = "not_run"  # "migrated" | "changed" | "not_run"
+    ddl_source: str = "source_estimated"  # "target" | "source_estimated"
+
+
+class RelationshipSchema(BaseModel):
+    """A detected relationship between two SAS datasets."""
+
+    left_table: str
+    right_table: str
+    key_column: str
+    via_block_id: str
+    relationship_type: str  # "merge" | "join"
+
+
+class JobSchemaResponse(BaseModel):
+    """Response body for GET /jobs/{id}/schema."""
+
+    job_id: uuid.UUID
+    libname_map: dict[str, str] = {}
+    tables: list[TableSchema] = []
+    relationships: list[RelationshipSchema] = []
+
+
+class PatchJobSchemaRequest(BaseModel):
+    """Request body for PATCH /jobs/{id}/schema."""
+
+    libname_overrides: dict[str, str] = {}
+    # e.g. {"rawdir": "raw_data", "outdir": "analytics"}
+
+    column_type_overrides: dict[str, dict[str, str]] = {}
+    # keyed by file path: {"sas_pharma.../dm_raw.csv": {"AGE": "Integer"}}
+
+    pk_overrides: dict[str, list[str]] = {}
+    # e.g. {"sdtm_dm": ["usubjid"], "sdtm_ex": ["usubjid", "exseq"]}
+
+    fk_overrides: dict[str, str] = {}
+    # e.g. {"sdtm_ex.usubjid": "sdtm_dm.usubjid"}
+
+
 class JobPlanResponse(BaseModel):
     """Response body for GET /jobs/{id}/plan."""
 

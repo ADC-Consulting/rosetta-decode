@@ -910,7 +910,12 @@ class ReconciliationService:
             error_detail = str(exc)
             logger.warning("Reconciliation reference load error: %s", error_detail, exc_info=True)
             checks.append(_check_result("execution", passed=False, detail=error_detail))
-            return {"checks": checks}
+            # SAS: reconciliation.py:output_schema — pipeline ran; capture schema even if ref fails
+            output_schema_on_ref_fail: dict[str, Any] = {
+                "columns": list(actual_df.columns),
+                "dtypes": {col: str(dtype) for col, dtype in actual_df.dtypes.items()},
+            }
+            return {"checks": checks, "output_schema": output_schema_on_ref_fail}
 
         logger.debug(
             "recon ref   rows=%d cols=%s dtypes=%s",
@@ -950,7 +955,12 @@ class ReconciliationService:
         logger.info(
             "reconciliation summary: %s (%d checks)", "PASS" if all_passed else "FAIL", len(checks)
         )
-        return {"checks": checks}
+        # SAS: reconciliation.py:output_schema — capture actual output schema after execution
+        output_schema: dict[str, Any] = {
+            "columns": list(actual_df.columns),
+            "dtypes": {col: str(dtype) for col, dtype in actual_df.dtypes.items()},
+        }
+        return {"checks": checks, "output_schema": output_schema}
 
     @staticmethod
     def _exec_pipeline(python_code: str, backend: ComputeBackend) -> pd.DataFrame:
@@ -1088,8 +1098,10 @@ class RemoteReconciliationService:
             checks = raw.get("checks") or []
             runtime_error: str = raw.get("error") or ""
             stderr: str = raw.get("stderr") or ""
+            # SAS: reconciliation.py:result_dtypes — forward executor dtype info as output_schema
+            result_columns: list[str] = raw.get("result_columns") or []
+            result_dtypes: dict[str, str] = raw.get("result_dtypes") or {}
             result_json = raw.get("result_json")
-            result_columns = raw.get("result_columns")
             for c in checks:
                 name = c.get("name", "?")
                 detail = c.get("detail", "")
@@ -1106,11 +1118,19 @@ class RemoteReconciliationService:
                     "PASS" if all_passed else "FAIL",
                     len(checks),
                 )
+            output_schema: dict[str, Any] | None = None
+            if result_columns:
+                output_schema = {
+                    "columns": result_columns,
+                    "dtypes": result_dtypes,
+                }
             result: dict[str, Any] = {"checks": checks}
             if runtime_error:
                 result["runtime_error"] = runtime_error
             if stderr:
                 result["stderr"] = stderr
+            if output_schema is not None:
+                result["output_schema"] = output_schema
             # Carry the executor's actual output rows so the worker can run an
             # in-process re-comparison (F15 LLM join-key resolution) without
             # re-executing the pipeline. Optional — absent for older executors.

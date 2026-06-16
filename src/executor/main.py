@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import sys
 
+import pandas as pd
 import uvicorn
 from fastapi import FastAPI
 from pydantic import BaseModel
@@ -46,6 +47,7 @@ class ExecuteResponse(BaseModel):
     stderr: str
     result_json: list[dict] | None = None  # type: ignore[type-arg]
     result_columns: list[str] | None = None
+    result_dtypes: dict[str, str] | None = None
     checks: list[dict] | None = None  # type: ignore[type-arg]
     error: str | None = None
     elapsed_ms: int
@@ -83,6 +85,12 @@ def execute(request: ExecuteRequest) -> ExecuteResponse:
     if run_result["stderr"]:
         logger.warning("Execution stderr: %s", run_result["stderr"][:500])
 
+    # SAS: executor/main.py:result_dtypes — derive column dtypes from result rows
+    result_dtypes: dict[str, str] | None = None
+    if run_result["result_json"] is not None:
+        _df_for_dtypes = pd.DataFrame(run_result["result_json"])
+        result_dtypes = {str(col): str(dtype) for col, dtype in _df_for_dtypes.dtypes.items()}
+
     checks: list[dict] | None = None  # type: ignore[type-arg]
     if (request.ref_csv_path or request.ref_sas7bdat_path) and run_result["result_json"]:
         try:
@@ -105,6 +113,7 @@ def execute(request: ExecuteRequest) -> ExecuteResponse:
         stderr=run_result["stderr"],
         result_json=run_result["result_json"],
         result_columns=run_result["result_columns"],
+        result_dtypes=result_dtypes,
         checks=checks,
         error=run_result["error"],
         elapsed_ms=run_result["elapsed_ms"],

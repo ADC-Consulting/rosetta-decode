@@ -366,7 +366,12 @@
 - [x] F34 S-P: Wire panel into PlanTab
 - [x] F34 S-Q: make test exits 0 + close-out
 
-- [ ] #43: Data Storage tab — SAS table inventory, DW mapping — wireframe pending
+- [x] #43: Data Storage tab — schema browser, ERD, data flow, output catalog → `feat/F35-migration-output-catalog` (PR #102)
+  - [x] Column metadata extraction from SAS/XPT/CSV files; semantic type mapping; GET /jobs/{id}/schema + PATCH
+  - [x] DataStorageTab: source / migration output sidebar sections; column schema detail panel; DDL collapsible
+  - [x] SchemaCanvas ERD (PK/FK badges, fit-to-view, scroll-to-selected); DataModelERD (output tables only)
+  - [x] DataFlowDiagram: ReactFlow + dagre LR, step interactivity, tooltips, dataset name normalisation
+  - [x] Right panel differentiated: source tables → SAS metadata read-only; output tables → proposed schema / diff view
 - [x] #40: Chevron tab shell — delivered by F28, issue closed
 - [x] #44: BI tab placeholder — empty state delivered in F28 S-C, issue closed
 - [x] #45: AI tab placeholder — empty state delivered in F28 S-C, issue closed
@@ -459,3 +464,4 @@
 - [ ] F14: Authentication & SSO (SAML/OIDC, JWT, RBAC)
 - [ ] `DatabricksBackend` (PySpark) (`src/worker/compute/databricks.py`)
 - [ ] End-to-end test: CLOUD=true, Databricks connection
+- [ ] MS SQL Server DDL dialect in Data tab — add `dialect` param to `generate_create_table()` in `src/worker/engine/ddl_generator.py` (NVARCHAR(MAX), FLOAT, DATETIME2, BIT, dbo schema prefix), expose as second DDL field in schema response, add dropdown in `DataStorageTab.tsx`. Gate behind MS SQL compute backend being available.
