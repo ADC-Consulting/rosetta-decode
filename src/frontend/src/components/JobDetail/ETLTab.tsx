@@ -70,6 +70,7 @@ export default function ETLTab({
   const [selectedBlock, setSelectedBlock] = useState<string | null>(null);
   const [selectedStep, setSelectedStep] = useState<PipelineStep | null>(null);
   const [graphView, setGraphView] = useState<"source" | "target">("source");
+  const [lineageView, setLineageView] = useState<"pipeline" | "files" | "blocks">("pipeline");
 
   // ── Lineage ──────────────────────────────────────────────────────────────
   const { data: lineageData, isLoading: isLineageLoading } = useQuery({
@@ -222,7 +223,8 @@ export default function ETLTab({
               trustBlocks={trustBlocks}
               onFileNodeClick={handleFileNodeClick}
               onPipelineStepClick={handlePipelineStepClick}
-              initialView="pipeline"
+              initialView={lineageView}
+              onViewChange={(v) => setLineageView(v)}
               selectedFilePath={selectedFile}
               humanVerifiedBlocks={humanVerifiedBlocks}
             />
@@ -233,6 +235,7 @@ export default function ETLTab({
               generatedFiles={generatedFiles ?? {}}
               blockPlans={blockPlans}
               trustFiles={trustReport?.files}
+              selectedSasFile={selectedFile}
               onFileClick={(sasFiles) => {
                 // TODO F67: show composite block list for merged modules
                 setSelectedFile(sasFiles[0] ?? null);

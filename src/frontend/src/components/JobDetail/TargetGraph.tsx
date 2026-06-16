@@ -8,7 +8,7 @@ import {
   sasFileToPyFile,
 } from "@/lib/sas-python-file-map";
 import dagre from "dagre";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import {
   Background,
   Controls,
@@ -33,6 +33,7 @@ interface TargetGraphProps {
   blockPlans: BlockPlan[];
   trustFiles?: TrustReportFile[];
   onFileClick: (sasSourceFiles: string[]) => void;
+  selectedSasFile?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -111,12 +112,14 @@ function TargetGraphInner({
   blockPlans,
   trustFiles,
   onFileClick,
+  selectedSasFile,
 }: TargetGraphProps): React.ReactElement {
-  const { nodes: layoutedNodes, edges: layoutedEdges } = useMemo(() => {
+  // 1. Layout memo — expensive, only reruns when data changes (not selection)
+  const { layoutedNodes, layoutedEdges } = useMemo(() => {
     const pyFiles = Object.keys(generatedFiles).filter((f) => f !== "pipeline.py");
 
     if (pyFiles.length === 0) {
-      return { nodes: [], edges: [] };
+      return { layoutedNodes: [], layoutedEdges: [] };
     }
 
     // Build edges first so we can compute connection counts per node
@@ -150,6 +153,9 @@ function TargetGraphInner({
       connectionCount.set(e.target, (connectionCount.get(e.target) ?? 0) + 1);
     }
 
+    // Separate connected vs isolated nodes
+    const connectedIds = new Set(rawEdges.flatMap((e) => [e.source, e.target]));
+
     // Build nodes
     const rawNodes: Node<FileNodeData>[] = pyFiles.map((pyFile) => {
       const stem = pyFile.endsWith(".py") ? pyFile.slice(0, -3) : pyFile;
@@ -174,12 +180,63 @@ function TargetGraphInner({
       };
     });
 
-    const laid = layoutNodes(rawNodes, rawEdges, NODE_FILE_W, NODE_FILE_H);
-    return { nodes: laid, edges: rawEdges };
+    const connectedNodes = rawNodes.filter((n) => connectedIds.has(n.id));
+    const isolatedNodes = rawNodes.filter((n) => !connectedIds.has(n.id));
+
+    // Layout only connected nodes with dagre
+    const laidConnected =
+      connectedNodes.length > 0
+        ? layoutNodes(connectedNodes, rawEdges, NODE_FILE_W, NODE_FILE_H)
+        : [];
+
+    // Find the bottom of the connected graph
+    const connectedBottom =
+      laidConnected.length > 0
+        ? Math.max(...laidConnected.map((n) => n.position.y)) + NODE_FILE_H
+        : 0;
+
+    // Find the left edge of the connected graph for horizontal alignment
+    const connectedLeft =
+      laidConnected.length > 0
+        ? Math.min(...laidConnected.map((n) => n.position.x))
+        : 20;
+
+    // Place isolated nodes in a horizontal row below, with gap
+    const ISOLATED_GAP = 60;
+    const ISOLATED_SPACING = NODE_FILE_W + 24;
+    const positionedIsolated: Node<FileNodeData>[] = isolatedNodes.map((n, i) => ({
+      ...n,
+      position: {
+        x: connectedLeft + i * ISOLATED_SPACING,
+        y: connectedBottom + ISOLATED_GAP,
+      },
+      sourcePosition: Position.Right,
+      targetPosition: Position.Left,
+    }));
+
+    const laid = [...laidConnected, ...positionedIsolated];
+    return { layoutedNodes: laid, layoutedEdges: rawEdges };
   }, [lineage, generatedFiles, blockPlans, trustFiles]);
 
-  const [nodes, , onNodesChange] = useNodesState<FileNodeData>(layoutedNodes);
+  // 2. Selection overlay — cheap, reruns only when selectedSasFile changes
+  const nodesWithSelection = useMemo(() => {
+    if (!selectedSasFile) return layoutedNodes;
+    const selectedPyFile = sasFileToPyFile(selectedSasFile);
+    return layoutedNodes.map((n) =>
+      n.id === selectedPyFile
+        ? { ...n, data: { ...n.data, isSelected: true } }
+        : n.data.isSelected
+          ? { ...n, data: { ...n.data, isSelected: false } }
+          : n,
+    );
+  }, [layoutedNodes, selectedSasFile]);
+
+  const [nodes, setNodes, onNodesChange] = useNodesState<FileNodeData>(nodesWithSelection);
   const [edges, , onEdgesChange] = useEdgesState(layoutedEdges);
+
+  useEffect(() => {
+    setNodes(nodesWithSelection);
+  }, [nodesWithSelection, setNodes]);
 
   if (layoutedNodes.length === 0) {
     return (
@@ -213,7 +270,7 @@ function TargetGraphInner({
         style={{
           position: "absolute",
           bottom: 12,
-          left: 12,
+          right: 12,
           zIndex: 10,
           background: "rgba(245,245,245,0.92)",
           backdropFilter: "blur(6px)",

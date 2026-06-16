@@ -52,6 +52,7 @@ interface LineageGraphProps {
   initialView?: "blocks" | "files" | "pipeline";
   selectedFilePath?: string | null;
   humanVerifiedBlocks?: Set<string>;
+  onViewChange?: (view: "pipeline" | "files" | "blocks") => void;
 }
 
 type NodeData = {
@@ -761,6 +762,7 @@ function LineageGraphInner({
   initialView,
   selectedFilePath,
   humanVerifiedBlocks,
+  onViewChange,
 }: LineageGraphProps): React.ReactElement {
   const { fitView } = useReactFlow();
   const [nodes, setNodes, onNodesChange] = useNodesState<NodeData>([]);
@@ -1158,7 +1160,10 @@ function LineageGraphInner({
           return (
             <button
               key={v}
-              onClick={() => setView(v)}
+              onClick={() => {
+                setView(v);
+                onViewChange?.(v);
+              }}
               disabled={disabled}
               style={{
                 ...btnBase,
@@ -1254,6 +1259,7 @@ export default function LineageGraph({
   initialView,
   selectedFilePath,
   humanVerifiedBlocks,
+  onViewChange,
 }: LineageGraphProps): React.ReactElement {
   return (
     <ReactFlowProvider>
@@ -1267,6 +1273,7 @@ export default function LineageGraph({
         initialView={initialView}
         selectedFilePath={selectedFilePath}
         humanVerifiedBlocks={humanVerifiedBlocks}
+        onViewChange={onViewChange}
       />
     </ReactFlowProvider>
   );
