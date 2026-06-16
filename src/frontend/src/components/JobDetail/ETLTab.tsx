@@ -13,6 +13,7 @@ import { useMemo, useState } from "react";
 import BlockCodePopup from "./BlockCodePopup";
 import BlockInspectorPanel from "./BlockInspectorPanel";
 import PipelineStepPanel from "./PipelineStepPanel";
+import TargetGraph from "@/components/JobDetail/TargetGraph";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -24,6 +25,7 @@ interface ETLTabProps {
   trustReport: TrustReportResponse | undefined;
   jobSources: Record<string, string> | undefined;
   isReviewable: boolean;
+  generatedFiles: Record<string, string> | null;
 }
 
 type BlockStatus =
@@ -60,12 +62,14 @@ export default function ETLTab({
   trustReport,
   jobSources,
   isReviewable,
+  generatedFiles,
 }: ETLTabProps): React.ReactElement {
   const queryClient = useQueryClient();
 
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [selectedBlock, setSelectedBlock] = useState<string | null>(null);
   const [selectedStep, setSelectedStep] = useState<PipelineStep | null>(null);
+  const [graphView, setGraphView] = useState<"source" | "target">("source");
 
   // ── Lineage ──────────────────────────────────────────────────────────────
   const { data: lineageData, isLoading: isLineageLoading } = useQuery({
@@ -133,12 +137,22 @@ export default function ETLTab({
     setSelectedFile(null); // close file panel when step panel opens
   };
 
+  function handleToggle(next: "source" | "target") {
+    setGraphView(next);
+    setSelectedFile(null);
+    setSelectedStep(null);
+  }
+
   const handleVerified = () => {
     void queryClient.invalidateQueries({
       queryKey: ["job", jobId, "changelog"],
     });
     // Don't close modal — let user see the Verified badge update, then close manually
   };
+
+  // ── Derived values ────────────────────────────────────────────────────────
+  const hasTargetNodes =
+    !!generatedFiles && Object.keys(generatedFiles).some((f) => f !== "pipeline.py");
 
   // ── Render ───────────────────────────────────────────────────────────────
   return (
@@ -165,6 +179,28 @@ export default function ETLTab({
             </span>
           </>
         )}
+        <div className="ml-auto flex items-center gap-1">
+          {(["source", "target"] as const).map((v) => {
+            const disabled = v === "target" && !hasTargetNodes;
+            return (
+              <button
+                key={v}
+                type="button"
+                onClick={() => handleToggle(v)}
+                disabled={disabled}
+                className={[
+                  "px-2 py-0.5 rounded text-[11px] font-medium border transition-colors",
+                  graphView === v
+                    ? "bg-foreground text-background border-foreground"
+                    : "bg-transparent text-muted-foreground border-border hover:border-foreground/40",
+                  disabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer",
+                ].join(" ")}
+              >
+                {v.charAt(0).toUpperCase() + v.slice(1)}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* ── Body: graph + optional side panel ───────────────────────────── */}
@@ -177,7 +213,7 @@ export default function ETLTab({
             <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
               No lineage data available for this job.
             </div>
-          ) : (
+          ) : graphView === "source" ? (
             <LineageGraph
               key={(selectedFile || selectedStep) ? "with-panel" : "full"}
               lineage={etlLineage}
@@ -189,6 +225,19 @@ export default function ETLTab({
               initialView="pipeline"
               selectedFilePath={selectedFile}
               humanVerifiedBlocks={humanVerifiedBlocks}
+            />
+          ) : (
+            <TargetGraph
+              key="target"
+              lineage={etlLineage}
+              generatedFiles={generatedFiles ?? {}}
+              blockPlans={blockPlans}
+              trustFiles={trustReport?.files}
+              onFileClick={(sasFiles) => {
+                // TODO F67: show composite block list for merged modules
+                setSelectedFile(sasFiles[0] ?? null);
+                setSelectedStep(null);
+              }}
             />
           )}
         </div>

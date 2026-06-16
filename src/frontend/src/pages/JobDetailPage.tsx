@@ -284,6 +284,7 @@ export default function JobDetailPage(): React.ReactElement {
                 trustReport={trustReportData}
                 jobSources={jobSources}
                 isReviewable={isReviewable}
+                generatedFiles={job?.generated_files ?? null}
               />
             </TabsContent>
 
