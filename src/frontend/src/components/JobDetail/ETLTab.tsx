@@ -2,6 +2,7 @@ import { getJobChangelog, getJobLineage } from "@/api/jobs";
 import type {
   BlockPlan,
   FileNode,
+  PipelineStep,
   TrustReportBlock,
   TrustReportResponse,
 } from "@/api/types";
@@ -11,6 +12,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import BlockCodePopup from "./BlockCodePopup";
 import BlockInspectorPanel from "./BlockInspectorPanel";
+import PipelineStepPanel from "./PipelineStepPanel";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -63,6 +65,7 @@ export default function ETLTab({
 
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [selectedBlock, setSelectedBlock] = useState<string | null>(null);
+  const [selectedStep, setSelectedStep] = useState<PipelineStep | null>(null);
 
   // ── Lineage ──────────────────────────────────────────────────────────────
   const { data: lineageData, isLoading: isLineageLoading } = useQuery({
@@ -122,13 +125,19 @@ export default function ETLTab({
   // ── Handlers ─────────────────────────────────────────────────────────────
   const handleFileNodeClick = (file: FileNode) => {
     setSelectedFile(file.filename);
+    setSelectedStep(null); // close step panel when file panel opens
+  };
+
+  const handlePipelineStepClick = (step: PipelineStep) => {
+    setSelectedStep(step);
+    setSelectedFile(null); // close file panel when step panel opens
   };
 
   const handleVerified = () => {
     void queryClient.invalidateQueries({
       queryKey: ["job", jobId, "changelog"],
     });
-    setSelectedBlock(null);
+    // Don't close modal — let user see the Verified badge update, then close manually
   };
 
   // ── Render ───────────────────────────────────────────────────────────────
@@ -161,7 +170,7 @@ export default function ETLTab({
       {/* ── Body: graph + optional side panel ───────────────────────────── */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Graph — shrinks when side panel is open */}
-        <div className={selectedFile ? "flex-1 min-w-0" : "w-full"}>
+        <div className={(selectedFile || selectedStep) ? "flex-1 min-w-0" : "w-full"}>
           {isLineageLoading ? (
             <Skeleton className="h-full w-full rounded" />
           ) : !etlLineage || etlLineage.nodes.length === 0 ? (
@@ -170,24 +179,23 @@ export default function ETLTab({
             </div>
           ) : (
             <LineageGraph
-              key={selectedFile ? "with-panel" : "full"}
+              key={(selectedFile || selectedStep) ? "with-panel" : "full"}
               lineage={etlLineage}
               blockPlans={blockPlans}
               trustFiles={trustReport?.files}
               trustBlocks={trustBlocks}
               onFileNodeClick={handleFileNodeClick}
-              initialView="files"
+              onPipelineStepClick={handlePipelineStepClick}
+              initialView="pipeline"
+              selectedFilePath={selectedFile}
+              humanVerifiedBlocks={humanVerifiedBlocks}
             />
           )}
         </div>
 
         {/* Block inspector side panel */}
         {selectedFile && (
-          <div
-            className={[
-              "w-80 border-l border-border overflow-y-auto shrink-0",
-            ].join(" ")}
-          >
+          <div className="w-80 border-l border-border overflow-y-auto shrink-0">
             <BlockInspectorPanel
               sourceFile={selectedFile}
               blockPlans={blockPlans}
@@ -195,6 +203,21 @@ export default function ETLTab({
               humanVerifiedBlocks={humanVerifiedBlocks}
               onBlockClick={(blockId) => setSelectedBlock(blockId)}
               onClose={() => setSelectedFile(null)}
+            />
+          </div>
+        )}
+
+        {/* Pipeline step side panel */}
+        {selectedStep && (
+          <div className="w-80 border-l border-border overflow-y-auto shrink-0">
+            <PipelineStepPanel
+              step={selectedStep}
+              allSteps={etlLineage?.pipeline_steps ?? []}
+              blockPlans={blockPlans}
+              trustBlocks={trustBlocks}
+              humanVerifiedBlocks={humanVerifiedBlocks}
+              onBlockClick={(blockId) => setSelectedBlock(blockId)}
+              onClose={() => setSelectedStep(null)}
             />
           </div>
         )}

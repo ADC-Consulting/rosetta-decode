@@ -98,6 +98,7 @@ export default function BlockCodePopup({
 }: BlockCodePopupProps): React.ReactElement {
   const [localPython, setLocalPython] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
+  const [isVerified, setIsVerified] = useState(false);
 
   const {
     data: revisionHistory,
@@ -139,7 +140,7 @@ export default function BlockCodePopup({
         trigger: "human-verify",
       });
       onVerified(blockId);
-      onClose();
+      setIsVerified(true);
     } finally {
       setIsSaving(false);
     }
@@ -189,6 +190,16 @@ export default function BlockCodePopup({
               dark:bg-red-950/30 dark:border-red-800 text-red-800 dark:text-red-300 shrink-0"
           >
             <span className="font-medium">This block requires manual Python implementation.</span>
+          </div>
+        )}
+        {isVerified && !isReadOnly && (
+          <div
+            role="status"
+            className="flex items-center gap-2 px-4 py-2 text-xs bg-green-50 border-b border-green-200
+              dark:bg-green-950/30 dark:border-green-800 text-green-800 dark:text-green-300 shrink-0"
+          >
+            <span className="font-medium">Block marked as verified.</span>
+            <span className="text-green-700 dark:text-green-400">You can close this panel.</span>
           </div>
         )}
 
@@ -310,7 +321,7 @@ export default function BlockCodePopup({
         {/* Footer */}
         {/* ----------------------------------------------------------------- */}
         <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border bg-muted/30 shrink-0">
-          {canVerify && (
+          {canVerify && !isVerified && (
             <Button
               variant="default"
               size="sm"
