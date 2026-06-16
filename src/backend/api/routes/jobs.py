@@ -659,6 +659,36 @@ async def get_job_schema(
             )
         )
 
+    # SAS: jobs.py:pipeline_output_enrichment — add placeholder entries for output datasets
+    # produced by the migration that are not already tracked in data_schema.
+    lineage_raw: dict[str, Any] = job.lineage or {}
+    pipeline_steps: list[dict[str, Any]] = lineage_raw.get("pipeline_steps", [])
+    if pipeline_steps:
+        all_inputs: set[str] = {
+            ds.lower() for step in pipeline_steps for ds in step.get("inputs", [])
+        }
+        all_outputs: set[str] = {ds for step in pipeline_steps for ds in step.get("outputs", [])}
+        # Pure outputs are datasets that are never consumed as input by another step.
+        pure_outputs: set[str] = {ds for ds in all_outputs if ds.lower() not in all_inputs}
+        existing_names: set[str] = {t.dataset_name.lower() for t in tables}
+        for ds_name in sorted(pure_outputs):
+            if ds_name.lower() in existing_names:
+                continue
+            tables.append(
+                TableSchema(
+                    path=f"output/{ds_name}",
+                    dataset_name=ds_name,
+                    libname=None,
+                    target_schema="public",
+                    columns=[],
+                    target_columns=[],
+                    row_count=None,
+                    ddl="",
+                    ddl_source="source_estimated",
+                    schema_status="not_run",
+                )
+            )
+
     relationships: list[RelationshipSchema] = [
         RelationshipSchema(**r)
         for r in relationships_raw
