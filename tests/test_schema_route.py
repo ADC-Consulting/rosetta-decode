@@ -52,6 +52,7 @@ async def _insert_job(
     status: str = "proposed",
     migration_plan: dict[str, Any] | None = None,
     user_overrides: dict[str, Any] | None = None,
+    lineage: dict[str, Any] | None = None,
 ) -> str:
     """Insert a minimal Job row and return its ID string."""
     job_id = str(uuid.uuid4())
@@ -63,6 +64,7 @@ async def _insert_job(
         files={"test.sas": "data out; set in; run;"},
         migration_plan=migration_plan,
         user_overrides=user_overrides,
+        lineage=lineage,
         created_at=now,
         updated_at=now,
     )
@@ -596,3 +598,139 @@ async def test_schema_route_relationships_empty_when_plan_has_none(
     body = response.json()
 
     assert body["relationships"] == []
+
+
+# ── Lineage enrichment — pure pipeline outputs ────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_schema_route_lineage_pure_outputs_added(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Pure pipeline outputs absent from data_schema are added as stub TableSchema entries.
+
+    Step 1 produces 'dose' from 'dm'; step 2 produces 'adsl_age' from 'dose'.
+    'dose' is both an output (step 1) and an input (step 2), so it is NOT a pure output.
+    'adsl_age' is only an output and never consumed, so it IS a pure output and must be
+    appended as a stub entry with path='output/adsl_age', libname=None, columns=[],
+    target_columns=[], ddl_source='source_estimated', schema_status='not_run'.
+    """
+    migration_plan: dict[str, Any] = {
+        "summary": "test",
+        "block_plans": [],
+        "libname_map": {},
+        "data_schema": {
+            "/raw/dm.sas7bdat": {
+                "columns": ["USUBJID", "AGE"],
+                "column_types": {"USUBJID": "character", "AGE": "double"},
+                "column_labels": {},
+                "column_formats": {},
+                "row_count": 100,
+            }
+        },
+        "relationships": [],
+    }
+    lineage: dict[str, Any] = {
+        "pipeline_steps": [
+            {"inputs": ["dm"], "outputs": ["dose"]},
+            {"inputs": ["dose"], "outputs": ["adsl_age"]},
+        ]
+    }
+    job_id = await _insert_job(db_session, migration_plan=migration_plan, lineage=lineage)
+    response = await client.get(f"/jobs/{job_id}/schema")
+    assert response.status_code == 200
+    body = response.json()
+
+    # dm (from data_schema) + adsl_age (pure output); dose is input to step 2 so not pure
+    assert len(body["tables"]) == 2
+
+    tables_by_name = {t["dataset_name"]: t for t in body["tables"]}
+    assert "dm" in tables_by_name
+    assert "adsl_age" in tables_by_name
+    assert "dose" not in tables_by_name
+
+    stub = tables_by_name["adsl_age"]
+    assert stub["libname"] is None
+    assert stub["columns"] == []
+    assert stub["target_columns"] == []
+    assert stub["schema_status"] == "not_run"
+    assert stub["ddl_source"] == "source_estimated"
+    assert stub["path"] == "output/adsl_age"
+
+
+@pytest.mark.asyncio
+async def test_schema_route_lineage_no_duplicate_if_already_in_data_schema(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """A pure pipeline output already present in data_schema is not added a second time.
+
+    data_schema contains both '/raw/dm.sas7bdat' and '/raw/dose.sas7bdat'.
+    The single pipeline step produces 'dose' from 'dm', making 'dose' a pure output.
+    Because 'dose' already appears in data_schema, no duplicate entry must be inserted.
+    """
+    migration_plan: dict[str, Any] = {
+        "summary": "test",
+        "block_plans": [],
+        "libname_map": {},
+        "data_schema": {
+            "/raw/dm.sas7bdat": {
+                "columns": ["USUBJID"],
+                "column_types": {"USUBJID": "character"},
+                "column_labels": {},
+                "column_formats": {},
+                "row_count": None,
+            },
+            "/raw/dose.sas7bdat": {
+                "columns": ["DOSE"],
+                "column_types": {"DOSE": "double"},
+                "column_labels": {},
+                "column_formats": {},
+                "row_count": None,
+            },
+        },
+        "relationships": [],
+    }
+    lineage: dict[str, Any] = {
+        "pipeline_steps": [
+            {"inputs": ["dm"], "outputs": ["dose"]},
+        ]
+    }
+    job_id = await _insert_job(db_session, migration_plan=migration_plan, lineage=lineage)
+    response = await client.get(f"/jobs/{job_id}/schema")
+    assert response.status_code == 200
+    body = response.json()
+
+    # Exactly 2 tables — no duplicate 'dose' entry
+    assert len(body["tables"]) == 2
+    dataset_names = [t["dataset_name"] for t in body["tables"]]
+    assert dataset_names.count("dose") == 1
+
+
+@pytest.mark.asyncio
+async def test_schema_route_lineage_none_adds_no_tables(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """When job.lineage is None the route must not crash and must return only data_schema tables."""
+    migration_plan: dict[str, Any] = {
+        "summary": "test",
+        "block_plans": [],
+        "libname_map": {},
+        "data_schema": {
+            "/raw/ae.sas7bdat": {
+                "columns": ["AETERM"],
+                "column_types": {"AETERM": "character"},
+                "column_labels": {},
+                "column_formats": {},
+                "row_count": 50,
+            }
+        },
+        "relationships": [],
+    }
+    job_id = await _insert_job(db_session, migration_plan=migration_plan, lineage=None)
+    response = await client.get(f"/jobs/{job_id}/schema")
+    assert response.status_code == 200
+    body = response.json()
+
+    # Only the one table from data_schema — no extra stubs injected
+    assert len(body["tables"]) == 1
+    assert body["tables"][0]["dataset_name"] == "ae"
