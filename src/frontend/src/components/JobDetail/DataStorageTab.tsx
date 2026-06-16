@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight, Pencil, Settings } from "lucide-react";
 import { useTheme } from "next-themes";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import DataModelERD from "./DataModelERD";
 import DataFlowDiagram from "./DataFlowDiagram";
 
@@ -134,7 +134,6 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
   const [manualSelectedPath, setSelectedPath] = useState<string | null>(null);
   const [projectView, setProjectView] = useState<ProjectView | null>(null);
   const [ddlOpen, setDdlOpen] = useState(false);
-  const [ddlLastPath, setDdlLastPath] = useState<string | null>(null);
   const [editingLibname, setEditingLibname] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const { resolvedTheme } = useTheme();
@@ -151,18 +150,17 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
     return schemaData?.tables[0]?.path ?? null;
   }, [manualSelectedPath, schemaData]);
 
+  useEffect(() => {
+    const table = schemaData?.tables.find((t) => t.path === selectedPath);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setDdlOpen(table?.ddl_source === "target");
+  }, [selectedPath, schemaData]);
+
   const handleLibnameRename = async (libname: string, newName: string) => {
     if (!newName || newName === libname) return;
     await patchJobSchema(jobId, { libname_overrides: { [libname]: newName } });
     queryClient.invalidateQueries({ queryKey: ["job", jobId, "schema"] });
   };
-
-  // Derive DDL open state when selected table changes — render-time pattern avoids useEffect
-  if (selectedPath !== ddlLastPath) {
-    setDdlLastPath(selectedPath);
-    const table = schemaData?.tables.find((t) => t.path === selectedPath);
-    setDdlOpen(table?.ddl_source === "target");
-  }
 
   // ── Guard states ─────────────────────────────────────────────────────────────
 
