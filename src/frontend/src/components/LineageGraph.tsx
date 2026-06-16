@@ -46,6 +46,7 @@ interface LineageGraphProps {
   lineage: JobLineageResponse;
   blockPlans?: BlockPlan[];
   onFileNodeClick?: (file: FileNode) => void;
+  onPipelineStepClick?: (step: PipelineStep) => void;
   trustFiles?: TrustReportFile[];
   trustBlocks?: Record<string, TrustReportBlock>;
   initialView?: "blocks" | "files" | "pipeline";
@@ -607,10 +608,6 @@ function getRelated(nodeId: string, edges: Edge[]): Set<string> {
 // ---------------------------------------------------------------------------
 
 const LEGEND_BOX_STYLE: React.CSSProperties = {
-  position: "absolute",
-  top: 10,
-  right: 10,
-  zIndex: 10,
   background: "rgba(245,245,245,0.92)",
   backdropFilter: "blur(6px)",
   borderRadius: 8,
@@ -732,6 +729,7 @@ function LineageGraphInner({
   lineage,
   blockPlans = [],
   onFileNodeClick,
+  onPipelineStepClick,
   trustFiles,
   trustBlocks,
   initialView,
@@ -995,6 +993,15 @@ function LineageGraphInner({
 
   const handleNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
+      if (view === "pipeline") {
+        const step = lineage.pipeline_steps?.find(
+          (s) => `step-${s.step_id}` === node.id,
+        ) ?? null;
+        if (step && onPipelineStepClick) {
+          onPipelineStepClick(step);
+        }
+        return;
+      }
       if (view !== "files") return;
       const fileNode =
         lineage.file_nodes?.find((fn) => `file-${fn.filename}` === node.id) ?? null;
@@ -1019,7 +1026,7 @@ function LineageGraphInner({
         );
       }
     },
-    [view, lineage.file_nodes, setNodes, onFileNodeClick],
+    [view, lineage.pipeline_steps, lineage.file_nodes, setNodes, onFileNodeClick, onPipelineStepClick],
   );
 
   if (lineage.nodes.length === 0 && view === "blocks") {
@@ -1047,8 +1054,7 @@ function LineageGraphInner({
 
   return (
     <div
-      className="rounded-md border border-border overflow-hidden"
-      style={{ width: "100%", height: 600, position: "relative" }}
+      className="rounded-md border border-border overflow-hidden w-full h-full relative"
     >
       {/* Toolbar */}
       <div
@@ -1116,7 +1122,7 @@ function LineageGraphInner({
           }}
         />
 
-        {(["blocks", "files", "pipeline"] as ViewMode[]).map((v) => {
+        {(["pipeline", "files", "blocks"] as ViewMode[]).map((v) => {
           const disabled =
             (v === "files" && !lineage.file_nodes?.length) ||
             (v === "pipeline" && !lineage.pipeline_steps?.length);
@@ -1178,35 +1184,17 @@ function LineageGraphInner({
         <Background />
         {nodes.length > 15 && <MiniMap />}
       </ReactFlow>
-      {view === "blocks" && <Legend />}
-
-      {/* Files view: edge type color legend */}
-      {view === "files" && <FilesLegend />}
-
-      {/* Dense graph notice — appears when edges outnumber nodes */}
-      {(view === "files" || view === "pipeline") &&
-        edges.length > nodes.length && (
-          <div
-            style={{
-              position: "absolute",
-              top: 54,
-              left: 10,
-              zIndex: 10,
-              background: "#fffbeb",
-              border: "1px solid #fcd34d",
-              borderRadius: 6,
-              padding: "3px 10px",
-              fontSize: 10.5,
-              color: "#92400e",
-              display: "flex",
-              alignItems: "center",
-              gap: 5,
-              pointerEvents: "none",
-            }}
-          >
-            <span aria-hidden>⚡</span> Dense graph — hover edges to read labels
-          </div>
-        )}
+      {/* Sticky legend — bottom-left of canvas */}
+      {view === "blocks" && (
+        <div style={{ position: "absolute", bottom: 12, left: 12, zIndex: 10 }}>
+          <Legend />
+        </div>
+      )}
+      {view === "files" && (
+        <div style={{ position: "absolute", bottom: 12, left: 12, zIndex: 10 }}>
+          <FilesLegend />
+        </div>
+      )}
 
       <LineageDetailPanel
         file={selectedFile}
@@ -1232,6 +1220,7 @@ export default function LineageGraph({
   lineage,
   blockPlans,
   onFileNodeClick,
+  onPipelineStepClick,
   trustFiles,
   trustBlocks,
   initialView,
@@ -1242,6 +1231,7 @@ export default function LineageGraph({
         lineage={lineage}
         blockPlans={blockPlans}
         onFileNodeClick={onFileNodeClick}
+        onPipelineStepClick={onPipelineStepClick}
         trustFiles={trustFiles}
         trustBlocks={trustBlocks}
         initialView={initialView}

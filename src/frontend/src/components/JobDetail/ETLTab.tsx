@@ -2,6 +2,7 @@ import { getJobChangelog, getJobLineage } from "@/api/jobs";
 import type {
   BlockPlan,
   FileNode,
+  PipelineStep,
   TrustReportBlock,
   TrustReportResponse,
 } from "@/api/types";
@@ -124,11 +125,16 @@ export default function ETLTab({
     setSelectedFile(file.filename);
   };
 
+  const handlePipelineStepClick = (step: PipelineStep) => {
+    const firstFile = step.files[0] ?? null;
+    if (firstFile) setSelectedFile(firstFile);
+  };
+
   const handleVerified = () => {
     void queryClient.invalidateQueries({
       queryKey: ["job", jobId, "changelog"],
     });
-    setSelectedBlock(null);
+    // Don't close modal — let user see the Verified badge update, then close manually
   };
 
   // ── Render ───────────────────────────────────────────────────────────────
@@ -176,7 +182,8 @@ export default function ETLTab({
               trustFiles={trustReport?.files}
               trustBlocks={trustBlocks}
               onFileNodeClick={handleFileNodeClick}
-              initialView="files"
+              onPipelineStepClick={handlePipelineStepClick}
+              initialView="pipeline"
             />
           )}
         </div>
