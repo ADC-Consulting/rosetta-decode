@@ -456,14 +456,11 @@ async def get_job_lineage(
         return JSONResponse(status_code=202, content={})
     lineage: dict[str, Any] = job.lineage
     pipeline_steps: list[dict[str, Any]] = lineage.get("pipeline_steps", [])
-    if pipeline_steps and job.migration_plan:
+    if pipeline_steps:
         _plan: dict[str, Any] = job.migration_plan if isinstance(job.migration_plan, dict) else {}
         _data_schema: dict[str, Any] = _plan.get("data_schema", {})
         _libname_map: dict[str, str] = _plan.get("libname_map", {}) or {}
-        if _data_schema:
-            pipeline_steps = _normalise_pipeline_step_names(
-                pipeline_steps, _data_schema, _libname_map
-            )
+        pipeline_steps = _normalise_pipeline_step_names(pipeline_steps, _data_schema, _libname_map)
     return JobLineageResponse(
         job_id=job_id,
         nodes=lineage.get("nodes", []),
