@@ -648,16 +648,17 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                         ) : (
                           <ChevronRight className="w-3.5 h-3.5 shrink-0" />
                         )}
-                        {selectedTable.ddl_source === "source_estimated" ? (
-                          <span className="flex items-center gap-2">
-                            Table definition
+                        <span className="flex items-center gap-2">
+                          Table definition
+                          <span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-blue-100 text-blue-700">
+                            PostgreSQL
+                          </span>
+                          {selectedTable.ddl_source === "source_estimated" && (
                             <span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-800">
                               estimated from SAS
                             </span>
-                          </span>
-                        ) : (
-                          "Table definition"
-                        )}
+                          )}
+                        </span>
                       </CollapsibleTrigger>
                     </div>
                     <CollapsibleContent>
