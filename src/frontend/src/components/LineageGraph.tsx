@@ -1223,35 +1223,6 @@ function LineageGraphInner({
           <FilesLegend />
         </div>
       )}
-      {view === "pipeline" && (
-        <div style={{ position: "absolute", bottom: 12, left: 12, zIndex: 10 }}>
-          <div style={LEGEND_BOX_STYLE}>
-            <div style={SECTION_LABEL_STYLE}>Pipeline steps</div>
-            {[
-              { color: "#bfdbfe", border: "#93c5fd", label: "Source data" },
-              { color: "#e0e7ff", border: "#c7d2fe", label: "Processing step" },
-              { color: "#d1fae5", border: "#6ee7b7", label: "Output data" },
-            ].map(({ color, border, label }) => (
-              <div key={label} style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                <div
-                  style={{
-                    width: 20,
-                    height: 14,
-                    borderRadius: 3,
-                    background: color,
-                    borderWidth: "1.5px",
-                    borderStyle: "solid",
-                    borderColor: border,
-                    borderBottomWidth: "3px",
-                    flexShrink: 0,
-                  }}
-                />
-                <span style={{ fontSize: 11, color: "#444", fontWeight: 500 }}>{label}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       <LineageDetailPanel
         file={selectedFile}
