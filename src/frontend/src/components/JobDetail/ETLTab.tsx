@@ -184,6 +184,8 @@ export default function ETLTab({
               onFileNodeClick={handleFileNodeClick}
               onPipelineStepClick={handlePipelineStepClick}
               initialView="pipeline"
+              selectedFilePath={selectedFile}
+              humanVerifiedBlocks={humanVerifiedBlocks}
             />
           )}
         </div>

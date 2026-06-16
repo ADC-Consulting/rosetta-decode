@@ -50,6 +50,8 @@ interface LineageGraphProps {
   trustFiles?: TrustReportFile[];
   trustBlocks?: Record<string, TrustReportBlock>;
   initialView?: "blocks" | "files" | "pipeline";
+  selectedFilePath?: string | null;
+  humanVerifiedBlocks?: Set<string>;
 }
 
 type NodeData = {
@@ -78,8 +80,8 @@ const STATUS_STYLE: Record<
 
 const STATUS_LABEL: Record<LineageNode["status"], string> = {
   migrated: "Migrated",
-  manual_review: "Human review",
-  unrecognized: "Manual",
+  manual_review: "Needs review",
+  unrecognized: "Manual required",
 };
 
 const STATUS_SYMBOL: Record<
@@ -323,6 +325,7 @@ function buildInitialNodes(
   lineageNodes: LineageNode[],
   blockPlanMap?: Map<string, BlockPlan>,
   trustBlocks?: Record<string, TrustReportBlock>,
+  humanVerifiedBlocks?: Set<string>,
 ): Node<NodeData>[] {
   return lineageNodes.map((n) => {
     if (n.node_type === "DATA_FILE") return buildDataFileNode(n);
@@ -340,8 +343,14 @@ function buildInitialNodes(
       if (tb?.needs_attention) resolvedStatus = "manual_review";
     }
 
-    const style = STATUS_STYLE[resolvedStatus] ?? STATUS_STYLE["manual_review"];
-    const sym = STATUS_SYMBOL[resolvedStatus] ?? STATUS_SYMBOL["unrecognized"];
+    const singleColonId = n.id.replace("::", ":");
+    const isHumanVerified = humanVerifiedBlocks?.has(singleColonId) ?? false;
+    const style = isHumanVerified
+      ? { background: "#f0fdfa", border: "#0d9488", color: "#1a1a1a" }
+      : STATUS_STYLE[resolvedStatus] ?? STATUS_STYLE["manual_review"];
+    const sym = isHumanVerified
+      ? { symbol: "✓", color: "#0d9488" }
+      : STATUS_SYMBOL[resolvedStatus] ?? STATUS_SYMBOL["unrecognized"];
     return {
       id: n.id,
       type: "default",
@@ -641,6 +650,23 @@ function Legend(): React.ReactElement {
           </span>
         </div>
       ))}
+      {/* Human-verified indicator */}
+      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+        <div
+          style={{
+            width: 20,
+            height: 14,
+            borderRadius: 3,
+            background: "#f0fdfa",
+            borderWidth: "1.5px",
+            borderStyle: "solid",
+            borderColor: "#0d9488",
+            borderBottomWidth: "3px",
+            flexShrink: 0,
+          }}
+        />
+        <span style={{ fontSize: 11, color: "#444", fontWeight: 500 }}>Human verified</span>
+      </div>
     </div>
   );
 }
@@ -733,6 +759,8 @@ function LineageGraphInner({
   trustFiles,
   trustBlocks,
   initialView,
+  selectedFilePath,
+  humanVerifiedBlocks,
 }: LineageGraphProps): React.ReactElement {
   const { fitView } = useReactFlow();
   const [nodes, setNodes, onNodesChange] = useNodesState<NodeData>([]);
@@ -779,7 +807,7 @@ function LineageGraphInner({
         buildFileNodes(
           lineage.file_nodes,
           lineage.file_edges ?? [],
-          selectedFile?.filename ?? null,
+          selectedFilePath ?? selectedFile?.filename ?? null,
           trustFiles,
         ),
         fEdges,
@@ -805,7 +833,7 @@ function LineageGraphInner({
       const bpMap = blockPlans.length
         ? new Map(blockPlans.map((bp) => [bp.block_id.replace(":", "::"), bp]))
         : undefined;
-      const rawNodes = buildInitialNodes(lineage.nodes, bpMap, trustBlocks);
+      const rawNodes = buildInitialNodes(lineage.nodes, bpMap, trustBlocks, humanVerifiedBlocks);
       const rawEdges = buildInitialEdges(lineage.edges, lineage.column_flows);
       newNodes = applyDagreLayout(rawNodes, rawEdges, NODE_W, NODE_H);
       newEdges = rawEdges;
@@ -827,7 +855,7 @@ function LineageGraphInner({
     setTimeout(() => {
       suppressChangesRef.current = false;
     }, 50);
-  }, [lineage, view]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [lineage, view, selectedFilePath, humanVerifiedBlocks]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
@@ -1195,6 +1223,35 @@ function LineageGraphInner({
           <FilesLegend />
         </div>
       )}
+      {view === "pipeline" && (
+        <div style={{ position: "absolute", bottom: 12, left: 12, zIndex: 10 }}>
+          <div style={LEGEND_BOX_STYLE}>
+            <div style={SECTION_LABEL_STYLE}>Pipeline steps</div>
+            {[
+              { color: "#bfdbfe", border: "#93c5fd", label: "Source data" },
+              { color: "#e0e7ff", border: "#c7d2fe", label: "Processing step" },
+              { color: "#d1fae5", border: "#6ee7b7", label: "Output data" },
+            ].map(({ color, border, label }) => (
+              <div key={label} style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                <div
+                  style={{
+                    width: 20,
+                    height: 14,
+                    borderRadius: 3,
+                    background: color,
+                    borderWidth: "1.5px",
+                    borderStyle: "solid",
+                    borderColor: border,
+                    borderBottomWidth: "3px",
+                    flexShrink: 0,
+                  }}
+                />
+                <span style={{ fontSize: 11, color: "#444", fontWeight: 500 }}>{label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <LineageDetailPanel
         file={selectedFile}
@@ -1224,6 +1281,8 @@ export default function LineageGraph({
   trustFiles,
   trustBlocks,
   initialView,
+  selectedFilePath,
+  humanVerifiedBlocks,
 }: LineageGraphProps): React.ReactElement {
   return (
     <ReactFlowProvider>
@@ -1235,6 +1294,8 @@ export default function LineageGraph({
         trustFiles={trustFiles}
         trustBlocks={trustBlocks}
         initialView={initialView}
+        selectedFilePath={selectedFilePath}
+        humanVerifiedBlocks={humanVerifiedBlocks}
       />
     </ReactFlowProvider>
   );
