@@ -56,6 +56,12 @@ export function SchemaCanvas({
 }: SchemaCanvasProps) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const [nodeDrag, setNodeDrag] = useState<NodeDragState | null>(null);
+  const panOriginRef = useRef<{
+    x: number;
+    y: number;
+    scrollLeft: number;
+    scrollTop: number;
+  } | null>(null);
   const [collapsedNodeIds, setCollapsedNodeIds] = useState<Set<string>>(new Set());
   const [zoom, setZoom] = useState(1);
 
@@ -212,7 +218,12 @@ export function SchemaCanvas({
   return (
     <div
       ref={viewportRef}
-      className={`rosetta-schema-canvas canvas-shell ${focusContext ? "canvas-shell-has-focus" : ""}`}
+      className={[
+        "rosetta-schema-canvas canvas-shell select-none cursor-grab",
+        focusContext ? "canvas-shell-has-focus" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
       onWheel={(event) => {
         const viewport = viewportRef.current;
         if (!viewport) {
@@ -256,10 +267,33 @@ export function SchemaCanvas({
           current.scrollTop = worldY * nextZoom - pointerY;
         });
       }}
-      onMouseDown={() => {
+      onMouseDown={(e) => {
+        if (e.button !== 0) return;
+        const vp = viewportRef.current;
         onSelectNode(null);
         onSelectEdge(null);
         onSelectField(null);
+
+        function onPanMove(ev: MouseEvent) {
+          const origin = panOriginRef.current;
+          if (!origin || !viewportRef.current) return;
+          viewportRef.current.scrollLeft = origin.scrollLeft - (ev.clientX - origin.x);
+          viewportRef.current.scrollTop = origin.scrollTop - (ev.clientY - origin.y);
+        }
+        function onPanUp() {
+          panOriginRef.current = null;
+          window.removeEventListener("mousemove", onPanMove);
+          window.removeEventListener("mouseup", onPanUp);
+        }
+
+        panOriginRef.current = {
+          x: e.clientX,
+          y: e.clientY,
+          scrollLeft: vp?.scrollLeft ?? 0,
+          scrollTop: vp?.scrollTop ?? 0,
+        };
+        window.addEventListener("mousemove", onPanMove);
+        window.addEventListener("mouseup", onPanUp);
       }}
     >
       <div className="canvas-zoom-layer" style={{ width: stageSize.width * zoom, height: stageSize.height * zoom }}>
