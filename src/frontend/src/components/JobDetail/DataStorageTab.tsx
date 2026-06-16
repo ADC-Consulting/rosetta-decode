@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight, Pencil, Settings } from "lucide-react";
 import { useTheme } from "next-themes";
-import { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import DataModelERD from "./DataModelERD";
 import DataFlowDiagram from "./DataFlowDiagram";
 
@@ -191,6 +191,12 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
         className="w-72 shrink-0 border-r border-border overflow-y-auto flex flex-col"
         aria-label="Table list"
       >
+        {/* Description blurb */}
+        <p className="text-xs text-muted-foreground px-3 pt-3 pb-1 leading-relaxed">
+          Source SAS datasets and proposed output tables for this migration. Select a table to
+          inspect its schema.
+        </p>
+
         {/* Section 1: Source data */}
         {namedKeys.length > 0 && (
           <div>
@@ -630,28 +636,30 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                 {/* DDL collapsible */}
                 <div className="border-t border-border">
                   <Collapsible open={ddlOpen} onOpenChange={setDdlOpen}>
-                    <CollapsibleTrigger
-                      className="flex w-full items-center gap-2 px-4 py-2.5 text-xs font-semibold
-                        text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors
-                        select-none"
-                      aria-label="Toggle DDL panel"
-                    >
-                      {ddlOpen ? (
-                        <ChevronDown className="w-3.5 h-3.5 shrink-0" />
-                      ) : (
-                        <ChevronRight className="w-3.5 h-3.5 shrink-0" />
-                      )}
-                      {selectedTable.ddl_source === "source_estimated" ? (
-                        <span className="flex items-center gap-2">
-                          Table definition
-                          <span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-800">
-                            estimated from SAS
+                    <div className="flex items-center justify-between pr-4">
+                      <CollapsibleTrigger
+                        className="flex flex-1 items-center gap-2 px-4 py-2.5 text-xs font-semibold
+                          text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors
+                          select-none"
+                        aria-label="Toggle DDL panel"
+                      >
+                        {ddlOpen ? (
+                          <ChevronDown className="w-3.5 h-3.5 shrink-0" />
+                        ) : (
+                          <ChevronRight className="w-3.5 h-3.5 shrink-0" />
+                        )}
+                        {selectedTable.ddl_source === "source_estimated" ? (
+                          <span className="flex items-center gap-2">
+                            Table definition
+                            <span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-800">
+                              estimated from SAS
+                            </span>
                           </span>
-                        </span>
-                      ) : (
-                        "Table definition"
-                      )}
-                    </CollapsibleTrigger>
+                        ) : (
+                          "Table definition"
+                        )}
+                      </CollapsibleTrigger>
+                    </div>
                     <CollapsibleContent>
                       {selectedTable.ddl ? (
                         <div className="px-4 pb-4">

@@ -464,3 +464,4 @@
 - [ ] F14: Authentication & SSO (SAML/OIDC, JWT, RBAC)
 - [ ] `DatabricksBackend` (PySpark) (`src/worker/compute/databricks.py`)
 - [ ] End-to-end test: CLOUD=true, Databricks connection
+- [ ] MS SQL Server DDL dialect in Data tab — add `dialect` param to `generate_create_table()` in `src/worker/engine/ddl_generator.py` (NVARCHAR(MAX), FLOAT, DATETIME2, BIT, dbo schema prefix), expose as second DDL field in schema response, add dropdown in `DataStorageTab.tsx`. Gate behind MS SQL compute backend being available.
