@@ -411,21 +411,25 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                         {selectedTable.row_count.toLocaleString()} rows
                       </span>
                     )}
-                    <span
-                      className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium ${
-                        selectedTable.schema_status === "migrated"
-                          ? "bg-green-100 text-green-800"
+                    {selectedTable.libname === null ? (
+                      <span
+                        className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium ${
+                          selectedTable.schema_status === "migrated"
+                            ? "bg-green-100 text-green-800"
+                            : selectedTable.schema_status === "changed"
+                              ? "bg-amber-100 text-amber-800"
+                              : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        {selectedTable.schema_status === "migrated"
+                          ? "Migrated"
                           : selectedTable.schema_status === "changed"
-                            ? "bg-amber-100 text-amber-800"
-                            : "bg-muted text-muted-foreground"
-                      }`}
-                    >
-                      {selectedTable.schema_status === "migrated"
-                        ? "Migrated"
-                        : selectedTable.schema_status === "changed"
-                          ? "Changed"
-                          : "Not run"}
-                    </span>
+                            ? "Changed"
+                            : "Not run"}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Source SAS data · read only</span>
+                    )}
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <button
@@ -447,117 +451,23 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                   </div>
                 </div>
 
-                {selectedTable.schema_status === "not_run" && selectedTable.columns.length > 0 && (
-                  <div className="px-4 py-2 bg-muted/30 border-b border-border flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">
-                      Migration has not run for this table yet — showing source schema from the SAS project.
-                    </span>
-                  </div>
-                )}
-
                 {/* Column table or no-columns notice */}
-                {selectedTable.schema_status === "not_run" && selectedTable.columns.length === 0 ? (
-                  <div className="px-4 py-6">
-                    <p className="text-sm text-muted-foreground">
-                      Column schema not available — no .sas7bdat file or source declarations found.
-                    </p>
-                  </div>
-                ) : selectedTable.target_columns.length > 0 ? (
-                  <>
-                  <div className="px-3 py-2 flex items-center justify-between border-b border-border bg-muted/10 text-xs text-muted-foreground">
-                    <span>SAS source schema vs migration output</span>
-                    <span className="flex items-center gap-3">
-                      <span className="flex items-center gap-1">
-                        <span className="font-bold text-green-600">+</span> Added
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <span className="font-bold text-red-500">✗</span> Dropped
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <span className="text-muted-foreground/40">✓</span> Unchanged
-                      </span>
-                    </span>
-                  </div>
-                  <table className="w-full text-sm border-collapse">
-                    <thead className="sticky top-0 bg-background z-10">
-                      <tr className="border-b border-border">
-                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide w-6" />
-                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Column</th>
-                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">SAS type</th>
-                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">SQL type</th>
-                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Flags</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {buildColumnDiff(selectedTable).map((row) => (
-                        <tr
-                          key={row.name}
-                          className={`border-b border-border last:border-0 ${
-                            row.status === "added" ? "bg-green-50 dark:bg-green-950/20" :
-                            row.status === "dropped" ? "bg-red-50 dark:bg-red-950/20" : ""
-                          }`}
-                        >
-                          <td className="px-3 py-2 whitespace-nowrap">
-                            {row.status === "added" ? (
-                              <span className="text-xs font-bold text-green-600" title="Added in output">+</span>
-                            ) : row.status === "dropped" ? (
-                              <span className="text-xs font-bold text-red-500" title="Dropped in output">✗</span>
-                            ) : (
-                              <span className="text-xs text-muted-foreground/50" title="Unchanged">✓</span>
-                            )}
-                          </td>
-                          <td className="px-3 py-2 font-mono text-xs text-foreground whitespace-nowrap">
-                            {row.name}
-                          </td>
-                          <td className="px-3 py-2 whitespace-nowrap">
-                            {row.sas_type ? (
-                              <span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
-                                {row.sas_type}
-                              </span>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">—</span>
-                            )}
-                          </td>
-                          <td className="px-3 py-2 font-mono text-xs whitespace-nowrap">
-                            {row.sql_type ? (
-                              <span className="text-foreground">{row.sql_type}</span>
-                            ) : (
-                              <span className="text-muted-foreground">—</span>
-                            )}
-                          </td>
-                          <td className="px-3 py-2 text-xs whitespace-nowrap">
-                            {row.is_pk && (
-                              <span className="inline-flex items-center rounded px-1 py-0.5 text-xs font-semibold bg-yellow-100 text-yellow-800 mr-1">PK</span>
-                            )}
-                            {row.is_fk && (
-                              <span className="inline-flex items-center rounded px-1 py-0.5 text-xs font-semibold bg-blue-100 text-blue-800">FK</span>
-                            )}
-                          </td>
+                {selectedTable.libname !== null ? (
+                  /* Source table — simple column list, no diff */
+                  selectedTable.columns.length > 0 ? (
+                    <table className="w-full text-sm border-collapse">
+                      <thead className="sticky top-0 bg-background z-10">
+                        <tr className="border-b border-border">
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Column</th>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">SAS type</th>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Format</th>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Label</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  </>
-                ) : selectedTable.columns.length > 0 ? (
-                  <table className="w-full text-sm border-collapse">
-                    <thead className="sticky top-0 bg-background z-10">
-                      <tr className="border-b border-border">
-                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Column</th>
-                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">SAS type</th>
-                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Format</th>
-                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Data type</th>
-                        <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Label</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedTable.columns.map((col) => {
-                        const displayType = col.override_type ?? col.semantic_type;
-                        const isOverridden = col.override_type !== null;
-                        return (
+                      </thead>
+                      <tbody>
+                        {selectedTable.columns.map((col) => (
                           <tr key={col.name} className="border-b border-border last:border-0">
-                            <td className="px-3 py-2 font-mono text-xs text-foreground whitespace-nowrap">
-                              {col.name}
-                            </td>
+                            <td className="px-3 py-2 font-mono text-xs text-foreground whitespace-nowrap">{col.name}</td>
                             <td className="px-3 py-2 whitespace-nowrap">
                               {col.sas_type ? (
                                 <span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
@@ -570,34 +480,151 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                             <td className="px-3 py-2 font-mono text-xs text-muted-foreground whitespace-nowrap">
                               {col.sas_format ?? "—"}
                             </td>
-                            <td className="px-3 py-2 whitespace-nowrap">
-                              {displayType === "Unknown" ? (
-                                <span className="text-xs text-muted-foreground">—</span>
-                              ) : (
-                                <span
-                                  className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium ${semanticBadgeClasses(displayType)}`}
-                                >
-                                  {displayType}
-                                  {isOverridden && (
-                                    <Pencil className="w-3 h-3" aria-label="Overridden type" />
-                                  )}
-                                </span>
-                              )}
-                            </td>
                             <td className="px-3 py-2 text-xs text-muted-foreground max-w-xs truncate">
                               {col.label ?? "—"}
                             </td>
                           </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <div className="px-4 py-6">
+                      <p className="text-sm text-muted-foreground">
+                        Column schema not available — no .sas7bdat file or source declarations found.
+                      </p>
+                    </div>
+                  )
                 ) : (
-                  <div className="px-4 py-6">
-                    <p className="text-sm text-muted-foreground">
-                      Column schema not available — no .sas7bdat file or source declarations found.
-                    </p>
-                  </div>
+                  /* Output table — existing diff/status view */
+                  selectedTable.schema_status === "not_run" && selectedTable.columns.length === 0 ? (
+                    <div className="px-4 py-6">
+                      <p className="text-sm text-muted-foreground">
+                        Column schema not available — no .sas7bdat file or source declarations found.
+                      </p>
+                    </div>
+                  ) : selectedTable.target_columns.length > 0 ? (
+                    <>
+                      <div className="px-3 py-2 flex items-center justify-between border-b border-border bg-muted/10 text-xs text-muted-foreground">
+                        <span>SAS source schema vs migration output</span>
+                        <span className="flex items-center gap-3">
+                          <span className="flex items-center gap-1">
+                            <span className="font-bold text-green-600">+</span> Added
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <span className="font-bold text-red-500">✗</span> Dropped
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <span className="text-muted-foreground/40">✓</span> Unchanged
+                          </span>
+                        </span>
+                      </div>
+                      <table className="w-full text-sm border-collapse">
+                        <thead className="sticky top-0 bg-background z-10">
+                          <tr className="border-b border-border">
+                            <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide w-6" />
+                            <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Column</th>
+                            <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">SAS type</th>
+                            <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">SQL type</th>
+                            <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Flags</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {buildColumnDiff(selectedTable).map((row) => (
+                            <tr
+                              key={row.name}
+                              className={`border-b border-border last:border-0 ${
+                                row.status === "added" ? "bg-green-50 dark:bg-green-950/20" :
+                                row.status === "dropped" ? "bg-red-50 dark:bg-red-950/20" : ""
+                              }`}
+                            >
+                              <td className="px-3 py-2 whitespace-nowrap">
+                                {row.status === "added" ? (
+                                  <span className="text-xs font-bold text-green-600" title="Added in output">+</span>
+                                ) : row.status === "dropped" ? (
+                                  <span className="text-xs font-bold text-red-500" title="Dropped in output">✗</span>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground/50" title="Unchanged">✓</span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2 font-mono text-xs text-foreground whitespace-nowrap">{row.name}</td>
+                              <td className="px-3 py-2 whitespace-nowrap">
+                                {row.sas_type ? (
+                                  <span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
+                                    {row.sas_type}
+                                  </span>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">—</span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2 font-mono text-xs whitespace-nowrap">
+                                {row.sql_type ? (
+                                  <span className="text-foreground">{row.sql_type}</span>
+                                ) : (
+                                  <span className="text-muted-foreground">—</span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-xs whitespace-nowrap">
+                                {row.is_pk && (
+                                  <span className="inline-flex items-center rounded px-1 py-0.5 text-xs font-semibold bg-yellow-100 text-yellow-800 mr-1">PK</span>
+                                )}
+                                {row.is_fk && (
+                                  <span className="inline-flex items-center rounded px-1 py-0.5 text-xs font-semibold bg-blue-100 text-blue-800">FK</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </>
+                  ) : selectedTable.columns.length > 0 ? (
+                    <>
+                      <div className="px-3 py-2 flex items-center justify-between border-b border-border bg-muted/10 text-xs text-muted-foreground">
+                        <span>Proposed output schema</span>
+                        <span>inferred from source columns</span>
+                      </div>
+                      <table className="w-full text-sm border-collapse">
+                        <thead className="sticky top-0 bg-background z-10">
+                          <tr className="border-b border-border">
+                            <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Column</th>
+                            <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Proposed type</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedTable.columns.map((col) => {
+                            const displayType = col.override_type ?? col.semantic_type;
+                            const isOverridden = col.override_type !== null;
+                            return (
+                              <tr key={col.name} className="border-b border-border last:border-0">
+                                <td className="px-3 py-2 font-mono text-xs text-foreground whitespace-nowrap">
+                                  {col.name}
+                                </td>
+                                <td className="px-3 py-2 whitespace-nowrap">
+                                  {displayType === "Unknown" ? (
+                                    <span className="text-xs text-muted-foreground">—</span>
+                                  ) : (
+                                    <span
+                                      className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium ${semanticBadgeClasses(displayType)}`}
+                                    >
+                                      {displayType}
+                                      {isOverridden && (
+                                        <Pencil className="w-3 h-3" aria-label="Overridden type" />
+                                      )}
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </>
+                  ) : (
+                    <div className="px-4 py-6">
+                      <p className="text-sm text-muted-foreground">
+                        Column schema not available — no .sas7bdat file or source declarations found.
+                      </p>
+                    </div>
+                  )
                 )}
 
                 {/* DDL collapsible */}
