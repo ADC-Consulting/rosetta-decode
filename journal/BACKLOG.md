@@ -443,6 +443,12 @@
   - [x] F59 S-G: `make test` exits 0
 - [x] #58: Record-level reconciliation (row-by-row diff) — row_hash_diff + ReconConfig + LLM key resolution
 - [ ] #59: Artefact versioning — group jobs by input_hash
+**F67 — ETL tab: Source / Target toggle (#67) → see `docs/plans/latest/F67-etl-source-target-toggle.md`**
+- [ ] F67 S-A: `sasFileToPyFile` + `pyFileToSasFiles` utility → `src/frontend/src/lib/sas-python-file-map.ts`
+- [ ] F67 S-B: `TargetGraph` component — Python file nodes, remapped edges, trust-coloured, legend → `src/frontend/src/components/JobDetail/TargetGraph.tsx`
+- [ ] F67 S-C: Source / Target toggle in ETLTab + wire TargetGraph → `src/frontend/src/components/JobDetail/ETLTab.tsx`
+- [ ] F67 S-D: `make test` exits 0
+
 - [ ] #21: Consolidate lineage into a single primary view — `backlog` label
 - [ ] #20: Rollback / versioning based on lineage — `backlog` label
 - [ ] #32: Specify decision-ready reports (technical + PO) — `backlog` label, deferred
