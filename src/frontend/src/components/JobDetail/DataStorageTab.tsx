@@ -584,9 +584,9 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                     </>
                   ) : selectedTable.columns.length > 0 ? (
                     <>
-                      <div className="px-3 py-2 flex items-center justify-between border-b border-border bg-muted/10 text-xs text-muted-foreground">
-                        <span>Proposed output schema</span>
-                        <span>inferred from source columns</span>
+                      <div className="px-3 py-2 border-b border-border bg-muted/10 text-xs">
+                        <span className="font-medium">Proposed output schema</span>
+                        <span className="text-muted-foreground"> · inferred from source columns</span>
                       </div>
                       <table className="w-full text-sm border-collapse">
                         <thead className="sticky top-0 bg-background z-10">
