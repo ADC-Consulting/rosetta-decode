@@ -6,6 +6,42 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-16 — F67 complete: ETL Source/Target toggle + four UX fixes
+
+**Branch:** `feat/F67-etl-source-target-toggle`
+
+### Done
+- S-A: `sas-python-file-map.ts` — `sasFileToPyFile` and `pyFileToSasFiles` pure TS utilities
+- S-B: `TargetGraph.tsx` — ReactFlow graph of Python modules; dagre LR layout; trust-coloured nodes; remapped/deduped edges; sticky legend
+- S-C: `ETLTab.tsx` — Source / Target toggle buttons in summary bar; `handleToggle` clears side-panel state; `TargetGraph` conditionally rendered; `generatedFiles` prop threaded from `JobDetailPage`
+- S-D: `make test` exits 0 (all 7 gates)
+- Fix 1: sub-view reset — lifted `lineageView` state into `ETLTab`; added `onViewChange` callback to `LineageGraph` so sub-view survives the `key`-prop remount on panel open/close
+- Fix 2: no selection ring on Target nodes — split `useMemo` into expensive layout pass (deps: data) + cheap selection overlay pass (deps: `selectedSasFile`); synced via `useEffect`
+- Fix 3: legend overlaps zoom controls — moved legend from `bottom/left: 12` to `bottom/right: 12` (also moved in `TargetGraph`)
+- Fix 4: isolated nodes visually mislead as upstream — dagre runs only on connected nodes; isolated placed in horizontal row at `y = connectedBottom + 60`
+
+### Decisions
+- Split useMemo is the correct pattern for ReactFlow when layout is expensive but selection is cheap: layout memo deps = data only, selection memo deps = layoutedNodes + selectedSasFile. The `useEffect` sync keeps ReactFlow internal state in step without forcing a remount.
+- Isolated nodes that have no edges in the Python target graph are placed in a row *below* the connected cluster, not mixed in — dagre would otherwise place them in the leftmost rank, falsely implying they are upstream.
+
+### Open Questions
+- P2/P3 follow-up improvements noted during review (not blocking the PR): panel header shows SAS filename from Target view; "PROGRAM" badge on Target nodes; summary bar stats don't reflect Target context; no tooltips on toggle buttons.
+- Pre-existing `ReferenceError: panOrigin is not defined` in `SchemaCanvas.tsx:165` (F35 bug, not F67).
+
+### Next Session — Start Here
+1. Open PR for `feat/F67-etl-source-target-toggle` closing issue #67.
+2. Optionally pick up Data Storage tab polish plan (`.claude/plans/linear-discovering-sketch.md`) — all P0–P2 fixes are defined and ready to implement.
+
+### Files Touched
+- `src/frontend/src/lib/sas-python-file-map.ts` (new)
+- `src/frontend/src/components/JobDetail/TargetGraph.tsx` (new)
+- `src/frontend/src/components/JobDetail/ETLTab.tsx`
+- `src/frontend/src/components/LineageGraph.tsx` (onViewChange callback)
+- `src/frontend/src/pages/JobDetailPage.tsx` (generatedFiles prop)
+- `docs/plans/latest/F67-etl-source-target-toggle.md`
+
+---
+
 ## 2026-06-16 — F35 Data tab final polish, drag-to-pan fix, and automated tests
 
 **Branch:** `feat/F35-migration-output-catalog`
