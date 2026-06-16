@@ -46,9 +46,12 @@ interface LineageGraphProps {
   lineage: JobLineageResponse;
   blockPlans?: BlockPlan[];
   onFileNodeClick?: (file: FileNode) => void;
+  onPipelineStepClick?: (step: PipelineStep) => void;
   trustFiles?: TrustReportFile[];
   trustBlocks?: Record<string, TrustReportBlock>;
   initialView?: "blocks" | "files" | "pipeline";
+  selectedFilePath?: string | null;
+  humanVerifiedBlocks?: Set<string>;
 }
 
 type NodeData = {
@@ -77,8 +80,8 @@ const STATUS_STYLE: Record<
 
 const STATUS_LABEL: Record<LineageNode["status"], string> = {
   migrated: "Migrated",
-  manual_review: "Human review",
-  unrecognized: "Manual",
+  manual_review: "Needs review",
+  unrecognized: "Manual required",
 };
 
 const STATUS_SYMBOL: Record<
@@ -322,6 +325,7 @@ function buildInitialNodes(
   lineageNodes: LineageNode[],
   blockPlanMap?: Map<string, BlockPlan>,
   trustBlocks?: Record<string, TrustReportBlock>,
+  humanVerifiedBlocks?: Set<string>,
 ): Node<NodeData>[] {
   return lineageNodes.map((n) => {
     if (n.node_type === "DATA_FILE") return buildDataFileNode(n);
@@ -339,8 +343,14 @@ function buildInitialNodes(
       if (tb?.needs_attention) resolvedStatus = "manual_review";
     }
 
-    const style = STATUS_STYLE[resolvedStatus] ?? STATUS_STYLE["manual_review"];
-    const sym = STATUS_SYMBOL[resolvedStatus] ?? STATUS_SYMBOL["unrecognized"];
+    const singleColonId = n.id.replace("::", ":");
+    const isHumanVerified = humanVerifiedBlocks?.has(singleColonId) ?? false;
+    const style = isHumanVerified
+      ? { background: "#f0fdfa", border: "#0d9488", color: "#1a1a1a" }
+      : STATUS_STYLE[resolvedStatus] ?? STATUS_STYLE["manual_review"];
+    const sym = isHumanVerified
+      ? { symbol: "✓", color: "#0d9488" }
+      : STATUS_SYMBOL[resolvedStatus] ?? STATUS_SYMBOL["unrecognized"];
     return {
       id: n.id,
       type: "default",
@@ -607,10 +617,6 @@ function getRelated(nodeId: string, edges: Edge[]): Set<string> {
 // ---------------------------------------------------------------------------
 
 const LEGEND_BOX_STYLE: React.CSSProperties = {
-  position: "absolute",
-  top: 10,
-  right: 10,
-  zIndex: 10,
   background: "rgba(245,245,245,0.92)",
   backdropFilter: "blur(6px)",
   borderRadius: 8,
@@ -644,6 +650,23 @@ function Legend(): React.ReactElement {
           </span>
         </div>
       ))}
+      {/* Human-verified indicator */}
+      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+        <div
+          style={{
+            width: 20,
+            height: 14,
+            borderRadius: 3,
+            background: "#f0fdfa",
+            borderWidth: "1.5px",
+            borderStyle: "solid",
+            borderColor: "#0d9488",
+            borderBottomWidth: "3px",
+            flexShrink: 0,
+          }}
+        />
+        <span style={{ fontSize: 11, color: "#444", fontWeight: 500 }}>Human verified</span>
+      </div>
     </div>
   );
 }
@@ -732,9 +755,12 @@ function LineageGraphInner({
   lineage,
   blockPlans = [],
   onFileNodeClick,
+  onPipelineStepClick,
   trustFiles,
   trustBlocks,
   initialView,
+  selectedFilePath,
+  humanVerifiedBlocks,
 }: LineageGraphProps): React.ReactElement {
   const { fitView } = useReactFlow();
   const [nodes, setNodes, onNodesChange] = useNodesState<NodeData>([]);
@@ -781,7 +807,7 @@ function LineageGraphInner({
         buildFileNodes(
           lineage.file_nodes,
           lineage.file_edges ?? [],
-          selectedFile?.filename ?? null,
+          selectedFilePath ?? selectedFile?.filename ?? null,
           trustFiles,
         ),
         fEdges,
@@ -807,7 +833,7 @@ function LineageGraphInner({
       const bpMap = blockPlans.length
         ? new Map(blockPlans.map((bp) => [bp.block_id.replace(":", "::"), bp]))
         : undefined;
-      const rawNodes = buildInitialNodes(lineage.nodes, bpMap, trustBlocks);
+      const rawNodes = buildInitialNodes(lineage.nodes, bpMap, trustBlocks, humanVerifiedBlocks);
       const rawEdges = buildInitialEdges(lineage.edges, lineage.column_flows);
       newNodes = applyDagreLayout(rawNodes, rawEdges, NODE_W, NODE_H);
       newEdges = rawEdges;
@@ -829,7 +855,7 @@ function LineageGraphInner({
     setTimeout(() => {
       suppressChangesRef.current = false;
     }, 50);
-  }, [lineage, view]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [lineage, view, selectedFilePath, humanVerifiedBlocks]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
@@ -995,6 +1021,15 @@ function LineageGraphInner({
 
   const handleNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
+      if (view === "pipeline") {
+        const step = lineage.pipeline_steps?.find(
+          (s) => `step-${s.step_id}` === node.id,
+        ) ?? null;
+        if (step && onPipelineStepClick) {
+          onPipelineStepClick(step);
+        }
+        return;
+      }
       if (view !== "files") return;
       const fileNode =
         lineage.file_nodes?.find((fn) => `file-${fn.filename}` === node.id) ?? null;
@@ -1019,7 +1054,7 @@ function LineageGraphInner({
         );
       }
     },
-    [view, lineage.file_nodes, setNodes, onFileNodeClick],
+    [view, lineage.pipeline_steps, lineage.file_nodes, setNodes, onFileNodeClick, onPipelineStepClick],
   );
 
   if (lineage.nodes.length === 0 && view === "blocks") {
@@ -1047,8 +1082,7 @@ function LineageGraphInner({
 
   return (
     <div
-      className="rounded-md border border-border overflow-hidden"
-      style={{ width: "100%", height: 600, position: "relative" }}
+      className="rounded-md border border-border overflow-hidden w-full h-full relative"
     >
       {/* Toolbar */}
       <div
@@ -1116,7 +1150,7 @@ function LineageGraphInner({
           }}
         />
 
-        {(["blocks", "files", "pipeline"] as ViewMode[]).map((v) => {
+        {(["pipeline", "files", "blocks"] as ViewMode[]).map((v) => {
           const disabled =
             (v === "files" && !lineage.file_nodes?.length) ||
             (v === "pipeline" && !lineage.pipeline_steps?.length);
@@ -1178,35 +1212,17 @@ function LineageGraphInner({
         <Background />
         {nodes.length > 15 && <MiniMap />}
       </ReactFlow>
-      {view === "blocks" && <Legend />}
-
-      {/* Files view: edge type color legend */}
-      {view === "files" && <FilesLegend />}
-
-      {/* Dense graph notice — appears when edges outnumber nodes */}
-      {(view === "files" || view === "pipeline") &&
-        edges.length > nodes.length && (
-          <div
-            style={{
-              position: "absolute",
-              top: 54,
-              left: 10,
-              zIndex: 10,
-              background: "#fffbeb",
-              border: "1px solid #fcd34d",
-              borderRadius: 6,
-              padding: "3px 10px",
-              fontSize: 10.5,
-              color: "#92400e",
-              display: "flex",
-              alignItems: "center",
-              gap: 5,
-              pointerEvents: "none",
-            }}
-          >
-            <span aria-hidden>⚡</span> Dense graph — hover edges to read labels
-          </div>
-        )}
+      {/* Sticky legend — bottom-left of canvas */}
+      {view === "blocks" && (
+        <div style={{ position: "absolute", bottom: 12, left: 12, zIndex: 10 }}>
+          <Legend />
+        </div>
+      )}
+      {view === "files" && (
+        <div style={{ position: "absolute", bottom: 12, left: 12, zIndex: 10 }}>
+          <FilesLegend />
+        </div>
+      )}
 
       <LineageDetailPanel
         file={selectedFile}
@@ -1232,9 +1248,12 @@ export default function LineageGraph({
   lineage,
   blockPlans,
   onFileNodeClick,
+  onPipelineStepClick,
   trustFiles,
   trustBlocks,
   initialView,
+  selectedFilePath,
+  humanVerifiedBlocks,
 }: LineageGraphProps): React.ReactElement {
   return (
     <ReactFlowProvider>
@@ -1242,9 +1261,12 @@ export default function LineageGraph({
         lineage={lineage}
         blockPlans={blockPlans}
         onFileNodeClick={onFileNodeClick}
+        onPipelineStepClick={onPipelineStepClick}
         trustFiles={trustFiles}
         trustBlocks={trustBlocks}
         initialView={initialView}
+        selectedFilePath={selectedFilePath}
+        humanVerifiedBlocks={humanVerifiedBlocks}
       />
     </ReactFlowProvider>
   );

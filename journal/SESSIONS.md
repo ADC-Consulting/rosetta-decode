@@ -46,6 +46,33 @@ Built `infra/` Terraform to replace the borrowed LLM endpoint with our own Azure
 
 ---
 
+## 2026-06-16 — F35 Data tab final polish, drag-to-pan fix, and automated tests
+
+**Branch:** `feat/F35-migration-output-catalog`
+
+### Done
+- SchemaCanvas drag-to-pan: rewrote from `useState`+`useEffect` (1-frame delay, drops fast drags) to `useRef` + synchronous `addEventListener` in `onMouseDown` — panning now registers immediately
+- DDL collapsible auto-opens when `ddl_source === "target"` (the actual migration deliverable); stays closed for source-estimated tables; implemented via `useEffect` on `selectedPath`/`schemaData`
+- Added 3 automated tests to `test_schema_route.py` covering lineage enrichment: pure outputs added, no duplicate if already in `data_schema`, safe when `lineage=None`
+- Updated PR #102 test plan: split into "Automated" (all checked off) and "Manual smoke" sections; added all items shipped this session
+
+### Decisions
+- Skipped data flow colour legend and column count tooltip — not worth a code change; no user confusion reported
+
+### Open Questions
+- None
+
+### Next Session — Start Here
+1. Manual smoke test of PR #102 on a real migration job (see manual test plan in PR)
+2. Merge PR #102 once smoke tests pass
+
+### Files Touched
+- `src/frontend/src/components/SchemaCanvas/SchemaCanvas.tsx`
+- `src/frontend/src/components/JobDetail/DataStorageTab.tsx`
+- `tests/test_schema_route.py`
+
+---
+
 ## 2026-06-15 — F35 Data Storage tab polish — Data Model, Data Flow, dataset name alignment
 
 **Branch:** `feat/F35-migration-output-catalog`
