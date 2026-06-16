@@ -29,11 +29,12 @@ const SEMANTIC_TO_PG: Record<string, string> = {
 
 const SEMANTIC_COLORS: Record<string, string> = {
   String: "bg-muted text-muted-foreground",
-  Date: "bg-green-100 text-green-800",
-  Timestamp: "bg-teal-100 text-teal-800",
-  Decimal: "bg-amber-100 text-amber-800",
-  Number: "bg-blue-100 text-blue-800",
   Integer: "bg-blue-100 text-blue-800",
+  Float: "bg-blue-100 text-blue-800",
+  Decimal: "bg-amber-100 text-amber-800",
+  Date: "bg-green-100 text-green-800",
+  DateTime: "bg-teal-100 text-teal-800",
+  Boolean: "bg-purple-100 text-purple-800",
 };
 
 function semanticBadgeClasses(type: string): string {
@@ -277,7 +278,7 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                         )}
                       </span>
                       <span className="text-xs text-muted-foreground shrink-0">
-                        {table.columns.length > 0 ? `${table.columns.length} col` : "—"}
+                        {table.columns.length > 0 ? `${table.columns.length} cols` : "—"}
                       </span>
                     </button>
                   ))}
@@ -320,7 +321,12 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                     )}
                   </span>
                   <span className="text-xs text-muted-foreground shrink-0">
-                    {table.columns.length > 0 ? `${table.columns.length} col` : "—"}
+                    {(() => {
+                      const count = table.target_columns.length > 0
+                        ? table.target_columns.length
+                        : table.columns.length;
+                      return count > 0 ? `${count} cols` : "—";
+                    })()}
                   </span>
                 </button>
               ));
