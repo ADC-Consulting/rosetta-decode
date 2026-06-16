@@ -51,6 +51,8 @@ services:
       TENSORZERO_POSTGRES_URL: postgres://rosetta:rosetta@postgres:5432/rosetta
       TENSORZERO_GATEWAY_BIND_ADDRESS: 0.0.0.0:3000
       AZURE_AI_FOUNDRY_API_KEY: ${AZURE_AI_FOUNDRY_API_KEY:-}
+      AZURE_AI_FOUNDRY_ENDPOINT: ${AZURE_AI_FOUNDRY_ENDPOINT:-}
+      AZURE_ANTHROPIC_ENDPOINT: ${AZURE_ANTHROPIC_ENDPOINT:-https://ash-pls-ai-dev2.cognitiveservices.azure.com/anthropic/v1/}
     volumes:
       - ./config:/app/config:ro
     depends_on:
@@ -60,7 +62,10 @@ services:
     command:
       - |
         set -euo pipefail
+        : "$${AZURE_AI_FOUNDRY_ENDPOINT:?set AZURE_AI_FOUNDRY_ENDPOINT in .env}"
         cp /app/config/tensorzero.toml /tmp/tensorzero.toml
+        sed -i "s|\$${AZURE_AI_FOUNDRY_ENDPOINT}|$${AZURE_AI_FOUNDRY_ENDPOINT}|g" /tmp/tensorzero.toml
+        sed -i "s|\$${AZURE_ANTHROPIC_ENDPOINT}|$${AZURE_ANTHROPIC_ENDPOINT}|g" /tmp/tensorzero.toml
         gateway --config-file /tmp/tensorzero.toml --run-postgres-migrations
         exec gateway --config-file /tmp/tensorzero.toml --log-format json
     networks:
