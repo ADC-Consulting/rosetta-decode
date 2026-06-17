@@ -453,6 +453,19 @@
 - [x] F67 fix: legend covers zoom controls — moved legend to `right: 12`
 - [x] F67 fix: isolated nodes mislead as upstream — dagre only on connected nodes; row placement below cluster
 
+**F68 — Target view polish (11 issues from 2026-06-17 review) → plan to be written**
+- [ ] F68 P0: inspector panel header shows `.sas` in Target view — should say `.py` → `ETLTab.tsx`
+- [ ] F68 P0: phantom arrow on root node (dangling edge or handle rendering bug) → `TargetGraph.tsx`
+- [ ] F68 P1: amber `connectionCount ≥ 4` collides with trust amber — use neutral bold color → `FileNodeCard.tsx`
+- [ ] F68 P1: summary bar stats unchanged in Target view — should show `modules: N` → `ETLTab.tsx`
+- [ ] F68 P2: "PROGRAM" badge noise on Python module nodes — replace with `.py` badge or remove → `TargetGraph.tsx`
+- [ ] F68 P2: isolated row needs divider + "No data dependencies detected" label → `TargetGraph.tsx`
+- [ ] F68 P2: handle dots visible on zero-edge nodes — hide when `connectionCount === 0` → `FileNodeCard.tsx`
+- [ ] F68 P3: `⇔` symbol wrong + unlabeled — use directed counts or plain "N connections" → `FileNodeCard.tsx`
+- [ ] F68 P3: no `.py` extension on Target node names → `TargetGraph.tsx`
+- [ ] F68 P3: legend circles ≠ node accent bar shape — use rectangle swatches → `TargetGraph.tsx`
+- [ ] F68 P3: no tooltips on Source/Target toggle buttons → `ETLTab.tsx`
+
 - [ ] #21: Consolidate lineage into a single primary view — `backlog` label
 - [ ] #20: Rollback / versioning based on lineage — `backlog` label
 - [ ] #32: Specify decision-ready reports (technical + PO) — `backlog` label, deferred

@@ -6,6 +6,32 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-17 — Target view critique: 11 issues identified, F68 plan scoped
+
+**Branch:** `feat/F67-etl-source-target-toggle` (review only — no code written)
+
+### Done
+- Browser review of the Target ETL pipeline view on the pharma-sandbox-medium job
+- Identified 11 issues across P0–P3 priority levels via screenshots, code reading (`TargetGraph.tsx`, `FileNodeCard.tsx`, `ETLTab.tsx`), and live interaction
+- Critique documented in conversation; all 11 issues added to BACKLOG.md as F68 subtasks
+- No plan file written yet (user invoked /session-end before writing it)
+
+### Decisions
+- none
+
+### Open Questions
+- P0 phantom arrow: root cause unclear — could be a dangling ReactFlow edge whose source is at `{0,0}`, or a handle rendering artifact. Needs `console.log(rawEdges)` to confirm before fixing.
+
+### Next Session — Start Here
+1. Write `docs/plans/latest/F68-target-view-polish.md` (use `/plan-feature`) covering the 11 issues from BACKLOG.md
+2. Implement P0 fixes first (inspector header `.sas`→`.py`, phantom arrow)
+3. Then P1 (amber collision, summary bar stats)
+
+### Files Touched
+- `journal/BACKLOG.md` (F68 items added)
+
+---
+
 ## 2026-06-16 — F67 complete: ETL Source/Target toggle + four UX fixes
 
 **Branch:** `feat/F67-etl-source-target-toggle`
