@@ -449,7 +449,7 @@
 - [ ] F67 S-C: Source / Target toggle in ETLTab + wire TargetGraph → `src/frontend/src/components/JobDetail/ETLTab.tsx`
 - [ ] F67 S-D: `make test` exits 0
 
-**F68 — Post-acceptance workflow (#68) → see `docs/plans/latest/F68-post-acceptance-workflow.md`**
+**F68 — Post-acceptance workflow (#68) → see `docs/plans/latest/F68-post-acceptance-workflow.md` — complete**
 - [x] F68 S-A: Alembic migration 020 — add `accepted_by` → `alembic/versions/020_add_accepted_by.py`
 - [x] F68 S-B: Job model `accepted_by` column → `src/backend/db/models.py`
 - [x] F68 S-C: Migration-package builder → `src/backend/api/packaging.py`
@@ -462,6 +462,17 @@
 - [x] F68 S-J: Read-only editors in delivered mode → `EditorTab.tsx`
 - [x] F68 S-K: Verdict strip accepted state → `PlanTab.tsx`
 - [x] F68 S-L: `make test` exits 0
+**F69 — Target view polish → see `docs/plans/latest/F69-target-view-polish.md`**
+- [ ] F69 S-A: inspector header `.sas` → `.py` in Target view → `BlockInspectorPanel.tsx`, `ETLTab.tsx`
+- [ ] F69 S-B: hide handles on nodes with no edges in that direction → `FileNodeCard.tsx`, `TargetGraph.tsx`
+- [ ] F69 S-C: connection count — drop amber color, fix `⇔` → `↔` → `FileNodeCard.tsx`
+- [ ] F69 S-D: summary bar shows `modules: N` in Target view → `ETLTab.tsx`
+- [ ] F69 S-E: replace `PROGRAM` badge with `.py` badge on Target nodes → `FileNodeCard.tsx`, `TargetGraph.tsx`
+- [ ] F69 S-F: isolated row divider + "No data dependencies detected" label → `TargetGraph.tsx`
+- [ ] F69 S-G: node names include `.py` extension → `TargetGraph.tsx`
+- [ ] F69 S-H: legend swatches are rectangles, not circles → `TargetGraph.tsx`
+- [ ] F69 S-I: tooltip on Source/Target toggle buttons → `ETLTab.tsx`
+- [ ] F69 S-J: `make test` exits 0
 
 - [ ] #21: Consolidate lineage into a single primary view — `backlog` label
 - [ ] #20: Rollback / versioning based on lineage — `backlog` label

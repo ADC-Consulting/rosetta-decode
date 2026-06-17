@@ -6,6 +6,33 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-17 — F69 plan written, branch created, no code yet
+
+**Branch:** `feat/F69-target-view-polish`
+
+### Done
+- Wrote `docs/plans/latest/F69-target-view-polish.md` — 10 subtasks (S-A through S-J) covering all 11 issues from the Target view critique
+- Discovered main branch already used F68 (`F68-post-acceptance-workflow`) — renumbered to F69, resolved BACKLOG.md merge conflict
+- Created branch `feat/F69-target-view-polish` off fresh main (main had 53 files of new work from others)
+- No implementation started — user ended session before agent delegation
+
+### Decisions
+- none
+
+### Open Questions
+- none — plan is fully specified and ready to implement
+
+### Next Session — Start Here
+1. Implement S-A through S-D (P0/P1 fixes) via `frontend-builder` — see `docs/plans/latest/F69-target-view-polish.md`
+2. Then S-E through S-J (P2/P3 fixes) in a second delegation
+3. Run `make test`, then commit
+
+### Files Touched
+- `docs/plans/latest/F69-target-view-polish.md` (new)
+- `journal/BACKLOG.md` (F68 post-acceptance added from main, F69 entries added)
+
+---
+
 ## 2026-06-17 — F68 post-acceptance workflow
 
 **Branch:** `feat/F68-post-acceptance-workflow`
