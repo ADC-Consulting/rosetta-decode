@@ -449,6 +449,20 @@
 - [ ] F67 S-C: Source / Target toggle in ETLTab + wire TargetGraph → `src/frontend/src/components/JobDetail/ETLTab.tsx`
 - [ ] F67 S-D: `make test` exits 0
 
+**F68 — Post-acceptance workflow (#68) → see `docs/plans/latest/F68-post-acceptance-workflow.md`**
+- [x] F68 S-A: Alembic migration 020 — add `accepted_by` → `alembic/versions/020_add_accepted_by.py`
+- [x] F68 S-B: Job model `accepted_by` column → `src/backend/db/models.py`
+- [x] F68 S-C: Migration-package builder → `src/backend/api/packaging.py`
+- [x] F68 S-D: Requirements inference helper → `src/backend/api/packaging.py`
+- [x] F68 S-E: Rewrite `download_job` route → `src/backend/api/routes/jobs.py`
+- [x] F68 S-F: Immutable acceptance (409 on re-accept) → `src/backend/api/routes/jobs.py`
+- [x] F68 S-G: Backend tests (packaging, accept, download) → `tests/test_packaging.py`
+- [x] F68 S-H: Frontend API client + types → `src/frontend/src/api/{jobs,types}.ts`
+- [x] F68 S-I: Accepted-state header — locked badge + Download CTA → `JobDetailPage.tsx`
+- [x] F68 S-J: Read-only editors in delivered mode → `EditorTab.tsx`
+- [x] F68 S-K: Verdict strip accepted state → `PlanTab.tsx`
+- [x] F68 S-L: `make test` exits 0
+
 - [ ] #21: Consolidate lineage into a single primary view — `backlog` label
 - [ ] #20: Rollback / versioning based on lineage — `backlog` label
 - [ ] #32: Specify decision-ready reports (technical + PO) — `backlog` label, deferred

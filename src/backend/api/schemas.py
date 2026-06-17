@@ -34,6 +34,7 @@ class JobStatusResponse(BaseModel):
     generated_files: dict[str, str] | None = None
     user_overrides: dict[str, Any] | None = None
     accepted_at: datetime | None = None
+    accepted_by: str | None = None
     parent_job_id: str | None = None
     trigger: str = "agent"
     skip_llm: bool = False

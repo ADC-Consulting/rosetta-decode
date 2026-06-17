@@ -930,24 +930,26 @@ export default function BlockPlanTable({
                 {codeEditorDark ? <Sun size={13} /> : <Moon size={13} />}
               </button>
 
-              {/* Edit / Lock */}
-              <button
-                onClick={() => setCodeEditable((v) => !v)}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium border border-border bg-background hover:bg-muted transition-colors cursor-pointer"
-              >
-                {codeEditable ? (
-                  <>
-                    <Lock size={12} /> Lock
-                  </>
-                ) : (
-                  <>
-                    <Pencil size={12} /> Edit
-                  </>
-                )}
-              </button>
+              {/* Edit / Lock — hidden when job is accepted */}
+              {!isAccepted && (
+                <button
+                  onClick={() => setCodeEditable((v) => !v)}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium border border-border bg-background hover:bg-muted transition-colors cursor-pointer"
+                >
+                  {codeEditable ? (
+                    <>
+                      <Lock size={12} /> Lock
+                    </>
+                  ) : (
+                    <>
+                      <Pencil size={12} /> Edit
+                    </>
+                  )}
+                </button>
+              )}
 
-              {/* Save */}
-              {codeEditable && (
+              {/* Save — only visible when editing and not accepted */}
+              {!isAccepted && codeEditable && (
                 <button
                   onClick={async () => {
                     if (!codeBlockId) return;
@@ -1101,7 +1103,7 @@ export default function BlockPlanTable({
                   value={codeDialogPython}
                   onChange={(v) => setCodeDialogPython(v ?? "")}
                   options={{
-                    readOnly: !codeEditable,
+                    readOnly: isAccepted || !codeEditable,
                     minimap: { enabled: false },
                     fontSize: 13,
                     scrollBeyondLastLine: false,

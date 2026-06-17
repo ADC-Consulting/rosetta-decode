@@ -6,6 +6,52 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-17 — F68 post-acceptance workflow
+
+**Branch:** `feat/F68-post-acceptance-workflow`
+
+### Done
+- Implemented all 12 subtasks (S-A through S-L) in a single session
+- **Alembic migration 020**: `accepted_by` nullable Text column on `jobs`
+- **`src/backend/api/packaging.py`** (new): `build_migration_package` produces a byte-reproducible 5-file zip (`src/` tree, `requirements.txt`, `audit.json`, `reconciliation_report.json`, `migration_summary.md`); `infer_requirements` with pinned executor versions; `_sas_path_to_module` for SAS-tree reconstruction
+- **`accept_job`**: immutable — stamps `accepted_by="anonymous"` once, 409 on re-accept; `"accepted"` removed from `_REVIEW_STATUSES`
+- **Server-side immutability guards**: `PUT /python_code` and `PATCH /blocks/{id}/python` both 409 when `job.accepted_at` is set
+- **`download_job`** rewritten to delegate to `build_migration_package`; download available pre- and post-acceptance
+- **Frontend**: `isAccepted` threaded to `EditorTab`, `ETLTab`, `BlockCodePopup`, `BlockPlanTable`, `EditorFullPage` — Monaco editors forced read-only, edit/save controls hidden
+- **`JobDetailPage`**: Accept button replaced by locked "Accepted" badge + date + "Download migration package" CTA
+- **`PlanTab`**: verdict strip renders "Delivered — Accepted" when accepted
+- **Tests**: 14 new unit tests (`test_packaging.py`) + 7 new route tests; updated 2 existing test files for new contracts
+- All 7 `make test` gates green (ruff, mypy, pytest+coverage, tsc, eslint, build)
+- PR description generated; feature committed as `bd846fb`
+
+### Decisions
+- Download available pre-acceptance (proposed/under_review/done) as a usable preview; `audit.json` acceptance fields are null until acceptance — consistent with "same artifact, richer metadata on accept"
+- `_RUNTIME_PINS` in `packaging.py` is a curated constant sourced from `uv.lock`; a drift-guard test fails if versions diverge — single place to update on runtime bumps
+
+### Open Questions
+- None
+
+### Next Session — Start Here
+1. Push `feat/F68-post-acceptance-workflow` and open PR
+2. Manual smoke: accept a multi-file job, download zip, verify contents and read-only UI
+3. Next feature: F67 ETL tab source/target toggle (`docs/plans/latest/F67-etl-source-target-toggle.md`)
+
+### Files Touched
+- `alembic/versions/020_add_accepted_by.py` (new)
+- `src/backend/api/packaging.py` (new)
+- `src/backend/api/routes/jobs.py`
+- `src/backend/api/schemas.py`
+- `src/backend/db/models.py`
+- `src/frontend/src/api/jobs.ts`, `types.ts`
+- `src/frontend/src/components/JobDetail/BlockCodePopup.tsx`, `BlockPlanTable.tsx`, `ETLTab.tsx`, `EditorTab.tsx`, `PlanTab.tsx`
+- `src/frontend/src/pages/EditorFullPage.tsx`, `JobDetailPage.tsx`
+- `tests/test_packaging.py` (new)
+- `tests/test_api_routes.py`, `test_jobs_routes_comprehensive.py`, `test_plan_interaction_routes.py`
+- `docs/plans/latest/F68-post-acceptance-workflow.md` (new)
+- `journal/BACKLOG.md`, `journal/SESSIONS.md`
+
+---
+
 ## 2026-06-16 — Azure Terraform infrastructure for self-hosted AI Foundry
 
 **Branch:** `feat/infra-azure-terraform`

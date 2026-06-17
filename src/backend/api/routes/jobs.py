@@ -8,7 +8,6 @@ import logging
 import mimetypes
 import os
 import uuid
-import zipfile
 from collections.abc import AsyncGenerator
 from datetime import UTC, date, datetime
 from typing import Any
@@ -18,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from src.backend.api.packaging import build_migration_package
 from src.backend.api.runbook_templates import remediation_outline as _remediation_outline
 from src.backend.api.runbook_templates import why_risky as _why_risky
 from src.backend.api.schemas import (
@@ -174,6 +174,7 @@ async def get_job(
         generated_files=job.generated_files,
         user_overrides=job.user_overrides,
         accepted_at=job.accepted_at,
+        accepted_by=job.accepted_by,
         parent_job_id=job.parent_job_id,
         trigger=job.trigger or "agent",
         skip_llm=job.skip_llm if job.skip_llm is not None else False,
@@ -362,12 +363,11 @@ async def download_job(
     job_id: uuid.UUID,
     session: AsyncSession = Depends(get_async_session),
 ) -> StreamingResponse:
-    """Return a zip archive of all migration artefacts for a completed job.
+    """Return a deployment-ready zip archive for a migration job.
 
-    The zip contains:
-    - ``pipeline.py`` — generated Python pipeline
-    - ``reconciliation_report.json`` — structured reconciliation results
-    - ``audit.json`` — provenance metadata
+    The zip contains generated Python sources (mirroring the SAS tree),
+    ``requirements.txt``, ``reconciliation_report.json``, ``audit.json``,
+    and ``migration_summary.md``.
 
     Args:
         job_id: UUID of the migration job.
@@ -386,23 +386,39 @@ async def download_job(
     if job.status not in ("proposed", "accepted", "under_review", "done"):
         raise HTTPException(status_code=409, detail="Job is not yet complete.")
 
-    audit_payload = {
-        "job_id": str(job_id),
-        "input_hash": job.input_hash,
-        "llm_model": job.llm_model,
-        "created_at": job.created_at.isoformat(),
-        "updated_at": job.updated_at.isoformat(),
-    }
+    # Build per-block verification list from migration plan + latest revisions.
+    plan = effective_migration_plan(job)
+    plan_blocks: dict[str, dict[str, Any]] = {}
+    if plan and isinstance(plan.get("block_plans"), list):
+        for bp in plan["block_plans"]:
+            plan_blocks[bp["block_id"]] = bp
 
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("pipeline.py", job.python_code or "")
-        zf.writestr("reconciliation_report.json", json.dumps(job.report or {}))
-        zf.writestr("audit.json", json.dumps(audit_payload))
-    buf.seek(0)
+    rev_result = await session.execute(
+        select(BlockRevision)
+        .where(BlockRevision.job_id == str(job_id))
+        .order_by(BlockRevision.block_id, BlockRevision.revision_number.desc())
+    )
+    seen_blocks: set[str] = set()
+    per_block_verification: list[dict[str, Any]] = []
+    for rev in rev_result.scalars().all():
+        if rev.block_id in seen_blocks:
+            continue
+        seen_blocks.add(rev.block_id)
+        bp = plan_blocks.get(rev.block_id, {})
+        per_block_verification.append(
+            {
+                "block_id": rev.block_id,
+                "source_file": bp.get("source_file", ""),
+                "strategy": bp.get("strategy", rev.strategy),
+                "confidence_band": bp.get("confidence_band", rev.confidence),
+                "reconciliation_status": rev.reconciliation_status,
+            }
+        )
+
+    zip_bytes = build_migration_package(job, per_block_verification)
 
     return StreamingResponse(
-        buf,
+        io.BytesIO(zip_bytes),
         media_type="application/zip",
         headers={"Content-Disposition": f"attachment; filename=rosetta-{job_id}.zip"},
     )
@@ -852,7 +868,7 @@ async def _get_job_or_404(job_id: uuid.UUID, session: AsyncSession) -> Job:
     return job
 
 
-_REVIEW_STATUSES = frozenset({"proposed", "accepted", "under_review"})
+_REVIEW_STATUSES = frozenset({"proposed", "under_review"})
 
 
 @router.post("/jobs/{job_id}/accept", response_model=JobStatusResponse)
@@ -881,6 +897,11 @@ async def accept_job(
     job = result.scalar_one_or_none()
     if job is None:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+    if job.accepted_at is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Job has already been accepted and cannot be re-accepted.",
+        )
     if job.status not in _REVIEW_STATUSES:
         raise HTTPException(
             status_code=409,
@@ -895,7 +916,12 @@ async def accept_job(
     await session.execute(
         update(Job)
         .where(Job.id == str(job_id))
-        .values(status="accepted", accepted_at=accepted_at, user_overrides=overrides)
+        .values(
+            status="accepted",
+            accepted_at=accepted_at,
+            accepted_by="anonymous",
+            user_overrides=overrides,
+        )
     )
     await session.commit()
 
@@ -911,6 +937,7 @@ async def accept_job(
         generated_files=updated.generated_files,
         user_overrides=updated.user_overrides,
         accepted_at=updated.accepted_at,
+        accepted_by=updated.accepted_by,
         trigger=updated.trigger or "agent",
         skip_llm=updated.skip_llm if updated.skip_llm is not None else False,
     )
@@ -977,6 +1004,7 @@ async def patch_job_plan(
         generated_files=updated.generated_files,
         user_overrides=updated.user_overrides,
         accepted_at=updated.accepted_at,
+        accepted_by=updated.accepted_by,
     )
 
 
@@ -1008,6 +1036,11 @@ async def update_python_code(
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
     if job.status == "running":
         raise HTTPException(status_code=409, detail="Cannot update code while job is running.")
+    if job.accepted_at is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Job has been accepted and cannot be modified.",
+        )
 
     await session.execute(
         update(Job)
@@ -1034,6 +1067,7 @@ async def update_python_code(
         generated_files=updated.generated_files,
         user_overrides=updated.user_overrides,
         accepted_at=updated.accepted_at,
+        accepted_by=updated.accepted_by,
         parent_job_id=updated.parent_job_id,
         trigger=updated.trigger,
         skip_llm=updated.skip_llm,
@@ -1794,8 +1828,19 @@ async def save_block_python(
         BlockPythonEditResponse with the new revision_number and block_id.
 
     Raises:
-        HTTPException: 404 if no existing revision found for this block.
+        HTTPException: 404 if no existing revision found for this block, 409 if accepted.
     """
+    # Guard: reject edits on accepted (immutable) jobs.
+    job_result = await session.execute(select(Job).where(Job.id == str(job_id)))
+    job_obj = job_result.scalar_one_or_none()
+    if job_obj is None:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+    if job_obj.accepted_at is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Job has been accepted and cannot be modified.",
+        )
+
     # Fetch the latest revision for this block
     rev_result = await session.execute(
         select(BlockRevision)

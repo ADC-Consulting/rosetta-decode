@@ -483,6 +483,8 @@ export default function PlanTab({
   onSave,
   isSaving,
   restoreKey,
+  isAccepted = false,
+  acceptedAt = null,
 }: {
   jobId: string;
   isReviewable: boolean;
@@ -502,6 +504,8 @@ export default function PlanTab({
   onSave?: () => void;
   isSaving?: boolean;
   restoreKey?: number;
+  isAccepted?: boolean;
+  acceptedAt?: string | null;
 }): React.ReactElement {
   const trustReportEnabled =
     !!jobId &&
@@ -869,35 +873,54 @@ export default function PlanTab({
           </CardContent>
         </Card>
 
-        {/* Verdict strip */}
-        {trustReport && (() => {
-          const verdict = getVerdict(trustReport);
-          const style = VERDICT_STYLES[verdict];
-          const { Icon } = style;
-          const attentionCount = trustReport.needs_review + trustReport.failed_reconciliation;
-          const manualCount = trustReport.manual_todo;
-          const consequence =
-            verdict === "green"
-              ? "All blocks verified — safe to accept."
-              : verdict === "amber"
-              ? `${attentionCount} block${attentionCount !== 1 ? "s" : ""} need review before accepting.`
-              : `${manualCount} block${manualCount !== 1 ? "s" : ""} cannot be auto-converted — manual implementation required before this pipeline will run.`;
-          const headline =
-            verdict === "green"
-              ? "Ready to accept"
-              : verdict === "amber"
-              ? "Review recommended"
-              : "Not ready to accept";
-          return (
-            <div className={`rounded-lg border ${style.border} px-4 py-3 flex items-start gap-3`}>
-              <Icon size={18} className={`${style.iconColor} shrink-0 mt-0.5`} />
-              <div>
-                <p className={`text-sm font-semibold ${style.headlineColor}`}>{headline}</p>
-                <p className={`text-sm ${style.textColor}`}>{consequence}</p>
-              </div>
+        {/* Verdict strip — accepted state overrides the green/amber/red states */}
+        {isAccepted ? (
+          <div className="rounded-lg border border-l-4 border-l-primary bg-primary/5 px-4 py-3 flex items-start gap-3">
+            <CheckCircle2 size={18} className="text-primary shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-foreground">Delivered — Accepted</p>
+              <p className="text-sm text-muted-foreground">
+                {acceptedAt
+                  ? `Accepted on ${new Date(acceptedAt).toLocaleDateString(undefined, {
+                      month: "long",
+                      day: "numeric",
+                      year: "numeric",
+                    })}.`
+                  : "This migration has been accepted."}
+                {" "}All editors are read-only.
+              </p>
             </div>
-          );
-        })()}
+          </div>
+        ) : (
+          trustReport && (() => {
+            const verdict = getVerdict(trustReport);
+            const style = VERDICT_STYLES[verdict];
+            const { Icon } = style;
+            const attentionCount = trustReport.needs_review + trustReport.failed_reconciliation;
+            const manualCount = trustReport.manual_todo;
+            const consequence =
+              verdict === "green"
+                ? "All blocks verified — safe to accept."
+                : verdict === "amber"
+                ? `${attentionCount} block${attentionCount !== 1 ? "s" : ""} need review before accepting.`
+                : `${manualCount} block${manualCount !== 1 ? "s" : ""} cannot be auto-converted — manual implementation required before this pipeline will run.`;
+            const headline =
+              verdict === "green"
+                ? "Ready to accept"
+                : verdict === "amber"
+                ? "Review recommended"
+                : "Not ready to accept";
+            return (
+              <div className={`rounded-lg border ${style.border} px-4 py-3 flex items-start gap-3`}>
+                <Icon size={18} className={`${style.iconColor} shrink-0 mt-0.5`} />
+                <div>
+                  <p className={`text-sm font-semibold ${style.headlineColor}`}>{headline}</p>
+                  <p className={`text-sm ${style.textColor}`}>{consequence}</p>
+                </div>
+              </div>
+            );
+          })()
+        )}
 
         {/* Lineage unavailable notice */}
         {trustReport && !trustReport.lineage_available && (

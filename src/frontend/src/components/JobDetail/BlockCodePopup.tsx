@@ -35,6 +35,7 @@ export interface BlockCodePopupProps {
   endLine: number;
   onClose: () => void;
   onVerified: (blockId: string) => void;
+  jobAccepted?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -95,6 +96,7 @@ export default function BlockCodePopup({
   endLine,
   onClose,
   onVerified,
+  jobAccepted = false,
 }: BlockCodePopupProps): React.ReactElement {
   const [localPython, setLocalPython] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
@@ -129,8 +131,9 @@ export default function BlockCodePopup({
   const pythonDefaultValue =
     latestPythonCode ?? "# No Python translation available yet.";
 
-  const isReadOnly = status === "auto-verified" || status === "human-verified";
-  const canVerify = status === "needs-review" || status === "manual";
+  // Force read-only when job is accepted, regardless of block status.
+  const isReadOnly = jobAccepted || status === "auto-verified" || status === "human-verified";
+  const canVerify = !jobAccepted && (status === "needs-review" || status === "manual");
 
   const handleMarkVerified = async () => {
     if (isSaving) return;

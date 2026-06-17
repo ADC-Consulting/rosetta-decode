@@ -1075,6 +1075,7 @@ export default function EditorTab({
   onExpand,
   isFullPage = false,
   trustReport,
+  isAccepted = false,
 }: {
   jobId: string;
   generatedFiles: Record<string, string> | null;
@@ -1087,6 +1088,7 @@ export default function EditorTab({
   onExpand?: () => void;
   isFullPage?: boolean;
   trustReport?: TrustReportResponse;
+  isAccepted?: boolean;
 }): React.ReactElement {
   const [bottomTab, setBottomTab] = useState<BottomTab>("code");
   const [editorDark, setEditorDark] = useState(false);
@@ -1164,7 +1166,8 @@ export default function EditorTab({
       ? (generatedFiles[pyKeyForSelected] ?? null)
       : null;
   const rightCode = overrideRevisionCode ?? perFileCode ?? code;
-  const rightReadOnly = !pythonEditable;
+  // When the job is accepted, force the Python editor to read-only regardless of toggle state.
+  const rightReadOnly = !pythonEditable || isAccepted;
 
   useEffect(() => {
     if (overrideRevisionCode !== null && pythonEditorRef.current) {
@@ -1246,7 +1249,7 @@ export default function EditorTab({
           {/* Separator */}
           <span className="h-4 w-px bg-border shrink-0" aria-hidden />
 
-          {pythonEditable && (
+          {!isAccepted && pythonEditable && (
             <button
               onClick={() => onSave?.()}
               disabled={isSaving}
@@ -1256,21 +1259,23 @@ export default function EditorTab({
               {isSaving ? "Saving…" : "Save"}
             </button>
           )}
-          <button
-            onClick={() => setPythonEditable((v) => !v)}
-            aria-label={pythonEditable ? "Lock Python editor" : "Edit Python"}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium border border-border bg-background hover:bg-muted transition-colors cursor-pointer"
-          >
-            {pythonEditable ? (
-              <>
-                <Lock size={12} /> Read-only
-              </>
-            ) : (
-              <>
-                <Pencil size={12} /> Edit
-              </>
-            )}
-          </button>
+          {!isAccepted && (
+            <button
+              onClick={() => setPythonEditable((v) => !v)}
+              aria-label={pythonEditable ? "Lock Python editor" : "Edit Python"}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium border border-border bg-background hover:bg-muted transition-colors cursor-pointer"
+            >
+              {pythonEditable ? (
+                <>
+                  <Lock size={12} /> Read-only
+                </>
+              ) : (
+                <>
+                  <Pencil size={12} /> Edit
+                </>
+              )}
+            </button>
+          )}
 
           <span className="flex-1" />
 

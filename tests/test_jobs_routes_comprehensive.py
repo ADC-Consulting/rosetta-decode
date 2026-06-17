@@ -20,6 +20,8 @@ from src.backend.api.routes.jobs import (
     get_job_sources,
     list_jobs,
     patch_job_plan,
+    save_block_python,
+    update_python_code,
 )
 from src.backend.db.models import Job
 
@@ -895,3 +897,160 @@ async def test_refine_job_creates_child_job() -> None:
     ctx = _json.loads(new_job_arg.files["__refine_context__"])
     assert ctx["hint"] == "fix the join"
     assert response.job_id is not None
+
+
+# ─── F68 post-acceptance immutability ─────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_accept_job_stamps_accepted_by_anonymous() -> None:
+    """First accept writes accepted_by='anonymous' alongside accepted_at."""
+    job_id = uuid.uuid4()
+    job = _make_job(str(job_id), status="proposed", accepted_at=None)
+    session = AsyncMock()
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = job
+    _now = datetime.now(UTC)
+    updated_job = _make_job(
+        str(job_id), status="accepted", accepted_at=_now, accepted_by="anonymous"
+    )
+    update_result = MagicMock()
+    result_mock2 = MagicMock()
+    result_mock2.scalar_one.return_value = updated_job
+    session.execute.side_effect = [result_mock, update_result, result_mock2]
+
+    from src.backend.api.schemas import AcceptJobRequest
+
+    response = await accept_job(job_id, AcceptJobRequest(), session)
+
+    assert response.status == "accepted"
+    assert response.accepted_by == "anonymous"
+    assert response.accepted_at is not None
+
+
+@pytest.mark.asyncio
+async def test_accept_job_already_accepted_returns_409() -> None:
+    """Second accept on an already-accepted job must return 409."""
+    from fastapi import HTTPException
+    from src.backend.api.schemas import AcceptJobRequest
+
+    job_id = uuid.uuid4()
+    job = _make_job(
+        str(job_id),
+        status="accepted",
+        accepted_at=datetime.now(UTC),
+        accepted_by="anonymous",
+    )
+    session = AsyncMock()
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = job
+    session.execute.return_value = result_mock
+
+    with pytest.raises(HTTPException) as exc_info:
+        await accept_job(job_id, AcceptJobRequest(), session)
+
+    assert exc_info.value.status_code == 409
+    assert "already been accepted" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+async def test_update_python_code_on_accepted_job_returns_409() -> None:
+    """PUT /python_code on an accepted job must return 409."""
+    from fastapi import HTTPException
+    from src.backend.api.schemas import UpdatePythonCodeRequest
+
+    job_id = uuid.uuid4()
+    job = _make_job(
+        str(job_id),
+        status="accepted",
+        accepted_at=datetime.now(UTC),
+    )
+    session = AsyncMock()
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = job
+    session.execute.return_value = result_mock
+
+    with pytest.raises(HTTPException) as exc_info:
+        await update_python_code(job_id, UpdatePythonCodeRequest(python_code="x=1"), session)
+
+    assert exc_info.value.status_code == 409
+    assert "accepted" in exc_info.value.detail.lower()
+
+
+@pytest.mark.asyncio
+async def test_save_block_python_on_accepted_job_returns_409() -> None:
+    """PATCH /blocks/{id}/python on an accepted job must return 409."""
+    from fastapi import HTTPException
+    from src.backend.api.schemas import BlockPythonEditRequest
+
+    job_id = uuid.uuid4()
+    job = _make_job(
+        str(job_id),
+        status="accepted",
+        accepted_at=datetime.now(UTC),
+    )
+    session = AsyncMock()
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = job
+    session.execute.return_value = result_mock
+
+    with pytest.raises(HTTPException) as exc_info:
+        await save_block_python(
+            job_id,
+            "step.sas:1",
+            BlockPythonEditRequest(python_code="x = 1"),
+            session,
+        )
+
+    assert exc_info.value.status_code == 409
+    assert "accepted" in exc_info.value.detail.lower()
+
+
+@pytest.mark.asyncio
+async def test_download_job_returns_zip_for_proposed_status() -> None:
+    """download_job returns a zip for a job in 'proposed' status."""
+    job_id = uuid.uuid4()
+    job = _make_job(str(job_id), status="proposed", python_code="x = 1")
+    session = AsyncMock()
+
+    # First execute: select(Job) → job
+    job_result = MagicMock()
+    job_result.scalar_one_or_none.return_value = job
+
+    # Second execute: select(BlockRevision) → no revisions
+    rev_result = MagicMock()
+    rev_result.scalars.return_value.all.return_value = []
+
+    session.execute.side_effect = [job_result, rev_result]
+
+    response = await download_job(job_id, session)
+
+    assert response.media_type == "application/zip"
+    content_disposition = response.headers.get("Content-Disposition", "")
+    assert f"rosetta-{job_id}.zip" in content_disposition
+
+
+@pytest.mark.asyncio
+async def test_download_job_returns_zip_for_accepted_status() -> None:
+    """download_job returns a zip for an already-accepted job."""
+    job_id = uuid.uuid4()
+    job = _make_job(
+        str(job_id),
+        status="accepted",
+        python_code="import pandas as pd\n",
+        accepted_at=datetime.now(UTC),
+        accepted_by="anonymous",
+    )
+    session = AsyncMock()
+
+    job_result = MagicMock()
+    job_result.scalar_one_or_none.return_value = job
+
+    rev_result = MagicMock()
+    rev_result.scalars.return_value.all.return_value = []
+
+    session.execute.side_effect = [job_result, rev_result]
+
+    response = await download_job(job_id, session)
+
+    assert response.media_type == "application/zip"
