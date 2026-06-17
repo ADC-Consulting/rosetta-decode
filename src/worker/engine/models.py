@@ -1,5 +1,6 @@
 """Pydantic models shared across the migration engine (parser → LLM → codegen)."""
 
+import re
 from enum import StrEnum
 from typing import Any, Literal
 
@@ -528,11 +529,18 @@ class JobContext(BaseModel):
           folder structure and user-defined formats
         """
         relevant_datasets = set(block.input_datasets) | set(block.output_datasets)
-        macro_source_files = {
-            k: v
-            for k, v in self.source_files.items()
-            if k.startswith("macros/") or k.endswith("autoexec.sas")
-        }
+        raw_sas_lower = block.raw_sas.lower()
+        macro_source_files = {}
+        for k, v in self.source_files.items():
+            defined_macros = re.findall(r"%macro\s+(\w+)", v, re.IGNORECASE)
+            if defined_macros:
+                # Macro library: only include if at least one defined macro is called in this block
+                if any(f"%{name.lower()}" in raw_sas_lower for name in defined_macros):
+                    macro_source_files[k] = v
+            elif k.endswith("autoexec.sas"):
+                # Setup file: always include
+                macro_source_files[k] = v
+            # Main SAS scripts (no %macro definitions, not autoexec): exclude
         return JobContext(
             source_files=macro_source_files,
             resolved_macros=self.resolved_macros,
