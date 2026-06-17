@@ -10,6 +10,7 @@ export interface JobStatus {
   generated_files: Record<string, string> | null;
   user_overrides: Record<string, unknown> | null;
   accepted_at: string | null;
+  accepted_by: string | null;
   parent_job_id: string | null;
   trigger: string;
   skip_llm: boolean;

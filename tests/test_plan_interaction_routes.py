@@ -103,11 +103,21 @@ async def test_accept_job_persists_note(client: AsyncClient, db_session: AsyncSe
 async def test_accept_job_idempotent_on_accepted(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Already-accepted job can be re-accepted (status=accepted is in _REVIEW_STATUSES)."""
+    """Already-accepted job returns 409 — acceptance is now immutable (F68)."""
+    from sqlalchemy import update as sa_update
+
     job_id = await _insert_job(db_session, status="accepted")
+    # Stamp accepted_at directly so the guard triggers (accepted status alone is not enough).
+    await db_session.execute(
+        sa_update(Job)
+        .where(Job.id == job_id)
+        .values(accepted_at=datetime.now(UTC), accepted_by="anonymous")
+    )
+    await db_session.commit()
+
     response = await client.post(f"/jobs/{job_id}/accept", json={})
-    assert response.status_code == 200
-    assert response.json()["status"] == "accepted"
+    assert response.status_code == 409
+    assert "already been accepted" in response.json()["detail"]
 
 
 @pytest.mark.asyncio

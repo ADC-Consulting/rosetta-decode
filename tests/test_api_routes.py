@@ -158,11 +158,12 @@ async def test_download_happy_path(client: AsyncClient, db_session: AsyncSession
     buf = io.BytesIO(response.content)
     with zipfile.ZipFile(buf) as zf:
         names = zf.namelist()
-        assert "pipeline.py" in names
+        # pipeline.py is now placed under src/ (SAS tree mirroring)
+        assert "src/pipeline.py" in names
         assert "reconciliation_report.json" in names
         assert "audit.json" in names
 
-        assert zf.read("pipeline.py").decode() == "print('hello')"
+        assert zf.read("src/pipeline.py").decode() == "print('hello')"
         assert json.loads(zf.read("reconciliation_report.json")) == report
         audit = json.loads(zf.read("audit.json"))
         assert audit["job_id"] == job_id
@@ -253,4 +254,5 @@ async def test_download_pipeline_py_exact_content(
 
     buf = io.BytesIO(response.content)
     with zipfile.ZipFile(buf) as zf:
-        assert zf.read("pipeline.py").decode() == code
+        # pipeline.py is now placed under src/ (SAS tree mirroring)
+        assert zf.read("src/pipeline.py").decode() == code

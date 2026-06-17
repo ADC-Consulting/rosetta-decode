@@ -24,6 +24,7 @@ interface ETLTabProps {
   trustReport: TrustReportResponse | undefined;
   jobSources: Record<string, string> | undefined;
   isReviewable: boolean;
+  isAccepted?: boolean;
 }
 
 type BlockStatus =
@@ -60,6 +61,7 @@ export default function ETLTab({
   trustReport,
   jobSources,
   isReviewable,
+  isAccepted = false,
 }: ETLTabProps): React.ReactElement {
   const queryClient = useQueryClient();
 
@@ -241,6 +243,7 @@ export default function ETLTab({
           endLine={selectedBlockPlan.end_line}
           onClose={() => setSelectedBlock(null)}
           onVerified={handleVerified}
+          jobAccepted={isAccepted}
         />
       )}
     </div>
