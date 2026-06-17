@@ -481,6 +481,7 @@
 
 ## Phase 4 — Advanced Features + Cloud
 
+- [x] F74: Databricks deployment guide + DLT handoff bundle — `databricks.yml`, `transformations/*_dlt.py`, `DEPLOYMENT_GUIDE.md` in every accepted job's zip; canonical guide at `docs/service-delivery/`
 - [ ] F14: Authentication & SSO (SAML/OIDC, JWT, RBAC)
 - [ ] `DatabricksBackend` (PySpark) (`src/worker/compute/databricks.py`)
 - [ ] End-to-end test: CLOUD=true, Databricks connection

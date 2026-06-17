@@ -2,8 +2,15 @@
 
 # SAS: src/backend/api/schema_utils.py:1
 
+import os
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+if TYPE_CHECKING:
+    from src.backend.api.schemas import TableSchema
+    from src.backend.db.models import Job
 
 # Date/Datetime format patterns
 _DATE_FORMATS = re.compile(
@@ -195,3 +202,209 @@ def map_python_dtype_to_sql(dtype: str) -> str:
     if dtype.startswith("datetime64"):
         return "TIMESTAMP"
     return _PYTHON_DTYPE_TO_SQL.get(dtype, "TEXT")
+
+
+# SAS: schema_utils.py:map_semantic_to_spark_type
+# Maps semantic type names (as produced by map_sas_to_semantic_type) to PySpark DDL type strings.
+_SEMANTIC_TO_SPARK: dict[str, str] = {
+    "String": "StringType()",
+    "Date": "DateType()",
+    "Timestamp": "TimestampType()",
+    "Decimal": "DecimalType(18, 4)",
+    "Integer": "LongType()",
+    "Number": "DoubleType()",
+}
+
+
+def map_semantic_to_spark_type(semantic_type: str) -> str:
+    """Map a semantic type name to a PySpark DDL type string.
+
+    Args:
+        semantic_type: One of "String", "Date", "Timestamp", "Decimal", "Integer", "Number".
+
+    Returns:
+        PySpark type string e.g. "StringType()", "DateType()". Defaults to "StringType()".
+    """
+    return _SEMANTIC_TO_SPARK.get(semantic_type, "StringType()")
+
+
+# SAS: schema_utils.py:build_job_schema
+
+
+async def build_job_schema(job: "Job", db: AsyncSession) -> "list[TableSchema]":
+    """Assemble the list of TableSchema objects for a job from its migration plan and overrides.
+
+    Applies ``user_overrides["schema_overrides"]`` (per-path column type overrides,
+    target_schema overrides, pk/fk overrides) in exactly the same order as the
+    ``GET /jobs/{id}/schema`` route.
+
+    Args:
+        job: ORM Job instance with ``migration_plan``, ``user_overrides``, and ``lineage``.
+        db: Async SQLAlchemy session (reserved for future use; not queried directly here).
+
+    Returns:
+        List of TableSchema instances ready to be returned in JobSchemaResponse.tables.
+    """
+    from src.backend.api.schemas import ColumnSchema, RelationshipSchema, TableSchema
+    from src.worker.engine.ddl_generator import generate_create_table
+
+    plan: dict[str, Any] = job.migration_plan or {}
+    overrides: dict[str, Any] = (job.user_overrides or {}).get("schema_overrides", {})
+
+    libname_map: dict[str, str] = plan.get("libname_map", {})
+    data_schema: dict[str, dict[str, Any]] = plan.get("data_schema", {})
+    relationships_raw: list[dict[str, Any]] = plan.get("relationships", [])
+    output_schema: dict[str, list[dict[str, str]]] = plan.get("output_schema", {})
+
+    tables: list[TableSchema] = []
+    for path, schema_info in data_schema.items():
+        columns_raw: list[str] = schema_info.get("columns", [])
+        col_types: dict[str, str] = schema_info.get("column_types", {})
+        col_labels: dict[str, str] = schema_info.get("column_labels", {})
+        col_formats: dict[str, str] = schema_info.get("column_formats", {})
+        row_count: int | None = schema_info.get("row_count")
+
+        libname: str | None = None
+        norm_path = path.lstrip("./")
+        for lib_name, lib_path in libname_map.items():
+            norm_lib = lib_path.lstrip("./").rstrip("/")
+            if norm_path.startswith(norm_lib + "/") or norm_lib in norm_path:
+                libname = lib_name
+                break
+
+        path_overrides: dict[str, Any] = overrides.get(path, {})
+        libname_key = f"__libname__{libname}" if libname else None
+        libname_override_entry: dict[str, Any] = (
+            overrides.get(libname_key, {}) if libname_key else {}
+        )
+        default_schema = libname_override_entry.get("target_schema") or libname or "public"
+        target_schema: str = path_overrides.get("target_schema", default_schema)
+
+        col_type_overrides: dict[str, str] = path_overrides.get("column_type_overrides", {})
+        columns: list[ColumnSchema] = []
+        for col_name in columns_raw:
+            sas_type = col_types.get(col_name, "")
+            sas_format: str | None = col_formats.get(col_name)
+            label: str | None = col_labels.get(col_name)
+            semantic_type = map_sas_to_semantic_type(sas_type, sas_format)
+            override_type: str | None = col_type_overrides.get(col_name)
+            columns.append(
+                ColumnSchema(
+                    name=col_name,
+                    sas_type=sas_type,
+                    sas_format=sas_format,
+                    label=label,
+                    semantic_type=semantic_type,
+                    override_type=override_type,
+                )
+            )
+
+        dataset_name = os.path.splitext(os.path.basename(path))[0]
+        tables.append(
+            TableSchema(
+                path=path,
+                dataset_name=dataset_name,
+                libname=libname,
+                target_schema=target_schema,
+                columns=columns,
+                row_count=row_count,
+                ddl="",
+            )
+        )
+
+    lineage_raw: dict[str, Any] = job.lineage or {}
+    pipeline_steps: list[dict[str, Any]] = lineage_raw.get("pipeline_steps", [])
+    if pipeline_steps:
+        all_inputs: set[str] = {
+            ds.lower() for step in pipeline_steps for ds in step.get("inputs", [])
+        }
+        all_outputs: set[str] = {ds for step in pipeline_steps for ds in step.get("outputs", [])}
+        pure_outputs: set[str] = {ds for ds in all_outputs if ds.lower() not in all_inputs}
+        existing_names: set[str] = {t.dataset_name.lower() for t in tables}
+        for ds_name in sorted(pure_outputs):
+            if ds_name.lower() in existing_names:
+                continue
+            tables.append(
+                TableSchema(
+                    path=f"output/{ds_name}",
+                    dataset_name=ds_name,
+                    libname=None,
+                    target_schema="public",
+                    columns=[],
+                    target_columns=[],
+                    row_count=None,
+                    ddl="",
+                    ddl_source="source_estimated",
+                    schema_status="not_run",
+                )
+            )
+
+    relationships: list[RelationshipSchema] = [
+        RelationshipSchema(**r)
+        for r in relationships_raw
+        if all(
+            k in r
+            for k in (
+                "left_table",
+                "right_table",
+                "key_column",
+                "via_block_id",
+                "relationship_type",
+            )
+        )
+    ]
+
+    tables_for_inference = [
+        {
+            "dataset_name": t.dataset_name,
+            "columns": [c.name for c in t.target_columns] or [c.name for c in t.columns],
+            "column_types": {c.name: (c.python_type or "") for c in t.target_columns},
+            "target_columns": [],
+        }
+        for t in tables
+    ]
+    pk_fk = infer_pk_fk(
+        tables_for_inference,
+        [r.model_dump() for r in relationships],
+        user_pk_overrides=overrides.get("pk_overrides", {}),
+        user_fk_overrides=overrides.get("fk_overrides", {}),
+    )
+
+    for t in tables:
+        raw_target_cols: list[dict[str, str]] = output_schema.get(t.dataset_name, [])
+        pk_fk_entry = pk_fk.get(t.dataset_name, {"pks": [], "fks": {}})
+        pks: list[str] = pk_fk_entry.get("pks", [])
+        fks: dict[str, str] = pk_fk_entry.get("fks", {})
+
+        if raw_target_cols:
+            target_columns: list[ColumnSchema] = [
+                ColumnSchema(
+                    name=col_info["name"],
+                    sas_type="",
+                    python_type=col_info.get("python_type"),
+                    sql_type=map_python_dtype_to_sql(col_info.get("python_type", "object")),
+                    is_pk=col_info["name"] in pks,
+                    is_fk=col_info["name"] in fks,
+                    fk_ref=fks.get(col_info["name"]),
+                )
+                for col_info in raw_target_cols
+            ]
+            t.target_columns = target_columns
+
+            if len(target_columns) == len(t.columns):
+                t.schema_status = "migrated"
+            else:
+                t.schema_status = "changed"
+            t.ddl_source = "target"
+
+            ddl_columns = [
+                {"name": c.name, "semantic_type": c.sql_type or "TEXT"} for c in target_columns
+            ]
+            t.ddl = generate_create_table(t.dataset_name, t.target_schema, ddl_columns)
+        else:
+            t.schema_status = "not_run"
+            t.ddl_source = "source_estimated"
+            ddl_columns = [{"name": c.name, "semantic_type": c.semantic_type} for c in t.columns]
+            t.ddl = generate_create_table(t.dataset_name, t.target_schema, ddl_columns)
+
+    return tables
