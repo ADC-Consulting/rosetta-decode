@@ -31,10 +31,14 @@ from src.backend.api.databricks_bundle import (
     _slugify,
     build_dataset_graph,
     render_databricks_yml,
+    render_databricks_yml_spark_job,
     render_dlt_pipeline,
+    render_spark_job_modules,
+    resolve_deployment_target,
 )
 
 if TYPE_CHECKING:
+    from src.backend.api.databricks_bundle import DeploymentTarget
     from src.backend.api.schemas import TableSchema
 
 logger = logging.getLogger(__name__)
@@ -178,6 +182,8 @@ def _render_deployment_guide(
     block_plans: list[dict[str, Any]],
     per_block_code: dict[str, str],
     pipeline_name: str,
+    target: "DeploymentTarget | None" = None,
+    delivery_format: str = "dlt",
 ) -> str:
     """Render the Databricks deployment guide from the Jinja2 template.
 
@@ -191,11 +197,21 @@ def _render_deployment_guide(
         block_plans: Normalised block plan list from ``job.migration_plan``.
         per_block_code: Mapping of block_id → generated Python source string.
         pipeline_name: Slugified pipeline name (used as template variable).
+        target: Resolved deployment target (F75). Defaults to azure/serverless,
+            which reproduces the F74 guide text for jobs with no questionnaire.
+        delivery_format: ``dlt`` (default) or ``spark_job`` — branches the prose
+            and package-contents table. ``dlt`` stays byte-identical to F75.
 
     Returns:
         Rendered Markdown string.
     """
     # SAS: src/backend/api/packaging.py:_render_deployment_guide
+
+    # Import locally to avoid a top-level dependency cycle and to obtain the
+    # azure/serverless default when no questionnaire answers are present.
+    from src.backend.api.databricks_bundle import resolve_deployment_target
+
+    resolved_target = target or resolve_deployment_target(None)
 
     env = jinja2.Environment(
         loader=jinja2.FileSystemLoader(str(_TEMPLATES_DIR)),
@@ -245,14 +261,28 @@ def _render_deployment_guide(
     raw_name: str = getattr(job, "name", None) or str(job.id)
     job_name = raw_name
 
+    # Per-provider storage-root placeholder for the guide prose. The azure value
+    # is byte-identical to the F74 literal so the default guide is unchanged.
+    storage_root_placeholders = {
+        "azure": "abfss://<container>@<account>.dfs.core.windows.net/<path>/",
+        "aws": "s3://<bucket>/<path>/",
+        "gcp": "gs://<bucket>/<path>/",
+    }
+
     rendered: str = template.render(
         job_name=job_name,
         job_id=str(job.id),
         tables=tables,
         untranslatable_blocks=untranslatable_blocks,
-        catalog_default="main",
-        storage_root_placeholder="abfss://<container>@<account>.dfs.core.windows.net/<path>/",
+        catalog_default=resolved_target.catalog,
+        storage_root_placeholder=storage_root_placeholders[resolved_target.provider],
         pipeline_name=pipeline_name,
+        provider=resolved_target.provider,
+        ingestion_approach=resolved_target.ingestion_approach,
+        compute_mode=resolved_target.compute_mode,
+        auth_host=resolved_target.auth_host,
+        storage_scheme=resolved_target.scheme,
+        delivery_format=delivery_format,
     )
     return rendered
 
@@ -338,24 +368,48 @@ def build_migration_package(
     block_plans: list[dict[str, Any]] = plan.get("block_plans", [])
     include_dbx = bool(resolved_per_block_code) and bool(block_plans)
 
+    delivery_format = "dlt"
     if include_dbx:
         raw_name: str = getattr(job, "name", None) or str(job.id)
         job_slug = _slugify(raw_name)
         pipeline_name = f"rosetta_{job_slug}_dlt"
 
+        # F75: resolve accept-time questionnaire answers from the existing JSON
+        # column. Absent answers (old jobs / pre-accept download) → azure/serverless
+        # defaults, which reproduce the F74 bytes exactly.
+        user_overrides: dict[str, Any] = getattr(job, "user_overrides", None) or {}
+        target = resolve_deployment_target(user_overrides.get("deployment_target"))
+        delivery_format = target.delivery_format
+
         datasets = build_dataset_graph(block_plans)
-        dlt_module = render_dlt_pipeline(job, resolved_per_block_code, resolved_schema)
-        databricks_yml = render_databricks_yml(job, datasets, resolved_schema)
+
+        if delivery_format == "spark_job":
+            # F76: classic multi-task Spark Job bundle (no DLT module).
+            job_modules = render_spark_job_modules(
+                job, resolved_per_block_code, resolved_schema, target
+            )
+            databricks_yml = render_databricks_yml_spark_job(job, datasets, resolved_schema, target)
+            members.update(job_modules)
+            all_code.extend(job_modules.values())
+        else:
+            dlt_module = render_dlt_pipeline(job, resolved_per_block_code, resolved_schema, target)
+            databricks_yml = render_databricks_yml(job, datasets, resolved_schema, target)
+            members[f"transformations/{pipeline_name}.py"] = dlt_module
+            # Include DLT module in code blobs so the dlt pin is picked up.
+            all_code.append(dlt_module)
+
         deployment_guide = _render_deployment_guide(
-            job, resolved_schema, block_plans, resolved_per_block_code, pipeline_name
+            job,
+            resolved_schema,
+            block_plans,
+            resolved_per_block_code,
+            pipeline_name,
+            target,
+            delivery_format,
         )
 
-        members[f"transformations/{pipeline_name}.py"] = dlt_module
         members["databricks.yml"] = databricks_yml
         members["DEPLOYMENT_GUIDE.md"] = deployment_guide
-
-        # Include DLT module in code blobs so dlt pin is picked up by infer_requirements.
-        all_code.append(dlt_module)
 
     requirements_lines = infer_requirements(all_code)
 
@@ -370,7 +424,12 @@ def build_migration_package(
             else None
         )
         existing_pins = {r for r in requirements_lines if not r.startswith("#")}
-        extra = {p for p in _DBX_EXTRA_PINS if p not in existing_pins}
+        # The dlt pin only applies to the DLT delivery format; the classic Spark
+        # Job format uses plain PySpark (keep databricks-sdk for bundle tooling).
+        applicable_pins = [
+            p for p in _DBX_EXTRA_PINS if delivery_format == "dlt" or not p.startswith("dlt==")
+        ]
+        extra = {p for p in applicable_pins if p not in existing_pins}
         if extra:
             all_pins = sorted(existing_pins | extra)
             requirements_lines = ([header] if header else []) + all_pins

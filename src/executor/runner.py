@@ -276,6 +276,12 @@ def run_code(
 
         env = os.environ.copy()
         env["_ROSETTA_RESULT_PATH"] = result_path
+        if data_dir:
+            # F76: portable generated code resolves external reads via
+            # ``DATA_ROOT = os.environ.get("ROSETTA_DATA_ROOT", "/workspace/data")``.
+            # Point it at the job's data dir so new code resolves to the same files
+            # the legacy ``/workspace/data/`` string-replace above targets.
+            env["ROSETTA_DATA_ROOT"] = data_dir.rstrip("/")
         if session_dir:
             env["_ROSETTA_SESSION_DIR"] = session_dir
 

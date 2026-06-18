@@ -3,6 +3,7 @@ import type {
     BlockRefineRequest,
     BlockRefineResponse,
     BlockRevisionHistory,
+    DeploymentTarget,
     ExecuteResponse,
     JobAttachmentsResponse,
     JobChangelogResponse,
@@ -96,11 +97,32 @@ export async function getJobHistory(jobId: string): Promise<JobHistoryResponse> 
   return res.json() as Promise<JobHistoryResponse>;
 }
 
-export async function acceptJob(jobId: string): Promise<JobStatus> {
+export async function acceptJob(
+  jobId: string,
+  target?: DeploymentTarget,
+): Promise<JobStatus> {
+  const body: { deployment_target?: DeploymentTarget } = {};
+  if (target) {
+    // Send the toggle selections always; send catalog/schema only when the
+    // user typed something so empty fields fall back to backend defaults.
+    const cleaned: DeploymentTarget = {
+      delivery_format: target.delivery_format,
+      provider: target.provider,
+      ingestion_approach: target.ingestion_approach,
+      compute_mode: target.compute_mode,
+    };
+    if (target.catalog && target.catalog.trim()) {
+      cleaned.catalog = target.catalog.trim();
+    }
+    if (target.schema && target.schema.trim()) {
+      cleaned.schema = target.schema.trim();
+    }
+    body.deployment_target = cleaned;
+  }
   const res = await fetch(`${BASE}/jobs/${jobId}/accept`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({}),
+    body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(await extractApiError(res));
   return res.json() as Promise<JobStatus>;

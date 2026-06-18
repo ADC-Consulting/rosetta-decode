@@ -766,6 +766,13 @@ async def accept_job(
     overrides: dict[str, Any] = dict(job.user_overrides or {})
     if request.notes is not None:
         overrides["acceptance_note"] = request.notes
+    if request.deployment_target is not None:
+        # F75: persist questionnaire answers in the existing JSON column.
+        # by_alias=True emits the JSON key ``schema`` (not ``schema_``);
+        # exclude_none drops unanswered questions so defaults apply downstream.
+        overrides["deployment_target"] = request.deployment_target.model_dump(
+            by_alias=True, exclude_none=True
+        )
 
     await session.execute(
         update(Job)

@@ -482,6 +482,7 @@
 ## Phase 4 — Advanced Features + Cloud
 
 - [x] F74: Databricks deployment guide + DLT handoff bundle — `databricks.yml`, `transformations/*_dlt.py`, `DEPLOYMENT_GUIDE.md` in every accepted job's zip; canonical guide at `docs/service-delivery/`
+- [ ] F75: Accept-time deployment questionnaire + cloud-aware bundle — popup on Accept asks cloud provider (Azure/AWS/GCP) + ingestion approach + compute mode; answers persist in `user_overrides` and parameterise the F74 bundle (replaces hardcoded Azure `abfss://`). See `docs/plans/latest/F75-deployment-target-questionnaire.md`
 - [ ] F14: Authentication & SSO (SAML/OIDC, JWT, RBAC)
 - [ ] `DatabricksBackend` (PySpark) (`src/worker/compute/databricks.py`)
 - [ ] End-to-end test: CLOUD=true, Databricks connection
