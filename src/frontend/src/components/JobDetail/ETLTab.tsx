@@ -76,7 +76,7 @@ export default function ETLTab({
   const [selectedStep, setSelectedStep] = useState<PipelineStep | null>(null);
   const [graphView, setGraphView] = useState<"source" | "target">("source");
   // Target sub-view state
-  const [targetView, setTargetView] = useState<"steps" | "modules" | "blocks">("steps");
+  const [targetView, setTargetView] = useState<"pipeline" | "files" | "blocks">("pipeline");
   // Selected Python module for right panel (Target view only)
   const [selectedPyModule, setSelectedPyModule] = useState<string | null>(null);
   // Block code popup — separate from selectedBlock so target panel doesn't auto-open popup

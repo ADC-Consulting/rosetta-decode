@@ -43,8 +43,8 @@ interface TargetGraphProps {
   blockPlans: BlockPlan[];
   trustFiles?: TrustReportFile[];
   trustBlocks?: Record<string, TrustReportBlock>;
-  view?: "steps" | "modules" | "blocks";
-  onViewChange?: (v: "steps" | "modules" | "blocks") => void;
+  view?: "pipeline" | "files" | "blocks";
+  onViewChange?: (v: "pipeline" | "files" | "blocks") => void;
   onFileClick: (sasSourceFiles: string[]) => void;
   onModuleClick?: (pyFile: string) => void;
   onBlockClick?: (blockId: string) => void;
@@ -934,7 +934,7 @@ function TargetGraphInner({
   blockPlans,
   trustFiles,
   trustBlocks,
-  view = "modules",
+  view = "files",
   onViewChange,
   onFileClick,
   onModuleClick,
@@ -952,7 +952,7 @@ function TargetGraphInner({
   // Build the correct graph based on view
   const { layoutNodes: builtNodes, edges: builtEdges } = isEmpty
     ? { layoutNodes: [], edges: [] }
-    : view === "steps"
+    : view === "pipeline"
       ? buildStepsGraph(pyFiles, lineage, blockPlans, trustFiles)
       : view === "blocks"
         ? buildBlocksGraph(
@@ -1017,7 +1017,7 @@ function TargetGraphInner({
 
   const handleNodeClick = (_: React.MouseEvent, node: Node) => {
     if (node.id === "__section-label__") return;
-    if (view === "steps" || view === "modules") {
+    if (view === "pipeline" || view === "files") {
       if (onModuleClick) {
         onModuleClick(node.id);
       } else {
@@ -1108,7 +1108,7 @@ function TargetGraphInner({
           {/* Divider */}
           <div style={{ width: 1, height: 20, background: "#e2e8f0", margin: "0 6px" }} />
 
-          {(["steps", "modules", "blocks"] as const).map((v) => (
+          {(["pipeline", "files", "blocks"] as const).map((v) => (
             <button
               key={v}
               onClick={() => onViewChange(v)}
