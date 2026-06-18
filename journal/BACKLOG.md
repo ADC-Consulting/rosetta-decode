@@ -443,11 +443,11 @@
   - [x] F59 S-G: `make test` exits 0
 - [x] #58: Record-level reconciliation (row-by-row diff) — row_hash_diff + ReconConfig + LLM key resolution
 - [ ] #59: Artefact versioning — group jobs by input_hash
-**F67 — ETL tab: Source / Target toggle (#67) → see `docs/plans/latest/F67-etl-source-target-toggle.md`**
-- [ ] F67 S-A: `sasFileToPyFile` + `pyFileToSasFiles` utility → `src/frontend/src/lib/sas-python-file-map.ts`
-- [ ] F67 S-B: `TargetGraph` component — Python file nodes, remapped edges, trust-coloured, legend → `src/frontend/src/components/JobDetail/TargetGraph.tsx`
-- [ ] F67 S-C: Source / Target toggle in ETLTab + wire TargetGraph → `src/frontend/src/components/JobDetail/ETLTab.tsx`
-- [ ] F67 S-D: `make test` exits 0
+**F67 — ETL tab: Source / Target toggle (#67) → see `docs/plans/latest/F67-etl-source-target-toggle.md` — complete**
+- [x] F67 S-A: `sasFileToPyFile` + `pyFileToSasFiles` utility → `src/frontend/src/lib/sas-python-file-map.ts`
+- [x] F67 S-B: `TargetGraph` component — Python file nodes, remapped edges, trust-coloured, legend → `src/frontend/src/components/JobDetail/TargetGraph.tsx`
+- [x] F67 S-C: Source / Target toggle in ETLTab + wire TargetGraph → `src/frontend/src/components/JobDetail/ETLTab.tsx`
+- [x] F67 S-D: `make test` exits 0
 
 **F68 — Post-acceptance workflow (#68) → see `docs/plans/latest/F68-post-acceptance-workflow.md` — complete**
 - [x] F68 S-A: Alembic migration 020 — add `accepted_by` → `alembic/versions/020_add_accepted_by.py`
@@ -462,17 +462,28 @@
 - [x] F68 S-J: Read-only editors in delivered mode → `EditorTab.tsx`
 - [x] F68 S-K: Verdict strip accepted state → `PlanTab.tsx`
 - [x] F68 S-L: `make test` exits 0
-**F69 — Target view polish → see `docs/plans/latest/F69-target-view-polish.md`**
-- [ ] F69 S-A: inspector header `.sas` → `.py` in Target view → `BlockInspectorPanel.tsx`, `ETLTab.tsx`
-- [ ] F69 S-B: hide handles on nodes with no edges in that direction → `FileNodeCard.tsx`, `TargetGraph.tsx`
-- [ ] F69 S-C: connection count — drop amber color, fix `⇔` → `↔` → `FileNodeCard.tsx`
-- [ ] F69 S-D: summary bar shows `modules: N` in Target view → `ETLTab.tsx`
-- [ ] F69 S-E: replace `PROGRAM` badge with `.py` badge on Target nodes → `FileNodeCard.tsx`, `TargetGraph.tsx`
-- [ ] F69 S-F: isolated row divider + "No data dependencies detected" label → `TargetGraph.tsx`
-- [ ] F69 S-G: node names include `.py` extension → `TargetGraph.tsx`
-- [ ] F69 S-H: legend swatches are rectangles, not circles → `TargetGraph.tsx`
-- [ ] F69 S-I: tooltip on Source/Target toggle buttons → `ETLTab.tsx`
-- [ ] F69 S-J: `make test` exits 0
+**F69 — Target view polish → see `docs/plans/latest/F69-target-view-polish.md` — complete**
+- [x] F69 S-A: inspector header `.sas` → `.py` in Target view → `BlockInspectorPanel.tsx`, `ETLTab.tsx`
+- [x] F69 S-B: hide handles on nodes with no edges in that direction → `FileNodeCard.tsx`, `TargetGraph.tsx`
+- [x] F69 S-C: connection count — drop amber color, fix `⇔` → `↔` → `FileNodeCard.tsx`
+- [x] F69 S-D: summary bar shows `modules: N` in Target view → `ETLTab.tsx`
+- [x] F69 S-E: replace `PROGRAM` badge with `.py` badge on Target nodes → `FileNodeCard.tsx`, `TargetGraph.tsx`
+- [x] F69 S-F: isolated row divider + "No data dependencies detected" label → `TargetGraph.tsx`
+- [x] F69 S-G: node names include `.py` extension → `TargetGraph.tsx`
+- [x] F69 S-H: legend swatches are rectangles, not circles → `TargetGraph.tsx`
+- [x] F69 S-I: tooltip on Source/Target toggle buttons → `ETLTab.tsx`
+- [x] F69 S-J: `make test` exits 0
+
+**F70 — Target ETL sub-views: Steps / Modules / Blocks → see `docs/plans/latest/F70-target-etl-subviews.md` — complete**
+- [x] F70 S-A: `Steps | Modules | Blocks` toggle in ETLTab summary bar (Target-only); `targetView` state
+- [x] F70 S-B: TargetGraph `view` prop + layout switching; shared `rawEdges` derivation across branches
+- [x] F70 S-C: Steps view — dagre TB layout, `PipelineStepNode` (filename, `.py` badge, trust bar, `deps: N → N`)
+- [x] F70 S-D: Modules view — existing dagre LR graph gated behind `view === "modules"`
+- [x] F70 S-E: Blocks view — expanded node cards in-place; heights computed from block count; `BlocksFileNode`
+- [x] F70 S-F: `PythonModulePanel` component — tinted group headers for multi-source modules, `BlockRow` reuse
+- [x] F70 S-G: ETLTab wiring — `selectedPyModule`, right-slot switching between `PythonModulePanel` / `BlockDetailPanel`
+- [x] F70 S-H: `BlockDetailPanel` component — back link, strategy/confidence/recon, `ⓘ` rationale popover, "View Code"
+- [x] F70 S-I: `make test` exits 0
 
 - [ ] #21: Consolidate lineage into a single primary view — `backlog` label
 - [ ] #20: Rollback / versioning based on lineage — `backlog` label

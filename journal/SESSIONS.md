@@ -6,6 +6,92 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-18 — F70 Target ETL sub-views — Steps / Modules / Blocks
+
+**Branch:** `feat/F69-target-view-polish` (same branch — F70 extends F69)
+
+### Done
+- Implemented all 9 F70 subtasks — purely frontend, no backend changes
+- **S-A**: `targetView: "steps" | "modules" | "blocks"` state in ETLTab; `Steps | Modules | Blocks` button group in summary bar visible only when Target is active; default `"steps"`
+- **S-B**: `TargetGraph` accepts `view`, `onModuleClick`, `onBlockClick` props; internal `useMemo` branches on `view`; `rawEdges` derivation shared across all three branches
+- **S-C**: Steps view — dagre TB layout (`rankdir: "TB"`); `PipelineStepNode` module-scope component (filename, `.py` badge, trust colour bar, block count, `deps: N → N`); `NODE_TYPES` extended; `key={`target-${targetView}`}` forces clean ReactFlow remount on view change
+- **S-D**: Modules view — existing `FileNodeCard` LR graph preserved and gated behind `view === "modules"`
+- **S-E**: Blocks view — `BlocksFileNode` with computed heights (`BLOCKS_BASE_H + BLOCK_ROW_H × blockCount`); inline block rows with type badge, `:line`, status icon; clicking row calls `onBlockClick`
+- **S-F**: `PythonModulePanel.tsx` (new) — `.py` header + block count + close; single-source = flat block list; multi-source = `bg-slate-50` tinted group headers per SAS source; `BlockRow` reuse
+- **S-G**: `selectedPyModule` state in ETLTab; right-slot switches between `PythonModulePanel` (module selected) and `BlockDetailPanel` (block selected); `codePopupBlockId` separate from `selectedBlock` to avoid coupling
+- **S-H**: `BlockDetailPanel.tsx` (new) — `← {parentPyFile}` back link + close; block type, file:lines, strategy badge, confidence % bar, recon status; `ⓘ` Popover for rationale; "View Code" → `BlockCodePopup`
+- **S-I**: `make test` exits 0 — all 7 gates green (tsc, eslint, frontend-build critical)
+- Browser-verified all three views and both right panels — Steps node click → PythonModulePanel, block row click → BlockDetailPanel, back link returns to PythonModulePanel, View Code opens BlockCodePopup ✅
+- All subtasks marked `[x] done` in plan file; plan Status set to `complete`
+
+### Decisions
+- Sub-toggle placed in summary bar (not inside canvas) — consistent with Source/Target toggle; keeps ReactFlow canvas uncluttered
+- Names Steps/Modules/Blocks (not Pipeline/Files/Blocks) — Source uses Pipeline/Files/Blocks for SAS artefacts; distinct labels prevent confusion
+- Steps view uses TB layout (Modules stays LR) — different visual language for execution order vs dependency graph
+
+### Open Questions
+- none
+
+### Next Session — Start Here
+1. Commit F69 + F70 changes — two logical commits: `feat(F69): target view polish` then `feat(F70): Target ETL Steps/Modules/Blocks sub-views`
+2. Open PRs for F69 and F70
+3. Next feature: Data Storage tab polish — plan already drafted in `.claude/plans/linear-discovering-sketch.md`
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/ETLTab.tsx`
+- `src/frontend/src/components/JobDetail/TargetGraph.tsx`
+- `src/frontend/src/components/JobDetail/PythonModulePanel.tsx` (new)
+- `src/frontend/src/components/JobDetail/BlockDetailPanel.tsx` (new)
+- `src/frontend/src/components/JobDetail/BlockInspectorPanel.tsx`
+- `src/frontend/src/components/JobDetail/FileNodeCard.tsx`
+- `src/frontend/src/lib/sas-python-file-map.ts` (new on this branch)
+- `docs/plans/latest/F70-target-etl-subviews.md`
+- `journal/BACKLOG.md`, `journal/SESSIONS.md`
+
+---
+
+## 2026-06-18 — F69 Target view polish — all 10 subtasks implemented
+
+**Branch:** `feat/F69-target-view-polish`
+
+### Done
+- Implemented all 10 F69 subtasks — purely frontend, no backend changes
+- **S-A**: `BlockInspectorPanel` `displayTitle?` prop; ETLTab passes `sasFileToPyFile(selectedFile)` when in Target view so inspector header shows `.py` filename
+- **S-B**: `FileNodeData` extended with `hasIncoming?`/`hasOutgoing?`; `FileNodeCard` conditionally renders each `<Handle>`; `TargetGraph` computes these from `rawEdges` sets — eliminates phantom arrow on root node
+- **S-C**: Connection count color changed from amber threshold to always `#64748b`; `⇔` → `↔`; tooltip updated
+- **S-D**: Summary bar branches on `graphView` — `modules: N` in Target view, `files/blocks` in Source
+- **S-E**: `FileNodeData.file_type` widened to include `"MODULE"`; `FILE_TYPE_PILL` gets green `.py` badge entry; `TargetGraph` passes `file_type: "MODULE"`
+- **S-F**: `SectionLabelNode` custom ReactFlow node type; inserted between connected cluster and isolated row with "No data dependencies detected" label + horizontal rule dividers
+- **S-G**: Target node `filename` passes full `pyFile` (with `.py` extension) instead of stem
+- **S-H**: Legend swatches changed to `width: 18, height: 3, borderRadius: 2` — matches accent bar shape
+- **S-I**: Toggle buttons get `title` attributes — `"SAS source pipeline"` / `"Generated Python modules"`
+- **S-J**: `make test` exits 0 — all 7 gates green
+- `sas-python-file-map.ts` and `TargetGraph.tsx` recreated on this branch (off main, not off F67 branch)
+- All subtasks marked `[x] done` in plan file; plan Status set to `complete`
+
+### Decisions
+- none
+
+### Open Questions
+- F67 PR #106 still open — needs review/merge; F69 branch includes all F67 code since it was cut off main before F67 merged
+
+### Next Session — Start Here
+1. Open PR for `feat/F69-target-view-polish` (closes issue for F69 Target view polish)
+2. Check F67 PR #106 status — if merged, confirm F69 branch history is clean
+3. Next feature from backlog: Data Storage tab polish (plan drafted in `.claude/plans/`)
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/BlockInspectorPanel.tsx`
+- `src/frontend/src/components/JobDetail/ETLTab.tsx`
+- `src/frontend/src/components/JobDetail/FileNodeCard.tsx`
+- `src/frontend/src/components/JobDetail/TargetGraph.tsx` (new on this branch)
+- `src/frontend/src/lib/sas-python-file-map.ts` (new on this branch)
+- `src/frontend/src/pages/JobDetailPage.tsx`
+- `docs/plans/latest/F69-target-view-polish.md`
+- `journal/BACKLOG.md`, `journal/SESSIONS.md`
+
+---
+
 ## 2026-06-17 — F69 plan written, branch created, no code yet
 
 **Branch:** `feat/F69-target-view-polish`
