@@ -41,6 +41,7 @@ interface TargetGraphProps {
   trustFiles?: TrustReportFile[];
   trustBlocks?: Record<string, TrustReportBlock>;
   view?: "steps" | "modules" | "blocks";
+  onViewChange?: (v: "steps" | "modules" | "blocks") => void;
   onFileClick: (sasSourceFiles: string[]) => void;
   onModuleClick?: (pyFile: string) => void;
   onBlockClick?: (blockId: string) => void;
@@ -931,6 +932,7 @@ function TargetGraphInner({
   trustFiles,
   trustBlocks,
   view = "modules",
+  onViewChange,
   onFileClick,
   onModuleClick,
   onBlockClick,
@@ -987,6 +989,44 @@ function TargetGraphInner({
 
   return (
     <div className="rounded-md border border-border overflow-hidden w-full h-full relative">
+      {/* Floating toolbar — Steps / Modules / Blocks toggle */}
+      {onViewChange && (
+        <div
+          style={{
+            position: "absolute",
+            top: 10,
+            left: 10,
+            zIndex: 10,
+            background: "rgba(255,255,255,0.85)",
+            backdropFilter: "blur(6px)",
+            borderRadius: 8,
+            border: "1px solid #e2e8f0",
+            padding: "4px 6px",
+            display: "flex",
+            gap: 4,
+            alignItems: "center",
+          }}
+        >
+          {(["steps", "modules", "blocks"] as const).map((v) => (
+            <button
+              key={v}
+              onClick={() => onViewChange(v)}
+              style={{
+                fontSize: 11,
+                fontWeight: 500,
+                color: view === v ? "#fff" : "#475569",
+                background: view === v ? "#1e293b" : "transparent",
+                border: `1px solid ${view === v ? "#1e293b" : "#e2e8f0"}`,
+                borderRadius: 5,
+                padding: "2px 8px",
+                cursor: "pointer",
+              }}
+            >
+              {v.charAt(0).toUpperCase() + v.slice(1)}
+            </button>
+          ))}
+        </div>
+      )}
       <ReactFlow
         nodes={nodes}
         edges={edges}

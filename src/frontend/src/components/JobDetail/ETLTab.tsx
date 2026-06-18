@@ -251,28 +251,6 @@ export default function ETLTab({
           </>
         )}
         <div className="ml-auto flex items-center gap-1">
-          {/* Target sub-view toggle — only shown when Target is active */}
-          {graphView === "target" && (
-            <>
-              {(["steps", "modules", "blocks"] as const).map((v) => (
-                <button
-                  key={v}
-                  onClick={() => setTargetView(v)}
-                  className={[
-                    "px-2 py-0.5 rounded text-[11px] font-medium border transition-colors",
-                    targetView === v
-                      ? "bg-foreground text-background border-foreground"
-                      : "bg-transparent text-muted-foreground border-border hover:border-foreground/40",
-                    "cursor-pointer",
-                  ].join(" ")}
-                >
-                  {v.charAt(0).toUpperCase() + v.slice(1)}
-                </button>
-              ))}
-              <span className="mx-1 text-border">|</span>
-            </>
-          )}
-
           {/* Source / Target toggle */}
           {(["source", "target"] as const).map((v) => {
             const disabled = v === "target" && !hasTargetNodes;
@@ -331,6 +309,7 @@ export default function ETLTab({
               trustFiles={trustReport?.files}
               trustBlocks={trustBlocks}
               view={targetView}
+              onViewChange={setTargetView}
               onFileClick={(sasFiles) => {
                 setSelectedFile(sasFiles[0] ?? null);
                 setSelectedStep(null);
