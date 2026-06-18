@@ -2,7 +2,7 @@
 
 **Phase:** 3
 **Area:** Frontend
-**Status:** in-progress
+**Status:** complete
 
 ## Goal
 
@@ -54,7 +54,7 @@ In `ETLTab.tsx`, when `graphView === "target"`, pass `displayTitle` to the panel
 
 `sasFileToPyFile` is already imported in `ETLTab.tsx`.
 
-- [ ] done
+- [x] done
 
 ### S-B: Handle visibility — hide handles on nodes with no edges in that direction
 **Files:** `src/frontend/src/components/JobDetail/FileNodeCard.tsx`, `src/frontend/src/components/JobDetail/TargetGraph.tsx`
@@ -96,7 +96,7 @@ data: {
 }
 ```
 
-- [ ] done
+- [x] done
 
 ### S-C: FileNodeCard — fix connection count color and symbol
 **Files:** `src/frontend/src/components/JobDetail/FileNodeCard.tsx`
@@ -123,7 +123,7 @@ Two changes, both in the connection count `<span>`:
 </span>
 ```
 
-- [ ] done
+- [x] done
 
 ### S-D: Summary bar — show Target context stats
 **Files:** `src/frontend/src/components/JobDetail/ETLTab.tsx`
@@ -151,7 +151,7 @@ In the summary bar JSX, branch on `graphView`:
 
 Keep the verified / review / manual counts unconditionally — they remain meaningful in Target view as they describe the migration quality of those modules.
 
-- [ ] done
+- [x] done
 
 ### S-E: Python module badge — replace `PROGRAM` with `.py`
 **Files:** `src/frontend/src/components/JobDetail/FileNodeCard.tsx`, `src/frontend/src/components/JobDetail/TargetGraph.tsx`
@@ -189,7 +189,7 @@ data: {
 }
 ```
 
-- [ ] done
+- [x] done
 
 ### S-F: Isolated row — divider and label
 **Files:** `src/frontend/src/components/JobDetail/TargetGraph.tsx`
@@ -243,7 +243,7 @@ if (isolatedNodes.length > 0) {
 }
 ```
 
-- [ ] done
+- [x] done
 
 ### S-G: Node names — add `.py` extension in Target view
 **Files:** `src/frontend/src/components/JobDetail/TargetGraph.tsx`
@@ -258,7 +258,7 @@ data: {
 }
 ```
 
-- [ ] done
+- [x] done
 
 ### S-H: Legend — use rectangle swatches instead of circles
 **Files:** `src/frontend/src/components/JobDetail/TargetGraph.tsx`
@@ -274,7 +274,7 @@ In the legend JSX, change the swatch `<div>` style:
 { width: 18, height: 3, borderRadius: 2, background: color }
 ```
 
-- [ ] done
+- [x] done
 
 ### S-I: Toggle button tooltips
 **Files:** `src/frontend/src/components/JobDetail/ETLTab.tsx`
@@ -286,14 +286,14 @@ Add a `title` attribute to each toggle button:
 title={v === "source" ? "SAS source pipeline" : "Generated Python modules"}
 ```
 
-- [ ] done
+- [x] done
 
 ### S-J: Tests green
 **File:** n/a
 **Depends on:** S-A through S-I
 **Done when:** `make test` exits 0 — all 7 gates pass (tsc and frontend-build are the critical gates for these changes).
 
-- [ ] done
+- [x] done
 
 ## Dependencies on other features
 

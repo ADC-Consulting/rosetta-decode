@@ -331,6 +331,7 @@ export default function JobDetailPage(): React.ReactElement {
                 jobSources={jobSources}
                 isReviewable={isReviewable}
                 isAccepted={isAccepted}
+                generatedFiles={job?.generated_files ?? null}
               />
             </TabsContent>
 
