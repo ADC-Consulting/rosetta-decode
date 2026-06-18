@@ -8,7 +8,8 @@ import type {
 import { FileNodeCard, type FileNodeData } from "@/components/JobDetail/FileNodeCard";
 import { pyFileToSasFiles, sasFileToPyFile } from "@/lib/sas-python-file-map";
 import dagre from "dagre";
-import { useState } from "react";
+import { RotateCcw } from "lucide-react";
+import { useCallback, useRef, useState } from "react";
 import {
   Background,
   BaseEdge,
@@ -22,10 +23,12 @@ import {
   ReactFlowProvider,
   useEdgesState,
   useNodesState,
+  useReactFlow,
   type Edge,
   type EdgeProps,
   type Node,
   type NodeProps,
+  type XYPosition,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { getBlockStatus, STATUS_CONFIG } from "./blockStatusHelpers";
@@ -938,6 +941,7 @@ function TargetGraphInner({
   onBlockClick,
   selectedBlockId,
 }: TargetGraphProps): React.ReactElement {
+  const { fitView } = useReactFlow();
   const pyFiles = Object.keys(generatedFiles).filter((f) => f !== "pipeline.py");
   const isEmpty = pyFiles.length === 0;
 
@@ -963,8 +967,53 @@ function TargetGraphInner({
           )
         : buildModulesGraph(pyFiles, lineage, blockPlans, trustFiles);
 
-  const [nodes, , onNodesChange] = useNodesState(builtNodes);
+  const [nodes, setNodes, onNodesChange] = useNodesState(builtNodes);
   const [edges, , onEdgesChange] = useEdgesState(builtEdges);
+
+  // Undo/redo history
+  const historyRef = useRef<{ positions: Record<string, XYPosition>[]; idx: number }>({
+    positions: [{}],
+    idx: 0,
+  });
+  const [historyState, setHistoryState] = useState<{ idx: number; len: number }>({
+    idx: 0,
+    len: 1,
+  });
+
+  const handleUndo = useCallback(() => {
+    if (historyRef.current.idx <= 0) return;
+    historyRef.current.idx--;
+    const pos = historyRef.current.positions[historyRef.current.idx];
+    setNodes((ns) => ns.map((n) => (pos[n.id] ? { ...n, position: pos[n.id] } : n)));
+    setHistoryState({ idx: historyRef.current.idx, len: historyRef.current.positions.length });
+  }, [setNodes]);
+
+  const handleRedo = useCallback(() => {
+    if (historyRef.current.idx >= historyRef.current.positions.length - 1) return;
+    historyRef.current.idx++;
+    const pos = historyRef.current.positions[historyRef.current.idx];
+    setNodes((ns) => ns.map((n) => (pos[n.id] ? { ...n, position: pos[n.id] } : n)));
+    setHistoryState({ idx: historyRef.current.idx, len: historyRef.current.positions.length });
+  }, [setNodes]);
+
+  const handleReset = useCallback(() => {
+    fitView({ padding: 0.1, duration: 300 });
+  }, [fitView]);
+
+  const handleNodeDragStop = useCallback(
+    (_: React.MouseEvent, _node: Node, allNodes: Node[]) => {
+      const pos: Record<string, XYPosition> = {};
+      allNodes.forEach((n) => {
+        pos[n.id] = n.position;
+      });
+      const h = historyRef.current;
+      h.positions = h.positions.slice(0, h.idx + 1);
+      h.positions.push(pos);
+      h.idx = h.positions.length - 1;
+      setHistoryState({ idx: h.idx, len: h.positions.length });
+    },
+    [],
+  );
 
   const handleNodeClick = (_: React.MouseEvent, node: Node) => {
     if (node.id === "__section-label__") return;
@@ -979,6 +1028,18 @@ function TargetGraphInner({
     // blocks view: row clicks handle their own click via data.onBlockClick
   };
 
+  const btnBase: React.CSSProperties = {
+    fontSize: 12,
+    fontWeight: 500,
+    color: "#475569",
+    background: "transparent",
+    border: "1px solid #e2e8f0",
+    borderRadius: 5,
+    padding: "3px 9px",
+    cursor: "pointer",
+  };
+  const btnDisabled: React.CSSProperties = { opacity: 0.4, cursor: "not-allowed" };
+
   if (isEmpty) {
     return (
       <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
@@ -989,7 +1050,7 @@ function TargetGraphInner({
 
   return (
     <div className="rounded-md border border-border overflow-hidden w-full h-full relative">
-      {/* Floating toolbar — Steps / Modules / Blocks toggle */}
+      {/* Floating toolbar — Undo / Redo / Reset | Steps / Modules / Blocks */}
       {onViewChange && (
         <div
           style={{
@@ -1007,19 +1068,57 @@ function TargetGraphInner({
             alignItems: "center",
           }}
         >
+          <button
+            style={historyState.idx <= 0 ? { ...btnBase, ...btnDisabled } : btnBase}
+            disabled={historyState.idx <= 0}
+            onClick={handleUndo}
+            title="Undo"
+          >
+            ↩ Undo
+          </button>
+          <button
+            style={
+              historyState.idx >= historyState.len - 1
+                ? { ...btnBase, ...btnDisabled }
+                : btnBase
+            }
+            disabled={historyState.idx >= historyState.len - 1}
+            onClick={handleRedo}
+            title="Redo"
+          >
+            ↪ Redo
+          </button>
+          <button
+            style={{
+              ...btnBase,
+              background: "rgba(255,255,255,0.18)",
+              borderColor: "#94a3b8",
+              color: "#1e293b",
+              fontWeight: 600,
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+            }}
+            onClick={handleReset}
+            title="Reset layout"
+          >
+            <RotateCcw size={12} /> Reset
+          </button>
+
+          {/* Divider */}
+          <div style={{ width: 1, height: 20, background: "#e2e8f0", margin: "0 6px" }} />
+
           {(["steps", "modules", "blocks"] as const).map((v) => (
             <button
               key={v}
               onClick={() => onViewChange(v)}
               style={{
+                ...btnBase,
                 fontSize: 11,
-                fontWeight: 500,
-                color: view === v ? "#fff" : "#475569",
-                background: view === v ? "#1e293b" : "transparent",
-                border: `1px solid ${view === v ? "#1e293b" : "#e2e8f0"}`,
-                borderRadius: 5,
                 padding: "2px 8px",
-                cursor: "pointer",
+                ...(view === v
+                  ? { background: "#1e293b", color: "#fff", borderColor: "#1e293b" }
+                  : {}),
               }}
             >
               {v.charAt(0).toUpperCase() + v.slice(1)}
@@ -1033,6 +1132,7 @@ function TargetGraphInner({
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={handleNodeClick}
+        onNodeDragStop={handleNodeDragStop}
         nodesDraggable
         nodeTypes={NODE_TYPES}
         edgeTypes={EDGE_TYPES}
@@ -1042,7 +1142,7 @@ function TargetGraphInner({
         <Controls />
         <Background />
       </ReactFlow>
-      <div style={{ position: "absolute", bottom: 12, left: 12, zIndex: 10 }}>
+      <div style={{ position: "absolute", bottom: 12, right: 12, zIndex: 10 }}>
         <TargetLegend />
       </div>
     </div>
