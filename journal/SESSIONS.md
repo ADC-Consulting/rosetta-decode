@@ -6,6 +6,37 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-19 — F72 Target Pipeline: TB execution flow
+
+**Branch:** `feat/F67-etl-source-target-toggle`
+
+### Done
+- Replaced bridge view (SAS step cards ← edges → Python module cards) with a clean top-to-bottom execution flow of Python modules — same data as Files view but `rankdir: "TB"` so the Pipeline slot shows execution order rather than dependency graph
+- `buildModulesGraph` gained a `rankdir: "LR" | "TB" = "LR"` parameter; Pipeline routes to TB, Files to LR; both views share one code path
+- Removed all bridge components: `BridgeStepNode`, `BridgeModuleNode`, `BridgeLegend`, `buildBridgeGraph` (~400 lines deleted)
+- Removed `selectedStepId` + `onPipelineStepClick` props from `TargetGraph` and `ETLTab` (no longer needed for Pipeline slot)
+- `TargetLegend` now renders for all three sub-views (was Pipeline-only legacy of bridge era)
+- `make test` green; committed as `refactor(F72): replace bridge view with TB module execution flow in Target Pipeline`
+- Browser-verified: step cards with step numbers, edges connecting dependent modules, clean TB layout ✅
+
+### Decisions
+- **Target Pipeline = TB module execution flow, Target Files = LR dependency graph** — distinct informational purpose per sub-view; bridge view (two-column SAS→Python mapping) was too complex and didn't serve the "see the proposed pipeline" goal
+- **Bridge view scrapped entirely** — no value to salvage; the TB modules layout is cleaner and more actionable
+
+### Open Questions
+- None
+
+### Next Session — Start Here
+1. Open PR for `feat/F67-etl-source-target-toggle` (covers F67 + F69 + F70 + F71 + F72). Use `/git-pr-summary` to generate the description.
+2. Review the plan file at `.claude/plans/linear-discovering-sketch.md` — Data Storage tab polish (F35 fixes) — this is the next candidate for work.
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/TargetGraph.tsx` (major — bridge removed, TB parameter added)
+- `src/frontend/src/components/JobDetail/ETLTab.tsx` (minor — bridge props removed)
+- `journal/BACKLOG.md`, `journal/SESSIONS.md`
+
+---
+
 ## 2026-06-19 — F70 bridge view + F71 ETL tab polish
 
 **Branch:** `feat/F67-etl-source-target-toggle` (consolidated from F69)
