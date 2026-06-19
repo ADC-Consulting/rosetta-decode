@@ -2,6 +2,7 @@ import type {
   BlockPlan,
   FileNode,
   JobLineageResponse,
+  PipelineStep,
   TrustReportBlock,
   TrustReportFile,
 } from "@/api/types";
@@ -48,6 +49,7 @@ interface TargetGraphProps {
   onFileClick: (sasSourceFiles: string[]) => void;
   onModuleClick?: (pyFile: string) => void;
   onBlockClick?: (blockId: string) => void;
+  onPipelineStepClick?: (step: PipelineStep) => void;
   selectedBlockId?: string | null;
 }
 
@@ -384,6 +386,168 @@ function PipelineStepNode({ data }: NodeProps<PipelineStepNodeData>): React.Reac
 }
 
 // ---------------------------------------------------------------------------
+// PipelineTargetStepNode — Pipeline view, module-level
+// ---------------------------------------------------------------------------
+
+interface PipelineTargetStepData {
+  stepNumber: number;       // 1-based index
+  stepName: string;
+  description: string;
+  pyModules: string[];      // the .py files for this step
+  status: FileNode["status"];
+  step: PipelineStep;       // the raw step object for click handler
+}
+
+function PipelineTargetStepNode({ data }: NodeProps<PipelineTargetStepData>): React.ReactElement {
+  const accentColor = data.status ? STATUS_COLOR_MAP[data.status] : "#94a3b8";
+  const MAX_BADGES = 3;
+  const visibleModules = data.pyModules.slice(0, MAX_BADGES);
+  const extraCount = data.pyModules.length - MAX_BADGES;
+
+  return (
+    <>
+      <Handle
+        type="target"
+        position={Position.Top}
+        style={{
+          background: accentColor,
+          width: 8,
+          height: 8,
+          border: "2px solid #fff",
+        }}
+      />
+      <div
+        style={{
+          width: 260,
+          background: "#fff",
+          borderRadius: 10,
+          border: "1px solid #e2e8f0",
+          borderLeft: `4px solid ${accentColor}`,
+          boxShadow: "0 1px 5px rgba(0,0,0,0.09)",
+          overflow: "hidden",
+          cursor: "pointer",
+        }}
+      >
+        <div style={{ padding: "8px 10px 9px" }}>
+          {/* Row 1: step number badge + step name */}
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 7 }}>
+            <span
+              style={{
+                flexShrink: 0,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 20,
+                height: 20,
+                borderRadius: "50%",
+                background: "#f1f5f9",
+                color: "#64748b",
+                fontSize: 10,
+                fontWeight: 700,
+                fontFamily: "ui-monospace, monospace",
+              }}
+            >
+              {data.stepNumber}
+            </span>
+            <span
+              style={{
+                fontSize: 13,
+                fontWeight: 700,
+                color: "#0f172a",
+                lineHeight: 1.35,
+                flex: 1,
+                minWidth: 0,
+                overflowWrap: "break-word",
+                wordBreak: "break-word",
+              }}
+            >
+              {data.stepName}
+            </span>
+          </div>
+
+          {/* Row 2: description (muted, max 2 lines) */}
+          {data.description && (
+            <div
+              style={{
+                marginTop: 5,
+                fontSize: 10,
+                color: "#94a3b8",
+                overflow: "hidden",
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                lineHeight: 1.4,
+              }}
+            >
+              {data.description}
+            </div>
+          )}
+
+          {/* Row 3: .py module badges */}
+          {data.pyModules.length > 0 && (
+            <div
+              style={{
+                marginTop: 6,
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 4,
+                alignItems: "center",
+              }}
+            >
+              {visibleModules.map((mod) => (
+                <span
+                  key={mod}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    background: "#f0fdf4",
+                    color: "#15803d",
+                    fontSize: 9,
+                    fontWeight: 700,
+                    fontFamily: "ui-monospace, monospace",
+                    padding: "2px 5px",
+                    borderRadius: 4,
+                    letterSpacing: "0.02em",
+                    maxWidth: 180,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {mod}
+                </span>
+              ))}
+              {extraCount > 0 && (
+                <span
+                  style={{
+                    fontSize: 9,
+                    fontWeight: 600,
+                    color: "#64748b",
+                    fontFamily: "ui-monospace, monospace",
+                  }}
+                >
+                  +{extraCount} more
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        style={{
+          background: accentColor,
+          width: 8,
+          height: 8,
+          border: "2px solid #fff",
+        }}
+      />
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // BlocksFileNode — Blocks view, module-level
 // ---------------------------------------------------------------------------
 
@@ -555,6 +719,7 @@ const NODE_TYPES = {
   fileNode: FileNodeCard,
   sectionLabel: SectionLabelNode,
   pipelineStep: PipelineStepNode,
+  pipelineTargetStep: PipelineTargetStepNode,
   blocksFile: BlocksFileNode,
 };
 const EDGE_TYPES = { hover: HoverLabelEdge };
@@ -753,6 +918,71 @@ function buildModulesGraph(
   return { layoutNodes: allLayoutNodes, edges: rawEdges };
 }
 
+function buildPipelineStepsGraph(
+  lineage: JobLineageResponse,
+  blockPlans: BlockPlan[],
+  trustFiles: TrustReportFile[] | undefined,
+): { layoutNodes: Node[]; edges: Edge[] } {
+  const steps = lineage.pipeline_steps ?? [];
+
+  const STATUS_SEVERITY: Record<NonNullable<FileNode["status"]>, number> = {
+    UNRECOGNIZED: 3,
+    ERROR_PRONE: 2,
+    OK: 1,
+  };
+
+  const rawNodes: Node<PipelineTargetStepData>[] = steps.map((step, i) => {
+    // Derive Python modules from block IDs in this step
+    const pyModules = [...new Set(
+      step.blocks
+        .map((blockId) => blockPlans.find((bp) => bp.block_id === blockId)?.source_file)
+        .filter((sf): sf is string => !!sf)
+        .map((sf) => sasFileToPyFile(sf)),
+    )];
+
+    // Aggregate status from .py modules — pick worst
+    let worstStatus: FileNode["status"] = null;
+    for (const pyFile of pyModules) {
+      const s = aggregateStatus(pyFile, blockPlans, trustFiles);
+      if (s === null) continue;
+      if (worstStatus === null || STATUS_SEVERITY[s] > STATUS_SEVERITY[worstStatus]) {
+        worstStatus = s;
+      }
+    }
+
+    return {
+      id: step.step_id,
+      type: "pipelineTargetStep",
+      position: { x: 0, y: 0 },
+      data: {
+        stepNumber: i + 1,
+        stepName: step.name,
+        description: step.description,
+        pyModules,
+        status: worstStatus,
+        step,
+      },
+    };
+  });
+
+  // Sequential edges: step[i] → step[i+1]
+  const edges: Edge[] = steps.slice(0, -1).map((step, i) => ({
+    id: `ps-edge-${i}`,
+    source: step.step_id,
+    target: steps[i + 1].step_id,
+    style: { stroke: "#94a3b8", strokeWidth: 1.5 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: "#94a3b8" },
+  }));
+
+  const layoutNodes = applyDagreLayout(rawNodes, edges, 260, 100, {
+    rankdir: "TB",
+    ranksep: 120,
+    nodesep: 40,
+  });
+
+  return { layoutNodes, edges };
+}
+
 function buildBlocksGraph(
   pyFiles: string[],
   lineage: JobLineageResponse,
@@ -835,6 +1065,7 @@ function TargetGraphInner({
   onFileClick,
   onModuleClick,
   onBlockClick,
+  onPipelineStepClick,
   selectedBlockId,
 }: TargetGraphProps): React.ReactElement {
   const { fitView } = useReactFlow();
@@ -852,7 +1083,7 @@ function TargetGraphInner({
   const { layoutNodes: builtNodes, edges: builtEdges } = isEmpty
     ? { layoutNodes: [], edges: [] }
     : view === "pipeline"
-      ? buildModulesGraph(pyFiles, lineage, blockPlans, trustFiles, "TB")
+      ? buildPipelineStepsGraph(lineage, blockPlans, trustFiles)
       : view === "blocks"
         ? buildBlocksGraph(
             pyFiles,
@@ -917,7 +1148,12 @@ function TargetGraphInner({
   const handleNodeClick = (_: React.MouseEvent, node: Node) => {
     if (node.id === "__section-label__") return;
 
-    if (view === "pipeline" || view === "files") {
+    if (node.type === "pipelineTargetStep" && onPipelineStepClick) {
+      onPipelineStepClick((node.data as PipelineTargetStepData).step);
+      return;
+    }
+
+    if (view === "files") {
       if (onModuleClick) {
         onModuleClick(node.id);
       } else {
