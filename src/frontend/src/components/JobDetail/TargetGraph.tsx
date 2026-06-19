@@ -10,7 +10,7 @@ import { FileNodeCard, type FileNodeData } from "@/components/JobDetail/FileNode
 import { pyFileToSasFiles, sasFileToPyFile } from "@/lib/sas-python-file-map";
 import dagre from "dagre";
 import { RotateCcw } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Background,
   BaseEdge,
@@ -51,6 +51,7 @@ interface TargetGraphProps {
   onBlockClick?: (blockId: string) => void;
   onPipelineStepClick?: (step: PipelineStep) => void;
   selectedBlockId?: string | null;
+  selectedStepId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -556,6 +557,7 @@ function BlocksFileNode({ data }: NodeProps<BlocksFileNodeData>): React.ReactEle
 interface BridgeStepNodeData {
   step: PipelineStep;
   stepNumber: number;
+  isSelected: boolean;
 }
 
 function BridgeStepNode({ data }: { data: BridgeStepNodeData }): React.ReactElement {
@@ -563,8 +565,8 @@ function BridgeStepNode({ data }: { data: BridgeStepNodeData }): React.ReactElem
     <div
       style={{
         position: "relative",
-        background: "#fef3c7",
-        border: "1.5px solid #f59e0b",
+        background: data.isSelected ? "#eff6ff" : "#fef3c7",
+        border: `1.5px solid ${data.isSelected ? "#3b82f6" : "#f59e0b"}`,
         borderRadius: 8,
         padding: "8px 12px",
         minWidth: 180,
@@ -599,7 +601,7 @@ function BridgeStepNode({ data }: { data: BridgeStepNodeData }): React.ReactElem
         </div>
       )}
       <div style={{ marginTop: 6, color: "#78350f", fontSize: 10 }}>
-        {data.step.files.length} SAS {data.step.files.length === 1 ? "file" : "files"}
+        {data.step.blocks.length} {data.step.blocks.length === 1 ? "block" : "blocks"}
       </div>
     </div>
   );
@@ -1048,6 +1050,7 @@ function buildBridgeGraph(
   generatedFiles: Record<string, string>,
   blockPlans: BlockPlan[],
   trustBlocks: Record<string, TrustReportBlock> | undefined,
+  selectedStepId?: string,
 ): { nodes: Node[]; edges: Edge[] } {
   const pyFiles = Object.keys(generatedFiles).filter((f) => f !== "pipeline.py");
 
@@ -1071,15 +1074,17 @@ function buildBridgeGraph(
   const stepNodes: Node<BridgeStepNodeData>[] = pipelineSteps.map((step, i) => ({
     id: `bridge-step-${step.step_id}`,
     type: "bridgeStepNode",
-    data: { step, stepNumber: i + 1 },
+    data: { step, stepNumber: i + 1, isSelected: selectedStepId === step.step_id },
     position: { x: 0, y: i * 120 },
   }));
 
   const edgeSet = new Set<string>();
   const edges: Edge[] = [];
   for (const step of pipelineSteps) {
-    for (const sasFile of step.files) {
-      const pyFile = sasFileToPyFile(sasFile);
+    for (const blockId of step.blocks) {
+      const bp = blockPlans.find((b) => b.block_id === blockId);
+      if (!bp) continue;
+      const pyFile = sasFileToPyFile(bp.source_file);
       if (!pyFiles.includes(pyFile)) continue;
       const edgeId = `bridge-${step.step_id}-${pyFile}`;
       if (edgeSet.has(edgeId)) continue;
@@ -1151,6 +1156,7 @@ function TargetGraphInner({
   onBlockClick,
   onPipelineStepClick,
   selectedBlockId,
+  selectedStepId,
 }: TargetGraphProps): React.ReactElement {
   const { fitView } = useReactFlow();
   const pyFiles = Object.keys(generatedFiles).filter((f) => f !== "pipeline.py");
@@ -1174,6 +1180,7 @@ function TargetGraphInner({
           generatedFiles,
           blockPlans,
           trustBlocks,
+          selectedStepId,
         )
       : null;
 
@@ -1272,6 +1279,19 @@ function TargetGraphInner({
     }
     // blocks view: row clicks handle their own click via data.onBlockClick
   };
+
+  useEffect(() => {
+    if (view !== "pipeline") return;
+    setNodes((ns) =>
+      ns.map((n) => {
+        if (n.type !== "bridgeStepNode") return n;
+        const data = n.data as BridgeStepNodeData;
+        const isSelected = selectedStepId != null && n.id === `bridge-step-${selectedStepId}`;
+        if (data.isSelected === isSelected) return n;
+        return { ...n, data: { ...data, isSelected } };
+      }),
+    );
+  }, [selectedStepId, view, setNodes]);
 
   const btnBase: React.CSSProperties = {
     fontSize: 12,

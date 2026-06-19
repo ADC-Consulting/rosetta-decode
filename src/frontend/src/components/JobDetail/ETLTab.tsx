@@ -319,6 +319,7 @@ export default function ETLTab({
               onBlockClick={handleTargetBlockClick}
               onPipelineStepClick={handlePipelineStepClick}
               selectedBlockId={selectedBlock}
+              selectedStepId={selectedStep?.step_id}
             />
           )}
         </div>
