@@ -6,6 +6,37 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-19 — F70 bridge view + F71 ETL tab polish
+
+**Branch:** `feat/F69-target-view-polish`
+
+### Done
+- Pushed back on P0 criticism (Pipeline/Files/Blocks label confusion): labels themselves are fine; the real issue was Target Pipeline and Target Files showing identical data with different layouts
+- Replaced Target Pipeline with a SAS→Python **bridge view**: amber step cards (left) connected by edges to slate Python module cards (right); dagre LR; `buildBridgeGraph` in TargetGraph.tsx
+- Fixed 5 bridge view issues: orphaned module "standalone" badge, step card `cursor:default`, removed redundant "SAS STEP" label, `BridgeLegend` (bottom-left, Pipeline view only), edge annotation
+- Completed **F71** (4 subtasks): S01 bridge step clicks → PipelineStepPanel; S02 step number `#N` badge; S03 "blocks:" trust label in summary bar; S04 BlockDetailPanel back link restyled as blue breadcrumb
+- Browser-verified all flows: bridge step click → PipelineStepPanel ✅, module click → PythonModulePanel ✅, block click → BlockDetailPanel with breadcrumb ✅, Files + Blocks views unaffected ✅
+
+### Decisions
+- **Bridge view edges derived from `step.files`** — discovered post-ship that this is wrong for steps with multiple SAS code files (step.files holds data dependency paths, not code filenames). Bug masked for steps 2–6 (each references one SAS file). Correct approach: `step.blocks → blockPlans → source_file → sasFileToPyFile`. Logged as F72.
+- **Target Pipeline = bridge view, Target Files = dependency graph** — gives each sub-view a distinct informational purpose; previously both showed the same module dependency graph with different layout directions.
+
+### Open Questions
+- Should bridge view step cards show a hover highlight + selected state when the step panel is open?
+
+### Next Session — Start Here
+1. Fix F72: in `buildBridgeGraph` (`TargetGraph.tsx`), replace `step.files` edge derivation with `step.blocks → blockPlans → source_file → sasFileToPyFile`. Then browser-verify step #1 now has edges.
+2. Open PRs for F69+F70+F71 once F72 is fixed.
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/TargetGraph.tsx`
+- `src/frontend/src/components/JobDetail/ETLTab.tsx`
+- `src/frontend/src/components/JobDetail/BlockDetailPanel.tsx`
+- `docs/plans/latest/F71-etl-tab-polish.md` (new)
+- `journal/BACKLOG.md`, `journal/SESSIONS.md`
+
+---
+
 ## 2026-06-18 — F70 Target ETL sub-views — Steps / Modules / Blocks
 
 **Branch:** `feat/F69-target-view-polish` (same branch — F70 extends F69)

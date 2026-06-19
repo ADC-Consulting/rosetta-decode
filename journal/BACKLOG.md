@@ -493,6 +493,10 @@
 - [x] F71 S04: Promote BlockDetailPanel back link to breadcrumb → see `docs/plans/latest/F71-etl-tab-polish.md`
 - [x] F71 S05: `make test` exits 0
 
+**F72 — Bridge view edge bug fix**
+
+- [ ] F72: Fix `buildBridgeGraph` edge derivation — use `step.blocks → blockPlans → source_file → sasFileToPyFile` instead of `step.files` (which holds data dependency paths, not SAS code filenames). Step #1 currently shows 0 edges; all other steps have 1 SAS file so the bug is masked.
+
 - [ ] #21: Consolidate lineage into a single primary view — `backlog` label
 - [ ] #20: Rollback / versioning based on lineage — `backlog` label
 - [ ] #32: Specify decision-ready reports (technical + PO) — `backlog` label, deferred
