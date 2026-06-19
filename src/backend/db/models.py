@@ -46,6 +46,7 @@ class Job(Base):
     user_overrides: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     token_usage: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True, default=None)
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    accepted_by: Mapped[str | None] = mapped_column(Text, nullable=True)
     skip_llm: Mapped[bool] = mapped_column(
         sa.Boolean, nullable=False, default=False, server_default=sa.text("false")
     )

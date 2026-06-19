@@ -34,6 +34,8 @@ export default function EditorFullPage(): React.ReactElement {
     );
   }
 
+  const isAccepted = Boolean(job.accepted_at);
+
   return (
     <div className="h-screen flex flex-col">
       <div className="flex-1 min-h-0 p-2">
@@ -45,6 +47,7 @@ export default function EditorFullPage(): React.ReactElement {
           blockPlans={planData?.block_plans ?? []}
           isFullPage
           onExpand={() => navigate(`/jobs/${id}?tab=editor`)}
+          isAccepted={isAccepted}
         />
       </div>
     </div>

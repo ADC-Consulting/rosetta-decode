@@ -448,23 +448,54 @@
 - [x] F67 S-B: `TargetGraph` component — Python file nodes, remapped edges, trust-coloured, legend → `src/frontend/src/components/JobDetail/TargetGraph.tsx`
 - [x] F67 S-C: Source / Target toggle in ETLTab + wire TargetGraph → `src/frontend/src/components/JobDetail/ETLTab.tsx`
 - [x] F67 S-D: `make test` exits 0
-- [x] F67 fix: sub-view reset bug — lift `lineageView` state into ETLTab + `onViewChange` callback on LineageGraph
-- [x] F67 fix: selection ring on Target nodes — split useMemo (layout vs. selection overlay) + `useEffect` sync
-- [x] F67 fix: legend covers zoom controls — moved legend to `right: 12`
-- [x] F67 fix: isolated nodes mislead as upstream — dagre only on connected nodes; row placement below cluster
 
-**F68 — Target view polish (11 issues from 2026-06-17 review) → plan to be written**
-- [ ] F68 P0: inspector panel header shows `.sas` in Target view — should say `.py` → `ETLTab.tsx`
-- [ ] F68 P0: phantom arrow on root node (dangling edge or handle rendering bug) → `TargetGraph.tsx`
-- [ ] F68 P1: amber `connectionCount ≥ 4` collides with trust amber — use neutral bold color → `FileNodeCard.tsx`
-- [ ] F68 P1: summary bar stats unchanged in Target view — should show `modules: N` → `ETLTab.tsx`
-- [ ] F68 P2: "PROGRAM" badge noise on Python module nodes — replace with `.py` badge or remove → `TargetGraph.tsx`
-- [ ] F68 P2: isolated row needs divider + "No data dependencies detected" label → `TargetGraph.tsx`
-- [ ] F68 P2: handle dots visible on zero-edge nodes — hide when `connectionCount === 0` → `FileNodeCard.tsx`
-- [ ] F68 P3: `⇔` symbol wrong + unlabeled — use directed counts or plain "N connections" → `FileNodeCard.tsx`
-- [ ] F68 P3: no `.py` extension on Target node names → `TargetGraph.tsx`
-- [ ] F68 P3: legend circles ≠ node accent bar shape — use rectangle swatches → `TargetGraph.tsx`
-- [ ] F68 P3: no tooltips on Source/Target toggle buttons → `ETLTab.tsx`
+**F68 — Post-acceptance workflow (#68) → see `docs/plans/latest/F68-post-acceptance-workflow.md` — complete**
+- [x] F68 S-A: Alembic migration 020 — add `accepted_by` → `alembic/versions/020_add_accepted_by.py`
+- [x] F68 S-B: Job model `accepted_by` column → `src/backend/db/models.py`
+- [x] F68 S-C: Migration-package builder → `src/backend/api/packaging.py`
+- [x] F68 S-D: Requirements inference helper → `src/backend/api/packaging.py`
+- [x] F68 S-E: Rewrite `download_job` route → `src/backend/api/routes/jobs.py`
+- [x] F68 S-F: Immutable acceptance (409 on re-accept) → `src/backend/api/routes/jobs.py`
+- [x] F68 S-G: Backend tests (packaging, accept, download) → `tests/test_packaging.py`
+- [x] F68 S-H: Frontend API client + types → `src/frontend/src/api/{jobs,types}.ts`
+- [x] F68 S-I: Accepted-state header — locked badge + Download CTA → `JobDetailPage.tsx`
+- [x] F68 S-J: Read-only editors in delivered mode → `EditorTab.tsx`
+- [x] F68 S-K: Verdict strip accepted state → `PlanTab.tsx`
+- [x] F68 S-L: `make test` exits 0
+**F69 — Target view polish → see `docs/plans/latest/F69-target-view-polish.md` — complete**
+- [x] F69 S-A: inspector header `.sas` → `.py` in Target view → `BlockInspectorPanel.tsx`, `ETLTab.tsx`
+- [x] F69 S-B: hide handles on nodes with no edges in that direction → `FileNodeCard.tsx`, `TargetGraph.tsx`
+- [x] F69 S-C: connection count — drop amber color, fix `⇔` → `↔` → `FileNodeCard.tsx`
+- [x] F69 S-D: summary bar shows `modules: N` in Target view → `ETLTab.tsx`
+- [x] F69 S-E: replace `PROGRAM` badge with `.py` badge on Target nodes → `FileNodeCard.tsx`, `TargetGraph.tsx`
+- [x] F69 S-F: isolated row divider + "No data dependencies detected" label → `TargetGraph.tsx`
+- [x] F69 S-G: node names include `.py` extension → `TargetGraph.tsx`
+- [x] F69 S-H: legend swatches are rectangles, not circles → `TargetGraph.tsx`
+- [x] F69 S-I: tooltip on Source/Target toggle buttons → `ETLTab.tsx`
+- [x] F69 S-J: `make test` exits 0
+
+**F70 — Target ETL sub-views: Steps / Modules / Blocks → see `docs/plans/latest/F70-target-etl-subviews.md` — complete**
+- [x] F70 S-A: `Steps | Modules | Blocks` toggle in ETLTab summary bar (Target-only); `targetView` state
+- [x] F70 S-B: TargetGraph `view` prop + layout switching; shared `rawEdges` derivation across branches
+- [x] F70 S-C: Steps view — dagre TB layout, `PipelineStepNode` (filename, `.py` badge, trust bar, `deps: N → N`)
+- [x] F70 S-D: Modules view — existing dagre LR graph gated behind `view === "modules"`
+- [x] F70 S-E: Blocks view — expanded node cards in-place; heights computed from block count; `BlocksFileNode`
+- [x] F70 S-F: `PythonModulePanel` component — tinted group headers for multi-source modules, `BlockRow` reuse
+- [x] F70 S-G: ETLTab wiring — `selectedPyModule`, right-slot switching between `PythonModulePanel` / `BlockDetailPanel`
+- [x] F70 S-H: `BlockDetailPanel` component — back link, strategy/confidence/recon, `ⓘ` rationale popover, "View Code"
+- [x] F70 S-I: `make test` exits 0
+
+**F71 — ETL Tab Polish** (`docs/plans/latest/F71-etl-tab-polish.md`)
+
+- [x] F71 S01: Wire bridge step clicks to PipelineStepPanel → see `docs/plans/latest/F71-etl-tab-polish.md`
+- [x] F71 S02: Step number badge on bridge step cards → see `docs/plans/latest/F71-etl-tab-polish.md`
+- [x] F71 S03: Label trust stats "blocks:" in summary bar → see `docs/plans/latest/F71-etl-tab-polish.md`
+- [x] F71 S04: Promote BlockDetailPanel back link to breadcrumb → see `docs/plans/latest/F71-etl-tab-polish.md`
+- [x] F71 S05: `make test` exits 0
+
+**F72 — Bridge view edge bug fix**
+
+- [ ] F72: Fix `buildBridgeGraph` edge derivation — use `step.blocks → blockPlans → source_file → sasFileToPyFile` instead of `step.files` (which holds data dependency paths, not SAS code filenames). Step #1 currently shows 0 edges; all other steps have 1 SAS file so the bug is masked.
 
 - [ ] #21: Consolidate lineage into a single primary view — `backlog` label
 - [ ] #20: Rollback / versioning based on lineage — `backlog` label

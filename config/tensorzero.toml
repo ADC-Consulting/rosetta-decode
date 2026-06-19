@@ -6,7 +6,8 @@ routing = ["azure"]
 [models."gpt-5.4".providers.azure]
 type = "azure"
 deployment_id = "gpt-5.4"
-endpoint = "https://ash-pls-ai-dev2.cognitiveservices.azure.com/"
+# Substituted at gateway startup from $AZURE_AI_FOUNDRY_ENDPOINT (see docker-compose).
+endpoint = "${AZURE_AI_FOUNDRY_ENDPOINT}"
 api_key_location = "env::AZURE_AI_FOUNDRY_API_KEY"
 
 [models."claude-opus-4-5"]
@@ -15,7 +16,8 @@ routing = ["azure"]
 [models."claude-opus-4-5".providers.azure]
 type = "anthropic"
 model_name = "claude-opus-4-5"
-api_base = "https://ash-pls-ai-dev2.cognitiveservices.azure.com/anthropic/v1/"
+# Substituted at gateway startup from $AZURE_ANTHROPIC_ENDPOINT (see docker-compose).
+api_base = "${AZURE_ANTHROPIC_ENDPOINT}"
 api_key_location = "env::AZURE_AI_FOUNDRY_API_KEY"
 
 [rate_limiting]

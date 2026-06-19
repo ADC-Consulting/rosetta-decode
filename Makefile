@@ -1,5 +1,6 @@
 .PHONY: help install test test-fast test-reconciliation lint format check coverage clean \
-        dev dev-down dev-logs run-local run-backend run-frontend frontend-lint frontend-build tsc-check docker-build test-file
+        dev dev-down dev-logs run-local run-backend run-frontend frontend-lint frontend-build tsc-check docker-build test-file \
+        tf-init tf-plan tf-apply tf-destroy tf-fmt tf-validate tf-bootstrap tf-bootstrap-destroy tf-nuke
 
 SHELL := bash
 .SHELLFLAGS := -eu -o pipefail -c
@@ -107,3 +108,57 @@ dev-logs:
 clean:
 	@find . -type d $$$ -name __pycache__ -o -name .pytest_cache -o -name .mypy_cache -o -name .ruff_cache -o -name htmlcov $$$ -exec rm -rf {} + 2>/dev/null; \
 	find . -name ".coverage*" -delete 2>/dev/null; echo "✓ clean"
+
+# ── Infra (Terraform — same config, per-env tfvars + state) ───────────────────
+# Usage: make tf-plan ENV=dev   |   make tf-apply ENV=prd
+# Same root config for every env; values come from env/<env>.tfvars, state from
+# env/<env>.backend.hcl. plan/apply re-init the backend for the selected env.
+
+TF_DIR     := infra
+VALID_ENVS := dev prd
+
+define _tf_guard
+	@case " $(VALID_ENVS) " in *" $(ENV) "*) : ;; \
+	  *) echo "ENV must be one of: $(VALID_ENVS) (got '$(ENV)'). e.g. make $@ ENV=dev"; exit 1 ;; esac
+endef
+
+# Re-init the backend for the selected env, then run the given terraform command
+# with that env's var-file.
+define _tf_in_env
+	cd $(TF_DIR) && \
+	  terraform init -reconfigure -backend-config=backend.hcl -backend-config=env/$(ENV).backend.hcl -input=false >/dev/null && \
+	  terraform $(1) -var-file=env/common.tfvars -var-file=env/$(ENV).tfvars
+endef
+
+tf-init: ## Init backend for an env: make tf-init ENV=dev
+	$(_tf_guard)
+	@cd $(TF_DIR) && terraform init -reconfigure -backend-config=backend.hcl -backend-config=env/$(ENV).backend.hcl -input=false
+
+tf-fmt: ## Format all Terraform files
+	@cd $(TF_DIR) && terraform fmt -recursive
+
+tf-validate: ## Validate config: make tf-validate
+	@cd $(TF_DIR) && terraform init -backend=false -input=false >/dev/null && terraform validate
+
+tf-plan: ## Plan changes for an env: make tf-plan ENV=dev
+	$(_tf_guard)
+	@$(call _tf_in_env,plan -input=false)
+
+tf-apply: ## Apply changes for an env: make tf-apply ENV=dev
+	$(_tf_guard)
+	@$(call _tf_in_env,apply -input=false)
+
+tf-destroy: ## Destroy an env: make tf-destroy ENV=dev
+	$(_tf_guard)
+	@$(call _tf_in_env,destroy -input=false)
+
+tf-bootstrap: ## Create the remote-state backend (one-time, az cli)
+	@$(TF_DIR)/scripts/bootstrap-backend.sh create
+
+tf-bootstrap-destroy: ## Delete the remote-state backend (DESTROYS ALL STATE)
+	@$(TF_DIR)/scripts/bootstrap-backend.sh destroy
+
+tf-nuke: ## Tear EVERYTHING down: destroy dev + prd infra, then the backend
+	@echo ">> Destroying dev infra..."   && $(MAKE) -s tf-destroy ENV=dev
+	@echo ">> Destroying prd infra..."   && $(MAKE) -s tf-destroy ENV=prd
+	@echo ">> Removing state backend..." && $(MAKE) -s tf-bootstrap-destroy

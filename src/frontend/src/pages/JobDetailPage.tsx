@@ -1,5 +1,6 @@
 import {
   acceptJob,
+  downloadJob,
   getJob,
   getJobDoc,
   getJobPlan,
@@ -21,11 +22,12 @@ import {
   POLLING_STATUSES,
   TAB_CONTENT_HEIGHT,
 } from "@/components/JobDetail/constants";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Download } from "lucide-react";
 import { useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -158,7 +160,22 @@ export default function JobDetailPage(): React.ReactElement {
 
   const shortId = id.length >= 8 ? `${id.slice(0, 8)}…` : id;
 
+  const isAccepted = Boolean(job?.accepted_at);
   const isReviewable = job?.status === "proposed" || job?.status === "accepted" || job?.status === "under_review";
+
+  const handleDownload = async () => {
+    try {
+      const blob = await downloadJob(id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `rosetta-${id}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Download failed");
+    }
+  };
 
   const { data: planData } = useQuery({
     queryKey: ["job", id, "plan"],
@@ -221,28 +238,55 @@ export default function JobDetailPage(): React.ReactElement {
             <ChevronTabBar activeTab={activeTab} />
 
             <div className="ml-auto flex items-center gap-2">
-              {(job?.status === "proposed" || job?.status === "under_review") && (
+              {isAccepted ? (
                 <>
-                  {job?.status === "under_review" && (
-                    <span className="text-sm text-amber-600 font-medium px-2 py-1 bg-amber-50 rounded border border-amber-200">
-                      ⚠ Under review — reconciliation failed
-                    </span>
-                  )}
+                  <Badge
+                    variant="outline"
+                    className="flex items-center gap-1.5 border-emerald-300 bg-emerald-50 text-emerald-700 px-2.5 py-1 text-xs font-medium"
+                    aria-label="Migration accepted"
+                  >
+                    <CheckCircle2 size={13} className="shrink-0" />
+                    Accepted
+                    {job?.accepted_at && (
+                      <span className="ml-1 text-emerald-600 font-normal">
+                        {new Date(job.accepted_at).toLocaleDateString(undefined, {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        })}
+                      </span>
+                    )}
+                  </Badge>
                   <Button
                     size="sm"
-                    onClick={() => setShowAcceptConfirm(true)}
-                    disabled={acceptMutation.isPending}
-                    className="cursor-pointer"
+                    onClick={() => { void handleDownload(); }}
+                    className="cursor-pointer flex items-center gap-1.5"
+                    aria-label="Download migration package"
                   >
-                    Accept migration
+                    <Download size={14} />
+                    Download migration package
                   </Button>
                 </>
-              )}
-
-              {job?.status === "accepted" && (
-                <span className="text-sm text-emerald-600 font-medium">
-                  ✓ Accepted
-                </span>
+              ) : (
+                <>
+                  {(job?.status === "proposed" || job?.status === "under_review") && (
+                    <>
+                      {job?.status === "under_review" && (
+                        <span className="text-sm text-amber-600 font-medium px-2 py-1 bg-amber-50 rounded border border-amber-200">
+                          Under review — reconciliation failed
+                        </span>
+                      )}
+                      <Button
+                        size="sm"
+                        onClick={() => setShowAcceptConfirm(true)}
+                        disabled={acceptMutation.isPending}
+                        className="cursor-pointer"
+                      >
+                        Accept migration
+                      </Button>
+                    </>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -273,6 +317,8 @@ export default function JobDetailPage(): React.ReactElement {
                 onSave={() => saveVersionMutation.mutate()}
                 isSaving={saveVersionMutation.isPending}
                 restoreKey={reportRestoreKey}
+                isAccepted={isAccepted}
+                acceptedAt={job?.accepted_at ?? null}
               />
             </TabsContent>
 
@@ -284,6 +330,7 @@ export default function JobDetailPage(): React.ReactElement {
                 trustReport={trustReportData}
                 jobSources={jobSources}
                 isReviewable={isReviewable}
+                isAccepted={isAccepted}
                 generatedFiles={job?.generated_files ?? null}
               />
             </TabsContent>

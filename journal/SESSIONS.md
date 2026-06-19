@@ -6,6 +6,150 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-19 — F70 bridge view + F71 ETL tab polish
+
+**Branch:** `feat/F69-target-view-polish`
+
+### Done
+- Pushed back on P0 criticism (Pipeline/Files/Blocks label confusion): labels themselves are fine; the real issue was Target Pipeline and Target Files showing identical data with different layouts
+- Replaced Target Pipeline with a SAS→Python **bridge view**: amber step cards (left) connected by edges to slate Python module cards (right); dagre LR; `buildBridgeGraph` in TargetGraph.tsx
+- Fixed 5 bridge view issues: orphaned module "standalone" badge, step card `cursor:default`, removed redundant "SAS STEP" label, `BridgeLegend` (bottom-left, Pipeline view only), edge annotation
+- Completed **F71** (4 subtasks): S01 bridge step clicks → PipelineStepPanel; S02 step number `#N` badge; S03 "blocks:" trust label in summary bar; S04 BlockDetailPanel back link restyled as blue breadcrumb
+- Browser-verified all flows: bridge step click → PipelineStepPanel ✅, module click → PythonModulePanel ✅, block click → BlockDetailPanel with breadcrumb ✅, Files + Blocks views unaffected ✅
+
+### Decisions
+- **Bridge view edges derived from `step.files`** — discovered post-ship that this is wrong for steps with multiple SAS code files (step.files holds data dependency paths, not code filenames). Bug masked for steps 2–6 (each references one SAS file). Correct approach: `step.blocks → blockPlans → source_file → sasFileToPyFile`. Logged as F72.
+- **Target Pipeline = bridge view, Target Files = dependency graph** — gives each sub-view a distinct informational purpose; previously both showed the same module dependency graph with different layout directions.
+
+### Open Questions
+- Should bridge view step cards show a hover highlight + selected state when the step panel is open?
+
+### Next Session — Start Here
+1. Fix F72: in `buildBridgeGraph` (`TargetGraph.tsx`), replace `step.files` edge derivation with `step.blocks → blockPlans → source_file → sasFileToPyFile`. Then browser-verify step #1 now has edges.
+2. Open PRs for F69+F70+F71 once F72 is fixed.
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/TargetGraph.tsx`
+- `src/frontend/src/components/JobDetail/ETLTab.tsx`
+- `src/frontend/src/components/JobDetail/BlockDetailPanel.tsx`
+- `docs/plans/latest/F71-etl-tab-polish.md` (new)
+- `journal/BACKLOG.md`, `journal/SESSIONS.md`
+
+---
+
+## 2026-06-18 — F70 Target ETL sub-views — Steps / Modules / Blocks
+
+**Branch:** `feat/F69-target-view-polish` (same branch — F70 extends F69)
+
+### Done
+- Implemented all 9 F70 subtasks — purely frontend, no backend changes
+- **S-A**: `targetView: "steps" | "modules" | "blocks"` state in ETLTab; `Steps | Modules | Blocks` button group in summary bar visible only when Target is active; default `"steps"`
+- **S-B**: `TargetGraph` accepts `view`, `onModuleClick`, `onBlockClick` props; internal `useMemo` branches on `view`; `rawEdges` derivation shared across all three branches
+- **S-C**: Steps view — dagre TB layout (`rankdir: "TB"`); `PipelineStepNode` module-scope component (filename, `.py` badge, trust colour bar, block count, `deps: N → N`); `NODE_TYPES` extended; `key={`target-${targetView}`}` forces clean ReactFlow remount on view change
+- **S-D**: Modules view — existing `FileNodeCard` LR graph preserved and gated behind `view === "modules"`
+- **S-E**: Blocks view — `BlocksFileNode` with computed heights (`BLOCKS_BASE_H + BLOCK_ROW_H × blockCount`); inline block rows with type badge, `:line`, status icon; clicking row calls `onBlockClick`
+- **S-F**: `PythonModulePanel.tsx` (new) — `.py` header + block count + close; single-source = flat block list; multi-source = `bg-slate-50` tinted group headers per SAS source; `BlockRow` reuse
+- **S-G**: `selectedPyModule` state in ETLTab; right-slot switches between `PythonModulePanel` (module selected) and `BlockDetailPanel` (block selected); `codePopupBlockId` separate from `selectedBlock` to avoid coupling
+- **S-H**: `BlockDetailPanel.tsx` (new) — `← {parentPyFile}` back link + close; block type, file:lines, strategy badge, confidence % bar, recon status; `ⓘ` Popover for rationale; "View Code" → `BlockCodePopup`
+- **S-I**: `make test` exits 0 — all 7 gates green (tsc, eslint, frontend-build critical)
+- Browser-verified all three views and both right panels — Steps node click → PythonModulePanel, block row click → BlockDetailPanel, back link returns to PythonModulePanel, View Code opens BlockCodePopup ✅
+- All subtasks marked `[x] done` in plan file; plan Status set to `complete`
+
+### Decisions
+- Sub-toggle placed in summary bar (not inside canvas) — consistent with Source/Target toggle; keeps ReactFlow canvas uncluttered
+- Names Steps/Modules/Blocks (not Pipeline/Files/Blocks) — Source uses Pipeline/Files/Blocks for SAS artefacts; distinct labels prevent confusion
+- Steps view uses TB layout (Modules stays LR) — different visual language for execution order vs dependency graph
+
+### Open Questions
+- none
+
+### Next Session — Start Here
+1. Commit F69 + F70 changes — two logical commits: `feat(F69): target view polish` then `feat(F70): Target ETL Steps/Modules/Blocks sub-views`
+2. Open PRs for F69 and F70
+3. Next feature: Data Storage tab polish — plan already drafted in `.claude/plans/linear-discovering-sketch.md`
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/ETLTab.tsx`
+- `src/frontend/src/components/JobDetail/TargetGraph.tsx`
+- `src/frontend/src/components/JobDetail/PythonModulePanel.tsx` (new)
+- `src/frontend/src/components/JobDetail/BlockDetailPanel.tsx` (new)
+- `src/frontend/src/components/JobDetail/BlockInspectorPanel.tsx`
+- `src/frontend/src/components/JobDetail/FileNodeCard.tsx`
+- `src/frontend/src/lib/sas-python-file-map.ts` (new on this branch)
+- `docs/plans/latest/F70-target-etl-subviews.md`
+- `journal/BACKLOG.md`, `journal/SESSIONS.md`
+
+---
+
+## 2026-06-18 — F69 Target view polish — all 10 subtasks implemented
+
+**Branch:** `feat/F69-target-view-polish`
+
+### Done
+- Implemented all 10 F69 subtasks — purely frontend, no backend changes
+- **S-A**: `BlockInspectorPanel` `displayTitle?` prop; ETLTab passes `sasFileToPyFile(selectedFile)` when in Target view so inspector header shows `.py` filename
+- **S-B**: `FileNodeData` extended with `hasIncoming?`/`hasOutgoing?`; `FileNodeCard` conditionally renders each `<Handle>`; `TargetGraph` computes these from `rawEdges` sets — eliminates phantom arrow on root node
+- **S-C**: Connection count color changed from amber threshold to always `#64748b`; `⇔` → `↔`; tooltip updated
+- **S-D**: Summary bar branches on `graphView` — `modules: N` in Target view, `files/blocks` in Source
+- **S-E**: `FileNodeData.file_type` widened to include `"MODULE"`; `FILE_TYPE_PILL` gets green `.py` badge entry; `TargetGraph` passes `file_type: "MODULE"`
+- **S-F**: `SectionLabelNode` custom ReactFlow node type; inserted between connected cluster and isolated row with "No data dependencies detected" label + horizontal rule dividers
+- **S-G**: Target node `filename` passes full `pyFile` (with `.py` extension) instead of stem
+- **S-H**: Legend swatches changed to `width: 18, height: 3, borderRadius: 2` — matches accent bar shape
+- **S-I**: Toggle buttons get `title` attributes — `"SAS source pipeline"` / `"Generated Python modules"`
+- **S-J**: `make test` exits 0 — all 7 gates green
+- `sas-python-file-map.ts` and `TargetGraph.tsx` recreated on this branch (off main, not off F67 branch)
+- All subtasks marked `[x] done` in plan file; plan Status set to `complete`
+
+### Decisions
+- none
+
+### Open Questions
+- F67 PR #106 still open — needs review/merge; F69 branch includes all F67 code since it was cut off main before F67 merged
+
+### Next Session — Start Here
+1. Open PR for `feat/F69-target-view-polish` (closes issue for F69 Target view polish)
+2. Check F67 PR #106 status — if merged, confirm F69 branch history is clean
+3. Next feature from backlog: Data Storage tab polish (plan drafted in `.claude/plans/`)
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/BlockInspectorPanel.tsx`
+- `src/frontend/src/components/JobDetail/ETLTab.tsx`
+- `src/frontend/src/components/JobDetail/FileNodeCard.tsx`
+- `src/frontend/src/components/JobDetail/TargetGraph.tsx` (new on this branch)
+- `src/frontend/src/lib/sas-python-file-map.ts` (new on this branch)
+- `src/frontend/src/pages/JobDetailPage.tsx`
+- `docs/plans/latest/F69-target-view-polish.md`
+- `journal/BACKLOG.md`, `journal/SESSIONS.md`
+
+---
+
+## 2026-06-17 — F69 plan written, branch created, no code yet
+
+**Branch:** `feat/F69-target-view-polish`
+
+### Done
+- Wrote `docs/plans/latest/F69-target-view-polish.md` — 10 subtasks (S-A through S-J) covering all 11 issues from the Target view critique
+- Discovered main branch already used F68 (`F68-post-acceptance-workflow`) — renumbered to F69, resolved BACKLOG.md merge conflict
+- Created branch `feat/F69-target-view-polish` off fresh main (main had 53 files of new work from others)
+- No implementation started — user ended session before agent delegation
+
+### Decisions
+- none
+
+### Open Questions
+- none — plan is fully specified and ready to implement
+
+### Next Session — Start Here
+1. Implement S-A through S-D (P0/P1 fixes) via `frontend-builder` — see `docs/plans/latest/F69-target-view-polish.md`
+2. Then S-E through S-J (P2/P3 fixes) in a second delegation
+3. Run `make test`, then commit
+
+### Files Touched
+- `docs/plans/latest/F69-target-view-polish.md` (new)
+- `journal/BACKLOG.md` (F68 post-acceptance added from main, F69 entries added)
+
+---
+
 ## 2026-06-17 — Target view critique: 11 issues identified, F68 plan scoped
 
 **Branch:** `feat/F67-etl-source-target-toggle` (review only — no code written)
@@ -65,6 +209,92 @@ Most recent session on top. Each entry should answer:
 - `src/frontend/src/components/LineageGraph.tsx` (onViewChange callback)
 - `src/frontend/src/pages/JobDetailPage.tsx` (generatedFiles prop)
 - `docs/plans/latest/F67-etl-source-target-toggle.md`
+
+---
+
+## 2026-06-17 — F68 post-acceptance workflow
+
+**Branch:** `feat/F68-post-acceptance-workflow`
+
+### Done
+- Implemented all 12 subtasks (S-A through S-L) in a single session
+- **Alembic migration 020**: `accepted_by` nullable Text column on `jobs`
+- **`src/backend/api/packaging.py`** (new): `build_migration_package` produces a byte-reproducible 5-file zip (`src/` tree, `requirements.txt`, `audit.json`, `reconciliation_report.json`, `migration_summary.md`); `infer_requirements` with pinned executor versions; `_sas_path_to_module` for SAS-tree reconstruction
+- **`accept_job`**: immutable — stamps `accepted_by="anonymous"` once, 409 on re-accept; `"accepted"` removed from `_REVIEW_STATUSES`
+- **Server-side immutability guards**: `PUT /python_code` and `PATCH /blocks/{id}/python` both 409 when `job.accepted_at` is set
+- **`download_job`** rewritten to delegate to `build_migration_package`; download available pre- and post-acceptance
+- **Frontend**: `isAccepted` threaded to `EditorTab`, `ETLTab`, `BlockCodePopup`, `BlockPlanTable`, `EditorFullPage` — Monaco editors forced read-only, edit/save controls hidden
+- **`JobDetailPage`**: Accept button replaced by locked "Accepted" badge + date + "Download migration package" CTA
+- **`PlanTab`**: verdict strip renders "Delivered — Accepted" when accepted
+- **Tests**: 14 new unit tests (`test_packaging.py`) + 7 new route tests; updated 2 existing test files for new contracts
+- All 7 `make test` gates green (ruff, mypy, pytest+coverage, tsc, eslint, build)
+- PR description generated; feature committed as `bd846fb`
+
+### Decisions
+- Download available pre-acceptance (proposed/under_review/done) as a usable preview; `audit.json` acceptance fields are null until acceptance — consistent with "same artifact, richer metadata on accept"
+- `_RUNTIME_PINS` in `packaging.py` is a curated constant sourced from `uv.lock`; a drift-guard test fails if versions diverge — single place to update on runtime bumps
+
+### Open Questions
+- None
+
+### Next Session — Start Here
+1. Push `feat/F68-post-acceptance-workflow` and open PR
+2. Manual smoke: accept a multi-file job, download zip, verify contents and read-only UI
+3. Next feature: F67 ETL tab source/target toggle (`docs/plans/latest/F67-etl-source-target-toggle.md`)
+
+### Files Touched
+- `alembic/versions/020_add_accepted_by.py` (new)
+- `src/backend/api/packaging.py` (new)
+- `src/backend/api/routes/jobs.py`
+- `src/backend/api/schemas.py`
+- `src/backend/db/models.py`
+- `src/frontend/src/api/jobs.ts`, `types.ts`
+- `src/frontend/src/components/JobDetail/BlockCodePopup.tsx`, `BlockPlanTable.tsx`, `ETLTab.tsx`, `EditorTab.tsx`, `PlanTab.tsx`
+- `src/frontend/src/pages/EditorFullPage.tsx`, `JobDetailPage.tsx`
+- `tests/test_packaging.py` (new)
+- `tests/test_api_routes.py`, `test_jobs_routes_comprehensive.py`, `test_plan_interaction_routes.py`
+- `docs/plans/latest/F68-post-acceptance-workflow.md` (new)
+- `journal/BACKLOG.md`, `journal/SESSIONS.md`
+
+---
+
+## 2026-06-16 — Azure Terraform infrastructure for self-hosted AI Foundry
+
+**Branch:** `feat/infra-azure-terraform`
+
+**What we did:**
+
+Built `infra/` Terraform to replace the borrowed LLM endpoint with our own Azure resources, and fixed the worker's connection to it.
+
+- **IaC scaffold** — one root config + reusable modules (`resource_group`, `network`, `storage`, `key_vault`, `ai_foundry`). Provisions per-env (dev/prd) AI Foundry hub + project, the `gpt-5.4` deployment (Data Zone Standard for EU residency), Key Vault, storage, and a private-endpoint subnet. Optional second deployment (Claude) gated behind `deploy_claude`.
+- **Config model** — single config, environments are tfvars: `env/common.tfvars` (shared) + `env/<env>.tfvars` (only `environment` + `subscription_id`). No hardcoded `default`s in `variables.tf`. Resource names derived from `project` + `environment`; storage name gets a subscription-hash suffix for global uniqueness.
+- **State backend** — `scripts/bootstrap-backend.sh` creates `rg-rosetta-decode-tfstate` + a derived-name storage account, writes `infra/backend.hcl` (gitignored). Single backend, per-env state keys. Made idempotent (reuses existing account).
+- **Make targets** — `tf-bootstrap`, `tf-init/plan/apply/destroy ENV=`, `tf-nuke`, `tf-fmt`, `tf-validate`.
+- **Worker fix** — TensorZero gateway was hardcoded to the old `ash-pls` endpoint → 401 against the new key. Switched `config/tensorzero.toml` endpoints to `${AZURE_AI_FOUNDRY_ENDPOINT}` / `${AZURE_ANTHROPIC_ENDPOINT}`, substituted at gateway startup in `docker-compose.yml`. Endpoint + key now come from the same env vars and can't drift.
+- **Docs** — root README "Infrastructure (Azure / Terraform)" section with concrete deploy steps; `infra/README.md` for module detail.
+
+**Decisions:**
+- Key Vault uses **access policies, not RBAC** — a Contributor can self-grant secret access during apply (no User Access Administrator). TODO in `modules/key_vault/main.tf` to switch back to RBAC once an admin can assign `Key Vault Secrets Officer`.
+- Network module trimmed to **VNet + private-endpoint subnet only** — compute subnets (ACI/App Service/ACR/Search) dropped until a compute host is actually chosen.
+- Endpoint stored as a **Terraform output**, not a Key Vault secret (it's a URL, not a credential); only the API key lives in Key Vault.
+
+**Commits:** `feat(infra)`, `fix(tensorzero)`, `docs` — 3 atomic, on `feat/infra-azure-terraform`. Not pushed.
+
+**Open Questions / Blockers:**
+- `gpt-5.4` rejects `max_tokens` (wants `max_completion_tokens`) — not yet hit through the worker, but likely the next error once a job runs against the live deployment.
+- Claude deployment coords in `common.tfvars` are placeholders (`claude-opus-4-1` / version `1`); Anthropic not enabled in tenant yet (`deploy_claude = false`).
+- `infra/env/*.tfvars` carry the subscription ID (identifier, not secret) — now in history.
+
+### Next Session — Start Here
+1. `make tf-bootstrap` then `make tf-apply ENV=dev`; grant the deploy principal Secrets Officer or rely on the access policy.
+2. Run a job end-to-end against the live `gpt-5.4`; if it 400s on `max_tokens`, fix the agent calls to use `max_completion_tokens`.
+3. Decide push / open PR for `feat/infra-azure-terraform`.
+
+### Files Touched
+- `infra/**` (new — modules, env tfvars, bootstrap script)
+- `Makefile`, `.gitignore`
+- `config/tensorzero.toml`, `docker-compose.yml`
+- `README.md`
 
 ---
 

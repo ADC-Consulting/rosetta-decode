@@ -10,6 +10,7 @@ import { BlockRow } from "./blockRowHelpers";
 
 interface BlockInspectorPanelProps {
   sourceFile: string;
+  displayTitle?: string;  // overrides header text only
   blockPlans: BlockPlan[];
   trustBlocks: Record<string, TrustReportBlock>;
   humanVerifiedBlocks: Set<string>;
@@ -23,6 +24,7 @@ interface BlockInspectorPanelProps {
 
 export default function BlockInspectorPanel({
   sourceFile,
+  displayTitle,
   blockPlans,
   trustBlocks,
   humanVerifiedBlocks,
@@ -52,7 +54,7 @@ export default function BlockInspectorPanel({
           className="font-semibold text-sm text-foreground font-mono truncate min-w-0"
           title={sourceFile}
         >
-          {basename}
+          {displayTitle ?? basename}
         </span>
         <Badge
           variant="secondary"

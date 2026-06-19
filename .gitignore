@@ -224,3 +224,28 @@ coverage/
 working/
 .claire/
 src/frontend/@/
+
+# Terraform (infra/)
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# Never commit real values / secrets — keep only *.example committed.
+*.auto.tfvars
+secrets.tfvars
+backend.hcl
+
+# infra/env/ holds Terraform tfvars + per-env backend keys — re-include it
+# (the generic `env/` rule above, meant for Python virtualenvs, would exclude it).
+!infra/env/
+!infra/env/*.tfvars
+!infra/env/*.backend.hcl
+infra/env/secrets.tfvars
