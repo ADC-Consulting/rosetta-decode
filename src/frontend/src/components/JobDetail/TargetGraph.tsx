@@ -2,7 +2,6 @@ import type {
   BlockPlan,
   FileNode,
   JobLineageResponse,
-  PipelineStep,
   TrustReportBlock,
   TrustReportFile,
 } from "@/api/types";
@@ -10,7 +9,7 @@ import { FileNodeCard, type FileNodeData } from "@/components/JobDetail/FileNode
 import { pyFileToSasFiles, sasFileToPyFile } from "@/lib/sas-python-file-map";
 import dagre from "dagre";
 import { RotateCcw } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   Background,
   BaseEdge,
@@ -49,9 +48,7 @@ interface TargetGraphProps {
   onFileClick: (sasSourceFiles: string[]) => void;
   onModuleClick?: (pyFile: string) => void;
   onBlockClick?: (blockId: string) => void;
-  onPipelineStepClick?: (step: PipelineStep) => void;
   selectedBlockId?: string | null;
-  selectedStepId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -551,224 +548,6 @@ function BlocksFileNode({ data }: NodeProps<BlocksFileNodeData>): React.ReactEle
 }
 
 // ---------------------------------------------------------------------------
-// BridgeStepNode — Bridge view left column (SAS pipeline step), module-level
-// ---------------------------------------------------------------------------
-
-interface BridgeStepNodeData {
-  step: PipelineStep;
-  stepNumber: number;
-  isSelected: boolean;
-}
-
-function BridgeStepNode({ data }: { data: BridgeStepNodeData }): React.ReactElement {
-  return (
-    <div
-      style={{
-        position: "relative",
-        background: data.isSelected ? "#eff6ff" : "#fef3c7",
-        border: `1.5px solid ${data.isSelected ? "#3b82f6" : "#f59e0b"}`,
-        borderRadius: 8,
-        padding: "8px 12px",
-        minWidth: 180,
-        maxWidth: 220,
-        fontSize: 11,
-        cursor: "pointer",
-      }}
-    >
-      <div
-        style={{
-          position: "absolute",
-          top: 6,
-          right: 8,
-          fontSize: 9,
-          fontWeight: 700,
-          color: "#92400e",
-          background: "#fde68a",
-          borderRadius: 4,
-          padding: "1px 4px",
-          lineHeight: 1.4,
-        }}
-      >
-        #{data.stepNumber}
-      </div>
-      <Handle type="source" position={Position.Right} style={{ opacity: 0 }} />
-      <div style={{ fontWeight: 700, color: "#1e293b", marginBottom: 4, lineHeight: 1.3 }}>
-        {data.step.name}
-      </div>
-      {data.step.description && (
-        <div style={{ color: "#64748b", fontSize: 10, lineHeight: 1.3 }}>
-          {data.step.description}
-        </div>
-      )}
-      <div style={{ marginTop: 6, color: "#78350f", fontSize: 10 }}>
-        {data.step.blocks.length} {data.step.blocks.length === 1 ? "block" : "blocks"}
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// BridgeModuleNode — Bridge view right column (Python module), module-level
-// ---------------------------------------------------------------------------
-
-interface BridgeModuleNodeData {
-  pyFile: string;
-  blockCount: number;
-  trustColor: string;
-  isOrphaned: boolean;
-}
-
-function BridgeModuleNode({
-  data,
-  selected,
-}: {
-  data: BridgeModuleNodeData;
-  selected?: boolean;
-}): React.ReactElement {
-  return (
-    <div
-      style={{
-        background: selected ? "#eff6ff" : "#f8fafc",
-        border: `1.5px solid ${selected ? "#3b82f6" : "#cbd5e1"}`,
-        borderRadius: 8,
-        padding: "8px 12px",
-        minWidth: 160,
-        maxWidth: 200,
-        fontSize: 11,
-        cursor: "pointer",
-      }}
-    >
-      <Handle type="target" position={Position.Left} style={{ opacity: 0 }} />
-      <div style={{ fontWeight: 600, color: "#1e293b" }}>{data.pyFile}</div>
-      <div style={{ marginTop: 4, display: "flex", gap: 6, alignItems: "center" }}>
-        <span
-          style={{
-            background: "#dbeafe",
-            color: "#1e40af",
-            borderRadius: 4,
-            padding: "1px 5px",
-            fontSize: 10,
-            fontWeight: 600,
-          }}
-        >
-          .py
-        </span>
-        <span style={{ color: "#64748b", fontSize: 10 }}>
-          {data.blockCount} {data.blockCount === 1 ? "block" : "blocks"}
-        </span>
-        <span
-          style={{
-            width: 8,
-            height: 8,
-            borderRadius: "50%",
-            background: data.trustColor,
-            display: "inline-block",
-            marginLeft: "auto",
-          }}
-        />
-      </div>
-      {data.isOrphaned && (
-        <div style={{ marginTop: 4, fontSize: 9, color: "#94a3b8", fontStyle: "italic" }}>
-          standalone
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// BridgeLegend — Pipeline view legend, module-level
-// ---------------------------------------------------------------------------
-
-function BridgeLegend(): React.ReactElement {
-  return (
-    <div
-      style={{
-        position: "absolute",
-        bottom: 12,
-        left: 12,
-        zIndex: 10,
-        background: "rgba(255,255,255,0.85)",
-        backdropFilter: "blur(6px)",
-        borderRadius: 6,
-        border: "1px solid #e2e8f0",
-        padding: "6px 10px",
-        fontSize: 10,
-        color: "#64748b",
-        lineHeight: 1.8,
-        pointerEvents: "none",
-      }}
-    >
-      <div style={{ fontWeight: 600, color: "#475569", marginBottom: 4, fontSize: 10 }}>
-        PIPELINE BRIDGE
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-        <span style={{ color: "#94a3b8", fontSize: 12 }}>→</span>
-        edge = "translated to"
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <span
-          style={{
-            width: 10,
-            height: 10,
-            borderRadius: 3,
-            background: "#fef3c7",
-            border: "1.5px solid #f59e0b",
-            display: "inline-block",
-          }}
-        />
-        SAS pipeline step
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <span
-          style={{
-            width: 10,
-            height: 10,
-            borderRadius: 3,
-            background: "#f8fafc",
-            border: "1.5px solid #cbd5e1",
-            display: "inline-block",
-          }}
-        />
-        Generated Python module
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
-        <span style={{ display: "flex", gap: 4 }}>
-          <span
-            style={{
-              width: 8,
-              height: 8,
-              borderRadius: "50%",
-              background: "#22c55e",
-              display: "inline-block",
-            }}
-          />
-          <span
-            style={{
-              width: 8,
-              height: 8,
-              borderRadius: "50%",
-              background: "#f59e0b",
-              display: "inline-block",
-            }}
-          />
-          <span
-            style={{
-              width: 8,
-              height: 8,
-              borderRadius: "50%",
-              background: "#94a3b8",
-              display: "inline-block",
-            }}
-          />
-        </span>
-        verified / review / pending
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // NODE_TYPES — module-level constant (CRITICAL: never inside a component)
 // ---------------------------------------------------------------------------
 
@@ -777,8 +556,6 @@ const NODE_TYPES = {
   sectionLabel: SectionLabelNode,
   pipelineStep: PipelineStepNode,
   blocksFile: BlocksFileNode,
-  bridgeStepNode: BridgeStepNode,
-  bridgeModuleNode: BridgeModuleNode,
 };
 const EDGE_TYPES = { hover: HoverLabelEdge };
 
@@ -879,6 +656,7 @@ function buildModulesGraph(
   lineage: JobLineageResponse,
   blockPlans: BlockPlan[],
   trustFiles: TrustReportFile[] | undefined,
+  rankdir: "LR" | "TB" = "LR",
 ): { layoutNodes: Node[]; edges: Edge[] } {
   const nodeSet = new Set(pyFiles);
   const rawEdges = buildRawEdges(lineage, nodeSet);
@@ -924,6 +702,7 @@ function buildModulesGraph(
   const laidConnected: Node<FileNodeData>[] =
     connectedNodes.length > 0
       ? applyDagreLayout(connectedNodes, rawEdges, NODE_FILE_W, NODE_FILE_H, {
+          rankdir,
           ranksep: 160,
           nodesep: 75,
         })
@@ -1042,104 +821,6 @@ function buildBlocksGraph(
 }
 
 // ---------------------------------------------------------------------------
-// buildBridgeGraph — Bridge view: SAS steps (left) → Python modules (right)
-// ---------------------------------------------------------------------------
-
-function buildBridgeGraph(
-  pipelineSteps: PipelineStep[],
-  generatedFiles: Record<string, string>,
-  blockPlans: BlockPlan[],
-  trustBlocks: Record<string, TrustReportBlock> | undefined,
-  selectedStepId?: string,
-): { nodes: Node[]; edges: Edge[] } {
-  const pyFiles = Object.keys(generatedFiles).filter((f) => f !== "pipeline.py");
-
-  const blockCountByPy: Record<string, number> = {};
-  for (const bp of blockPlans) {
-    const py = sasFileToPyFile(bp.source_file);
-    blockCountByPy[py] = (blockCountByPy[py] ?? 0) + 1;
-  }
-
-  function pyTrustColor(pyFile: string): string {
-    const blocks = blockPlans.filter((bp) => sasFileToPyFile(bp.source_file) === pyFile);
-    if (blocks.some((b) => trustBlocks?.[b.block_id]?.needs_attention)) return "#f59e0b";
-    if (
-      blocks.length > 0 &&
-      blocks.every((b) => trustBlocks?.[b.block_id]?.reconciliation_status === "pass")
-    )
-      return "#22c55e";
-    return "#94a3b8";
-  }
-
-  const stepNodes: Node<BridgeStepNodeData>[] = pipelineSteps.map((step, i) => ({
-    id: `bridge-step-${step.step_id}`,
-    type: "bridgeStepNode",
-    data: { step, stepNumber: i + 1, isSelected: selectedStepId === step.step_id },
-    position: { x: 0, y: i * 120 },
-  }));
-
-  const edgeSet = new Set<string>();
-  const edges: Edge[] = [];
-  for (const step of pipelineSteps) {
-    for (const blockId of step.blocks) {
-      const bp = blockPlans.find((b) => b.block_id === blockId);
-      if (!bp) continue;
-      const pyFile = sasFileToPyFile(bp.source_file);
-      if (!pyFiles.includes(pyFile)) continue;
-      const edgeId = `bridge-${step.step_id}-${pyFile}`;
-      if (edgeSet.has(edgeId)) continue;
-      edgeSet.add(edgeId);
-      edges.push({
-        id: edgeId,
-        source: `bridge-step-${step.step_id}`,
-        target: `bridge-module-${pyFile}`,
-        type: "smoothstep",
-        style: { stroke: "#94a3b8", strokeWidth: 1.5 },
-        animated: false,
-      });
-    }
-  }
-
-  const targetedModules = new Set(edges.map((e) => e.target));
-
-  const moduleNodes: Node<BridgeModuleNodeData>[] = pyFiles.map((pyFile, i) => ({
-    id: `bridge-module-${pyFile}`,
-    type: "bridgeModuleNode",
-    data: {
-      pyFile,
-      blockCount: blockCountByPy[pyFile] ?? 0,
-      trustColor: pyTrustColor(pyFile),
-      isOrphaned: !targetedModules.has(`bridge-module-${pyFile}`),
-    },
-    position: { x: 400, y: i * 80 },
-  }));
-
-  const g = new dagre.graphlib.Graph();
-  g.setGraph({ rankdir: "LR", nodesep: 40, ranksep: 100 });
-  g.setDefaultEdgeLabel(() => ({}));
-
-  for (const node of [...stepNodes, ...moduleNodes]) {
-    const h = node.type === "bridgeStepNode" ? 100 : 70;
-    g.setNode(node.id, { width: 220, height: h });
-  }
-  for (const edge of edges) {
-    g.setEdge(edge.source, edge.target);
-  }
-  dagre.layout(g);
-
-  const laidOutSteps = stepNodes.map((node) => {
-    const pos = g.node(node.id);
-    return { ...node, position: { x: pos.x - 110, y: pos.y - 50 } };
-  });
-  const laidOutModules = moduleNodes.map((node) => {
-    const pos = g.node(node.id);
-    return { ...node, position: { x: pos.x - 100, y: pos.y - 35 } };
-  });
-
-  return { nodes: [...laidOutSteps, ...laidOutModules], edges };
-}
-
-// ---------------------------------------------------------------------------
 // Inner component
 // ---------------------------------------------------------------------------
 
@@ -1154,9 +835,7 @@ function TargetGraphInner({
   onFileClick,
   onModuleClick,
   onBlockClick,
-  onPipelineStepClick,
   selectedBlockId,
-  selectedStepId,
 }: TargetGraphProps): React.ReactElement {
   const { fitView } = useReactFlow();
   const pyFiles = Object.keys(generatedFiles).filter((f) => f !== "pipeline.py");
@@ -1166,28 +845,14 @@ function TargetGraphInner({
   // (verification status is already reflected in trustBlocks)
   const humanVerifiedBlocks = new Set<string>();
 
-  const hasPipelineSteps =
-    !isEmpty && (lineage.pipeline_steps?.length ?? 0) > 0;
-
   // Build the correct graph based on view.
-  // "pipeline" → bridge view (SAS steps mapped to Python modules)
-  // "files"    → module dependency graph (was previously "pipeline")
+  // "pipeline" → top-to-bottom execution flow of Python modules (TB layout)
+  // "files"    → module dependency graph, left-to-right (LR layout)
   // "blocks"   → Python modules with inline block rows
-  const bridgeResult =
-    !isEmpty && view === "pipeline" && hasPipelineSteps
-      ? buildBridgeGraph(
-          lineage.pipeline_steps!,
-          generatedFiles,
-          blockPlans,
-          trustBlocks,
-          selectedStepId,
-        )
-      : null;
-
   const { layoutNodes: builtNodes, edges: builtEdges } = isEmpty
     ? { layoutNodes: [], edges: [] }
-    : view === "pipeline" && bridgeResult !== null
-      ? { layoutNodes: bridgeResult.nodes, edges: bridgeResult.edges }
+    : view === "pipeline"
+      ? buildModulesGraph(pyFiles, lineage, blockPlans, trustFiles, "TB")
       : view === "blocks"
         ? buildBlocksGraph(
             pyFiles,
@@ -1199,7 +864,7 @@ function TargetGraphInner({
             selectedBlockId,
             onBlockClick,
           )
-        : buildModulesGraph(pyFiles, lineage, blockPlans, trustFiles);
+        : buildModulesGraph(pyFiles, lineage, blockPlans, trustFiles, "LR");
 
   const [nodes, setNodes, onNodesChange] = useNodesState(builtNodes);
   const [edges, , onEdgesChange] = useEdgesState(builtEdges);
@@ -1252,24 +917,7 @@ function TargetGraphInner({
   const handleNodeClick = (_: React.MouseEvent, node: Node) => {
     if (node.id === "__section-label__") return;
 
-    if (node.type === "bridgeModuleNode") {
-      const pyFile = (node.data as BridgeModuleNodeData).pyFile;
-      if (onModuleClick) {
-        onModuleClick(pyFile);
-      } else {
-        const sasFiles = pyFileToSasFiles(pyFile, blockPlans);
-        onFileClick(sasFiles);
-      }
-      return;
-    }
-
-    if (node.type === "bridgeStepNode") {
-      const step = (node.data as BridgeStepNodeData).step;
-      onPipelineStepClick?.(step);
-      return;
-    }
-
-    if (view === "files") {
+    if (view === "pipeline" || view === "files") {
       if (onModuleClick) {
         onModuleClick(node.id);
       } else {
@@ -1279,19 +927,6 @@ function TargetGraphInner({
     }
     // blocks view: row clicks handle their own click via data.onBlockClick
   };
-
-  useEffect(() => {
-    if (view !== "pipeline") return;
-    setNodes((ns) =>
-      ns.map((n) => {
-        if (n.type !== "bridgeStepNode") return n;
-        const data = n.data as BridgeStepNodeData;
-        const isSelected = selectedStepId != null && n.id === `bridge-step-${selectedStepId}`;
-        if (data.isSelected === isSelected) return n;
-        return { ...n, data: { ...data, isSelected } };
-      }),
-    );
-  }, [selectedStepId, view, setNodes]);
 
   const btnBase: React.CSSProperties = {
     fontSize: 12,
@@ -1391,44 +1026,27 @@ function TargetGraphInner({
           ))}
         </div>
       )}
-      {view === "pipeline" && !hasPipelineSteps ? (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            height: "calc(100% - 48px)",
-            marginTop: 48,
-            fontSize: 13,
-            color: "#94a3b8",
-          }}
+      <>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onNodeClick={handleNodeClick}
+          onNodeDragStop={handleNodeDragStop}
+          nodesDraggable
+          nodeTypes={NODE_TYPES}
+          edgeTypes={EDGE_TYPES}
+          fitView
+          fitViewOptions={{ padding: 0.2 }}
         >
-          No pipeline steps available
+          <Controls />
+          <Background />
+        </ReactFlow>
+        <div style={{ position: "absolute", bottom: 12, right: 12, zIndex: 10 }}>
+          <TargetLegend />
         </div>
-      ) : (
-        <>
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onNodeClick={handleNodeClick}
-            onNodeDragStop={handleNodeDragStop}
-            nodesDraggable
-            nodeTypes={NODE_TYPES}
-            edgeTypes={EDGE_TYPES}
-            fitView
-            fitViewOptions={{ padding: 0.2 }}
-          >
-            <Controls />
-            <Background />
-          </ReactFlow>
-          {view === "pipeline" && <BridgeLegend />}
-          <div style={{ position: "absolute", bottom: 12, right: 12, zIndex: 10 }}>
-            <TargetLegend />
-          </div>
-        </>
-      )}
+      </>
     </div>
   );
 }
