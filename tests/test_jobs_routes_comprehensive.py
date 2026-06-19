@@ -929,6 +929,55 @@ async def test_accept_job_stamps_accepted_by_anonymous() -> None:
 
 
 @pytest.mark.asyncio
+async def test_accept_job_persists_deployment_target_into_user_overrides() -> None:
+    """F75: deployment_target answers round-trip into user_overrides on accept.
+
+    The JSON key must be ``schema`` (alias), unanswered questions are dropped
+    (exclude_none), and the F68 acceptance_note merge is preserved alongside.
+    """
+    from src.backend.api.schemas import AcceptJobRequest, DeploymentTarget
+
+    job_id = uuid.uuid4()
+    job = _make_job(str(job_id), status="proposed", accepted_at=None, user_overrides={})
+    session = AsyncMock()
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = job
+    updated_job = _make_job(str(job_id), status="accepted")
+    update_result = MagicMock()
+    result_mock2 = MagicMock()
+    result_mock2.scalar_one.return_value = updated_job
+    session.execute.side_effect = [result_mock, update_result, result_mock2]
+
+    request = AcceptJobRequest(
+        notes="ship it",
+        deployment_target=DeploymentTarget(
+            provider="aws", compute_mode="classic", catalog="analytics", schema="sdtm"
+        ),
+    )
+
+    await accept_job(job_id, request, session)
+
+    # The 2nd execute call is the UPDATE; pull the persisted user_overrides value.
+    # ``_values`` maps Column → BindParameter; ``.value`` is the bound Python object.
+    update_stmt = session.execute.call_args_list[1].args[0]
+    persisted = {col.name: bind.value for col, bind in update_stmt._values.items()}
+    overrides = persisted["user_overrides"]
+
+    assert overrides["acceptance_note"] == "ship it"
+    target = overrides["deployment_target"]
+    assert target == {
+        "provider": "aws",
+        "compute_mode": "classic",
+        "catalog": "analytics",
+        "schema": "sdtm",
+    }
+    # exclude_none dropped the unanswered ingestion_approach question.
+    assert "ingestion_approach" not in target
+    # Alias emitted the JSON key "schema", not the Python field "schema_".
+    assert "schema_" not in target
+
+
+@pytest.mark.asyncio
 async def test_accept_job_already_accepted_returns_409() -> None:
     """Second accept on an already-accepted job must return 409."""
     from fastapi import HTTPException

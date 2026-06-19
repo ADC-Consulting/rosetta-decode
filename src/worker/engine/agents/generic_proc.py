@@ -30,10 +30,12 @@ from src.worker.engine.agents.shared import (
     detect_referenced_formats,
     enforce_csv_read_schema,
     enforce_padded_concat_keys,
+    ensure_result_assignment,
     inject_declared_casts,
     normalise_input_vars_in_code,
     normalise_output_var,
     normalise_output_var_in_code,
+    parameterize_data_root,
     render_declared_types_section,
     render_format_section,
 )
@@ -567,6 +569,9 @@ class GenericProcAgent:
         python_code = enforce_padded_concat_keys(
             python_code, block.raw_sas, fixed_output_var, "GenericProcAgent"
         )
+        # F76: make external reads portable, then guarantee the `result` contract.
+        python_code = parameterize_data_root(python_code)
+        python_code = ensure_result_assignment(python_code, fixed_output_var)
         logger.debug(
             "GenericProcAgent after normalise: output_var=%r, python_code has rawdir_customers=%s",
             fixed_output_var,
@@ -575,11 +580,16 @@ class GenericProcAgent:
         if fixed_output_var and not _re.search(
             rf"\b{_re.escape(fixed_output_var)}\s*=", python_code
         ):
-            logger.warning(
-                "GenericProcAgent: output_var '%s' not found as assignment in generated code"
-                " after rename — check LLM output",
-                fixed_output_var,
-            )
+            if _re.search(r"^\s*result\s*=", python_code, _re.MULTILINE):
+                # LLM bound the output to `result` directly; alias it so downstream
+                # blocks can reference the dataset by its stem name.
+                python_code = python_code.rstrip("\n") + f"\n{fixed_output_var} = result\n"
+            else:
+                logger.warning(
+                    "GenericProcAgent: output_var '%s' not found as assignment in generated code"
+                    " after rename — check LLM output",
+                    fixed_output_var,
+                )
 
         return apply_mechanical_drift_guard(
             GeneratedBlock(

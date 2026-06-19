@@ -481,6 +481,12 @@
 
 ## Phase 4 — Advanced Features + Cloud
 
+- [x] F74: Databricks deployment guide + DLT handoff bundle — `databricks.yml`, `transformations/*_dlt.py`, `DEPLOYMENT_GUIDE.md` in every accepted job's zip; canonical guide at `docs/service-delivery/`
+- [ ] F75: Accept-time deployment questionnaire + cloud-aware bundle — popup on Accept asks cloud provider (Azure/AWS/GCP) + ingestion approach + compute mode; answers persist in `user_overrides` and parameterise the F74 bundle (replaces hardcoded Azure `abfss://`). See `docs/plans/latest/F75-deployment-target-questionnaire.md`
+- [x] fix(bundle): fold same-table writer chains — multiple blocks writing the same dataset (build + in-place proc sort / data-step rewrite) now fold into one `@dlt.table` / one Spark Job task; eliminates duplicate decorators and last-writer-wins module overwrite
+- [x] feat(bundle): modularize DLT pipeline — one `transformations/<source_stem>_dlt.py` per SAS source file; `libraries` in `databricks.yml` lists all files sorted
+- [x] feat(bundle): group Spark Job modules by source-file subfolder — `jobs/<source_stem>/<table>.py`; YAML `python_file` paths updated to match
+- [x] feat(bundle): YAML readability — shared `_format_yaml` helper inserts blank lines between top-level sections in both YAML renderers
 - [ ] F14: Authentication & SSO (SAML/OIDC, JWT, RBAC)
 - [ ] `DatabricksBackend` (PySpark) (`src/worker/compute/databricks.py`)
 - [ ] End-to-end test: CLOUD=true, Databricks connection

@@ -65,3 +65,17 @@ def test_macro_call_expansion_produces_dose_block() -> None:
         f"producer index={block_order[id(producer)]}, "
         f"consumer index={block_order[id(consumer)]}"
     )
+
+    # No emitted block may carry unresolved macro params, nor a bare ``in``/``out``
+    # identifier leaked from the %macro definition body (Fix B regression guard).
+    import re
+
+    for b in result.blocks:
+        raw = b.raw_sas
+        assert "&in" not in raw and "&out" not in raw, (
+            f"Block {b.block_type} retains an unresolved macro param: {raw!r}"
+        )
+        assert not re.search(r"\bin\b", raw) and not re.search(r"\bout\b", raw), (
+            f"Block {b.block_type} leaked a bare 'in'/'out' identifier from the "
+            f"macro definition body: {raw!r}"
+        )

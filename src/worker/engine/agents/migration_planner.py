@@ -340,6 +340,8 @@ def _build_migration_plan(result: PlannerResult, blocks: list[SASBlock]) -> Migr
             )
         )
 
+    _override_consumed_manual_blocks(block_plans)
+
     return MigrationPlan(
         summary=result.summary,
         block_plans=block_plans,
@@ -347,3 +349,54 @@ def _build_migration_plan(result: PlannerResult, blocks: list[SASBlock]) -> Migr
         recommended_review_blocks=result.recommended_review_blocks,
         cross_file_dependencies=result.cross_file_dependencies,
     )
+
+
+def _to_stem(dataset: str) -> str:
+    """Normalise a dataset name to its stem (lowercase, libname prefix stripped).
+
+    Mirrors the stem logic used by ``build_block_output_stems`` in
+    ``src.worker.engine.agents.shared`` so the planner guardrail and the codegen
+    safety net agree on what counts as the "same" dataset.
+
+    Args:
+        dataset: A dataset name, possibly libname-qualified (``work.adsl_age``).
+
+    Returns:
+        The lowercased stem (``adsl_age``).
+    """
+    return dataset.lower().split(".")[-1]
+
+
+def _override_consumed_manual_blocks(block_plans: list[BlockPlan]) -> None:
+    """Force MANUAL blocks whose output is consumed downstream to be translated.
+
+    A block routed to the stub generator emits only a ``# SAS-UNRECOGNIZED``
+    comment and never creates its output dataset. If any later block reads that
+    dataset, the assembled pipeline raises ``NameError`` at runtime. To preserve
+    the deterministic invariant — *a consumed dataset must always be produced* —
+    every MANUAL block whose output stem is consumed by another block is upgraded
+    to ``TRANSLATED_WITH_REVIEW`` in place. Blocks whose outputs are not consumed
+    (e.g. assertion-macro utilities) keep their MANUAL strategy.
+
+    Args:
+        block_plans: The fully-built per-block plans; mutated in place.
+    """
+    consumed_stems: set[str] = set()
+    for bp in block_plans:
+        for ds in bp.input_datasets:
+            consumed_stems.add(_to_stem(ds))
+
+    for bp in block_plans:
+        if bp.strategy != TranslationStrategy.MANUAL:
+            continue
+        for ds in bp.output_datasets:
+            if _to_stem(ds) in consumed_stems:
+                logger.warning(
+                    "migration_planner: overriding MANUAL->translated_with_review for %s"
+                    " — its output %s is consumed downstream (a stub would break the"
+                    " pipeline)",
+                    bp.block_id,
+                    ds,
+                )
+                bp.strategy = TranslationStrategy.TRANSLATED_WITH_REVIEW
+                break

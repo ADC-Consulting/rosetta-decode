@@ -3,11 +3,14 @@
 import pytest
 from src.worker.engine.agents.shared import (
     SHARED_TRANSLATION_RULES,
+    _safe_ident,
     apply_mechanical_drift_guard,
     build_block_output_stems,
     check_mechanical_format_drift,
     enforce_padded_concat_keys,
     normalise_input_vars_in_code,
+    normalise_output_var,
+    normalise_output_var_in_code,
     parse_padded_concat_keys,
     render_padded_key_expr,
 )
@@ -64,6 +67,41 @@ def test_stem_map_multiple_blocks() -> None:
 
 def test_stem_map_empty() -> None:
     assert build_block_output_stems([]) == {}
+
+
+# ── _safe_ident keyword sanitization (Fix A) ──────────────────────────────────
+
+
+def test_safe_ident_suffixes_python_keyword() -> None:
+    assert _safe_ident("in") == "in_"
+    assert _safe_ident("class") == "class_"
+    assert _safe_ident("import") == "import_"
+
+
+def test_safe_ident_leaves_non_keywords_unchanged() -> None:
+    assert _safe_ident("dose") == "dose"
+    assert _safe_ident("ex_dedup") == "ex_dedup"
+
+
+def test_normalise_input_vars_sanitizes_keyword_external_dataset() -> None:
+    # External dataset literally named ``in`` must become ``in_`` in the code.
+    code = "df = in.copy()"
+    result = normalise_input_vars_in_code(code, ["in"], {}, "TestAgent")
+    assert result == "df = in_.copy()"
+
+
+def test_normalise_output_var_sanitizes_bare_keyword() -> None:
+    assert normalise_output_var(["in"], "in") == "in_"
+
+
+def test_normalise_output_var_sanitizes_keyword_stem_from_libname() -> None:
+    assert normalise_output_var(["work.in"], "work_in") == "in_"
+
+
+def test_normalise_output_var_in_code_sanitizes_keyword_stem() -> None:
+    code = "work_in = df"
+    result = normalise_output_var_in_code(code, ["work.in"], "TestAgent")
+    assert result == "in_ = df"
 
 
 # ── normalise_input_vars_in_code ──────────────────────────────────────────────

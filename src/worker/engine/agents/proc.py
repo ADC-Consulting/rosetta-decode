@@ -22,10 +22,12 @@ from src.worker.engine.agents.shared import (
     detect_referenced_formats,
     enforce_csv_read_schema,
     enforce_padded_concat_keys,
+    ensure_result_assignment,
     inject_declared_casts,
     normalise_input_vars_in_code,
     normalise_output_var,
     normalise_output_var_in_code,
+    parameterize_data_root,
     render_declared_types_section,
     render_format_section,
 )
@@ -344,14 +346,20 @@ class ProcAgent:
             fixed_code = enforce_padded_concat_keys(
                 fixed_code, block.raw_sas, fixed_output_var, "ProcAgent"
             )
+            # F76: make external reads portable, then guarantee the `result` contract.
+            fixed_code = parameterize_data_root(fixed_code)
+            fixed_code = ensure_result_assignment(fixed_code, fixed_output_var)
             if fixed_output_var and not _re.search(
                 rf"\b{_re.escape(fixed_output_var)}\s*=", fixed_code
             ):
-                logger.warning(
-                    "ProcAgent: output_var '%s' not found as assignment in generated code"
-                    " after rename — check LLM output",
-                    fixed_output_var,
-                )
+                if _re.search(r"^\s*result\s*=", fixed_code, _re.MULTILINE):
+                    fixed_code = fixed_code.rstrip("\n") + f"\n{fixed_output_var} = result\n"
+                else:
+                    logger.warning(
+                        "ProcAgent: output_var '%s' not found as assignment in generated code"
+                        " after rename — check LLM output",
+                        fixed_output_var,
+                    )
             return apply_mechanical_drift_guard(
                 GeneratedBlock(
                     source_block=block,

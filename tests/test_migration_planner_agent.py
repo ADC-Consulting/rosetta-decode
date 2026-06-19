@@ -298,3 +298,104 @@ def test_migration_planner_make_agent_azure_branch() -> None:
     )
     mock_oai.assert_called_once_with(model_name="gpt-4o", provider=mock_provider)
     assert result is mock_agent
+
+
+# ── _build_migration_plan consumed-MANUAL guardrail ──────────────────────────
+
+
+_GUARDRAIL_BLOCKS: list[SASBlock] = [
+    SASBlock(
+        block_type=BlockType.DATA_STEP,
+        source_file="05_build.sas",
+        start_line=47,
+        end_line=50,
+        raw_sas="data work.adsl_age; set work.adsl_pre; AGEGR1 = put(AGE, agegr1f.); run;",
+        input_datasets=["work.adsl_pre"],
+        output_datasets=["work.adsl_age"],
+    ),
+    SASBlock(
+        block_type=BlockType.PROC_SORT,
+        source_file="05_build.sas",
+        start_line=54,
+        end_line=56,
+        raw_sas="proc sort data=work.adsl_age; by USUBJID; run;",
+        input_datasets=["work.adsl_age"],
+        output_datasets=["work.adsl_age"],
+    ),
+    SASBlock(
+        block_type=BlockType.UNTRANSLATABLE,
+        source_file="05_build.sas",
+        start_line=60,
+        end_line=62,
+        raw_sas="%assert_rowcount(work.adsl_age);",
+        input_datasets=["work.adsl_age"],
+        output_datasets=["work.assert_log"],
+    ),
+]
+
+
+def _guardrail_planner_result() -> PlannerResult:
+    """A PlannerResult that marks the consumed DATA step and a utility as manual."""
+    return PlannerResult(
+        summary="ADaM ADSL build with a user-defined format on the consumed DATA step.",
+        overall_risk="medium",
+        block_plans=[
+            {
+                "block_id": "05_build.sas:47",
+                "source_file": "05_build.sas",
+                "start_line": 47,
+                "block_type": "DATA_STEP",
+                "strategy": "manual",
+                "risk": "high",
+                "rationale": "User-defined format put(AGE, agegr1f.) — low confidence.",
+                "estimated_effort": "high",
+                "confidence_score": 0.2,
+                "detected_features": ["user_defined_format"],
+            },
+            {
+                "block_id": "05_build.sas:54",
+                "source_file": "05_build.sas",
+                "start_line": 54,
+                "block_type": "PROC_SORT",
+                "strategy": "translated",
+                "risk": "low",
+                "rationale": "Simple in-place sort.",
+                "estimated_effort": "low",
+            },
+            {
+                "block_id": "05_build.sas:60",
+                "source_file": "05_build.sas",
+                "start_line": 60,
+                "block_type": "UNRECOGNIZED",
+                "strategy": "manual",
+                "risk": "high",
+                "rationale": "Assertion macro with no output dependency.",
+                "estimated_effort": "low",
+                "detected_features": ["custom_macro"],
+            },
+        ],
+        recommended_review_blocks=["05_build.sas:47"],
+        cross_file_dependencies=[],
+    )
+
+
+def test_build_migration_plan_overrides_consumed_manual_block() -> None:
+    """A MANUAL block whose output is consumed downstream becomes translated_with_review."""
+    from src.worker.engine.agents.migration_planner import _build_migration_plan
+
+    plan = _build_migration_plan(_guardrail_planner_result(), _GUARDRAIL_BLOCKS)
+    by_id = {bp.block_id: bp for bp in plan.block_plans}
+
+    # work.adsl_age is consumed by the PROC SORT (and the assertion macro) → upgraded.
+    assert by_id["05_build.sas:47"].strategy == TranslationStrategy.TRANSLATED_WITH_REVIEW
+
+
+def test_build_migration_plan_keeps_unconsumed_manual_block() -> None:
+    """A MANUAL block whose output is consumed by nothing stays manual."""
+    from src.worker.engine.agents.migration_planner import _build_migration_plan
+
+    plan = _build_migration_plan(_guardrail_planner_result(), _GUARDRAIL_BLOCKS)
+    by_id = {bp.block_id: bp for bp in plan.block_plans}
+
+    # work.assert_log is not read by any block → utility stays manual.
+    assert by_id["05_build.sas:60"].strategy == TranslationStrategy.MANUAL

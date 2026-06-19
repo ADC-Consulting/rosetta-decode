@@ -22,10 +22,12 @@ from src.worker.engine.agents.shared import (
     detect_referenced_formats,
     enforce_csv_read_schema,
     enforce_padded_concat_keys,
+    ensure_result_assignment,
     inject_declared_casts,
     normalise_input_vars_in_code,
     normalise_output_var,
     normalise_output_var_in_code,
+    parameterize_data_root,
     render_declared_types_section,
     render_format_section,
 )
@@ -330,14 +332,28 @@ class DataStepAgent:
             fixed_code = enforce_padded_concat_keys(
                 fixed_code, block.raw_sas, fixed_output_var, "DataStepAgent"
             )
+            # F76: make external reads portable, then guarantee the `result` contract.
+            fixed_code = parameterize_data_root(fixed_code)
+            fixed_code = ensure_result_assignment(fixed_code, fixed_output_var)
             if fixed_output_var and not _re.search(
                 rf"\b{_re.escape(fixed_output_var)}\s*=", fixed_code
             ):
-                logger.warning(
-                    "DataStepAgent: output_var '%s' not found as assignment in generated code"
-                    " after rename — check LLM output",
-                    fixed_output_var,
-                )
+                if _re.search(r"^\s*result\s*=", fixed_code, _re.MULTILINE):
+                    fixed_code = fixed_code.rstrip("\n") + f"\n{fixed_output_var} = result\n"
+                else:
+                    # Hard translation failure: the generated code advertises an
+                    # output_var it never binds. Fail loud so the caller's retry
+                    # path (main.py: 3-attempt loop) re-asks the LLM rather than
+                    # shipping a block that downstream blocks read as undefined.
+                    raise DataStepError(
+                        message=(
+                            f"DataStepAgent generated code does not bind output_var "
+                            f"'{fixed_output_var}' (no '{fixed_output_var} =' or 'result =' "
+                            f"assignment found) for block "
+                            f"{block.source_file}:{block.start_line}"
+                        ),
+                        cause=RuntimeError("unbound output_var in generated code"),
+                    )
             return apply_mechanical_drift_guard(
                 GeneratedBlock(
                     source_block=block,
@@ -352,5 +368,9 @@ class DataStepAgent:
                     is_untranslatable=False,
                 )
             )
+        except DataStepError:
+            # Already a structured failure (e.g. unbound output_var) — propagate
+            # as-is so the retry path sees the original, descriptive message.
+            raise
         except Exception as e:
             raise DataStepError(message=str(e), cause=e) from e

@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class FileRejection(BaseModel):
@@ -335,10 +335,47 @@ class JobPlanResponse(BaseModel):
     sensitive_data_findings: list[SensitiveDataFinding] = []
 
 
+class DeploymentTarget(BaseModel):
+    """Accept-time deployment questionnaire answers (F75).
+
+    All fields are optional. When a field is ``None`` (or the whole model is
+    absent), the generator applies its documented default. The default set —
+    ``azure`` / ``historical`` / ``serverless`` / catalog ``main`` / schema from
+    the Data tab — reproduces the F74 (pre-questionnaire) bundle bytes exactly.
+
+    The ``schema_`` field is aliased to the JSON key ``schema`` because
+    ``schema`` shadows a ``BaseModel`` reserved name. With ``populate_by_name``
+    enabled, both ``schema`` (preferred, by alias) and ``schema_`` populate it.
+    """
+
+    # SAS: src/backend/api/schemas.py:DeploymentTarget
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    provider: Literal["azure", "aws", "gcp"] | None = None
+    """Target cloud provider. Default semantics: ``azure``."""
+
+    ingestion_approach: Literal["historical", "staging"] | None = None
+    """Data ingestion approach. Default semantics: ``historical``."""
+
+    compute_mode: Literal["serverless", "classic"] | None = None
+    """DLT pipeline compute mode. Default semantics: ``serverless``."""
+
+    catalog: str | None = None
+    """Unity Catalog catalog name. Default semantics: ``main``."""
+
+    schema_: str | None = Field(default=None, alias="schema")
+    """Unity Catalog schema. Default semantics: the Data-tab ``target_schema``."""
+
+    delivery_format: Literal["dlt", "spark_job"] | None = None
+    """Bundle delivery format. Default semantics: ``dlt`` (Lakeflow DLT pipeline)."""
+
+
 class AcceptJobRequest(BaseModel):
     """Request body for POST /jobs/{id}/accept."""
 
     notes: str | None = None
+    deployment_target: DeploymentTarget | None = None
 
 
 StrategyLiteral = Literal[

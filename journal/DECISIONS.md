@@ -6,6 +6,22 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-06-19 — DBX bundle fold + modularization
+
+- **Same-table fold localized to bundle layer:** mutating `migration_plan` upstream would break the ETL/Plan/Lineage tabs which use it as the comparison baseline; fold is a bundle-rendering concern only. · revisit never
+- **Fold order = `(source_file, start_line)`, not list position:** topo sort adds no edge between co-writers of the same table so positional order is unsafe; explicit sort by source location is the invariant. · revisit never
+- **Multi-output block inside a fold chain emits NotImplementedError stub:** `result` is ambiguous when one block produces multiple tables and also participates in a fold chain; wrong code is worse than an honest stub with per-stage `# MANUAL:` comments. · revisit never
+- **DLT modularized to one file per SAS source file:** mirrors the pipeline-steps view in the ETL tab; `dlt.read()` resolves globally across files within the same DLT pipeline so cross-file references are valid. · revisit never
+- **Spark Job modules grouped by source-file subfolder `jobs/<stem>/<table>.py`:** cosmetic parity with DLT modularization; Databricks Jobs has no multi-library concept so grouping is directory-only. · revisit never
+
+---
+
+## 2026-06-18 — F76 intentional one-time rebaseline of the DLT bundle golden bytes
+
+- **The F74/F75 DLT regression-lock golden bytes were never deploy-correct and are intentionally rebaselined in F76 (S-0):** the old `@dlt.table` functions bound inputs to `<var>_df` (the bare stem the portable code actually uses was never defined → NameError), read root inputs from a hardcoded `DATABRICKS_DATA_ROOT`/`/workspace/data` path, and never `return`ed (so `@dlt.table` materialised `None`). S-0 binds inter-block inputs by bare stem via `bind_inter_block_inputs(..., "dlt")` (`<stem> = dlt.read("<stem>")`), lets the portable block code read root inputs via its own `DATA_ROOT` (resolved from `ROSETTA_DATA_ROOT`, set in the pipeline `configuration`), and appends `return result`. The bundle YAML now also carries a `rosetta_data_root` variable + `ROSETTA_DATA_ROOT` pipeline config. The regression-lock tests were updated to the corrected bytes; the F74/F75 "byte-identical" assertions are a deliberate one-time break. · revisit never
+
+---
+
 ## 2026-06-15 — F35 Data Storage tab design decisions
 
 - **Data Model ERD shows output tables only:** Source SAS tables are input artefacts, not migration deliverables. Mixing them into the ERD dilutes the diagram's purpose. A notice strip explains the filter when source tables were removed. · revisit never
