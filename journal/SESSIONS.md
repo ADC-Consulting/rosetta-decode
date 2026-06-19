@@ -8,7 +8,7 @@ Most recent session on top. Each entry should answer:
 
 ## 2026-06-19 — F70 bridge view + F71 ETL tab polish
 
-**Branch:** `feat/F69-target-view-polish`
+**Branch:** `feat/F67-etl-source-target-toggle` (consolidated from F69)
 
 ### Done
 - Pushed back on P0 criticism (Pipeline/Files/Blocks label confusion): labels themselves are fine; the real issue was Target Pipeline and Target Files showing identical data with different layouts
@@ -16,6 +16,7 @@ Most recent session on top. Each entry should answer:
 - Fixed 5 bridge view issues: orphaned module "standalone" badge, step card `cursor:default`, removed redundant "SAS STEP" label, `BridgeLegend` (bottom-left, Pipeline view only), edge annotation
 - Completed **F71** (4 subtasks): S01 bridge step clicks → PipelineStepPanel; S02 step number `#N` badge; S03 "blocks:" trust label in summary bar; S04 BlockDetailPanel back link restyled as blue breadcrumb
 - Browser-verified all flows: bridge step click → PipelineStepPanel ✅, module click → PythonModulePanel ✅, block click → BlockDetailPanel with breadcrumb ✅, Files + Blocks views unaffected ✅
+- Merged `feat/F69-target-view-polish` into `feat/F67-etl-source-target-toggle` to consolidate all ETL work onto one branch; deleted F69 locally and remotely
 
 ### Decisions
 - **Bridge view edges derived from `step.files`** — discovered post-ship that this is wrong for steps with multiple SAS code files (step.files holds data dependency paths, not code filenames). Bug masked for steps 2–6 (each references one SAS file). Correct approach: `step.blocks → blockPlans → source_file → sasFileToPyFile`. Logged as F72.
@@ -26,7 +27,7 @@ Most recent session on top. Each entry should answer:
 
 ### Next Session — Start Here
 1. Fix F72: in `buildBridgeGraph` (`TargetGraph.tsx`), replace `step.files` edge derivation with `step.blocks → blockPlans → source_file → sasFileToPyFile`. Then browser-verify step #1 now has edges.
-2. Open PRs for F69+F70+F71 once F72 is fixed.
+2. Open PR for `feat/F67-etl-source-target-toggle` (covers F67+F69+F70+F71) once F72 is fixed.
 
 ### Files Touched
 - `src/frontend/src/components/JobDetail/TargetGraph.tsx`
