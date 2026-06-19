@@ -1,7 +1,7 @@
 import type { BlockPlan, TrustReportBlock } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ArrowLeft, CheckCircle2, Info, X, XCircle } from "lucide-react";
+import { CheckCircle2, ChevronLeft, Info, X, XCircle } from "lucide-react";
 import { getBlockStatus, STATUS_CONFIG } from "./blockStatusHelpers";
 
 // ---------------------------------------------------------------------------
@@ -108,15 +108,15 @@ export default function BlockDetailPanel({
       ].join(" ")}
       aria-label={`Block detail for ${blockId}`}
     >
-      {/* Header: back link + close */}
-      <div className="flex items-center gap-1 px-2 py-2 border-b border-border">
+      {/* Header: breadcrumb back link + close */}
+      <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border">
         <button
           type="button"
           onClick={onBack}
-          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors font-mono truncate min-w-0"
+          className="flex flex-1 items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800 transition-colors truncate min-w-0"
           aria-label={`Back to ${parentPyFile}`}
         >
-          <ArrowLeft size={12} className="shrink-0" />
+          <ChevronLeft className="w-3 h-3 shrink-0" />
           <span className="truncate">{parentPyFile}</span>
         </button>
         <Button

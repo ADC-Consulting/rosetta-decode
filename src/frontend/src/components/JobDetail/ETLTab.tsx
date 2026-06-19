@@ -239,14 +239,15 @@ export default function ETLTab({
         )}
         {trustReport && (
           <>
+            <span className="text-muted-foreground">blocks:</span>
             <span className="text-green-700">
-              ✓ verified: {trustReport.auto_verified + humanVerifiedBlocks.size}
+              ✓ {trustReport.auto_verified + humanVerifiedBlocks.size}
             </span>
             <span className="text-amber-700">
-              ⚠ review: {trustReport.needs_review}
+              ⚠ {trustReport.needs_review}
             </span>
             <span className="text-red-700">
-              ✗ manual: {trustReport.manual_todo}
+              ✗ {trustReport.manual_todo}
             </span>
           </>
         )}
@@ -316,6 +317,7 @@ export default function ETLTab({
               }}
               onModuleClick={handleModuleClick}
               onBlockClick={handleTargetBlockClick}
+              onPipelineStepClick={handlePipelineStepClick}
               selectedBlockId={selectedBlock}
             />
           )}

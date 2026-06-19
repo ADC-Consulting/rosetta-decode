@@ -49,6 +49,7 @@ interface TargetGraphProps {
   onFileClick: (sasSourceFiles: string[]) => void;
   onModuleClick?: (pyFile: string) => void;
   onBlockClick?: (blockId: string) => void;
+  onPipelineStepClick?: (step: PipelineStep) => void;
   selectedBlockId?: string | null;
 }
 
@@ -554,12 +555,14 @@ function BlocksFileNode({ data }: NodeProps<BlocksFileNodeData>): React.ReactEle
 
 interface BridgeStepNodeData {
   step: PipelineStep;
+  stepNumber: number;
 }
 
 function BridgeStepNode({ data }: { data: BridgeStepNodeData }): React.ReactElement {
   return (
     <div
       style={{
+        position: "relative",
         background: "#fef3c7",
         border: "1.5px solid #f59e0b",
         borderRadius: 8,
@@ -567,9 +570,25 @@ function BridgeStepNode({ data }: { data: BridgeStepNodeData }): React.ReactElem
         minWidth: 180,
         maxWidth: 220,
         fontSize: 11,
-        cursor: "default",
+        cursor: "pointer",
       }}
     >
+      <div
+        style={{
+          position: "absolute",
+          top: 6,
+          right: 8,
+          fontSize: 9,
+          fontWeight: 700,
+          color: "#92400e",
+          background: "#fde68a",
+          borderRadius: 4,
+          padding: "1px 4px",
+          lineHeight: 1.4,
+        }}
+      >
+        #{data.stepNumber}
+      </div>
       <Handle type="source" position={Position.Right} style={{ opacity: 0 }} />
       <div style={{ fontWeight: 700, color: "#1e293b", marginBottom: 4, lineHeight: 1.3 }}>
         {data.step.name}
@@ -1052,7 +1071,7 @@ function buildBridgeGraph(
   const stepNodes: Node<BridgeStepNodeData>[] = pipelineSteps.map((step, i) => ({
     id: `bridge-step-${step.step_id}`,
     type: "bridgeStepNode",
-    data: { step },
+    data: { step, stepNumber: i + 1 },
     position: { x: 0, y: i * 120 },
   }));
 
@@ -1130,6 +1149,7 @@ function TargetGraphInner({
   onFileClick,
   onModuleClick,
   onBlockClick,
+  onPipelineStepClick,
   selectedBlockId,
 }: TargetGraphProps): React.ReactElement {
   const { fitView } = useReactFlow();
@@ -1237,7 +1257,8 @@ function TargetGraphInner({
     }
 
     if (node.type === "bridgeStepNode") {
-      // No navigation action for SAS step nodes
+      const step = (node.data as BridgeStepNodeData).step;
+      onPipelineStepClick?.(step);
       return;
     }
 

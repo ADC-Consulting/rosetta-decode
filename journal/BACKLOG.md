@@ -485,6 +485,14 @@
 - [x] F70 S-H: `BlockDetailPanel` component — back link, strategy/confidence/recon, `ⓘ` rationale popover, "View Code"
 - [x] F70 S-I: `make test` exits 0
 
+**F71 — ETL Tab Polish** (`docs/plans/latest/F71-etl-tab-polish.md`)
+
+- [x] F71 S01: Wire bridge step clicks to PipelineStepPanel → see `docs/plans/latest/F71-etl-tab-polish.md`
+- [x] F71 S02: Step number badge on bridge step cards → see `docs/plans/latest/F71-etl-tab-polish.md`
+- [x] F71 S03: Label trust stats "blocks:" in summary bar → see `docs/plans/latest/F71-etl-tab-polish.md`
+- [x] F71 S04: Promote BlockDetailPanel back link to breadcrumb → see `docs/plans/latest/F71-etl-tab-polish.md`
+- [x] F71 S05: `make test` exits 0
+
 - [ ] #21: Consolidate lineage into a single primary view — `backlog` label
 - [ ] #20: Rollback / versioning based on lineage — `backlog` label
 - [ ] #32: Specify decision-ready reports (technical + PO) — `backlog` label, deferred
