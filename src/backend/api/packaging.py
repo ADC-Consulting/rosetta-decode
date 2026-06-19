@@ -236,7 +236,10 @@ def _render_deployment_guide(
         )
 
     # Build untranslatable_blocks list for the template.
+    # seen_ds guards against duplicate entries when the same output dataset is
+    # written by multiple blocks (folded chain) and more than one is untranslatable.
     untranslatable_blocks: list[dict[str, Any]] = []
+    seen_ds: set[str] = set()
     for bp in block_plans:
         block_id: str = bp.get("block_id", "")
         output_datasets: list[str] = bp.get("output_datasets", [])
@@ -249,6 +252,9 @@ def _render_deployment_guide(
                 "SAS-UNRECOGNIZED marker" if "# SAS-UNRECOGNIZED" in python_code else "empty output"
             )
             for output_ds in sorted(output_datasets):
+                if output_ds in seen_ds:
+                    continue
+                seen_ds.add(output_ds)
                 untranslatable_blocks.append(
                     {
                         "output_dataset": output_ds,
@@ -392,11 +398,13 @@ def build_migration_package(
             members.update(job_modules)
             all_code.extend(job_modules.values())
         else:
-            dlt_module = render_dlt_pipeline(job, resolved_per_block_code, resolved_schema, target)
-            databricks_yml = render_databricks_yml(job, datasets, resolved_schema, target)
-            members[f"transformations/{pipeline_name}.py"] = dlt_module
-            # Include DLT module in code blobs so the dlt pin is picked up.
-            all_code.append(dlt_module)
+            dlt_modules = render_dlt_pipeline(job, resolved_per_block_code, resolved_schema, target)
+            databricks_yml = render_databricks_yml(
+                job, datasets, resolved_schema, dlt_modules, target
+            )
+            members.update(dlt_modules)
+            # Include DLT module source in code blobs so the dlt pin is picked up.
+            all_code.extend(dlt_modules.values())
 
         deployment_guide = _render_deployment_guide(
             job,

@@ -377,6 +377,80 @@ def bind_inter_block_inputs(
 # ---------------------------------------------------------------------------
 
 
+def _fold_chain_body(
+    target_ds: str,
+    chain: list[dict[str, Any]],
+    block_outputs: set[str],
+    per_block_code: dict[str, str],
+    mode: Literal["dlt", "job"],
+) -> list[str]:
+    """Build the ordered code lines that produce *target_ds* from a writer chain.
+
+    Each element of *chain* is a normalised block plan that writes *target_ds*.
+    Self-reads (``target_ds`` appearing in a block's own inputs) are filtered
+    before calling ``bind_inter_block_inputs`` so no invalid ``dlt.read("<self>")``
+    or ``spark.read.table(...)`` is emitted for the in-place rewrite pattern.
+
+    Args:
+        target_ds: Normalised dataset stem being built.
+        chain: Writer block plans sorted by ``(source_file, start_line)``.
+        block_outputs: Set of all block-produced dataset stems (for bind logic).
+        per_block_code: Mapping of block_id → portable Python source.
+        mode: ``"dlt"`` or ``"job"`` — selects the inter-block read expression.
+
+    Returns:
+        Ordered code lines (no indentation) ending with ``result`` bound to the
+        final value of *target_ds*.
+    """
+    # SAS: databricks_bundle.py:_fold_chain_body
+    body: list[str] = []
+    for i, bp in enumerate(chain):
+        # Drop self-read: in-place rewrite blocks list the dataset as both
+        # input and output; emitting a bind for it would create an invalid
+        # self-reference (dlt.read inside its own def, or circular table read).
+        inputs = [d for d in bp.get("input_datasets", []) if d != target_ds]
+        body.extend(bind_inter_block_inputs(inputs, block_outputs, mode))
+        # Per-stage provenance only for multi-writer chains; single-writer stays
+        # byte-identical to the pre-fold output (no extra comment).
+        if len(chain) > 1:
+            sf = bp.get("source_file", "")
+            sl = bp.get("start_line", 0)
+            body.append(f"# SAS: {sf}:{sl}")
+        body.append(per_block_code.get(bp.get("block_id", ""), "").rstrip())
+        # Hand the running result to the next writer; last writer keeps `result`
+        # so the caller can return/save it without an extra assignment.
+        if i < len(chain) - 1:
+            body.append(f"{target_ds} = result")
+    return body
+
+
+def _format_yaml(doc: dict[str, Any]) -> str:
+    """Serialise *doc* to YAML with blank lines between top-level sections.
+
+    Both YAML renderers share this helper so the blank-line structure is
+    deterministic and identical across delivery formats.
+
+    Args:
+        doc: Bundle document dict to serialise.
+
+    Returns:
+        YAML string with a trailing newline and blank lines separating each
+        top-level key after the first.
+    """
+    # SAS: databricks_bundle.py:_format_yaml
+    raw = yaml.dump(doc, sort_keys=True, default_flow_style=False, allow_unicode=True)
+    lines = raw.splitlines()
+    out: list[str] = []
+    top_key_seen = False
+    for line in lines:
+        if line and not line.startswith(" ") and ":" in line:
+            if top_key_seen:
+                out.append("")
+            top_key_seen = True
+        out.append(line)
+    return "\n".join(out) + "\n"
+
+
 def build_dataset_graph(block_plans: list[dict[str, Any]]) -> dict[str, Any]:
     """Build an ordered dataset dependency graph from a list of block plans.
 
@@ -400,7 +474,12 @@ def build_dataset_graph(block_plans: list[dict[str, Any]]) -> dict[str, Any]:
         * ``root_datasets`` — set[str], inputs not produced by any block.
         * ``block_outputs`` — set[str], all datasets produced by any block.
         * ``edges`` — list[tuple[str, str]], (producer_dataset, consumer_dataset).
-        * ``block_for_output`` — dict[str, dict], dataset → block_plan that produces it.
+        * ``block_for_output`` — dict[str, dict], dataset → block_plan (last writer).
+        * ``normalised_plans`` — list[dict], block plans with normalised dataset names.
+        * ``ordered_writers`` — dict[str, list[dict]], dataset stem → writer block plans
+          sorted by ``(source_file, start_line)`` (SAS execution order).
+        * ``dataset_source_file`` — dict[str, str], normalised dataset stem → slugified
+          source-file stem (first writer's source file).  Root datasets are excluded.
     """
     # SAS: databricks_bundle.py:build_dataset_graph
 
@@ -417,10 +496,26 @@ def build_dataset_graph(block_plans: list[dict[str, Any]]) -> dict[str, Any]:
 
     block_outputs: set[str] = set()
     block_for_output: dict[str, dict[str, Any]] = {}
+    # Build ordered_writers while iterating normalised_plans so renderers share
+    # one normalisation source rather than re-normalising independently.
+    ordered_writers: dict[str, list[dict[str, Any]]] = {}
     for bp in normalised_plans:
         for ds in bp["output_datasets"]:
             block_outputs.add(ds)
             block_for_output[ds] = bp
+            ordered_writers.setdefault(ds, []).append(bp)
+
+    # Sort each writer list by (source_file, start_line) so fold order matches
+    # SAS sequential execution — topo sort adds no edge between co-writers of
+    # the same table, making positional list order an unsafe ordering signal.
+    for ds in ordered_writers:
+        ordered_writers[ds].sort(key=lambda b: (b.get("source_file", ""), b.get("start_line", 0)))
+
+    dataset_source_file: dict[str, str] = {}
+    for ds, writers_list in ordered_writers.items():
+        raw_sf = writers_list[0].get("source_file", "") if writers_list else ""
+        stem = raw_sf.rsplit(".", 1)[0] if raw_sf else ""
+        dataset_source_file[ds] = _slugify(stem) if stem else "_misc"
 
     all_inputs: set[str] = {ds for bp in normalised_plans for ds in bp["input_datasets"]}
     root_datasets: set[str] = all_inputs - block_outputs
@@ -473,68 +568,56 @@ def build_dataset_graph(block_plans: list[dict[str, Any]]) -> dict[str, Any]:
         "block_outputs": block_outputs,
         "edges": edges,
         "block_for_output": block_for_output,
+        "normalised_plans": normalised_plans,
+        "ordered_writers": ordered_writers,
+        "dataset_source_file": dataset_source_file,
     }
 
 
-def render_dlt_pipeline(
-    job: Any,
-    per_block_code: dict[str, str],
-    schema: "list[TableSchema]",
-    target: DeploymentTarget | None = None,
-) -> str:
-    """Render a Delta Live Tables Python module from a migration job's block plans.
+def _dlt_is_stub(chain: list[dict[str, Any]], per_block_code: dict[str, str]) -> bool:
+    """Return True when the writer chain cannot be safely folded into one DLT table.
 
-    Produces one ``@dlt.table`` decorated function per (block, output_dataset)
-    pair.  Root inputs (not produced by any block) are read via
-    ``spark.read.format("delta").load(...)``; inter-block inputs are read via
-    ``dlt.read(...)``.
+    Guards against two ambiguous cases:
+    - Any chain block writes more than one output dataset (shared ``result`` is
+      ambiguous when another block also writes the same dataset).
+    - Any chain block is untranslatable (empty code or ``# SAS-UNRECOGNIZED``).
 
-    Zero-output blocks (e.g. PROC PRINT) are silently skipped.
-    Untranslatable blocks (``# SAS-UNRECOGNIZED`` marker or empty code) emit a
-    ``raise NotImplementedError`` stub so the pipeline is still importable.
-
-    Primary-key columns (``is_pk=True``) on output datasets generate
-    ``@dlt.expect_or_fail`` constraints placed immediately before the function
-    definition.
+    Single-writer chains bypass this: multi-output single-writer is fine and
+    already works (each output gets its own ``def``).
 
     Args:
-        job: ORM ``Job`` instance (accessed via ``job.migration_plan`` and
-            ``job.id``; ``Any`` to avoid circular imports).
-        per_block_code: Mapping of ``block_id`` → generated Python source string.
-        schema: List of ``TableSchema`` instances for schema resolution.
-        target: Resolved deployment target. Defaults to azure/serverless (the F74
-            default), which keeps the storage-root literal byte-identical.
+        chain: Writer block plans for the target dataset.
+        per_block_code: Mapping of block_id → portable Python source.
 
     Returns:
-        Byte-deterministic Python source string for the DLT pipeline module.
+        True if the table should emit a ``NotImplementedError`` stub.
     """
-    # SAS: databricks_bundle.py:render_dlt_pipeline
+    # SAS: databricks_bundle.py:_dlt_is_stub
+    is_multi_writer = len(chain) > 1
+    for bp in chain:
+        code = per_block_code.get(bp.get("block_id", ""), "") or ""
+        if not code.strip() or "# SAS-UNRECOGNIZED" in code:
+            return True
+        if is_multi_writer and len(bp.get("output_datasets", [])) > 1:
+            # result is ambiguous: this block writes multiple datasets; we cannot
+            # reliably hand the correct result to the next writer.
+            return True
+    return False
 
-    resolved_target = target or _DEFAULT_TARGET
-    plan: dict[str, Any] = job.migration_plan or {}
-    block_plans: list[dict[str, Any]] = plan.get("block_plans", [])
 
-    graph = build_dataset_graph(block_plans)
-    block_outputs: set[str] = graph["block_outputs"]
+def _dlt_module_header(source_stem: str, storage_root: str) -> list[str]:
+    """Build the standard module header lines for one DLT pipeline file.
 
-    # Re-normalise block plans for use below.
-    normalised: list[dict[str, Any]] = []
-    for bp in block_plans:
-        normalised.append(
-            {
-                **bp,
-                "input_datasets": [_normalise_ds_name(d) for d in bp.get("input_datasets", [])],
-                "output_datasets": [_normalise_ds_name(d) for d in bp.get("output_datasets", [])],
-            }
-        )
+    Args:
+        source_stem: SAS source filename (used in the docstring).
+        storage_root: Resolved storage root URI for the DATABRICKS_DATA_ROOT literal.
 
+    Returns:
+        List of header source lines (no trailing newline on each).
+    """
+    # SAS: databricks_bundle.py:_dlt_module_header
     lines: list[str] = []
-
-    # Module header
-    lines.append('"""DLT pipeline generated by rosetta-decode.')
-    lines.append("")
-    lines.append("NOTE: Multi-output blocks are repeated once per output dataset.")
-    lines.append('"""')
+    lines.append(f'"""DLT pipeline generated by rosetta-decode — source: {source_stem}."""')
     lines.append("")
     lines.append("# SAS: generated by rosetta-decode")
     lines.append("")
@@ -547,89 +630,187 @@ def render_dlt_pipeline(
     lines.append(
         "DATABRICKS_DATA_ROOT = os.environ.get("
         '"DATABRICKS_DATA_ROOT", '
-        f'"{resolved_target.storage_root}")  # TODO: set storage account'
+        f'"{storage_root}")  # TODO: set storage account'
     )
     lines.append("")
+    return lines
 
+
+def _emit_dlt_table(
+    output_ds: str,
+    chain: list[dict[str, Any]],
+    block_outputs: set[str],
+    per_block_code: dict[str, str],
+    schema: "list[TableSchema]",
+) -> list[str]:
+    """Build the source lines for one ``@dlt.table`` function.
+
+    Args:
+        output_ds: Normalised output dataset stem.
+        chain: Writer block plans sorted by ``(source_file, start_line)``.
+        block_outputs: Set of all block-produced dataset stems.
+        per_block_code: Mapping of block_id → portable Python source.
+        schema: List of TableSchema instances for schema resolution.
+
+    Returns:
+        List of source lines for this table's decorator + function body.
+    """
+    # SAS: databricks_bundle.py:_emit_dlt_table
+    lines: list[str] = []
+    is_stub = _dlt_is_stub(chain, per_block_code)
+
+    first_bp = chain[0]
+    source_file: str = first_bp.get("source_file", "")
+    start_line: int = first_bp.get("start_line", 0)
+
+    ts = _resolve_schema_for_dataset(output_ds, schema)
+
+    schema_lines: list[str] = _struct_type_lines(ts) if ts else []
+    has_schema = bool(schema_lines)
+
+    pk_cols: list[str] = []
+    if ts:
+        effective_cols = ts.target_columns or ts.columns
+        pk_cols = [c.name for c in effective_cols if c.is_pk]
+
+    target_schema_comment = ts.target_schema if ts else ""
+
+    for pk_col in sorted(pk_cols):
+        lines.append(f'@dlt.expect_or_fail("pk_{pk_col}_not_null", "`{pk_col}` IS NOT NULL")')
+
+    provenance = f"# SAS: {source_file}:{start_line}"
+    if has_schema:
+        struct_body = "\n".join(schema_lines)
+        decorator = textwrap.dedent(f"""\
+            @dlt.table(
+                name="{output_ds}",
+                comment="{provenance}",
+                schema=StructType([
+            {struct_body}
+                ]),
+            )""")
+    else:
+        decorator = textwrap.dedent(f"""\
+            @dlt.table(
+                name="{output_ds}",
+                comment="{provenance}",
+            )""")
+
+    if target_schema_comment:
+        lines.append(f"# target_schema: {target_schema_comment}")
+    lines.append(decorator)
+    lines.append(f"def {output_ds}():")
+
+    if is_stub:
+        for chain_bp in chain:
+            bp_code = per_block_code.get(chain_bp.get("block_id", ""), "") or ""
+            if not bp_code.strip() or "# SAS-UNRECOGNIZED" in bp_code:
+                sf = chain_bp.get("source_file", "")
+                sl = chain_bp.get("start_line", 0)
+                lines.append(f"    # MANUAL: {sf}:{sl} — untranslatable")
+        lines.append(
+            '    raise NotImplementedError("Untranslatable SAS block — manual migration required")'
+        )
+    else:
+        body_lines = _fold_chain_body(output_ds, chain, block_outputs, per_block_code, "dlt")
+        for body_line in body_lines:
+            lines.append(f"    {body_line}")
+        lines.append("    return result")
+
+    lines.append("")
+    return lines
+
+
+def render_dlt_pipeline(
+    job: Any,
+    per_block_code: dict[str, str],
+    schema: "list[TableSchema]",
+    target: DeploymentTarget | None = None,
+) -> "dict[str, str]":
+    """Render Delta Live Tables Python modules split by SAS source file.
+
+    Produces one file per SAS source file, keyed as
+    ``transformations/<source_stem>_dlt.py``. Blocks with no ``source_file``
+    are grouped under ``_misc``. Each file contains one ``@dlt.table``
+    decorated function per output dataset from that source file's blocks.
+
+    Multiple blocks writing the same dataset are folded into one function body
+    in ``(source_file, start_line)`` order via :func:`_fold_chain_body`. The
+    global ``emitted`` set spans all files so cross-file table duplicates are
+    still deduped correctly.
+
+    Files with no tables to emit (all blocks zero-output or already emitted)
+    are omitted from the returned dict.
+
+    Args:
+        job: ORM ``Job`` instance (accessed via ``job.migration_plan`` and
+            ``job.id``; ``Any`` to avoid circular imports).
+        per_block_code: Mapping of ``block_id`` → generated Python source string.
+        schema: List of ``TableSchema`` instances for schema resolution.
+        target: Resolved deployment target. Defaults to azure/serverless (the F74
+            default), which keeps the storage-root literal byte-identical.
+
+    Returns:
+        Dict mapping ``transformations/<source_stem>_dlt.py`` → module source.
+        Empty when there are no block plans.
+    """
+    # SAS: databricks_bundle.py:render_dlt_pipeline
+
+    resolved_target = target or _DEFAULT_TARGET
+    plan: dict[str, Any] = job.migration_plan or {}
+    block_plans: list[dict[str, Any]] = plan.get("block_plans", [])
+
+    graph = build_dataset_graph(block_plans)
+    block_outputs: set[str] = graph["block_outputs"]
+    normalised: list[dict[str, Any]] = graph["normalised_plans"]
+    ordered_writers: dict[str, list[dict[str, Any]]] = graph["ordered_writers"]
+
+    # Group normalised plans by source_file; preserve insertion order for determinism.
+    groups: dict[str, list[dict[str, Any]]] = {}
     for bp in normalised:
-        block_id: str = bp.get("block_id", "")
-        source_file: str = bp.get("source_file", "")
-        start_line: int = bp.get("start_line", 0)
-        output_datasets: list[str] = bp["output_datasets"]
-        input_datasets: list[str] = bp["input_datasets"]
+        source_file: str = bp.get("source_file", "") or ""
+        group_key = source_file if source_file else "_misc"
+        groups.setdefault(group_key, []).append(bp)
 
-        if not output_datasets:
-            # Zero-output block (e.g. PROC PRINT) — skip.
+    # Global emitted set so a table produced in file A is not repeated in file B.
+    emitted: set[str] = set()
+    result_modules: dict[str, str] = {}
+
+    for group_key in sorted(groups):
+        group_plans = groups[group_key]
+        file_lines: list[str] = []
+        has_content = False
+
+        # Determine the source stem for the module path and docstring.
+        # group_key is either a SAS filename (e.g. "05_build_adam_adsl.sas") or "_misc".
+        source_stem = os.path.basename(group_key) if group_key != "_misc" else "_misc"
+
+        for bp in group_plans:
+            output_datasets: list[str] = bp["output_datasets"]
+            if not output_datasets:
+                continue
+
+            for output_ds in sorted(output_datasets):
+                if output_ds in emitted:
+                    continue
+                emitted.add(output_ds)
+
+                chain = ordered_writers.get(output_ds, [bp])
+                table_lines = _emit_dlt_table(
+                    output_ds, chain, block_outputs, per_block_code, schema
+                )
+                if not has_content:
+                    file_lines.extend(_dlt_module_header(source_stem, resolved_target.storage_root))
+                    has_content = True
+                file_lines.extend(table_lines)
+
+        if not has_content:
             continue
 
-        python_code: str = per_block_code.get(block_id, "") or ""
-        is_untranslatable = not python_code.strip() or "# SAS-UNRECOGNIZED" in python_code
+        module_path = f"transformations/{_slugify(os.path.splitext(source_stem)[0])}_dlt.py"
+        result_modules[module_path] = "\n".join(file_lines)
 
-        for output_ds in sorted(output_datasets):
-            ts = _resolve_schema_for_dataset(output_ds, schema)
-
-            # Build schema= argument if we have column info.
-            schema_lines: list[str] = _struct_type_lines(ts) if ts else []
-            has_schema = bool(schema_lines)
-
-            # Resolve PK columns for expect_or_fail constraints.
-            pk_cols: list[str] = []
-            if ts:
-                effective_cols = ts.target_columns or ts.columns
-                pk_cols = [c.name for c in effective_cols if c.is_pk]
-
-            target_schema_comment = ts.target_schema if ts else ""
-
-            # @dlt.expect_or_fail constraints (one per PK column).
-            for pk_col in sorted(pk_cols):
-                lines.append(
-                    f'@dlt.expect_or_fail("pk_{pk_col}_not_null", "`{pk_col}` IS NOT NULL")'
-                )
-
-            # @dlt.table decorator.
-            provenance = f"# SAS: {source_file}:{start_line}"
-            if has_schema:
-                struct_body = "\n".join(schema_lines)
-                decorator = textwrap.dedent(f"""\
-                    @dlt.table(
-                        name="{output_ds}",
-                        comment="{provenance}",
-                        schema=StructType([
-                    {struct_body}
-                        ]),
-                    )""")
-            else:
-                decorator = textwrap.dedent(f"""\
-                    @dlt.table(
-                        name="{output_ds}",
-                        comment="{provenance}",
-                    )""")
-
-            if target_schema_comment:
-                lines.append(f"# target_schema: {target_schema_comment}")
-            lines.append(decorator)
-            lines.append(f"def {output_ds}():")
-
-            if is_untranslatable:
-                lines.append(
-                    "    raise NotImplementedError("
-                    '"Untranslatable SAS block — manual migration required")'
-                )
-            else:
-                # Bind inter-block inputs to the bare stems the portable code uses.
-                # Root / external inputs are read by the block itself via DATA_ROOT.
-                for bind_line in bind_inter_block_inputs(input_datasets, block_outputs, "dlt"):
-                    lines.append(f"    {bind_line}")
-
-                # Inline block code (indented 4 spaces). It is portable (DATA_ROOT)
-                # and guaranteed to bind ``result`` (Workstream 1 codegen contract).
-                indented_code = textwrap.indent(python_code.rstrip(), "    ")
-                lines.append(indented_code)
-                lines.append("    return result")
-
-            lines.append("")
-
-    return "\n".join(lines)
+    return result_modules
 
 
 def _resolve_target_schema_default(
@@ -713,6 +894,7 @@ def render_databricks_yml(
     job: Any,
     datasets: dict[str, Any],
     schema: "list[TableSchema]",
+    dlt_modules: "dict[str, str] | None" = None,
     target: DeploymentTarget | None = None,
 ) -> str:
     """Render a Databricks Asset Bundle ``databricks.yml`` manifest.
@@ -725,6 +907,11 @@ def render_databricks_yml(
             or ``str(job.id)``; ``Any`` to avoid circular imports).
         datasets: Dataset graph dict as returned by ``build_dataset_graph``.
         schema: List of ``TableSchema`` instances for schema resolution.
+        dlt_modules: Dict of ``transformations/<stem>_dlt.py`` → source produced
+            by :func:`render_dlt_pipeline`. Keys are used to build the
+            ``libraries`` list (sorted for byte-determinism). Pass ``None`` or
+            ``{}`` to fall back to the legacy single-file path
+            ``transformations/rosetta_<job_slug>_dlt.py``.
         target: Resolved deployment target. Defaults to azure/serverless/catalog
             ``main`` (the F74 default), keeping the storage-root + serverless
             bytes identical for jobs with no questionnaire answers.
@@ -743,7 +930,13 @@ def render_databricks_yml(
 
     pipeline_name = f"rosetta_{job_slug}_pipeline"
     job_name = f"rosetta_{job_slug}_job"
-    dlt_file = f"./transformations/rosetta_{job_slug}_dlt.py"
+
+    # Build libraries list from the modular dict when provided; fall back to the
+    # legacy single-file path so callers that pass no modules stay byte-identical.
+    if dlt_modules:
+        libraries = [{"file": {"path": f"./{path}"}} for path in sorted(dlt_modules)]
+    else:
+        libraries = [{"file": {"path": f"./transformations/rosetta_{job_slug}_dlt.py"}}]
 
     bundle_doc: dict[str, Any] = {
         "bundle": {
@@ -757,9 +950,7 @@ def render_databricks_yml(
                     "catalog": "${var.catalog}",
                     "target": "${var.target_schema}",
                     **compute_block,
-                    "libraries": [
-                        {"file": {"path": dlt_file}},
-                    ],
+                    "libraries": libraries,
                     "configuration": {
                         "DATABRICKS_DATA_ROOT": "${var.storage_root}",
                         "ROSETTA_DATA_ROOT": "${var.rosetta_data_root}",
@@ -786,7 +977,7 @@ def render_databricks_yml(
         },
     }
 
-    return yaml.dump(bundle_doc, sort_keys=True, default_flow_style=False, allow_unicode=True)
+    return _format_yaml(bundle_doc)
 
 
 # ---------------------------------------------------------------------------
@@ -794,28 +985,32 @@ def render_databricks_yml(
 # ---------------------------------------------------------------------------
 
 
-def _spark_job_module(
+def _spark_job_module_folded(
     output_ds: str,
-    bp: dict[str, Any],
-    python_code: str,
-    block_outputs: set[str],
-    is_untranslatable: bool,
+    first_bp: dict[str, Any],
+    body_lines: list[str],
+    is_stub: bool,
+    stub_manual_lines: list[str],
 ) -> str:
     """Render one ``jobs/<task_key>.py`` module for a single output dataset.
 
+    Accepts a pre-built body (from ``_fold_chain_body`` or an empty list for
+    stubs) so the caller controls folding logic while this function handles
+    the module scaffold (imports, CATALOG/SCHEMA, saveAsTable footer).
+
     Args:
         output_ds: Normalised output dataset stem (the Delta table name).
-        bp: Normalised block plan dict (input_datasets / source_file / start_line).
-        python_code: Portable block source (already DATA_ROOT-based, result-bound).
-        block_outputs: Set of all block-produced dataset stems.
-        is_untranslatable: Whether the block could not be translated.
+        first_bp: First writer's block plan (for provenance comment).
+        body_lines: Pre-built code lines from ``_fold_chain_body``, or ``[]``.
+        is_stub: If True, emit ``raise NotImplementedError`` instead of body.
+        stub_manual_lines: ``# MANUAL:`` comment lines to emit before the stub.
 
     Returns:
         Byte-deterministic Python source string for the task module.
     """
-    # SAS: databricks_bundle.py:_spark_job_module
-    source_file: str = bp.get("source_file", "")
-    start_line: int = bp.get("start_line", 0)
+    # SAS: databricks_bundle.py:_spark_job_module_folded
+    source_file: str = first_bp.get("source_file", "")
+    start_line: int = first_bp.get("start_line", 0)
     lines: list[str] = []
     lines.append(f'"""Spark Job task generated by rosetta-decode — writes `{output_ds}`.')
     lines.append('"""')
@@ -830,7 +1025,9 @@ def _spark_job_module(
     lines.append("spark = SparkSession.builder.getOrCreate()")
     lines.append("")
 
-    if is_untranslatable:
+    if is_stub:
+        for manual_line in stub_manual_lines:
+            lines.append(manual_line)
         lines.append(
             'raise NotImplementedError("Untranslatable SAS block — manual migration required")'
         )
@@ -840,16 +1037,9 @@ def _spark_job_module(
     lines.append('CATALOG = os.environ.get("ROSETTA_CATALOG", "main")')
     lines.append('SCHEMA = os.environ.get("ROSETTA_SCHEMA", "default")')
     lines.append("")
-    # Bind inter-block inputs to the bare stems the portable code uses. Root /
-    # external inputs are read by the block itself via DATA_ROOT.
-    binds = bind_inter_block_inputs(bp.get("input_datasets", []), block_outputs, "job")
-    if binds:
-        lines.extend(binds)
+    if body_lines:
+        lines.extend(body_lines)
         lines.append("")
-    # Portable block code verbatim at module top level (DATA_ROOT-based and
-    # ``result``-guaranteed by Workstream 1 codegen).
-    lines.append(python_code.rstrip())
-    lines.append("")
     lines.append(
         'result.write.format("delta").mode("overwrite").saveAsTable('
         f'f"{{CATALOG}}.{{SCHEMA}}.{output_ds}")'
@@ -866,11 +1056,13 @@ def render_spark_job_modules(
 ) -> dict[str, str]:
     """Render one PySpark module per output dataset for the classic Job format.
 
-    Mirrors :func:`render_dlt_pipeline`'s block/output handling: zero-output blocks
-    are skipped, untranslatable blocks emit a ``raise NotImplementedError`` module,
-    and multi-output blocks produce one module per output dataset (each writing the
-    block's single ``result`` to its own Delta table — the documented shared-result
-    caveat carried over from the DLT renderer).
+    When multiple blocks write the same dataset (build + in-place rewrite
+    pattern) they are folded into one module body in ``(source_file,
+    start_line)`` order via :func:`_fold_chain_body`, producing exactly one
+    ``jobs/<task_key>.py`` per dataset (no silent last-writer-wins overwrite).
+
+    Zero-output blocks are skipped. Untranslatable or ambiguous multi-output-in-
+    chain blocks emit a ``raise NotImplementedError`` module.
 
     Args:
         job: ORM ``Job`` instance (accessed via ``job.migration_plan``).
@@ -887,31 +1079,45 @@ def render_spark_job_modules(
 
     graph = build_dataset_graph(block_plans)
     block_outputs: set[str] = graph["block_outputs"]
-
-    normalised: list[dict[str, Any]] = []
-    for bp in block_plans:
-        normalised.append(
-            {
-                **bp,
-                "input_datasets": [_normalise_ds_name(d) for d in bp.get("input_datasets", [])],
-                "output_datasets": [_normalise_ds_name(d) for d in bp.get("output_datasets", [])],
-            }
-        )
+    normalised: list[dict[str, Any]] = graph["normalised_plans"]
+    ordered_writers: dict[str, list[dict[str, Any]]] = graph["ordered_writers"]
 
     modules: dict[str, str] = {}
+    emitted: set[str] = set()
+
     for bp in normalised:
-        block_id: str = bp.get("block_id", "")
         output_datasets: list[str] = bp["output_datasets"]
         if not output_datasets:
             continue
 
-        python_code: str = per_block_code.get(block_id, "") or ""
-        is_untranslatable = not python_code.strip() or "# SAS-UNRECOGNIZED" in python_code
-
         for output_ds in sorted(output_datasets):
+            if output_ds in emitted:
+                continue
+            emitted.add(output_ds)
+
+            chain = ordered_writers.get(output_ds, [bp])
+            is_stub = _dlt_is_stub(chain, per_block_code)
+            stub_manual_lines: list[str] = []
+
+            if is_stub:
+                for chain_bp in chain:
+                    bp_code = per_block_code.get(chain_bp.get("block_id", ""), "") or ""
+                    if not bp_code.strip() or "# SAS-UNRECOGNIZED" in bp_code:
+                        sf = chain_bp.get("source_file", "")
+                        sl = chain_bp.get("start_line", 0)
+                        stub_manual_lines.append(f"# MANUAL: {sf}:{sl} — untranslatable")
+                body_lines: list[str] = []
+            else:
+                body_lines = _fold_chain_body(
+                    output_ds, chain, block_outputs, per_block_code, "job"
+                )
+
             task_key = _slugify(output_ds)
-            modules[f"jobs/{task_key}.py"] = _spark_job_module(
-                output_ds, bp, python_code, block_outputs, is_untranslatable
+            first_writer = ordered_writers.get(output_ds, [bp])[0]
+            raw_sf: str = first_writer.get("source_file", "")
+            source_stem = _slugify(raw_sf.rsplit(".", 1)[0]) if raw_sf else "_misc"
+            modules[f"jobs/{source_stem}/{task_key}.py"] = _spark_job_module_folded(
+                output_ds, chain[0], body_lines, is_stub, stub_manual_lines
             )
     return modules
 
@@ -965,9 +1171,10 @@ def render_databricks_yml_spark_job(
         if ds not in block_outputs:
             continue
         task_key = _slugify(ds)
+        source_stem = datasets.get("dataset_source_file", {}).get(ds, "_misc")
         task: dict[str, Any] = {
             "task_key": task_key,
-            "spark_python_task": {"python_file": f"./jobs/{task_key}.py"},
+            "spark_python_task": {"python_file": f"./jobs/{source_stem}/{task_key}.py"},
         }
         if is_classic:
             task["job_cluster_key"] = "shared"
@@ -997,4 +1204,4 @@ def render_databricks_yml_spark_job(
         "resources": {"jobs": {job_name: job_resource}},
     }
 
-    return yaml.dump(bundle_doc, sort_keys=True, default_flow_style=False, allow_unicode=True)
+    return _format_yaml(bundle_doc)

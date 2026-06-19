@@ -312,14 +312,14 @@ def test_dbx_artefacts_present_when_block_code_supplied() -> None:
     assert any(k.startswith("transformations/") and k.endswith("_dlt.py") for k in members)
 
 
-def test_dbx_pipeline_name_uses_job_slug() -> None:
-    """The DLT module path uses the slugified job name."""
-    # SAS: tests/test_packaging.py:test_dbx_pipeline_name_uses_job_slug
+def test_dbx_pipeline_name_uses_source_file_stem() -> None:
+    """The DLT module path uses the slugified SAS source file stem."""
+    # SAS: tests/test_packaging.py:test_dbx_pipeline_name_uses_source_file_stem
     job = _make_dbx_job()
     members = _extract_zip(build_migration_package(job, [], per_block_code=_FAKE_PER_BLOCK_CODE))
 
-    # "My Test Job" → "my_test_job" → "rosetta_my_test_job_dlt.py"
-    assert "transformations/rosetta_my_test_job_dlt.py" in members
+    # source_file "step1.sas" → "transformations/step1_dlt.py"
+    assert "transformations/step1_dlt.py" in members
 
 
 def test_dbx_existing_five_members_unchanged() -> None:
@@ -437,7 +437,7 @@ def test_dbx_regression_lock_absent_target_equals_default() -> None:
     default_target = _dbx_members(
         _make_dbx_job(user_overrides={"deployment_target": {"provider": "azure"}})
     )
-    dlt_key = "transformations/rosetta_my_test_job_dlt.py"
+    dlt_key = "transformations/step1_dlt.py"
     assert no_target["databricks.yml"] == default_target["databricks.yml"]
     assert no_target[dlt_key] == default_target[dlt_key]
 
@@ -446,7 +446,7 @@ def test_dbx_aws_target_uses_s3_scheme() -> None:
     """An AWS deployment_target threads s3:// into both DBX files."""
     # SAS: tests/test_packaging.py:test_dbx_aws_target_uses_s3_scheme
     members = _dbx_members(_make_dbx_job(user_overrides={"deployment_target": {"provider": "aws"}}))
-    dlt_key = "transformations/rosetta_my_test_job_dlt.py"
+    dlt_key = "transformations/step1_dlt.py"
     assert "s3://<bucket>/" in members["databricks.yml"]
     assert "s3://<bucket>/" in members[dlt_key]
 
@@ -485,7 +485,7 @@ def test_dbx_ingestion_approach_changes_only_the_guide() -> None:
     staging = _dbx_members(
         _make_dbx_job(user_overrides={"deployment_target": {"ingestion_approach": "staging"}})
     )
-    dlt_key = "transformations/rosetta_my_test_job_dlt.py"
+    dlt_key = "transformations/step1_dlt.py"
     assert historical["databricks.yml"] == staging["databricks.yml"]
     assert historical[dlt_key] == staging[dlt_key]
     assert historical["DEPLOYMENT_GUIDE.md"] != staging["DEPLOYMENT_GUIDE.md"]
@@ -549,8 +549,8 @@ def test_spark_job_emits_jobs_modules_not_dlt() -> None:
     members = _sj_members(_sj_job())
     assert any(k.startswith("jobs/") and k.endswith(".py") for k in members)
     assert not any(k.startswith("transformations/") for k in members)
-    assert "jobs/out_ds.py" in members
-    assert 'saveAsTable(f"{CATALOG}.{SCHEMA}.out_ds")' in members["jobs/out_ds.py"]
+    assert "jobs/step1/out_ds.py" in members
+    assert 'saveAsTable(f"{CATALOG}.{SCHEMA}.out_ds")' in members["jobs/step1/out_ds.py"]
 
 
 def test_spark_job_yml_has_no_pipelines() -> None:
@@ -613,7 +613,7 @@ def test_explicit_dlt_reproduces_default_dlt_bytes() -> None:
     explicit = _dbx_members(
         _make_dbx_job(user_overrides={"deployment_target": {"delivery_format": "dlt"}})
     )
-    dlt_key = "transformations/rosetta_my_test_job_dlt.py"
+    dlt_key = "transformations/step1_dlt.py"
     assert default["databricks.yml"] == explicit["databricks.yml"]
     assert default[dlt_key] == explicit[dlt_key]
     assert default["DEPLOYMENT_GUIDE.md"] == explicit["DEPLOYMENT_GUIDE.md"]
