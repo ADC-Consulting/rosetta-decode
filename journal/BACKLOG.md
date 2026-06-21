@@ -497,6 +497,10 @@
 
 - [x] F72: Replaced bridge view with TB module execution flow — `buildModulesGraph` gains `rankdir` param; Pipeline sub-view uses TB (top-to-bottom), Files stays LR; all bridge components removed.
 
+**F73 — Target Pipeline sequential step cards**
+
+- [x] F73: Replaced TB module dependency graph with `buildPipelineStepsGraph` — sequential step cards from `lineage.pipeline_steps`; each card shows step number, name, description, `.py` module badges; sequential edges, no dependency edges; fitView centering fixed via explicit node dimensions.
+
 - [ ] #21: Consolidate lineage into a single primary view — `backlog` label
 - [ ] #20: Rollback / versioning based on lineage — `backlog` label
 - [ ] #32: Specify decision-ready reports (technical + PO) — `backlog` label, deferred

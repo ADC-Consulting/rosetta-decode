@@ -6,6 +6,33 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-21 — F73 Target Pipeline: sequential step cards + fitView centering
+
+**Branch:** `feat/F67-etl-source-target-toggle`
+
+### Done
+- Replaced TB module dependency graph (messy crossing edges) with `buildPipelineStepsGraph` — uses `lineage.pipeline_steps` as primary nodes; each card shows step number badge, step name, description, and `.py` module badges derived from `step.blocks → blockPlans → source_file → sasFileToPyFile`
+- Sequential edges connect steps in execution order; no dependency-based edges
+- `PipelineTargetStepNode` component renders the step cards; added `pipelineTargetStep` to `NODE_TYPES`
+- Fixed fitView centering: added explicit `width: 260, height: 140` on each node so ReactFlow can compute the bounding box before DOM measurement; switched to `fitView` prop with `maxZoom: 0.8` to prevent the narrow column from over-zooming
+- Two commits: `feat(F73)` and `fix(F73)`; all 7 test gates green; pushed
+
+### Decisions
+- **Target Pipeline = sequential pipeline step cards, not module dependency graph** — the dependency graph (Files view) is the right place for data dependencies; Pipeline should answer "what are the steps of the migration" · revisit never
+
+### Open Questions
+- Step 1 is very slightly clipped at the top edge of the initial fitView — padding of 12% is borderline; could increase to 0.18 if it becomes a complaint
+
+### Next Session — Start Here
+1. Open PR for `feat/F67-etl-source-target-toggle` (covers F67 + F69 + F70 + F71 + F72 + F73). Run `/git-pr-summary` to draft the description.
+2. After PR is open, review `.claude/plans/linear-discovering-sketch.md` — Data Storage tab polish (F35 fixes, P0–P2) — that is the next candidate for work.
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/TargetGraph.tsx` (major — `buildPipelineStepsGraph`, `PipelineTargetStepNode`, fitView fix)
+- `journal/BACKLOG.md`, `journal/SESSIONS.md`
+
+---
+
 ## 2026-06-19 — F72 Target Pipeline: TB execution flow
 
 **Branch:** `feat/F67-etl-source-target-toggle`
