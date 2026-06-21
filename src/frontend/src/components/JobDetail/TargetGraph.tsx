@@ -950,10 +950,14 @@ function buildPipelineStepsGraph(
       }
     }
 
+    const NODE_W = 260;
+    const NODE_H = 140;
     return {
       id: step.step_id,
       type: "pipelineTargetStep",
       position: { x: 0, y: 0 },
+      width: NODE_W,
+      height: NODE_H,
       data: {
         stepNumber: i + 1,
         stepName: step.name,
@@ -974,9 +978,9 @@ function buildPipelineStepsGraph(
     markerEnd: { type: MarkerType.ArrowClosed, color: "#94a3b8" },
   }));
 
-  const layoutNodes = applyDagreLayout(rawNodes, edges, 260, 100, {
+  const layoutNodes = applyDagreLayout(rawNodes, edges, 260, 140, {
     rankdir: "TB",
-    ranksep: 120,
+    ranksep: 80,
     nodesep: 40,
   });
 
@@ -1099,6 +1103,7 @@ function TargetGraphInner({
 
   const [nodes, setNodes, onNodesChange] = useNodesState(builtNodes);
   const [edges, , onEdgesChange] = useEdgesState(builtEdges);
+
 
   // Undo/redo history
   const historyRef = useRef<{ positions: Record<string, XYPosition>[]; idx: number }>({
@@ -1274,7 +1279,7 @@ function TargetGraphInner({
           nodeTypes={NODE_TYPES}
           edgeTypes={EDGE_TYPES}
           fitView
-          fitViewOptions={{ padding: 0.2 }}
+          fitViewOptions={{ padding: 0.12, maxZoom: 0.8 }}
         >
           <Controls />
           <Background />
