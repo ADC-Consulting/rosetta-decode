@@ -292,8 +292,27 @@ _LET_RE = re.compile(r"(?i)%LET\s+(\w+)\s*=\s*([^;]+?)\s*;")
 # LIBNAME declarations (libref → path)
 _LIBNAME_RE = re.compile(r"""(?i)LIBNAME\s+(\w+)\s+['"]([^'"]+)['"]\s*;""")
 
+# LIBNAME declarations with an optional engine token (libref [engine] → path).
+# Captures: group(1) libref, group(2) optional engine word, group(3) path.
+# Matches both ``LIBNAME ref "path"`` and ``LIBNAME ref oracle "path"``.
+_LIBNAME_ENGINE_RE = re.compile(r"""(?i)LIBNAME\s+(\w+)(?:\s+(\w+))?\s+['"]([^'"]+)['"]\s*;""")
+
 # %INCLUDE references
 _INCLUDE_RE = re.compile(r"""(?i)%INCLUDE\s+['"]([^'"]+)['"]\s*;""")
+
+# ODS destinations: ODS <PDF|RTF|HTML|EXCEL|…> [FILE=]"path".  Captures the
+# destination keyword (group 1) and an optional FILE=/bare quoted path (group 2).
+# Detection-only — ODS is never emitted as a translatable block.
+_ODS_RE = re.compile(
+    r"""(?i)\bODS\s+([A-Z]+)\b[^;]*?(?:FILE\s*=\s*|=\s*)?['"]([^'"]+)['"]""",
+)
+# Fallback: an ODS statement that names a destination but carries no path.
+_ODS_DEST_RE = re.compile(r"(?i)\bODS\s+([A-Z]+)\b")
+
+# INFILE / FILE statements: token is either a quoted literal path or a bare
+# fileref. Group(1) = quoted path (when present), group(2) = bare fileref.
+_INFILE_RE = re.compile(r"""(?i)\bINFILE\s+(?:['"]([^'"]+)['"]|(\w+))""")
+_FILE_RE = re.compile(r"""(?i)\bFILE\s+(?:['"]([^'"]+)['"]|(\w+))""")
 
 # LENGTH statement body and character-variable token (var $[w])
 _LENGTH_STMT_RE = re.compile(r"(?i)\bLENGTH\b(.+?);", re.DOTALL)
@@ -364,6 +383,142 @@ def _extract_renames(raw: str) -> dict[str, str]:
 def _extract_libnames(source: str) -> dict[str, str]:
     """Return {libref: path} for all LIBNAME statements in *source*."""
     return {m.group(1).lower(): m.group(2) for m in _LIBNAME_RE.finditer(source)}
+
+
+def _extract_libname_engines(source: str) -> dict[str, str]:
+    """Return {libref: engine} for all LIBNAME statements in *source*.
+
+    The engine is the optional token between the libref and the quoted path
+    (e.g. ``oracle`` in ``LIBNAME mylib oracle "..."``). When no engine token is
+    present (``LIBNAME ref "path"``) the engine defaults to ``"BASE"``. Librefs
+    are lowercased to match ``libname_map`` keys.
+
+    This is an additive detection-only signal for the F77 scoping report; it does
+    not alter ``libname_map`` or any translation behavior.
+
+    Args:
+        source: Raw SAS source text.
+
+    Returns:
+        Mapping of lowercased libref to engine name (``"BASE"`` when implicit).
+    """  # SAS: parser.py:_extract_libname_engines
+    engines: dict[str, str] = {}
+    for match in _LIBNAME_ENGINE_RE.finditer(source):
+        libref = match.group(1).lower()
+        engine = match.group(2)
+        engines[libref] = engine if engine else "BASE"
+    return engines
+
+
+def _extract_ods(source: str) -> list[str]:
+    """Return ODS destination signals found in *source*.
+
+    Each entry is ``"<DEST>:<path>"`` when a FILE=/quoted path is present
+    (e.g. ``"PDF:/out/r.pdf"``), or just ``"<DEST>"`` otherwise. Order of first
+    appearance is preserved and duplicates are removed for determinism. When a
+    destination is seen both with and without a path (e.g. ``ODS PDF FILE=...``
+    followed by ``ODS PDF CLOSE;``), only the path-bearing signal is kept so a
+    bookkeeping ``CLOSE`` statement does not produce a redundant bare entry.
+
+    Detection-only — ODS is never emitted as a translatable block.
+
+    Args:
+        source: Raw SAS source text.
+
+    Returns:
+        Ordered, de-duplicated list of ODS destination signals.
+    """  # SAS: parser.py:_extract_ods
+    with_path: dict[int, str] = {}
+    for match in _ODS_RE.finditer(source):
+        with_path[match.start()] = f"{match.group(1).upper()}:{match.group(2)}"
+    # Destinations that appear at least once with a path, so bare duplicates drop.
+    dests_with_path = {signal.split(":", 1)[0] for signal in with_path.values()}
+    targets: list[str] = []
+    seen: set[str] = set()
+    for match in _ODS_DEST_RE.finditer(source):
+        dest = match.group(1).upper()
+        signal = with_path.get(match.start())
+        if signal is None:
+            if dest in dests_with_path:
+                continue  # a richer "<DEST>:<path>" entry already covers this
+            signal = dest
+        if signal not in seen:
+            seen.add(signal)
+            targets.append(signal)
+    return targets
+
+
+def _resolve_fileref(token: str, filename_map: dict[str, str]) -> str:
+    """Resolve a bare INFILE/FILE fileref to a path via *filename_map*.
+
+    Falls back to the fileref token itself when it is not a known fileref.
+
+    Args:
+        token: Bare fileref token (not a quoted literal).
+        filename_map: {fileref: path} from FILENAME statements.
+
+    Returns:
+        The resolved path, or the original token when unresolved.
+    """  # SAS: parser.py:_resolve_fileref
+    return filename_map.get(token.lower(), token)
+
+
+def _extract_infile_paths(raw: str, filename_map: dict[str, str]) -> list[str]:
+    """Return external paths read/written by INFILE/FILE statements in *raw*.
+
+    Quoted literal paths are stored verbatim; bare filerefs are resolved via
+    *filename_map* (falling back to the fileref token when unknown). Order of
+    appearance is preserved and duplicates removed for determinism.
+
+    Args:
+        raw: Raw SAS text of a single block (typically a DATA step).
+        filename_map: {fileref: path} from FILENAME statements.
+
+    Returns:
+        Ordered, de-duplicated list of external file paths.
+    """  # SAS: parser.py:_extract_infile_paths
+    paths: list[str] = []
+    seen: set[str] = set()
+    for pattern in (_INFILE_RE, _FILE_RE):
+        for match in pattern.finditer(raw):
+            literal, fileref = match.group(1), match.group(2)
+            path = literal if literal else _resolve_fileref(fileref, filename_map)
+            if path and path not in seen:
+                seen.add(path)
+                paths.append(path)
+    return paths
+
+
+def _collect_external_paths(
+    blocks: list[SASBlock],
+    ods_targets: list[str],
+    filename_map: dict[str, str],
+) -> list[str]:
+    """Roll up every external file path referenced across a parse.
+
+    The union is the sorted, unique set of:
+    - every block's ``infile_paths`` (INFILE/FILE targets),
+    - the path portion of any ``"<DEST>:<path>"`` ODS target,
+    - all FILENAME ``filename_map`` values.
+
+    Args:
+        blocks: All parsed blocks (with ``infile_paths`` populated).
+        ods_targets: ODS destination signals from :func:`_extract_ods`.
+        filename_map: {fileref: path} from FILENAME statements.
+
+    Returns:
+        Sorted list of unique external file paths.
+    """  # SAS: parser.py:_collect_external_paths
+    paths: set[str] = set()
+    for block in blocks:
+        paths.update(block.infile_paths)
+    for target in ods_targets:
+        # Only "<DEST>:<path>" entries carry a path; bare "<DEST>" do not.
+        _dest, sep, path = target.partition(":")
+        if sep and path:
+            paths.add(path)
+    paths.update(filename_map.values())
+    return sorted(paths)
 
 
 def _extract_includes(source: str) -> list[str]:
@@ -1178,6 +1333,9 @@ class SASParser:
         all_macro_defs: list[MacroDef] = []
         all_filename_map: dict[str, str] = {}
         all_format_defs: dict[str, FormatDef] = {}
+        # Additive F77 detection-only signals (no new BlockType).
+        all_libname_engines: dict[str, str] = {}
+        all_ods_targets: list[str] = []
 
         # Pass 1: collect all macro defs across all files (needed for cross-file
         # call resolution).  Last definition of a given name wins for duplicates.
@@ -1237,14 +1395,29 @@ class SASParser:
             all_macro_defs.extend(self._extract_macro_defs(expanded_source, filename))
             all_filename_map.update(self._extract_filenames(expanded_source))
             all_format_defs.update(extract_format_catalog(expanded_source))
+            # F77 additive detectors (engine + ODS) aggregated like libname_map.
+            all_libname_engines.update(_extract_libname_engines(expanded_source))
+            for target in _extract_ods(source_stripped):
+                if target not in all_ods_targets:
+                    all_ods_targets.append(target)
+
+        sorted_blocks = _topological_sort(all_blocks)
+        # Populate per-block INFILE/FILE paths now that filename_map is complete,
+        # then roll up all external file paths for the scoping report.
+        for block in sorted_blocks:
+            block.infile_paths = _extract_infile_paths(block.raw_sas, all_filename_map)
+        external_paths = _collect_external_paths(sorted_blocks, all_ods_targets, all_filename_map)
 
         result = ParseResult(
-            blocks=_topological_sort(all_blocks),
+            blocks=sorted_blocks,
             macro_vars=all_macro_vars,
             libname_map=all_libnames,
             includes=all_includes,
             macro_defs=all_macro_defs,
             filename_map=all_filename_map,
             format_catalog=all_format_defs,
+            libname_engines=all_libname_engines,
+            ods_targets=all_ods_targets,
+            external_file_paths=external_paths,
         )
         return result

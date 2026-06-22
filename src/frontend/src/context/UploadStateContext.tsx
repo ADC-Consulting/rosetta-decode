@@ -20,6 +20,9 @@ export interface UploadState {
   dragOver: boolean;
   migrationName: string;
   setMigrationName: (v: string) => void;
+  /** F77: when true, submit runs scoping-only assessment (no LLM translation). */
+  scopeOnly: boolean;
+  setScopeOnly: (v: boolean) => void;
   setDragOver: (v: boolean) => void;
   applyFiles: (incoming: File[]) => void;
   removeFile: (name: string) => void;
@@ -49,6 +52,7 @@ export function UploadStateProvider({ children }: { children: React.ReactNode })
   const [manifest, setManifestState] = useState<MigrateResponse | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [migrationName, setMigrationName] = useState<string>("");
+  const [scopeOnly, setScopeOnly] = useState<boolean>(false);
 
   async function parseZip(file: File): Promise<void> {
     setZipEntries((prev) => {
@@ -142,6 +146,7 @@ export function UploadStateProvider({ children }: { children: React.ReactNode })
     setZipEntries(new Map());
     setManifestState(null);
     setMigrationName("");
+    setScopeOnly(false);
   }
 
   function newMigration() {
@@ -161,6 +166,7 @@ export function UploadStateProvider({ children }: { children: React.ReactNode })
         manifest,
         dragOver, setDragOver,
         migrationName, setMigrationName,
+        scopeOnly, setScopeOnly,
         applyFiles, removeFile,
         toggleZipExpanded, excludeZipEntry,
         setManifest,

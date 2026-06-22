@@ -8,17 +8,24 @@ import uuid
 import zipfile
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.backend.api.schemas import FileRejection, MigrateResponse
 from src.backend.core.config import backend_settings
 from src.backend.db.models import Job
 from src.backend.db.session import get_async_session
+from src.worker.engine.parser import SASParser
+from src.worker.engine.scoping import build_scoping_report
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 _ACCEPTED_ZIP_EXTS = {".sas", ".sas7bdat", ".xpt", ".xport", ".csv", ".log", ".xlsx", ".xls"}
+
+# F77: valid values for the `mode` form param. "migrate" runs the async worker
+# pipeline; "scope" runs a synchronous, LLM-free static assessment in-request.
+_VALID_MODES = {"migrate", "scope"}
 
 
 def _unpack_zip(
@@ -86,6 +93,7 @@ async def migrate(
     ref_csv: UploadFile | None = None,
     name: str | None = Form(default=None),
     ref_target_path: str | None = Form(default=None),
+    mode: str = Form(default="migrate"),
 ) -> MigrateResponse:
     """Accept SAS files or a zip archive and enqueue a migration job.
 
@@ -98,6 +106,8 @@ async def migrate(
         name: Optional human-readable label for the migration job.
         ref_target_path: Optional path of a zip-extracted file to promote as the canonical
             reconciliation reference (``__ref_csv__`` or ``__ref_sas7bdat__``).
+        mode: ``"migrate"`` (default) enqueues the async worker pipeline; ``"scope"`` runs a
+            synchronous, LLM-free static assessment in-request and returns a ``done`` job.
 
     Returns:
         MigrateResponse with job UUID, accepted file list, and any rejected files.
@@ -105,6 +115,12 @@ async def migrate(
     Raises:
         HTTPException: 400 if inputs conflict or are invalid; 413 if zip exceeds size limit.
     """
+    if mode not in _VALID_MODES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"mode must be one of {sorted(_VALID_MODES)}; got '{mode}'.",
+        )
+
     has_sas = bool(sas_files)
     has_zip = zip_file is not None
 
@@ -201,6 +217,16 @@ async def migrate(
 
     input_hash = hasher.hexdigest()
 
+    if mode == "scope":
+        # F77: synchronous, LLM-free assessment. Parse off the event loop, build the
+        # report, persist a job already in "done" state. The worker never sees it
+        # (status is never "queued"), so no main.py / queue involvement and no tokens.
+        job = await _build_scope_job(job_id, input_hash, file_contents, name)
+        session.add(job)
+        await session.commit()
+        logger.info("Scope job %s created (hash=%s)", job_id, input_hash[:12])
+        return MigrateResponse(job_id=uuid.UUID(job_id), accepted=accepted, rejected=rejected)
+
     job = Job(
         id=job_id,
         status="queued",
@@ -213,3 +239,39 @@ async def migrate(
 
     logger.info("Job %s created (hash=%s)", job_id, input_hash[:12])
     return MigrateResponse(job_id=uuid.UUID(job_id), accepted=accepted, rejected=rejected)
+
+
+async def _build_scope_job(
+    job_id: str, input_hash: str, file_contents: dict[str, str], name: str | None
+) -> Job:
+    """Parse SAS sources synchronously and build a ``done`` scope job (no LLM).
+
+    Args:
+        job_id: Pre-generated job UUID string.
+        input_hash: SHA-256 hash of the uploaded inputs.
+        file_contents: Full file map (real ``.sas`` keys plus ``__ref_*`` sentinels).
+        name: Optional human-readable job label.
+
+    Returns:
+        A :class:`Job` with ``status="done"``, ``mode="scope"`` and the persisted
+        ``scoping_report``. CPU-bound parse runs in a threadpool to keep the event
+        loop free.
+    """
+    # Real .sas sources only — skip sentinel/data keys for the parser input.
+    sas_sources = {k: v for k, v in file_contents.items() if _is_sas_source(k)}
+    parse_result = await run_in_threadpool(SASParser().parse, sas_sources)
+    report = build_scoping_report(parse_result, file_contents)
+    return Job(
+        id=job_id,
+        status="done",
+        mode="scope",
+        input_hash=input_hash,
+        files=file_contents,
+        name=name,
+        scoping_report=report.model_dump(),
+    )
+
+
+def _is_sas_source(key: str) -> bool:
+    """Return True for genuine ``.sas`` source keys (skips ``__ref_*`` sentinels)."""
+    return key.lower().endswith(".sas") and not key.startswith("__")

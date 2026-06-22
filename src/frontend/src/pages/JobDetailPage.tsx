@@ -15,6 +15,7 @@ import type {
   JobStatusValue,
 } from "@/api/types";
 // import ChangelogFeed from "@/components/JobDetail/ChangelogFeed";
+import AssessmentReportPanel from "@/components/JobDetail/AssessmentReportPanel";
 import ChevronTabBar from "@/components/JobDetail/ChevronTabBar";
 import DeploymentTargetFields from "@/components/JobDetail/DeploymentTargetFields";
 import DataStorageTab from "@/components/JobDetail/DataStorageTab";
@@ -206,6 +207,39 @@ export default function JobDetailPage(): React.ReactElement {
     enabled: !!id && isReviewable,
   });
   const jobSources = jobSourcesData?.sources ?? undefined;
+
+  // F77 — scope-only assessment jobs bypass the migration tabs entirely and
+  // render the deterministic scoping report (job is already `done`).
+  if (job?.mode === "scope") {
+    return (
+      <div className="px-6 py-2 overflow-y-auto flex-1 h-full">
+        <div className="sticky top-0 z-20 bg-background border-border border-b pb-2">
+          <div className="relative flex items-center justify-center py-3">
+            <button
+              type="button"
+              onClick={() => navigate("/jobs")}
+              className="absolute left-0 flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+              aria-label="Back to migrations list"
+            >
+              <ArrowLeft size={18} />
+            </button>
+            <div className="flex items-center gap-3">
+              <span className="text-xl font-semibold text-foreground truncate">
+                {job?.name ?? shortId}
+              </span>
+              {job && <StatusBadge status={job.status} />}
+              <Badge variant="secondary" className="text-xs">
+                Scope only
+              </Badge>
+            </div>
+          </div>
+        </div>
+        <div className="max-w-3xl mx-auto w-full py-6">
+          <AssessmentReportPanel jobId={id} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="px-6 py-2 overflow-y-auto flex-1 h-full">

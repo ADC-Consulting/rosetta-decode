@@ -9,6 +9,7 @@ export async function submitMigration(
   zipFile?: File,
   name?: string,
   refTargetPath?: string | null,
+  scopeOnly?: boolean,
 ): Promise<MigrateResponse> {
   const fd = new FormData();
   if (zipFile) {
@@ -23,6 +24,8 @@ export async function submitMigration(
   }
   if (name) fd.append("name", name);
   if (refTargetPath) fd.append("ref_target_path", refTargetPath);
+  // F77: scope-only assessment runs synchronously and returns a `done` job.
+  if (scopeOnly) fd.append("mode", "scope");
   const res = await fetch(`${BASE}/migrate`, { method: "POST", body: fd });
   if (!res.ok) throw new Error(await extractApiError(res));
   return res.json() as Promise<MigrateResponse>;

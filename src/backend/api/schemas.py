@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from src.worker.engine.models import ScopingReport  # SAS: schemas.py:assessment
 
 
 class FileRejection(BaseModel):
@@ -38,6 +39,7 @@ class JobStatusResponse(BaseModel):
     parent_job_id: str | None = None
     trigger: str = "agent"
     skip_llm: bool = False
+    mode: str = "migrate"  # F77: "migrate" (default) | "scope"
 
 
 class JobSummary(BaseModel):
@@ -765,4 +767,24 @@ class ScopingSummaryResponse(BaseModel):
     token_usage: TokenUsageStats | None
     cost: CostEstimate | None
     bom: BomSummary
+    markdown: str
+
+
+class AssessmentReportResponse(BaseModel):
+    """Response body for GET /jobs/{id}/assessment (F77 scoping/assessment mode).
+
+    Carries the deterministic, rule-based ``ScopingReport`` produced for jobs run
+    in ``mode="scope"`` plus a proposal-ready markdown rendering generated at
+    request time (the run timestamp is injected per request, not stored).
+
+    Attributes:
+        job_id: UUID string of the migration job.
+        job_name: Human-readable job name shown in the report header.
+        report: The structured, type-checked scoping report.
+        markdown: Rendered markdown string ready for display or clipboard copy.
+    """
+
+    job_id: str
+    job_name: str
+    report: ScopingReport
     markdown: str

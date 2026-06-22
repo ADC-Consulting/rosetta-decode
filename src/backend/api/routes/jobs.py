@@ -22,6 +22,7 @@ from src.backend.api.runbook_templates import remediation_outline as _remediatio
 from src.backend.api.runbook_templates import why_risky as _why_risky
 from src.backend.api.schemas import (
     AcceptJobRequest,
+    AssessmentReportResponse,
     AttachmentInfo,
     AuditResponse,
     BlockPythonEditRequest,
@@ -69,6 +70,7 @@ from src.backend.api.schemas import (
 from src.backend.core.config import settings
 from src.backend.core.pricing import compute_cost
 from src.backend.core.scoping_markdown import render_scoping_markdown
+from src.backend.core.scoping_report_markdown import render_scoping_report_markdown
 from src.backend.db.models import (
     BlockRevision,
     Job,
@@ -81,7 +83,7 @@ from src.worker.compute.local import LocalBackend
 from src.worker.engine.agents.data_step import DataStepAgent
 from src.worker.engine.agents.generic_proc import GenericProcAgent
 from src.worker.engine.agents.proc import ProcAgent
-from src.worker.engine.models import JobContext, SASBlock
+from src.worker.engine.models import JobContext, SASBlock, ScopingReport
 from src.worker.engine.parser import SASParser
 from src.worker.engine.router import TranslationRouter
 from src.worker.engine.stub_generator import StubGenerator
@@ -176,6 +178,7 @@ async def get_job(
         parent_job_id=job.parent_job_id,
         trigger=job.trigger or "agent",
         skip_llm=job.skip_llm if job.skip_llm is not None else False,
+        mode=job.mode or "migrate",
     )
 
 
@@ -2528,6 +2531,53 @@ async def get_job_scoping(
         token_usage=token_usage,
         cost=cost,
         bom=bom,
+        markdown=markdown,
+    )
+
+
+@router.get("/jobs/{job_id}/assessment", response_model=AssessmentReportResponse)
+async def get_job_assessment(
+    job_id: uuid.UUID,
+    session: AsyncSession = Depends(get_async_session),
+) -> AssessmentReportResponse:
+    """Return the F77 scoping/assessment report for a ``mode="scope"`` job.
+
+    Loads the persisted deterministic ``scoping_report``, validates it back into a
+    :class:`ScopingReport`, and renders a proposal-ready markdown string. The run
+    timestamp is injected here at request time so the stored report stays
+    deterministic.
+
+    Args:
+        job_id: UUID of the migration job.
+        session: Injected async database session.
+
+    Returns:
+        AssessmentReportResponse with the structured report and rendered markdown.
+
+    Raises:
+        HTTPException: 404 if the job does not exist, or 404 if the job has no
+            scoping report (e.g. it was not run in scope mode).
+    """
+    job = await _get_job_or_404(job_id, session)
+    if job.scoping_report is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Job '{job_id}' has no scoping report (not run in scope mode).",
+        )
+
+    report = ScopingReport.model_validate(job.scoping_report)
+    run_date = date.today().isoformat()
+    job_name: str = job.name or str(job_id)
+    markdown = render_scoping_report_markdown(
+        report=report,
+        job_name=job_name,
+        run_date=run_date,
+    )
+
+    return AssessmentReportResponse(
+        job_id=str(job_id),
+        job_name=job_name,
+        report=report,
         markdown=markdown,
     )
 

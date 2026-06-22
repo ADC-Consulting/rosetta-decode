@@ -1,5 +1,6 @@
 import { extractApiError } from "./errors";
 import type {
+    AssessmentReportResponse,
     BlockRefineRequest,
     BlockRefineResponse,
     BlockRevisionHistory,
@@ -298,6 +299,16 @@ export async function getJobRunbook(jobId: string): Promise<RunbookResponse> {
   const res = await fetch(`${BASE}/jobs/${jobId}/runbook`);
   if (!res.ok) throw new Error(await extractApiError(res));
   return res.json() as Promise<RunbookResponse>;
+}
+
+// ── F77: Scoping / assessment report ──────────────────────────────────────────
+
+export async function getJobAssessment(
+  jobId: string,
+): Promise<AssessmentReportResponse> {
+  const res = await fetch(`${BASE}/jobs/${jobId}/assessment`);
+  if (!res.ok) throw new Error(await extractApiError(res));
+  return res.json() as Promise<AssessmentReportResponse>;
 }
 
 export async function cancelJob(jobId: string): Promise<void> {

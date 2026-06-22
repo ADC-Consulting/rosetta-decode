@@ -198,6 +198,95 @@ async def test_ref_target_path_promotes_csv_sentinel(
     assert "__ref_csv__" in job.files
 
 
+# ── F77: synchronous scope mode ──────────────────────────────────────────────
+
+_SCOPE_SAS_A = (
+    b"libname raw '/data/raw';\n"
+    b"data work.out; set raw.in; run;\n"
+    b"proc sort data=work.out; by id; run;"
+)
+_SCOPE_SAS_B = (
+    b"proc sql;\n  create table summary as select id, sum(x) from work.out group by id;\nquit;"
+)
+
+
+@pytest.mark.asyncio
+async def test_scope_mode_creates_done_job_with_report(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """mode=scope parses in-request and persists a done job with a scoping_report."""
+    response = await client.post(
+        "/migrate",
+        files=[
+            ("sas_files", ("a.sas", _SCOPE_SAS_A, "text/plain")),
+            ("sas_files", ("b.sas", _SCOPE_SAS_B, "text/plain")),
+        ],
+        data={"mode": "scope"},
+    )
+    assert response.status_code == 200
+    job_id = response.json()["job_id"]
+
+    from sqlalchemy import select
+    from src.backend.db.models import Job
+
+    result = await db_session.execute(select(Job).where(Job.id == job_id))
+    job = result.scalar_one()
+
+    assert job.status == "done"
+    assert job.mode == "scope"
+    # No worker / LLM involvement on this path.
+    assert job.token_usage is None
+    assert job.python_code is None
+    assert job.report is None
+
+    report = job.scoping_report
+    assert isinstance(report, dict)
+    for key in (
+        "file_inventory",
+        "block_breakdown",
+        "risk_flags",
+        "data_assets",
+        "effort_estimate",
+    ):
+        assert key in report
+    assert len(report["file_inventory"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_scope_mode_invalid_mode_rejected(client: AsyncClient) -> None:
+    """An unrecognised mode value returns 400."""
+    response = await client.post(
+        "/migrate",
+        files=[("sas_files", ("a.sas", _SCOPE_SAS_A, "text/plain"))],
+        data={"mode": "bogus"},
+    )
+    assert response.status_code == 400
+    assert "mode must be one of" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_default_mode_still_creates_queued_job(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Regression: omitting mode creates a queued migrate job, unchanged behaviour."""
+    response = await client.post(
+        "/migrate",
+        files=[("sas_files", ("script.sas", _MINIMAL_SAS, "text/plain"))],
+    )
+    assert response.status_code == 200
+    job_id = response.json()["job_id"]
+
+    from sqlalchemy import select
+    from src.backend.db.models import Job
+
+    result = await db_session.execute(select(Job).where(Job.id == job_id))
+    job = result.scalar_one()
+
+    assert job.status == "queued"
+    assert job.mode == "migrate"
+    assert job.scoping_report is None
+
+
 # ── NEW COVERAGE: _extract_zip_files branches (lines 44, 49, 52, 55) ─────────
 
 

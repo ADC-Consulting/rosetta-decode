@@ -32,6 +32,12 @@ class Job(Base):
     )
     input_hash: Mapped[str] = mapped_column(Text, nullable=False)
     files: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    # F77: "migrate" (default, worker pipeline) | "scope" (synchronous LLM-free assessment).
+    mode: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="migrate", server_default=sa.text("'migrate'")
+    )
+    # F77: persisted ScopingReport JSON; populated only for mode="scope" jobs.
+    scoping_report: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     python_code: Mapped[str | None] = mapped_column(Text, nullable=True)
     report: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -127,6 +127,13 @@ class SASBlock(BaseModel):
     #   Each entry: {left_table, right_table, left_col, right_col}
     join_on_keys: list[dict[str, str]] = Field(default_factory=list)  # SAS: models.py:join_on_keys
 
+    # External file paths read/written within this block via INFILE / FILE statements.
+    # Quoted literal paths are stored verbatim; bare filerefs are resolved to a path
+    # via the parser's filename_map when known, else stored as the fileref token.
+    # Detection-only signal consumed by the F77 scoping report; does not affect
+    # translation behavior.
+    infile_paths: list[str] = Field(default_factory=list)  # SAS: models.py:infile_paths
+
 
 class MacroDef(BaseModel):
     """A SAS macro definition (%MACRO ... %MEND).
@@ -204,6 +211,15 @@ class ParseResult(BaseModel):
         includes: List of paths referenced by %INCLUDE statements.
         format_catalog: {format_name: FormatDef} for all PROC FORMAT ``value``
             definitions found.
+        libname_engines: {libref: engine} for all LIBNAME statements; engine is
+            the optional engine token (e.g. ``oracle``, ``meta``) or ``"BASE"``
+            when none is declared. Detection-only signal for the F77 scoping
+            report; ``libname_map`` is left untouched for existing consumers.
+        ods_targets: ODS destination signals (e.g. ``"PDF:/out/r.pdf"`` or just
+            ``"PDF"`` when no FILE= path is present). Detection-only.
+        external_file_paths: Sorted unique union of every block's
+            ``infile_paths`` + ODS FILE= paths + ``filename_map`` values, so the
+            scoping report can list external paths without iterating blocks.
     """
 
     blocks: list[SASBlock] = Field(default_factory=list)
@@ -213,6 +229,13 @@ class ParseResult(BaseModel):
     macro_defs: list[MacroDef] = Field(default_factory=list)
     filename_map: dict[str, str] = Field(default_factory=dict)
     format_catalog: dict[str, FormatDef] = Field(default_factory=dict)
+
+    # Additive detection-only signals for the F77 scoping report (S-A).
+    # These never feed the translation pipeline (no new BlockType).
+    libname_engines: dict[str, str] = Field(default_factory=dict)  # SAS: models.py:libname_engines
+    ods_targets: list[str] = Field(default_factory=list)  # SAS: models.py:ods_targets
+    # SAS: models.py:external_file_paths
+    external_file_paths: list[str] = Field(default_factory=list)
 
 
 class GeneratedBlock(BaseModel):
@@ -333,6 +356,136 @@ class SensitiveDataFinding(BaseModel):
     matched_signal: str
     source_type: Literal["file", "block"]
     source: str  # file path (if source_type=="file") or block_id (if source_type=="block")
+
+
+# ── F77 scoping / assessment report models (no LLM; deterministic) ────────────
+# SAS: models.py:scoping_report
+
+ComplexityTier = Literal["simple", "moderate", "complex"]
+TranslationCategory = Literal["auto_translatable", "needs_review", "manual", "untranslatable"]
+
+
+class FileInventoryItem(BaseModel):
+    """Per-file summary for the scoping report file inventory.
+
+    Attributes:
+        source_file: Name of the `.sas` source file.
+        line_count: Number of lines in the file (newline count + final line).
+        block_count: Number of parsed SAS blocks originating from the file.
+        complexity_tier: Deterministic complexity classification for the file.
+        block_type_counts: Counts of block types within this file (string keys).
+    """
+
+    source_file: str
+    line_count: int = Field(ge=0)
+    block_count: int = Field(ge=0)
+    complexity_tier: ComplexityTier
+    block_type_counts: dict[str, int] = Field(default_factory=dict)
+
+
+class BlockBreakdown(BaseModel):
+    """Project-wide block breakdown by type and translation category.
+
+    Attributes:
+        counts_by_type: Count of blocks per type. Includes the pseudo-types
+            ``macro_def`` (number of macro definitions) and ``macro_call``
+            (number of user macro invocations across all `.sas` sources).
+        category_by_type: Translation category assigned to each type present.
+        total_blocks: Total parsed SAS blocks (excludes the macro pseudo-types).
+    """
+
+    counts_by_type: dict[str, int] = Field(default_factory=dict)
+    category_by_type: dict[str, TranslationCategory] = Field(default_factory=dict)
+    total_blocks: int = Field(ge=0)
+
+
+class RiskFlag(BaseModel):
+    """A single rule-based risk surfaced by the scoping engine.
+
+    Attributes:
+        kind: Risk category.
+        severity: Coarse severity band.
+        message: Human-readable one-line summary.
+        detail: Optional structured detail (names, paths, locations).
+        count: Number of underlying occurrences this flag aggregates.
+    """
+
+    kind: Literal[
+        "missing_macro",
+        "missing_include",
+        "external_dependency",
+        "unknown_proc",
+        "missing_reference_data",
+    ]
+    severity: Literal["low", "medium", "high"]
+    message: str
+    detail: list[Any] | dict[str, Any] | None = None
+    count: int = Field(ge=0)
+
+
+class DataAssetInventory(BaseModel):
+    """Inventory of data assets referenced across the parsed SAS project.
+
+    Attributes:
+        libnames: One entry per LIBNAME: ``{libref, engine, path?}``. Engine comes
+            from ``libname_engines``; ``path`` is included only when known from
+            ``libname_map``.
+        input_datasets: Unique dataset names read across all blocks.
+        output_datasets: Unique dataset names written across all blocks.
+        external_file_paths: External file paths (INFILE/FILE/FILENAME/ODS).
+    """
+
+    libnames: list[dict[str, str]] = Field(default_factory=list)
+    input_datasets: list[str] = Field(default_factory=list)
+    output_datasets: list[str] = Field(default_factory=list)
+    external_file_paths: list[str] = Field(default_factory=list)
+
+
+class EffortEstimate(BaseModel):
+    """Provisional consultant-day effort estimate.
+
+    Attributes:
+        low_days: Optimistic estimate in consultant-days.
+        mid_days: Expected estimate in consultant-days.
+        high_days: Pessimistic estimate in consultant-days.
+        provisional: Always ``True`` until rates are calibrated to real data.
+        basis: Short description of how the estimate was computed.
+    """
+
+    low_days: float = Field(ge=0.0)
+    mid_days: float = Field(ge=0.0)
+    high_days: float = Field(ge=0.0)
+    provisional: bool = True
+    basis: str
+
+
+class ScopingReport(BaseModel):
+    """Full rule-based assessment of a SAS project (no LLM).
+
+    Same SAS input + same rate table → byte-identical report body.
+
+    Attributes:
+        total_files: Number of real `.sas` source files.
+        total_lines: Sum of per-file line counts.
+        total_blocks: Total parsed SAS blocks.
+        file_inventory: Per-file summaries.
+        block_breakdown: Project-wide block breakdown + categories.
+        risk_flags: Rule-based risk flags.
+        data_assets: Data asset inventory.
+        effort_estimate: Provisional effort estimate.
+        notes: Explicit labels for anything not statically detectable
+            (honors the "no silent caps" decision).
+    """
+
+    total_files: int = Field(ge=0)
+    total_lines: int = Field(ge=0)
+    total_blocks: int = Field(ge=0)
+    file_inventory: list[FileInventoryItem] = Field(default_factory=list)
+    block_breakdown: BlockBreakdown
+    risk_flags: list[RiskFlag] = Field(default_factory=list)
+    data_assets: DataAssetInventory
+    effort_estimate: EffortEstimate
+    notes: list[str] = Field(default_factory=list)
 
 
 class MigrationPlan(BaseModel):

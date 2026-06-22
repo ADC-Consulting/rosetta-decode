@@ -6,6 +6,38 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-19 — F77 scoping/assessment mode (GitHub #76; fast static parse → client report, no LLM)
+
+**Branch:** `feat/F77-scoping-assessment-mode` (numbered F77 — `F76` was already committed for the Databricks delivery-format work)
+
+### Done
+- **S-A — parser scoping detectors:** added `ParseResult.libname_engines`, `.ods_targets`, `.external_file_paths`, and `SASBlock.infile_paths` — all additive, **no new `BlockType`**. New helpers `_extract_libname_engines`, `_extract_ods`, `_extract_infile_paths`, `_collect_external_paths`, `_resolve_fileref`. `libname_map`/`_extract_libnames` untouched. Regression guard asserts migration block output unchanged. (`tests/test_parser_scoping_detectors.py`)
+- **S-B — scoping engine:** new `src/worker/engine/scoping.py` (`build_scoping_report`) + `estimation_model.py` (provisional `RATE_TABLE` + `estimate_effort`) + report models in `models.py` (`ScopingReport` and sub-models). Rule-based tiers (simple/moderate/complex), exhaustive translation-category map over `BlockType`, 5 risk-flag kinds, engine-only-libref gotcha handled. Deterministic. (`tests/test_scoping_engine.py`)
+- **S-C — synchronous scope path:** `Job.mode` (default `"migrate"`) + `Job.scoping_report` columns, migration `021`. `POST /migrate mode=scope` parses off the event loop (`run_in_threadpool`) and persists a `done` job with the report — no worker, no LLM. (`tests/test_migrate_route.py`)
+- **S-D — assessment endpoint:** `GET /jobs/{id}/assessment` → `AssessmentReportResponse` + request-time markdown render (`scoping_report_markdown.py`); 404 when no report. (`tests/test_assessment_route.py`, `tests/test_scoping_report_markdown.py`)
+- **S-E — frontend:** "Scope only" upload toggle, `mode=scope` submit, `getJobAssessment`, `downloadMarkdown`, new `AssessmentReportPanel.tsx` (5 sections + provisional badge + copy/download); `JobDetailPage` renders it when `job.mode === "scope"`. Added `mode` to `JobStatusResponse`.
+- **S-F — docs:** `docs/context/estimation-model.md` (provisional rates), `docs/plans/latest/F77-scoping-assessment-mode.md`, journal updated. Numbered **F77** (GitHub #76) to avoid the already-committed `F76` delivery-format label.
+- All 7 `make test` gates green throughout. **Not yet committed.**
+
+### Decisions
+- See DECISIONS.md 2026-06-19 (F77): numbered F77 (GitHub #76) since F76 was already committed for the delivery-format work; synchronous backend execution over worker job; ODS/INFILE/engine as additive data not new BlockTypes; provisional effort rates; `/assessment` endpoint name.
+
+### Open Questions
+- Estimation rates are provisional placeholders — calibrate against real engagements before quoting.
+
+### Next Session — Start Here
+1. Commit the F77 branch and open a PR (`/git-pr-summary`).
+2. Optional follow-ups: per-block macro-call counts; discovery-questionnaire feature; PDF export of the scoping report.
+
+### Files Touched
+- `src/worker/engine/parser.py`, `src/worker/engine/models.py`, `src/worker/engine/scoping.py`, `src/worker/engine/estimation_model.py`
+- `src/backend/db/models.py`, `alembic/versions/021_add_job_mode_scoping_report.py`, `src/backend/api/routes/migrate.py`, `src/backend/api/routes/jobs.py`, `src/backend/api/schemas.py`, `src/backend/core/scoping_report_markdown.py`
+- `src/frontend/src/context/UploadStateContext.tsx`, `src/frontend/src/pages/UploadPage.tsx`, `src/frontend/src/pages/JobDetailPage.tsx`, `src/frontend/src/api/migrate.ts`, `src/frontend/src/api/jobs.ts`, `src/frontend/src/api/types.ts`, `src/frontend/src/lib/utils.ts`, `src/frontend/src/components/JobDetail/AssessmentReportPanel.tsx`
+- `tests/test_parser_scoping_detectors.py`, `tests/test_scoping_engine.py`, `tests/test_migrate_route.py`, `tests/test_assessment_route.py`, `tests/test_scoping_report_markdown.py`
+- `docs/context/estimation-model.md`, `docs/plans/latest/F77-scoping-assessment-mode.md`, `journal/SESSIONS.md`, `journal/BACKLOG.md`, `journal/DECISIONS.md`
+
+---
+
 ## 2026-06-19 — DBX bundle: same-table fold + DLT/Spark Job modularization
 
 **Branch:** `feat/F75-deployment-target-questionnaire`
