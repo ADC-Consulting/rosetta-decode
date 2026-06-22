@@ -14,6 +14,7 @@ export interface JobStatus {
   parent_job_id: string | null;
   trigger: string;
   skip_llm: boolean;
+  mode: string; // F77: "migrate" (default) | "scope"
 }
 
 // ── F75: Accept-time deployment target ────────────────────────────────────────
@@ -558,5 +559,83 @@ export interface RunbookResponse {
   job_id: string;
   total_entries: number;
   entries: RunbookEntry[];
+  markdown: string;
+}
+
+// ── F77: Scoping / assessment report ──────────────────────────────────────────
+
+export type ComplexityTier = "simple" | "moderate" | "complex";
+export type TranslationCategory =
+  | "auto_translatable"
+  | "needs_review"
+  | "manual"
+  | "untranslatable";
+export type RiskSeverity = "low" | "medium" | "high";
+export type RiskKind =
+  | "missing_macro"
+  | "missing_include"
+  | "external_dependency"
+  | "unknown_proc"
+  | "missing_reference_data";
+
+export interface FileInventoryItem {
+  source_file: string;
+  line_count: number;
+  block_count: number;
+  complexity_tier: ComplexityTier;
+  block_type_counts: Record<string, number>;
+}
+
+export interface BlockBreakdown {
+  counts_by_type: Record<string, number>;
+  category_by_type: Record<string, TranslationCategory>;
+  total_blocks: number;
+}
+
+export interface RiskFlag {
+  kind: RiskKind;
+  severity: RiskSeverity;
+  message: string;
+  detail: unknown[] | Record<string, unknown> | null;
+  count: number;
+}
+
+export interface LibnameAsset {
+  libref: string;
+  engine: string;
+  path?: string;
+}
+
+export interface DataAssetInventory {
+  libnames: LibnameAsset[];
+  input_datasets: string[];
+  output_datasets: string[];
+  external_file_paths: string[];
+}
+
+export interface EffortEstimate {
+  low_days: number;
+  mid_days: number;
+  high_days: number;
+  provisional: boolean;
+  basis: string;
+}
+
+export interface ScopingReport {
+  total_files: number;
+  total_lines: number;
+  total_blocks: number;
+  file_inventory: FileInventoryItem[];
+  block_breakdown: BlockBreakdown;
+  risk_flags: RiskFlag[];
+  data_assets: DataAssetInventory;
+  effort_estimate: EffortEstimate;
+  notes: string[];
+}
+
+export interface AssessmentReportResponse {
+  job_id: string;
+  job_name: string;
+  report: ScopingReport;
   markdown: string;
 }

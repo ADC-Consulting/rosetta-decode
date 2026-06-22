@@ -487,6 +487,7 @@
 - [x] feat(bundle): modularize DLT pipeline — one `transformations/<source_stem>_dlt.py` per SAS source file; `libraries` in `databricks.yml` lists all files sorted
 - [x] feat(bundle): group Spark Job modules by source-file subfolder — `jobs/<source_stem>/<table>.py`; YAML `python_file` paths updated to match
 - [x] feat(bundle): YAML readability — shared `_format_yaml` helper inserts blank lines between top-level sections in both YAML renderers
+- [x] F77 (GitHub #76): Scoping / assessment mode — fast static parse → client scoping report, no LLM. `POST /migrate mode=scope` parses synchronously and persists a `done` job with a `ScopingReport` (file inventory + complexity tiers, block breakdown + translation categories, risk flags, data-asset inventory, provisional effort estimate); `GET /jobs/{id}/assessment` serves it + markdown; "Scope only" upload toggle + `AssessmentReportPanel` with Markdown download. See `docs/plans/latest/F77-scoping-assessment-mode.md`. _Numbered F77 because `F76` was already committed for the Databricks delivery-format work._
 - [ ] F14: Authentication & SSO (SAML/OIDC, JWT, RBAC)
 - [ ] `DatabricksBackend` (PySpark) (`src/worker/compute/databricks.py`)
 - [ ] End-to-end test: CLOUD=true, Databricks connection

@@ -1,5 +1,6 @@
 import { submitMigration } from "@/api/migrate";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useUploadState } from "@/context/UploadStateContext";
 import { cn } from "@/lib/utils";
 import { useMutation } from "@tanstack/react-query";
@@ -292,6 +293,8 @@ export default function UploadPage() {
     setDragOver,
     migrationName,
     setMigrationName,
+    scopeOnly,
+    setScopeOnly,
     applyFiles,
     removeFile,
     toggleZipExpanded,
@@ -328,9 +331,22 @@ export default function UploadPage() {
 
   const mutation = useMutation({
     mutationFn: () =>
-      submitMigration(sasFiles, refDataset, zipFile, migrationName, refCsvFile),
-    onSuccess: () => {
-      navigate("/jobs");
+      submitMigration(
+        sasFiles,
+        refDataset,
+        zipFile,
+        migrationName,
+        refCsvFile,
+        scopeOnly,
+      ),
+    onSuccess: (data) => {
+      // Scope-only jobs are created already `done` — land directly on the job
+      // detail view so the assessment report is shown immediately.
+      if (scopeOnly) {
+        navigate(`/jobs/${data.job_id}`);
+      } else {
+        navigate("/jobs");
+      }
     },
     onError: (err) => {
       toast.error(
@@ -594,13 +610,38 @@ export default function UploadPage() {
 
             {renderFileList()}
 
+            {/* F77 — Scope-only assessment toggle */}
+            <label
+              htmlFor="scope-only"
+              className="flex items-start gap-2.5 rounded-md border border-border bg-muted/30 px-3 py-2.5 cursor-pointer select-none"
+            >
+              <Checkbox
+                id="scope-only"
+                checked={scopeOnly}
+                onCheckedChange={(checked) => setScopeOnly(checked === true)}
+                className="mt-0.5"
+              />
+              <span className="space-y-0.5">
+                <span className="block text-sm font-medium text-foreground">
+                  Scope only
+                </span>
+                <span className="block text-xs text-muted-foreground">
+                  Run scoping analysis only — no code translation
+                </span>
+              </span>
+            </label>
+
             <Button
               type="submit"
               disabled={submitDisabled}
               aria-busy={isPending}
               className="cursor-pointer"
             >
-              {isPending ? "Submitting…" : "Migrate"}
+              {isPending
+                ? "Submitting…"
+                : scopeOnly
+                  ? "Run scoping analysis"
+                  : "Migrate"}
             </Button>
 
             {validationError && (

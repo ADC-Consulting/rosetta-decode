@@ -6,6 +6,14 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-06-19 — F77 scoping/assessment mode (GitHub issue #76)
+
+- **Numbered F77, not F76:** `F76` was already committed for the Databricks *delivery-format* bundle work (DLT vs Classic Spark Job; DECISIONS 2026-06-18, deployment guide, portable-codegen modules — all part of the F74/F75 line). The scoping/assessment feature is GitHub issue **#76** but takes the next free internal label **F77** so each feature label stays unique. F76 keeps its committed delivery-format meaning. · revisit never
+- **Scope runs synchronously in the backend, not as a worker job:** the backend already imports and runs `SASParser` in-process, and the worker is only DB-polled every 1–5s. A worker job would add pickup + frontend-poll latency for no architectural benefit. `POST /migrate mode=scope` parses off the event loop via `run_in_threadpool` and persists a `done` job immediately; the worker never sees it (status never `queued`). · revisit if scope parses begin to block the API under load
+- **ODS / INFILE / LIBNAME-engine captured as additive parser data, NOT new `BlockType` values:** a new `BlockType` would route through the translation router/agents and risk regressing migration output. They are detection-only scoping signals; a regression test asserts migration block output is unchanged. · revisit never
+- **Effort estimate ships with PROVISIONAL placeholder rates** (`docs/context/estimation-model.md`, `estimation_model.RATE_TABLE`): the structure is complete and flagged `provisional=true` in model + UI; rates await calibration against real engagements. · revisit when engagement data exists
+- **Endpoint named `/jobs/{id}/assessment`** to avoid confusion with the existing F34 `GET /jobs/{id}/scoping` (post-LLM BOM). · revisit never
+
 ## 2026-06-19 — DBX bundle fold + modularization
 
 - **Same-table fold localized to bundle layer:** mutating `migration_plan` upstream would break the ETL/Plan/Lineage tabs which use it as the comparison baseline; fold is a bundle-rendering concern only. · revisit never
