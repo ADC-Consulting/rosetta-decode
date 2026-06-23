@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { BlockPlan, PipelineStep, TrustReportBlock } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { ChevronDown, ChevronRight, X } from "lucide-react";
+import { sasFileToPyFile } from "@/lib/sas-python-file-map";
 import { BlockRow } from "./blockRowHelpers";
 
 interface PipelineStepPanelProps {
@@ -12,6 +13,7 @@ interface PipelineStepPanelProps {
   humanVerifiedBlocks: Set<string>;
   onBlockClick: (blockId: string) => void;
   onClose: () => void;
+  mode?: "source" | "target";
 }
 
 export default function PipelineStepPanel({
@@ -22,6 +24,7 @@ export default function PipelineStepPanel({
   humanVerifiedBlocks,
   onBlockClick,
   onClose,
+  mode = "source",
 }: PipelineStepPanelProps): React.ReactElement {
   const [blocksExpanded, setBlocksExpanded] = useState(false);
 
@@ -42,6 +45,10 @@ export default function PipelineStepPanel({
       (s) => s.step_id !== step.step_id && s.inputs.includes(ds),
     ) ?? null,
   }));
+
+  // In target mode, only show upstream entries that have a producer step (skip external inputs)
+  const upstreamToShow =
+    mode === "target" ? upstream.filter(({ producer }) => producer !== null) : upstream;
 
   // ── Block list + status summary ────────────────────────────────────────────
 
@@ -114,12 +121,100 @@ export default function PipelineStepPanel({
           </p>
         )}
 
+        {/* ── PYTHON MODULES (Target mode only) ───────────────────────────── */}
+        {mode === "target" && step.files.length > 0 && (
+          <div className="border-b border-border">
+            <div className={sectionLabel}>Python modules</div>
+            <div className="px-3 pb-2 flex flex-col gap-2">
+              {[...new Set(step.files.map(sasFileToPyFile))].map((pyFile) => (
+                <div key={pyFile} className="flex flex-col gap-0.5">
+                  <span className="text-xs font-mono text-foreground truncate" title={pyFile}>
+                    {pyFile.split("/").pop() ?? pyFile}
+                  </span>
+                  <span className="text-[11px] font-mono text-muted-foreground truncate ml-2">
+                    ← {step.files.find((f) => sasFileToPyFile(f) === pyFile)?.split("/").pop()}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── MIGRATION STATUS (Target mode: rendered before depends-on) ───── */}
+        {mode === "target" && (
+          <div className="border-b border-border">
+            <button
+              type="button"
+              className="w-full flex items-center justify-between px-3 pt-3 pb-1 hover:bg-muted/40 transition-colors"
+              onClick={() => setBlocksExpanded((v) => !v)}
+              aria-expanded={blocksExpanded}
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Migration
+                </span>
+                <span className="text-[10px] text-muted-foreground">
+                  {displayBlocks.length} blocks
+                </span>
+              </div>
+              {blocksExpanded ? (
+                <ChevronDown size={12} className="text-muted-foreground" />
+              ) : (
+                <ChevronRight size={12} className="text-muted-foreground" />
+              )}
+            </button>
+
+            {/* Status badge row */}
+            <div className="flex items-center gap-2 px-3 pb-2">
+              {displayBlocks.length === 0 ? (
+                <span className="text-[11px] text-muted-foreground">No blocks</span>
+              ) : (
+                <>
+                  {nVerified > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium bg-green-100 text-green-800 border border-green-200">
+                      ✓ {nVerified}
+                    </span>
+                  )}
+                  {nReview > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium bg-amber-100 text-amber-800 border border-amber-200">
+                      ⚠ {nReview}
+                    </span>
+                  )}
+                  {nManual > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium bg-red-100 text-red-800 border border-red-200">
+                      ✗ {nManual}
+                    </span>
+                  )}
+                  {nVerified === 0 && nReview === 0 && nManual === 0 && (
+                    <span className="text-[11px] text-muted-foreground">pending</span>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Expandable block list */}
+            {blocksExpanded && displayBlocks.length > 0 && (
+              <div className="border-t border-border">
+                {displayBlocks.map((bp) => (
+                  <BlockRow
+                    key={bp.block_id}
+                    bp={bp}
+                    trustBlock={trustBlocks[bp.block_id]}
+                    isHumanVerified={humanVerifiedBlocks.has(bp.block_id)}
+                    onClick={() => onBlockClick(bp.block_id)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ── DEPENDS ON ──────────────────────────────────────────────────── */}
-        {upstream.length > 0 && (
+        {upstreamToShow.length > 0 && (
           <div className="border-b border-border">
             <div className={sectionLabel}>Depends on</div>
             <div className="px-3 pb-2 flex flex-col gap-2">
-              {upstream.map(({ dataset, producer }) => (
+              {upstreamToShow.map(({ dataset, producer }) => (
                 <div key={dataset} className="flex flex-col gap-0.5">
                   {producer ? (
                     <div className="flex items-center gap-1.5">
@@ -191,8 +286,8 @@ export default function PipelineStepPanel({
           </div>
         )}
 
-        {/* ── CODE (SAS files) ────────────────────────────────────────────── */}
-        {step.files.length > 0 && (
+        {/* ── CODE (SAS files — Source mode only) ────────────────────────── */}
+        {mode !== "target" && step.files.length > 0 && (
           <div className="border-b border-border">
             <div className={sectionLabel}>Code</div>
             <div className="px-3 pb-2 flex flex-col gap-0.5">
@@ -209,72 +304,74 @@ export default function PipelineStepPanel({
           </div>
         )}
 
-        {/* ── MIGRATION STATUS ─────────────────────────────────────────────── */}
-        <div>
-          <button
-            type="button"
-            className="w-full flex items-center justify-between px-3 pt-3 pb-1 hover:bg-muted/40 transition-colors"
-            onClick={() => setBlocksExpanded((v) => !v)}
-            aria-expanded={blocksExpanded}
-          >
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Migration
-              </span>
-              <span className="text-[10px] text-muted-foreground">
-                {displayBlocks.length} blocks
-              </span>
-            </div>
-            {blocksExpanded ? (
-              <ChevronDown size={12} className="text-muted-foreground" />
-            ) : (
-              <ChevronRight size={12} className="text-muted-foreground" />
-            )}
-          </button>
+        {/* ── MIGRATION STATUS (Source mode only — Target renders it above) ── */}
+        {mode !== "target" && (
+          <div>
+            <button
+              type="button"
+              className="w-full flex items-center justify-between px-3 pt-3 pb-1 hover:bg-muted/40 transition-colors"
+              onClick={() => setBlocksExpanded((v) => !v)}
+              aria-expanded={blocksExpanded}
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Migration
+                </span>
+                <span className="text-[10px] text-muted-foreground">
+                  {displayBlocks.length} blocks
+                </span>
+              </div>
+              {blocksExpanded ? (
+                <ChevronDown size={12} className="text-muted-foreground" />
+              ) : (
+                <ChevronRight size={12} className="text-muted-foreground" />
+              )}
+            </button>
 
-          {/* Status badge row */}
-          <div className="flex items-center gap-2 px-3 pb-2">
-            {displayBlocks.length === 0 ? (
-              <span className="text-[11px] text-muted-foreground">No blocks</span>
-            ) : (
-              <>
-                {nVerified > 0 && (
-                  <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium bg-green-100 text-green-800 border border-green-200">
-                    ✓ {nVerified}
-                  </span>
-                )}
-                {nReview > 0 && (
-                  <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium bg-amber-100 text-amber-800 border border-amber-200">
-                    ⚠ {nReview}
-                  </span>
-                )}
-                {nManual > 0 && (
-                  <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium bg-red-100 text-red-800 border border-red-200">
-                    ✗ {nManual}
-                  </span>
-                )}
-                {nVerified === 0 && nReview === 0 && nManual === 0 && (
-                  <span className="text-[11px] text-muted-foreground">pending</span>
-                )}
-              </>
+            {/* Status badge row */}
+            <div className="flex items-center gap-2 px-3 pb-2">
+              {displayBlocks.length === 0 ? (
+                <span className="text-[11px] text-muted-foreground">No blocks</span>
+              ) : (
+                <>
+                  {nVerified > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium bg-green-100 text-green-800 border border-green-200">
+                      ✓ {nVerified}
+                    </span>
+                  )}
+                  {nReview > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium bg-amber-100 text-amber-800 border border-amber-200">
+                      ⚠ {nReview}
+                    </span>
+                  )}
+                  {nManual > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium bg-red-100 text-red-800 border border-red-200">
+                      ✗ {nManual}
+                    </span>
+                  )}
+                  {nVerified === 0 && nReview === 0 && nManual === 0 && (
+                    <span className="text-[11px] text-muted-foreground">pending</span>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Expandable block list */}
+            {blocksExpanded && displayBlocks.length > 0 && (
+              <div className="border-t border-border">
+                {displayBlocks.map((bp) => (
+                  <BlockRow
+                    key={bp.block_id}
+                    bp={bp}
+                    trustBlock={trustBlocks[bp.block_id]}
+                    isHumanVerified={humanVerifiedBlocks.has(bp.block_id)}
+                    onClick={() => onBlockClick(bp.block_id)}
+                  />
+                ))}
+              </div>
             )}
           </div>
-
-          {/* Expandable block list */}
-          {blocksExpanded && displayBlocks.length > 0 && (
-            <div className="border-t border-border">
-              {displayBlocks.map((bp) => (
-                <BlockRow
-                  key={bp.block_id}
-                  bp={bp}
-                  trustBlock={trustBlocks[bp.block_id]}
-                  isHumanVerified={humanVerifiedBlocks.has(bp.block_id)}
-                  onClick={() => onBlockClick(bp.block_id)}
-                />
-              ))}
-            </div>
-          )}
-        </div>
+        )}
 
       </div>
     </div>

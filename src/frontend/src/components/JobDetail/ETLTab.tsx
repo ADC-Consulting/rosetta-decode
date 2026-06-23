@@ -317,6 +317,7 @@ export default function ETLTab({
               }}
               onModuleClick={handleModuleClick}
               onBlockClick={handleTargetBlockClick}
+              onPipelineStepClick={setSelectedStep}
               selectedBlockId={selectedBlock}
             />
           )}
@@ -354,6 +355,7 @@ export default function ETLTab({
                 setCodePopupBlockId(blockId);
               }}
               onClose={() => setSelectedStep(null)}
+              mode={graphView === "target" ? "target" : "source"}
             />
           </div>
         )}
