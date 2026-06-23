@@ -8,7 +8,7 @@ import type {
 } from "@/api/types";
 import LineageGraph from "@/components/LineageGraph";
 import { Skeleton } from "@/components/ui/skeleton";
-import { pyFileToSasFiles, sasFileToPyFile } from "@/lib/sas-python-file-map";
+import { buildSasFileToPyFilesMap, pyFileToSasFiles, sasFileToPyFile } from "@/lib/sas-python-file-map";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import BlockCodePopup from "./BlockCodePopup";
@@ -161,6 +161,15 @@ export default function ETLTab({
     if (!selectedBlock || !selectedBlockPlan) return selectedPyModule ?? "";
     return selectedPyModule ?? sasFileToPyFile(selectedBlockPlan.source_file);
   }, [selectedBlock, selectedBlockPlan, selectedPyModule]);
+
+  // ── Accurate SAS→Python map for target view (parsed from provenance comments) ──
+  const sasToPyMap = useMemo(
+    () =>
+      generatedFiles
+        ? buildSasFileToPyFilesMap(generatedFiles)
+        : new Map<string, string[]>(),
+    [generatedFiles],
+  );
 
   // ── Handlers ─────────────────────────────────────────────────────────────
   const handleToggle = (next: "source" | "target") => {
@@ -356,6 +365,7 @@ export default function ETLTab({
               }}
               onClose={() => setSelectedStep(null)}
               mode={graphView === "target" ? "target" : "source"}
+              sasToPyMap={graphView === "target" ? sasToPyMap : undefined}
             />
           </div>
         )}

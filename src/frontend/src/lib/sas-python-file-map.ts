@@ -24,3 +24,42 @@ export function pyFileToSasFiles(pyFile: string, blockPlans: BlockPlan[]): strin
   }
   return result;
 }
+
+// Parse "# SAS: <file>:<line>" provenance comments to build the accurate
+// Python-file → SAS-source-files map. Handles merging (2 SAS → 1 py) and
+// splitting (1 SAS → 2 py) transparently.
+export function buildPyFileToSasFilesMap(
+  generatedFiles: Record<string, string>,
+): Map<string, string[]> {
+  const map = new Map<string, string[]>();
+  for (const [pyFile, content] of Object.entries(generatedFiles)) {
+    if (pyFile === "pipeline.py") continue;
+    const seen = new Set<string>();
+    const sasFiles: string[] = [];
+    for (const m of content.matchAll(/# SAS: ([^:\n]+):\d+/g)) {
+      const sasFile = m[1].trim();
+      if (!seen.has(sasFile)) {
+        seen.add(sasFile);
+        sasFiles.push(sasFile);
+      }
+    }
+    map.set(pyFile, sasFiles);
+  }
+  return map;
+}
+
+// Reverse: SAS source file → list of Python files that contain blocks from it.
+export function buildSasFileToPyFilesMap(
+  generatedFiles: Record<string, string>,
+): Map<string, string[]> {
+  const pyToSas = buildPyFileToSasFilesMap(generatedFiles);
+  const map = new Map<string, string[]>();
+  for (const [pyFile, sasFiles] of pyToSas) {
+    for (const sasFile of sasFiles) {
+      const existing = map.get(sasFile) ?? [];
+      existing.push(pyFile);
+      map.set(sasFile, existing);
+    }
+  }
+  return map;
+}

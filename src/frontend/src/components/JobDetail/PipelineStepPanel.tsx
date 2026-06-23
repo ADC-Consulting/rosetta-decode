@@ -14,6 +14,7 @@ interface PipelineStepPanelProps {
   onBlockClick: (blockId: string) => void;
   onClose: () => void;
   mode?: "source" | "target";
+  sasToPyMap?: Map<string, string[]>;
 }
 
 export default function PipelineStepPanel({
@@ -25,6 +26,7 @@ export default function PipelineStepPanel({
   onBlockClick,
   onClose,
   mode = "source",
+  sasToPyMap,
 }: PipelineStepPanelProps): React.ReactElement {
   const [blocksExpanded, setBlocksExpanded] = useState(false);
 
@@ -126,16 +128,30 @@ export default function PipelineStepPanel({
           <div className="border-b border-border">
             <div className={sectionLabel}>Python modules</div>
             <div className="px-3 pb-2 flex flex-col gap-2">
-              {[...new Set(step.files.map(sasFileToPyFile))].map((pyFile) => (
-                <div key={pyFile} className="flex flex-col gap-0.5">
-                  <span className="text-xs font-mono text-foreground truncate" title={pyFile}>
-                    {pyFile.split("/").pop() ?? pyFile}
-                  </span>
-                  <span className="text-[11px] font-mono text-muted-foreground truncate ml-2">
-                    ← {step.files.find((f) => sasFileToPyFile(f) === pyFile)?.split("/").pop()}
-                  </span>
-                </div>
-              ))}
+              {(() => {
+                const seen = new Set<string>();
+                const rows: Array<{ pyFile: string; sasFile: string }> = [];
+                for (const sasFile of step.files) {
+                  const pyFiles = sasToPyMap?.get(sasFile) ?? [sasFileToPyFile(sasFile)];
+                  for (const pyFile of pyFiles) {
+                    const key = `${pyFile}||${sasFile}`;
+                    if (!seen.has(key)) {
+                      seen.add(key);
+                      rows.push({ pyFile, sasFile });
+                    }
+                  }
+                }
+                return rows.map(({ pyFile, sasFile }) => (
+                  <div key={`${pyFile}||${sasFile}`} className="flex flex-col gap-0.5">
+                    <span className="text-xs font-mono text-foreground truncate" title={pyFile}>
+                      {pyFile.split("/").pop() ?? pyFile}
+                    </span>
+                    <span className="text-[11px] font-mono text-muted-foreground truncate ml-2">
+                      ← {sasFile.split("/").pop()}
+                    </span>
+                  </div>
+                ));
+              })()}
             </div>
           </div>
         )}

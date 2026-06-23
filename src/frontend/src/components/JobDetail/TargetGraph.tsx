@@ -7,10 +7,15 @@ import type {
   TrustReportFile,
 } from "@/api/types";
 import { FileNodeCard, type FileNodeData } from "@/components/JobDetail/FileNodeCard";
-import { pyFileToSasFiles, sasFileToPyFile } from "@/lib/sas-python-file-map";
+import {
+  buildPyFileToSasFilesMap,
+  buildSasFileToPyFilesMap,
+  pyFileToSasFiles,
+  sasFileToPyFile,
+} from "@/lib/sas-python-file-map";
 import dagre from "dagre";
 import { RotateCcw } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   Background,
   BaseEdge,
@@ -73,9 +78,10 @@ function aggregateStatus(
   pyFile: string,
   blockPlans: BlockPlan[],
   trustFiles: TrustReportFile[] | undefined,
+  pyToSasMap: Map<string, string[]>,
 ): FileNode["status"] {
   if (!trustFiles) return null;
-  const sasFiles = pyFileToSasFiles(pyFile, blockPlans);
+  const sasFiles = pyToSasMap.get(pyFile) ?? pyFileToSasFiles(pyFile, blockPlans);
   if (sasFiles.length === 0) return null;
   const entries = sasFiles
     .map((sf) => trustFiles.find((tf) => tf.source_file === sf))
@@ -791,28 +797,33 @@ function TargetLegend({ view }: { view: "pipeline" | "files" | "blocks" }): Reac
 function buildRawEdges(
   lineage: JobLineageResponse,
   nodeSet: Set<string>,
+  sasToPyMap: Map<string, string[]>,
 ): Edge[] {
   const rawEdges: Edge[] = [];
   const seenEdgeKeys = new Set<string>();
 
   for (const fe of lineage.file_edges ?? []) {
-    const src = sasFileToPyFile(fe.source_file);
-    const tgt = sasFileToPyFile(fe.target_file);
-    if (src === "pipeline.py" || tgt === "pipeline.py") continue;
-    if (!nodeSet.has(src) || !nodeSet.has(tgt)) continue;
-    if (src === tgt) continue;
-    const key = `${src}||${tgt}`;
-    if (seenEdgeKeys.has(key)) continue;
-    seenEdgeKeys.add(key);
-    rawEdges.push({
-      id: `te-${src}-${tgt}`,
-      source: src,
-      target: tgt,
-      type: "hover",
-      data: { label: fe.reason.toLowerCase().replace(/_/g, " ") },
-      style: { stroke: "#3b82f6", strokeWidth: 1.5 },
-      markerEnd: { type: MarkerType.ArrowClosed, color: "#3b82f6" },
-    });
+    const srcPyFiles = sasToPyMap.get(fe.source_file) ?? [sasFileToPyFile(fe.source_file)];
+    const tgtPyFiles = sasToPyMap.get(fe.target_file) ?? [sasFileToPyFile(fe.target_file)];
+    for (const src of srcPyFiles) {
+      for (const tgt of tgtPyFiles) {
+        if (src === "pipeline.py" || tgt === "pipeline.py") continue;
+        if (!nodeSet.has(src) || !nodeSet.has(tgt)) continue;
+        if (src === tgt) continue;
+        const key = `${src}||${tgt}`;
+        if (seenEdgeKeys.has(key)) continue;
+        seenEdgeKeys.add(key);
+        rawEdges.push({
+          id: `te-${src}-${tgt}`,
+          source: src,
+          target: tgt,
+          type: "hover",
+          data: { label: fe.reason.toLowerCase().replace(/_/g, " ") },
+          style: { stroke: "#3b82f6", strokeWidth: 1.5 },
+          markerEnd: { type: MarkerType.ArrowClosed, color: "#3b82f6" },
+        });
+      }
+    }
   }
   return rawEdges;
 }
@@ -826,10 +837,12 @@ function buildModulesGraph(
   lineage: JobLineageResponse,
   blockPlans: BlockPlan[],
   trustFiles: TrustReportFile[] | undefined,
+  pyToSasMap: Map<string, string[]>,
+  sasToPyMap: Map<string, string[]>,
   rankdir: "LR" | "TB" = "LR",
 ): { layoutNodes: Node[]; edges: Edge[] } {
   const nodeSet = new Set(pyFiles);
-  const rawEdges = buildRawEdges(lineage, nodeSet);
+  const rawEdges = buildRawEdges(lineage, nodeSet, sasToPyMap);
 
   const incomingIds = new Set(rawEdges.map((e) => e.target));
   const outgoingIds = new Set(rawEdges.map((e) => e.source));
@@ -841,7 +854,7 @@ function buildModulesGraph(
   }
 
   const rawNodes: Node<FileNodeData>[] = pyFiles.map((pyFile) => {
-    const sasFiles = pyFileToSasFiles(pyFile, blockPlans);
+    const sasFiles = pyToSasMap.get(pyFile) ?? pyFileToSasFiles(pyFile, blockPlans);
     const blockCount = blockPlans.filter((bp) => sasFiles.includes(bp.source_file)).length;
     return {
       id: pyFile,
@@ -851,7 +864,7 @@ function buildModulesGraph(
         filename: pyFile,
         fullPath: pyFile,
         file_type: "MODULE",
-        status: aggregateStatus(pyFile, blockPlans, trustFiles),
+        status: aggregateStatus(pyFile, blockPlans, trustFiles, pyToSasMap),
         blockCount,
         connectionCount: connectionCount.get(pyFile) ?? 0,
         isSelected: false,
@@ -927,6 +940,8 @@ function buildPipelineStepsGraph(
   lineage: JobLineageResponse,
   blockPlans: BlockPlan[],
   trustFiles: TrustReportFile[] | undefined,
+  pyToSasMap: Map<string, string[]>,
+  sasToPyMap: Map<string, string[]>,
 ): { layoutNodes: Node[]; edges: Edge[] } {
   const steps = lineage.pipeline_steps ?? [];
 
@@ -937,18 +952,18 @@ function buildPipelineStepsGraph(
   };
 
   const rawNodes: Node<PipelineTargetStepData>[] = steps.map((step, i) => {
-    // Derive Python modules from block IDs in this step
+    // Derive Python modules from block IDs in this step using the accurate reverse map
     const pyModules = [...new Set(
       step.blocks
         .map((blockId) => blockPlans.find((bp) => bp.block_id === blockId)?.source_file)
         .filter((sf): sf is string => !!sf)
-        .map((sf) => sasFileToPyFile(sf)),
+        .flatMap((sf) => sasToPyMap.get(sf) ?? [sasFileToPyFile(sf)]),
     )];
 
     // Aggregate status from .py modules — pick worst
     let worstStatus: FileNode["status"] = null;
     for (const pyFile of pyModules) {
-      const s = aggregateStatus(pyFile, blockPlans, trustFiles);
+      const s = aggregateStatus(pyFile, blockPlans, trustFiles, pyToSasMap);
       if (s === null) continue;
       if (worstStatus === null || STATUS_SEVERITY[s] > STATUS_SEVERITY[worstStatus]) {
         worstStatus = s;
@@ -1001,9 +1016,11 @@ function buildBlocksGraph(
   humanVerifiedBlocks: Set<string>,
   selectedBlockId: string | null | undefined,
   onBlockClick: ((blockId: string) => void) | undefined,
+  pyToSasMap: Map<string, string[]>,
+  sasToPyMap: Map<string, string[]>,
 ): { layoutNodes: Node[]; edges: Edge[] } {
   const nodeSet = new Set(pyFiles);
-  const rawEdges = buildRawEdges(lineage, nodeSet);
+  const rawEdges = buildRawEdges(lineage, nodeSet, sasToPyMap);
 
   const incomingIds = new Set(rawEdges.map((e) => e.target));
   const outgoingIds = new Set(rawEdges.map((e) => e.source));
@@ -1011,7 +1028,7 @@ function buildBlocksGraph(
   // Compute block rows per pyFile
   const nodeHeightMap = new Map<string, number>();
   const rawNodes: Node<BlocksFileNodeData>[] = pyFiles.map((pyFile) => {
-    const sasFiles = pyFileToSasFiles(pyFile, blockPlans);
+    const sasFiles = pyToSasMap.get(pyFile) ?? pyFileToSasFiles(pyFile, blockPlans);
     const fileBlocks = blockPlans
       .filter((bp) => sasFiles.includes(bp.source_file))
       .sort((a, b) => a.start_line - b.start_line);
@@ -1038,7 +1055,7 @@ function buildBlocksGraph(
       position: { x: 0, y: 0 },
       data: {
         filename: pyFile,
-        status: aggregateStatus(pyFile, blockPlans, trustFiles),
+        status: aggregateStatus(pyFile, blockPlans, trustFiles, pyToSasMap),
         blockRows,
         hasIncoming: incomingIds.has(pyFile),
         hasOutgoing: outgoingIds.has(pyFile),
@@ -1085,6 +1102,17 @@ function TargetGraphInner({
   // (verification status is already reflected in trustBlocks)
   const humanVerifiedBlocks = new Set<string>();
 
+  // Build accurate Python↔SAS maps by parsing provenance comments in generated files.
+  // This resolves the filename mismatch between sasFileToPyFile() and demo seed keys.
+  const pyToSasMap = useMemo(
+    () => buildPyFileToSasFilesMap(generatedFiles),
+    [generatedFiles],
+  );
+  const sasToPyMap = useMemo(
+    () => buildSasFileToPyFilesMap(generatedFiles),
+    [generatedFiles],
+  );
+
   // Build the correct graph based on view.
   // "pipeline" → top-to-bottom execution flow of Python modules (TB layout)
   // "files"    → module dependency graph, left-to-right (LR layout)
@@ -1092,7 +1120,7 @@ function TargetGraphInner({
   const { layoutNodes: builtNodes, edges: builtEdges } = isEmpty
     ? { layoutNodes: [], edges: [] }
     : view === "pipeline"
-      ? buildPipelineStepsGraph(lineage, blockPlans, trustFiles)
+      ? buildPipelineStepsGraph(lineage, blockPlans, trustFiles, pyToSasMap, sasToPyMap)
       : view === "blocks"
         ? buildBlocksGraph(
             pyFiles,
@@ -1103,8 +1131,10 @@ function TargetGraphInner({
             humanVerifiedBlocks,
             selectedBlockId,
             onBlockClick,
+            pyToSasMap,
+            sasToPyMap,
           )
-        : buildModulesGraph(pyFiles, lineage, blockPlans, trustFiles, "LR");
+        : buildModulesGraph(pyFiles, lineage, blockPlans, trustFiles, pyToSasMap, sasToPyMap, "LR");
 
   const [nodes, setNodes, onNodesChange] = useNodesState(builtNodes);
   const [edges, , onEdgesChange] = useEdgesState(builtEdges);
@@ -1167,7 +1197,7 @@ function TargetGraphInner({
       if (onModuleClick) {
         onModuleClick(node.id);
       } else {
-        const sasFiles = pyFileToSasFiles(node.id, blockPlans);
+        const sasFiles = pyToSasMap.get(node.id) ?? pyFileToSasFiles(node.id, blockPlans);
         onFileClick(sasFiles);
       }
     }
