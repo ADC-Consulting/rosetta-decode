@@ -759,22 +759,27 @@ function TargetLegend({ view }: { view: "pipeline" | "files" | "blocks" }): Reac
   return (
     <div style={LEGEND_BOX_STYLE}>
       <div style={SECTION_LABEL_STYLE}>{view === "pipeline" ? "Pipeline steps" : "Python modules"}</div>
-      {FILE_STATUS_ENTRIES.map(({ color, label }) => (
-        <div key={label} style={{ display: "flex", alignItems: "center", gap: 7 }}>
-          <div
-            style={{
-              width: 18,
-              height: 3,
-              borderRadius: 2,
-              background: color,
-              flexShrink: 0,
-            }}
-          />
-          <span style={{ fontSize: 11, color: "#444", fontWeight: 500 }}>
-            {label}
-          </span>
-        </div>
-      ))}
+      {FILE_STATUS_ENTRIES.map((entry) => {
+        const label = entry.color === "#22c55e" && view === "pipeline"
+          ? "All blocks pass"
+          : entry.label;
+        return (
+          <div key={entry.label} style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <div
+              style={{
+                width: 18,
+                height: 3,
+                borderRadius: 2,
+                background: entry.color,
+                flexShrink: 0,
+              }}
+            />
+            <span style={{ fontSize: 11, color: "#444", fontWeight: 500 }}>
+              {label}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }
