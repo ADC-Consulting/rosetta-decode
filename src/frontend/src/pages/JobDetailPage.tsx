@@ -160,7 +160,7 @@ export default function JobDetailPage(): React.ReactElement {
 
   const shortId = id.length >= 8 ? `${id.slice(0, 8)}…` : id;
 
-  const isAccepted = Boolean(job?.accepted_at);
+  const isAccepted = job?.status === "accepted";
   const isReviewable = job?.status === "proposed" || job?.status === "accepted" || job?.status === "under_review";
 
   const handleDownload = async () => {
