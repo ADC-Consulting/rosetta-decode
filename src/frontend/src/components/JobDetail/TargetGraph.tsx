@@ -755,10 +755,10 @@ const FILE_STATUS_ENTRIES: { color: string; label: string }[] = [
   { color: "#ef4444", label: "Has failures" },
 ];
 
-function TargetLegend(): React.ReactElement {
+function TargetLegend({ view }: { view: "pipeline" | "files" | "blocks" }): React.ReactElement {
   return (
     <div style={LEGEND_BOX_STYLE}>
-      <div style={SECTION_LABEL_STYLE}>Python modules</div>
+      <div style={SECTION_LABEL_STYLE}>{view === "pipeline" ? "Pipeline steps" : "Python modules"}</div>
       {FILE_STATUS_ENTRIES.map(({ color, label }) => (
         <div key={label} style={{ display: "flex", alignItems: "center", gap: 7 }}>
           <div
@@ -979,7 +979,7 @@ function buildPipelineStepsGraph(
   }));
 
   const layoutNodes = applyDagreLayout(rawNodes, edges, 260, 140, {
-    rankdir: "TB",
+    rankdir: "LR",
     ranksep: 80,
     nodesep: 40,
   });
@@ -1285,7 +1285,7 @@ function TargetGraphInner({
           <Background />
         </ReactFlow>
         <div style={{ position: "absolute", bottom: 12, right: 12, zIndex: 10 }}>
-          <TargetLegend />
+          <TargetLegend view={view} />
         </div>
       </>
     </div>
