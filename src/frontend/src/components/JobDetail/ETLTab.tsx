@@ -265,19 +265,18 @@ export default function ETLTab({
   };
 
   // ── Determine right panel for target view ─────────────────────────────────
-  // When a block is selected in Target mode → show BlockDetailPanel
-  // When a module is selected (no block) → show PythonModulePanel
-  const showTargetBlockDetail =
-    graphView === "target" && !!selectedBlock && !!selectedBlockPlan;
+  // When a block is selected (any mode) → show BlockDetailPanel
+  // When a module is selected in target mode (no block) → show PythonModulePanel
+  const showBlockDetail = !!selectedBlock && !!selectedBlockPlan;
   const showTargetModulePanel =
-    graphView === "target" && !!selectedPyModule && !showTargetBlockDetail;
+    graphView === "target" && !!selectedPyModule && !showBlockDetail;
 
   // ── Render ───────────────────────────────────────────────────────────────
   const hasSidePanel =
     selectedFile ||
     selectedStep ||
     showTargetModulePanel ||
-    showTargetBlockDetail;
+    showBlockDetail;
 
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden">
@@ -356,7 +355,6 @@ export default function ETLTab({
                 humanVerifiedBlocks={humanVerifiedBlocks}
                 onBlockClick={(blockId) => {
                   setSelectedBlock(blockId);
-                  setCodePopupBlockId(blockId);
                 }}
               />
             )
@@ -410,12 +408,23 @@ export default function ETLTab({
               trustBlocks={trustBlocks}
               humanVerifiedBlocks={humanVerifiedBlocks}
               onBlockClick={(blockId) => {
-                setSelectedBlock(blockId);
-                setCodePopupBlockId(blockId);
+                if (graphView === "target") {
+                  handleTargetBlockClick(blockId);
+                } else {
+                  setSelectedBlock(blockId);
+                  setCodePopupBlockId(blockId);
+                }
               }}
               onClose={() => setSelectedStep(null)}
               mode={graphView === "target" ? "target" : "source"}
               sasToPyMap={graphView === "target" ? sasToPyMap : undefined}
+              onPyFileClick={(pyFile) => {
+                setFileViewPopup({
+                  filename: pyFile,
+                  language: "python",
+                  content: generatedFiles?.[pyFile] ?? "",
+                });
+              }}
             />
           </div>
         )}
@@ -440,15 +449,15 @@ export default function ETLTab({
           </div>
         )}
 
-        {/* Target view: Block detail panel */}
-        {showTargetBlockDetail && selectedBlockPlan && (
+        {/* Block detail panel (Source and Target views) */}
+        {showBlockDetail && selectedBlockPlan && (
           <div className="w-80 border-l border-border overflow-y-auto shrink-0">
             <BlockDetailPanel
               blockId={selectedBlock!}
               blockPlan={selectedBlockPlan}
               trustBlock={trustBlocks[selectedBlock!]}
               isHumanVerified={humanVerifiedBlocks.has(selectedBlock!)}
-              parentPyFile={blockDetailParentPyFile}
+              parentPyFile={graphView === "target" ? blockDetailParentPyFile : undefined}
               onBack={() => setSelectedBlock(null)}
               onViewCode={(blockId) => {
                 setCodePopupBlockId(blockId);
@@ -456,6 +465,13 @@ export default function ETLTab({
               onClose={() => {
                 setSelectedBlock(null);
                 setSelectedPyModule(null);
+              }}
+              onViewSourceFile={(sasFile) => {
+                setFileViewPopup({
+                  filename: sasFile,
+                  language: "sas",
+                  content: jobSources?.[sasFile] ?? "",
+                });
               }}
             />
           </div>

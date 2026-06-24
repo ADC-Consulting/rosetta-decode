@@ -13,10 +13,11 @@ interface BlockDetailPanelProps {
   blockPlan: BlockPlan;
   trustBlock: TrustReportBlock | undefined;
   isHumanVerified: boolean;
-  parentPyFile: string;
+  parentPyFile?: string;
   onBack: () => void;
   onViewCode: (blockId: string) => void;
   onClose: () => void;
+  onViewSourceFile?: (sasFile: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -80,6 +81,7 @@ export default function BlockDetailPanel({
   onBack,
   onViewCode,
   onClose,
+  onViewSourceFile,
 }: BlockDetailPanelProps): React.ReactElement {
   const statusKind = getBlockStatus(blockPlan, trustBlock, isHumanVerified);
   const statusCfg = STATUS_CONFIG[statusKind];
@@ -110,15 +112,19 @@ export default function BlockDetailPanel({
     >
       {/* Header: breadcrumb back link + close */}
       <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border">
-        <button
-          type="button"
-          onClick={onBack}
-          className="flex flex-1 items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800 transition-colors truncate min-w-0"
-          aria-label={`Back to ${parentPyFile}`}
-        >
-          <ChevronLeft className="w-3 h-3 shrink-0" />
-          <span className="truncate">{parentPyFile}</span>
-        </button>
+        {parentPyFile ? (
+          <button
+            type="button"
+            onClick={onBack}
+            className="flex flex-1 items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800 transition-colors truncate min-w-0"
+            aria-label={`Back to ${parentPyFile}`}
+          >
+            <ChevronLeft className="w-3 h-3 shrink-0" />
+            <span className="truncate">{parentPyFile}</span>
+          </button>
+        ) : (
+          <span className="flex-1 text-xs font-medium text-muted-foreground truncate">Block detail</span>
+        )}
         <Button
           variant="ghost"
           size="icon"
@@ -137,9 +143,20 @@ export default function BlockDetailPanel({
           <span className="text-sm font-bold font-mono text-foreground">
             {blockPlan.block_type}
           </span>
-          <div className="text-xs text-muted-foreground font-mono mt-0.5">
-            {sourceBasename} :{blockPlan.start_line}{blockPlan.end_line && blockPlan.end_line !== blockPlan.start_line ? `–${blockPlan.end_line}` : ""}
-          </div>
+          {onViewSourceFile ? (
+            <button
+              type="button"
+              onClick={() => onViewSourceFile(blockPlan.source_file)}
+              className="text-xs text-blue-500 hover:text-blue-700 hover:underline font-mono mt-0.5 text-left transition-colors"
+              title={blockPlan.source_file}
+            >
+              {sourceBasename} :{blockPlan.start_line}{blockPlan.end_line && blockPlan.end_line !== blockPlan.start_line ? `–${blockPlan.end_line}` : ""}
+            </button>
+          ) : (
+            <div className="text-xs text-muted-foreground font-mono mt-0.5">
+              {sourceBasename} :{blockPlan.start_line}{blockPlan.end_line && blockPlan.end_line !== blockPlan.start_line ? `–${blockPlan.end_line}` : ""}
+            </div>
+          )}
         </div>
 
         {/* Status badge */}

@@ -15,6 +15,7 @@ interface PipelineStepPanelProps {
   onClose: () => void;
   mode?: "source" | "target";
   sasToPyMap?: Map<string, string[]>;
+  onPyFileClick?: (pyFile: string) => void;
 }
 
 export default function PipelineStepPanel({
@@ -27,6 +28,7 @@ export default function PipelineStepPanel({
   onClose,
   mode = "source",
   sasToPyMap,
+  onPyFileClick,
 }: PipelineStepPanelProps): React.ReactElement {
   const [blocksExpanded, setBlocksExpanded] = useState(false);
 
@@ -153,9 +155,14 @@ export default function PipelineStepPanel({
                 }
                 return rows.map(({ pyFile, sasFile }) => (
                   <div key={`${pyFile}||${sasFile}`} className="flex flex-col gap-0.5">
-                    <span className="text-xs font-mono text-foreground truncate" title={pyFile}>
+                    <button
+                      type="button"
+                      onClick={() => onPyFileClick?.(pyFile)}
+                      className="text-xs font-mono text-blue-600 hover:text-blue-800 hover:underline truncate text-left transition-colors"
+                      title={pyFile}
+                    >
                       {pyFile.split("/").pop() ?? pyFile}
-                    </span>
+                    </button>
                     <span className="text-[11px] font-mono text-muted-foreground truncate ml-2">
                       ← {sasFile.split("/").pop()}
                     </span>
