@@ -544,7 +544,33 @@ function buildFileEdges(fileEdges: FileEdge[]): Edge[] {
 // Builders — pipeline view
 // ---------------------------------------------------------------------------
 
-function buildPipelineNodes(steps: PipelineStep[]): Node<PipelineStepData>[] {
+function computeStepStatus(
+  step: PipelineStep,
+  blockPlans: BlockPlan[],
+  trustBlocks: Record<string, TrustReportBlock>,
+  humanVerifiedBlocks: Set<string>,
+): "migrated" | "manual_review" | "unrecognized" {
+  const stepBlocks = blockPlans.filter((bp) => step.blocks.includes(bp.block_id));
+  if (stepBlocks.length === 0) return "migrated";
+  let hasFailure = false;
+  let hasReview = false;
+  for (const bp of stepBlocks) {
+    if (humanVerifiedBlocks.has(bp.block_id)) continue;
+    if (bp.strategy === "manual") { hasFailure = true; continue; }
+    const tb = trustBlocks[bp.block_id];
+    if (tb?.needs_attention) hasReview = true;
+  }
+  if (hasFailure) return "unrecognized";
+  if (hasReview) return "manual_review";
+  return "migrated";
+}
+
+function buildPipelineNodes(
+  steps: PipelineStep[],
+  blockPlans: BlockPlan[],
+  trustBlocks: Record<string, TrustReportBlock>,
+  humanVerifiedBlocks: Set<string>,
+): Node<PipelineStepData>[] {
   return steps.map((s, i) => ({
     id: `step-${s.step_id}`,
     type: "pipelineNode",
@@ -555,6 +581,7 @@ function buildPipelineNodes(steps: PipelineStep[]): Node<PipelineStepData>[] {
       description: s.description,
       inputCount: s.inputs.length,
       outputCount: s.outputs.length,
+      status: computeStepStatus(s, blockPlans, trustBlocks, humanVerifiedBlocks),
     },
   }));
 }
@@ -793,7 +820,7 @@ function LineageGraphInner({
     } else if (view === "pipeline" && lineage.pipeline_steps?.length) {
       const pEdges = buildPipelineEdges(lineage.pipeline_steps);
       newNodes = applyDagreLayout(
-        buildPipelineNodes(lineage.pipeline_steps),
+        buildPipelineNodes(lineage.pipeline_steps, blockPlans, trustBlocks ?? {}, humanVerifiedBlocks ?? new Set()),
         pEdges,
         NODE_PIPELINE_W,
         NODE_PIPELINE_H,
