@@ -138,7 +138,7 @@ export default function BlockDetailPanel({
             {blockPlan.block_type}
           </span>
           <div className="text-xs text-muted-foreground font-mono mt-0.5">
-            {sourceBasename} :{blockPlan.start_line}–{blockPlan.end_line}
+            {sourceBasename} :{blockPlan.start_line}{blockPlan.end_line && blockPlan.end_line !== blockPlan.start_line ? `–${blockPlan.end_line}` : ""}
           </div>
         </div>
 
