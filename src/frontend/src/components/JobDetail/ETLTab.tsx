@@ -264,14 +264,9 @@ export default function ETLTab({
           "text-xs text-muted-foreground border-b border-border shrink-0",
         ].join(" ")}
       >
-        {graphView === "source" ? (
-          <>
-            <span>files: {new Set(blockPlans.map((b) => b.source_file)).size}</span>
-            <span>blocks: {blockPlans.length}</span>
-          </>
-        ) : (
-          <span>modules: {pyModuleCount}</span>
-        )}
+        <span>files: {new Set(blockPlans.map((b) => b.source_file)).size}</span>
+        {pyModuleCount > 0 && <span>modules: {pyModuleCount}</span>}
+        <span>blocks: {blockPlans.length}</span>
         {trustReport && (
           <>
             <span className="text-muted-foreground/40">|</span>
