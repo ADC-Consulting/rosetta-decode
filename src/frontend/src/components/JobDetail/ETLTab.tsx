@@ -199,7 +199,11 @@ export default function ETLTab({
     setSelectedPyModule(null);
     setSelectedBlock(null);
     setCodePopupBlockId(null);
-    if (next === "source") setSourceView("pipeline"); // reset source sub-view on toggle back
+    if (next === "target") {
+      setTargetView(sourceView);
+    } else {
+      setSourceView(targetView);
+    }
   };
 
   const handleFileNodeClick = (file: FileNode) => {
