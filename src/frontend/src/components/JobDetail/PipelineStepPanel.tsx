@@ -88,6 +88,7 @@ export default function PipelineStepPanel({
   const nReview = displayBlocks.filter(
     (bp) =>
       !humanVerifiedBlocks.has(bp.block_id) &&
+      trustBlocks[bp.block_id]?.reconciliation_status !== "pass" &&
       (trustBlocks[bp.block_id]?.needs_attention ?? false),
   ).length;
   const nManual = displayBlocks.filter((bp) => bp.strategy === "manual").length;

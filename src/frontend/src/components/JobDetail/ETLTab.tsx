@@ -236,6 +236,19 @@ export default function ETLTab({
     setSelectedBlock(blockId);
   };
 
+  const handleSourceViewChange = (view: "pipeline" | "files" | "blocks") => {
+    setSourceView(view);
+    setSelectedFile(null);
+    setSelectedStep(null);
+  };
+
+  const handleTargetViewChange = (view: "pipeline" | "files" | "blocks") => {
+    setTargetView(view);
+    setSelectedPyModule(null);
+    setSelectedBlock(null);
+    setSelectedStep(null);
+  };
+
   // ── Determine right panel for target view ─────────────────────────────────
   // When a block is selected in Target mode → show BlockDetailPanel
   // When a module is selected (no block) → show PythonModulePanel
@@ -323,7 +336,7 @@ export default function ETLTab({
                 onFileNodeClick={handleFileNodeClick}
                 onPipelineStepClick={handlePipelineStepClick}
                 initialView={sourceView}
-                onViewChange={setSourceView}
+                onViewChange={handleSourceViewChange}
                 selectedFilePath={selectedFile}
                 humanVerifiedBlocks={humanVerifiedBlocks}
                 onBlockClick={(blockId) => {
@@ -341,7 +354,7 @@ export default function ETLTab({
               trustFiles={trustReport?.files}
               trustBlocks={trustBlocks}
               view={targetView}
-              onViewChange={setTargetView}
+              onViewChange={handleTargetViewChange}
               onFileClick={(sasFiles) => {
                 setSelectedFile(sasFiles[0] ?? null);
                 setSelectedStep(null);
