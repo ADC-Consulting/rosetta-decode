@@ -101,8 +101,9 @@ export function PipelineStepCard({
                   color: "#64748b",
                   marginTop: 2,
                   overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
+                  display: "-webkit-box",
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: "vertical",
                 }}
               >
                 {data.description}

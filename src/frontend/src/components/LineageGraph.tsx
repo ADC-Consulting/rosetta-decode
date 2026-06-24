@@ -112,7 +112,7 @@ const NODE_H = 72;
 const NODE_FILE_W = 220;
 const NODE_FILE_H = 96;
 const NODE_PIPELINE_W = 240;
-const NODE_PIPELINE_H = 86;
+const NODE_PIPELINE_H = 106;
 
 // ---------------------------------------------------------------------------
 // Edge reason colors — files view
