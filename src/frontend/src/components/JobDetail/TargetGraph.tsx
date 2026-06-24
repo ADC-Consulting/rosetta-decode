@@ -54,6 +54,7 @@ interface TargetGraphProps {
   onFileClick: (sasSourceFiles: string[]) => void;
   onModuleClick?: (pyFile: string) => void;
   onBlockClick?: (blockId: string) => void;
+  onBlocksFileClick?: (pyFile: string) => void;
   onPipelineStepClick?: (step: PipelineStep) => void;
   selectedBlockId?: string | null;
 }
@@ -65,8 +66,6 @@ interface TargetGraphProps {
 const NODE_FILE_W = 220;
 const NODE_FILE_H = 96;
 const NODE_STEP_W = 220;
-const BLOCKS_BASE_H = 80;
-const BLOCK_ROW_H = 36;
 const ISOLATED_SPACING = 240; // horizontal step between isolated nodes
 const ISOLATED_GAP = 60;      // vertical gap between connected cluster and isolated row
 
@@ -554,164 +553,82 @@ function PipelineTargetStepNode({ data }: NodeProps<PipelineTargetStepData>): Re
 }
 
 // ---------------------------------------------------------------------------
-// BlocksFileNode — Blocks view, module-level
+// BlocksFileNode — Blocks view, module-level (compact card)
 // ---------------------------------------------------------------------------
-
-interface BlockRowEntry {
-  blockId: string;
-  blockType: string;
-  startLine: number;
-  statusLabel: string;
-  statusClassName: string;
-}
 
 interface BlocksFileNodeData {
   filename: string;
   status: FileNode["status"];
-  blockRows: BlockRowEntry[];
+  passCount: number;
+  reviewCount: number;
+  failCount: number;
+  totalCount: number;
   hasIncoming?: boolean;
   hasOutgoing?: boolean;
-  selectedBlockId?: string;
-  onBlockClick?: (blockId: string) => void;
 }
+
+const BLOCKS_COMPACT_H = 72;
 
 function BlocksFileNode({ data }: NodeProps<BlocksFileNodeData>): React.ReactElement {
   const accentColor = data.status ? STATUS_COLOR_MAP[data.status] : "#94a3b8";
+  const [hovered, setHovered] = useState(false);
+
+  const total = data.totalCount || 1;
+  const passW  = (data.passCount  / total) * 100;
+  const reviewW = (data.reviewCount / total) * 100;
+  const failW  = (data.failCount  / total) * 100;
 
   return (
     <>
       {(data.hasIncoming ?? true) && (
-        <Handle
-          type="target"
-          position={Position.Left}
-          style={{
-            background: accentColor,
-            width: 8,
-            height: 8,
-            border: "2px solid #fff",
-          }}
-        />
+        <Handle type="target" position={Position.Left}
+          style={{ background: accentColor, width: 8, height: 8, border: "2px solid #fff" }} />
       )}
       <div
         style={{
           width: NODE_FILE_W,
-          background: "#fff",
+          background: hovered ? "#f8fafc" : "#fff",
           borderRadius: 10,
           border: "1px solid #e2e8f0",
+          borderLeft: `4px solid ${accentColor}`,
           boxShadow: "0 1px 5px rgba(0,0,0,0.09)",
           overflow: "hidden",
-          cursor: "default",
+          cursor: "pointer",
+          transition: "background 0.12s ease",
         }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
       >
-        {/* Accent bar */}
-        <div style={{ height: 3, background: accentColor }} />
-
-        {/* Header */}
-        <div
-          style={{
-            padding: "6px 10px 5px",
-            borderBottom: "1px solid #e2e8f0",
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-          }}
-        >
-          <span
-            style={{
-              fontSize: 12,
-              fontWeight: 700,
-              color: "#0f172a",
-              fontFamily: "ui-monospace, monospace",
-              flex: 1,
-              minWidth: 0,
-              overflowWrap: "break-word",
-              wordBreak: "break-all",
-            }}
-          >
+        {/* Filename */}
+        <div style={{ padding: "8px 10px 3px" }}>
+          <span style={{
+            fontSize: 12, fontWeight: 700, color: "#0f172a",
+            fontFamily: "ui-monospace, monospace",
+            display: "block", overflow: "hidden",
+            textOverflow: "ellipsis", whiteSpace: "nowrap",
+          }}>
             {data.filename}
           </span>
         </div>
-
-        {/* Block rows */}
-        {data.blockRows.length === 0 ? (
-          <div style={{ padding: "6px 10px", fontSize: 10, color: "#94a3b8" }}>
-            No blocks
-          </div>
-        ) : (
-          data.blockRows.map((row) => {
-            const isSelected = data.selectedBlockId === row.blockId;
-            return (
-              <button
-                key={row.blockId}
-                type="button"
-                onClick={() => data.onBlockClick?.(row.blockId)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  width: "100%",
-                  padding: "4px 10px",
-                  borderBottom: "1px solid #f1f5f9",
-                  background: isSelected ? "#f8fafc" : "transparent",
-                  cursor: "pointer",
-                  textAlign: "left",
-                  border: "none",
-                  borderBottomWidth: 1,
-                  borderBottomStyle: "solid",
-                  borderBottomColor: "#f1f5f9",
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 600,
-                    fontFamily: "ui-monospace, monospace",
-                    color: "#475569",
-                    background: "#f1f5f9",
-                    borderRadius: 3,
-                    padding: "1px 4px",
-                    flexShrink: 0,
-                  }}
-                >
-                  {row.blockType}
-                </span>
-                <span
-                  style={{
-                    fontSize: 10,
-                    fontFamily: "ui-monospace, monospace",
-                    color: "#94a3b8",
-                    flexShrink: 0,
-                  }}
-                >
-                  :{row.startLine}
-                </span>
-                <span style={{ flex: 1 }} />
-                <span
-                  className={[
-                    "inline-flex items-center rounded px-1.5 py-0.5",
-                    "text-[10px] font-medium",
-                    row.statusClassName,
-                  ].join(" ")}
-                  style={{ flexShrink: 0 }}
-                >
-                  {row.statusLabel}
-                </span>
-              </button>
-            );
-          })
-        )}
+        {/* Block count */}
+        <div style={{ padding: "0 10px 5px" }}>
+          <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "ui-monospace, monospace" }}>
+            {data.totalCount} {data.totalCount === 1 ? "block" : "blocks"}
+          </span>
+        </div>
+        {/* Segmented bar */}
+        <div style={{
+          margin: "0 10px 8px", height: 5, borderRadius: 3,
+          background: "#f1f5f9", overflow: "hidden", display: "flex",
+        }}>
+          {passW  > 0 && <div style={{ width: `${passW}%`,  background: "#22c55e", flexShrink: 0 }} />}
+          {reviewW > 0 && <div style={{ width: `${reviewW}%`, background: "#f59e0b", flexShrink: 0 }} />}
+          {failW  > 0 && <div style={{ width: `${failW}%`,  background: "#ef4444", flexShrink: 0 }} />}
+        </div>
       </div>
       {(data.hasOutgoing ?? true) && (
-        <Handle
-          type="source"
-          position={Position.Right}
-          style={{
-            background: accentColor,
-            width: 8,
-            height: 8,
-            border: "2px solid #fff",
-          }}
-        />
+        <Handle type="source" position={Position.Right}
+          style={{ background: accentColor, width: 8, height: 8, border: "2px solid #fff" }} />
       )}
     </>
   );
@@ -1008,9 +925,6 @@ function buildBlocksGraph(
   blockPlans: BlockPlan[],
   trustFiles: TrustReportFile[] | undefined,
   trustBlocks: Record<string, TrustReportBlock> | undefined,
-  humanVerifiedBlocks: Set<string>,
-  selectedBlockId: string | null | undefined,
-  onBlockClick: ((blockId: string) => void) | undefined,
   pyToSasMap: Map<string, string[]>,
   sasToPyMap: Map<string, string[]>,
 ): { layoutNodes: Node[]; edges: Edge[] } {
@@ -1020,29 +934,25 @@ function buildBlocksGraph(
   const incomingIds = new Set(rawEdges.map((e) => e.target));
   const outgoingIds = new Set(rawEdges.map((e) => e.source));
 
-  // Compute block rows per pyFile
-  const nodeHeightMap = new Map<string, number>();
   const rawNodes: Node<BlocksFileNodeData>[] = pyFiles.map((pyFile) => {
     const sasFiles = pyToSasMap.get(pyFile) ?? pyFileToSasFiles(pyFile, blockPlans);
-    const fileBlocks = blockPlans
-      .filter((bp) => sasFiles.includes(bp.source_file))
-      .sort((a, b) => a.start_line - b.start_line);
+    const fileBlocks = blockPlans.filter((bp) => sasFiles.includes(bp.source_file));
 
-    const blockRows: BlockRowEntry[] = fileBlocks.map((bp) => {
+    let passCount = 0;
+    let reviewCount = 0;
+    let failCount = 0;
+    for (const bp of fileBlocks) {
       const tb = trustBlocks?.[bp.block_id];
-      const kind = getBlockStatus(bp, tb, humanVerifiedBlocks.has(bp.block_id));
-      const cfg = STATUS_CONFIG[kind];
-      return {
-        blockId: bp.block_id,
-        blockType: bp.block_type,
-        startLine: bp.start_line,
-        statusLabel: cfg.label,
-        statusClassName: cfg.className,
-      };
-    });
-
-    const nodeH = BLOCKS_BASE_H + BLOCK_ROW_H * fileBlocks.length;
-    nodeHeightMap.set(pyFile, nodeH);
+      const kind = getBlockStatus(bp, tb, false);
+      const label = STATUS_CONFIG[kind].label;
+      if (label === "Pass" || label === "Verified") {
+        passCount++;
+      } else if (label === "Manual" || label === "Failed") {
+        failCount++;
+      } else {
+        reviewCount++;
+      }
+    }
 
     return {
       id: pyFile,
@@ -1051,11 +961,12 @@ function buildBlocksGraph(
       data: {
         filename: pyFile,
         status: aggregateStatus(pyFile, blockPlans, trustFiles, pyToSasMap),
-        blockRows,
+        passCount,
+        reviewCount,
+        failCount,
+        totalCount: fileBlocks.length,
         hasIncoming: incomingIds.has(pyFile),
         hasOutgoing: outgoingIds.has(pyFile),
-        selectedBlockId: selectedBlockId ?? undefined,
-        onBlockClick,
       },
     };
   });
@@ -1064,7 +975,7 @@ function buildBlocksGraph(
     rawNodes,
     rawEdges,
     NODE_FILE_W,
-    (nodeId) => nodeHeightMap.get(nodeId) ?? BLOCKS_BASE_H,
+    BLOCKS_COMPACT_H,
     { ranksep: 160, nodesep: 75 },
   );
 
@@ -1085,17 +996,12 @@ function TargetGraphInner({
   onViewChange,
   onFileClick,
   onModuleClick,
-  onBlockClick,
+  onBlocksFileClick,
   onPipelineStepClick,
-  selectedBlockId,
 }: TargetGraphProps): React.ReactElement {
   const { fitView } = useReactFlow();
   const pyFiles = Object.keys(generatedFiles).filter((f) => f !== "pipeline.py");
   const isEmpty = pyFiles.length === 0;
-
-  // humanVerifiedBlocks is not passed in but we can reconstruct an empty set
-  // (verification status is already reflected in trustBlocks)
-  const humanVerifiedBlocks = new Set<string>();
 
   // Build accurate Python↔SAS maps by parsing provenance comments in generated files.
   // This resolves the filename mismatch between sasFileToPyFile() and demo seed keys.
@@ -1123,9 +1029,6 @@ function TargetGraphInner({
             blockPlans,
             trustFiles,
             trustBlocks,
-            humanVerifiedBlocks,
-            selectedBlockId,
-            onBlockClick,
             pyToSasMap,
             sasToPyMap,
           )
@@ -1188,6 +1091,11 @@ function TargetGraphInner({
       return;
     }
 
+    if (view === "blocks") {
+      onBlocksFileClick?.(node.id);
+      return;
+    }
+
     if (view === "files") {
       if (onModuleClick) {
         onModuleClick(node.id);
@@ -1196,7 +1104,6 @@ function TargetGraphInner({
         onFileClick(sasFiles);
       }
     }
-    // blocks view: row clicks handle their own click via data.onBlockClick
   };
 
   const btnBase: React.CSSProperties = {

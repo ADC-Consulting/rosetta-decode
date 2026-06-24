@@ -19,6 +19,7 @@ import { useMemo, useState } from "react";
 import BlockCodePopup from "./BlockCodePopup";
 import BlockDetailPanel from "./BlockDetailPanel";
 import BlockInspectorPanel from "./BlockInspectorPanel";
+import FileBlockListPanel from "./FileBlockListPanel";
 import FileViewPopup from "./FileViewPopup";
 import PipelineStepPanel from "./PipelineStepPanel";
 import PythonModulePanel from "./PythonModulePanel";
@@ -89,6 +90,8 @@ export default function ETLTab({
   const [selectedPyModule, setSelectedPyModule] = useState<string | null>(null);
   // Block code popup — separate from selectedBlock so target panel doesn't auto-open popup
   const [codePopupBlockId, setCodePopupBlockId] = useState<string | null>(null);
+  // Selected Python file in blocks view (opens FileBlockListPanel)
+  const [selectedTargetPyFile, setSelectedTargetPyFile] = useState<string | null>(null);
   // Full-file view popup (Source Files + Target Files node clicks)
   const [fileViewPopup, setFileViewPopup] = useState<{
     filename: string;
@@ -202,6 +205,7 @@ export default function ETLTab({
     setSelectedPyModule(null);
     setSelectedBlock(null);
     setCodePopupBlockId(null);
+    setSelectedTargetPyFile(null);
     if (next === "target") {
       setTargetView(sourceView);
     } else {
@@ -262,21 +266,26 @@ export default function ETLTab({
     setSelectedBlock(null);
     setSelectedStep(null);
     setFileViewPopup(null);
+    setSelectedTargetPyFile(null);
   };
 
   // ── Determine right panel for target view ─────────────────────────────────
   // When a block is selected (any mode) → show BlockDetailPanel
   // When a module is selected in target mode (no block) → show PythonModulePanel
+  // When a pyFile is selected in blocks view → show FileBlockListPanel
   const showBlockDetail = !!selectedBlock && !!selectedBlockPlan;
   const showTargetModulePanel =
-    graphView === "target" && !!selectedPyModule && !showBlockDetail;
+    graphView === "target" && targetView !== "blocks" && !!selectedPyModule && !showBlockDetail;
+  const showFileBlockListPanel =
+    graphView === "target" && targetView === "blocks" && !!selectedTargetPyFile && !showBlockDetail;
 
   // ── Render ───────────────────────────────────────────────────────────────
   const hasSidePanel =
     selectedFile ||
     selectedStep ||
     showTargetModulePanel ||
-    showBlockDetail;
+    showBlockDetail ||
+    showFileBlockListPanel;
 
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden">
@@ -374,6 +383,11 @@ export default function ETLTab({
               }}
               onModuleClick={handleModuleClick}
               onBlockClick={handleTargetBlockClick}
+              onBlocksFileClick={(pyFile) => {
+                setSelectedTargetPyFile(pyFile);
+                setSelectedBlock(null);
+                setSelectedPyModule(null);
+              }}
               onPipelineStepClick={setSelectedStep}
               selectedBlockId={selectedBlock}
             />
@@ -449,6 +463,21 @@ export default function ETLTab({
           </div>
         )}
 
+        {/* Target blocks view: file block list panel */}
+        {showFileBlockListPanel && (
+          <div className="w-80 border-l border-border overflow-y-auto shrink-0">
+            <FileBlockListPanel
+              pyFile={selectedTargetPyFile!}
+              blockPlans={blockPlans}
+              trustBlocks={trustBlocks}
+              humanVerifiedBlocks={humanVerifiedBlocks}
+              sasFiles={pyToSasMap.get(selectedTargetPyFile!) ?? pyFileToSasFiles(selectedTargetPyFile!, blockPlans)}
+              onBlockClick={handleTargetBlockClick}
+              onClose={() => setSelectedTargetPyFile(null)}
+            />
+          </div>
+        )}
+
         {/* Block detail panel (Source and Target views) */}
         {showBlockDetail && selectedBlockPlan && (
           <div className="w-80 border-l border-border overflow-y-auto shrink-0">
@@ -465,6 +494,7 @@ export default function ETLTab({
               onClose={() => {
                 setSelectedBlock(null);
                 setSelectedPyModule(null);
+                setSelectedTargetPyFile(null);
               }}
               onViewSourceFile={(sasFile) => {
                 setFileViewPopup({
