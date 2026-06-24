@@ -19,6 +19,7 @@ import { useMemo, useState } from "react";
 import BlockCodePopup from "./BlockCodePopup";
 import BlockDetailPanel from "./BlockDetailPanel";
 import BlockInspectorPanel from "./BlockInspectorPanel";
+import FileViewPopup from "./FileViewPopup";
 import PipelineStepPanel from "./PipelineStepPanel";
 import PythonModulePanel from "./PythonModulePanel";
 import TargetGraph from "./TargetGraph";
@@ -88,6 +89,12 @@ export default function ETLTab({
   const [selectedPyModule, setSelectedPyModule] = useState<string | null>(null);
   // Block code popup — separate from selectedBlock so target panel doesn't auto-open popup
   const [codePopupBlockId, setCodePopupBlockId] = useState<string | null>(null);
+  // Full-file view popup (Source Files + Target Files node clicks)
+  const [fileViewPopup, setFileViewPopup] = useState<{
+    filename: string;
+    language: "sas" | "python";
+    content: string;
+  } | null>(null);
 
   // ── Lineage ──────────────────────────────────────────────────────────────
   const { data: lineageData, isLoading: isLineageLoading } = useQuery({
@@ -203,8 +210,11 @@ export default function ETLTab({
   };
 
   const handleFileNodeClick = (file: FileNode) => {
-    setSelectedFile(file.filename);
-    setSelectedStep(null); // close step panel when file panel opens
+    setFileViewPopup({
+      filename: file.filename,
+      language: "sas",
+      content: jobSources?.[file.filename] ?? "",
+    });
   };
 
   const handlePipelineStepClick = (step: PipelineStep) => {
@@ -221,8 +231,11 @@ export default function ETLTab({
 
   // Target view handlers
   const handleModuleClick = (pyFile: string) => {
-    setSelectedPyModule(pyFile);
-    setSelectedBlock(null);
+    setFileViewPopup({
+      filename: pyFile,
+      language: "python",
+      content: generatedFiles?.[pyFile] ?? "",
+    });
   };
 
   const handleTargetBlockClick = (blockId: string) => {
@@ -240,6 +253,7 @@ export default function ETLTab({
     setSourceView(view);
     setSelectedFile(null);
     setSelectedStep(null);
+    setFileViewPopup(null);
   };
 
   const handleTargetViewChange = (view: "pipeline" | "files" | "blocks") => {
@@ -247,6 +261,7 @@ export default function ETLTab({
     setSelectedPyModule(null);
     setSelectedBlock(null);
     setSelectedStep(null);
+    setFileViewPopup(null);
   };
 
   // ── Determine right panel for target view ─────────────────────────────────
@@ -466,6 +481,16 @@ export default function ETLTab({
           onClose={() => setCodePopupBlockId(null)}
           onVerified={handleVerified}
           jobAccepted={isAccepted}
+        />
+      )}
+
+      {/* ── Full-file view popup (Source Files + Target Files node clicks) ── */}
+      {fileViewPopup && (
+        <FileViewPopup
+          filename={fileViewPopup.filename}
+          language={fileViewPopup.language}
+          content={fileViewPopup.content}
+          onClose={() => setFileViewPopup(null)}
         />
       )}
     </div>
