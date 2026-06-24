@@ -509,6 +509,13 @@
 - [x] fix(target-legend): `TargetLegend` `view` prop — header/label change to "PIPELINE STEPS" vs "PYTHON MODULES"
 - [x] fix(plan-tab): `isAccepted` derived from `job.status === "accepted"` not `Boolean(job.accepted_at)`; seed adds `accepted_at`
 - [x] fix(target-etl-files-blocks): `buildPyFileToSasFilesMap` + `buildSasFileToPyFilesMap` parse provenance comments — fixes zero block counts and missing edges in Files/Blocks views; handles merge and split scenarios
+- [x] fix(etl-tab): Source Pipeline card descriptions wrap to 2 lines (webkit clamp); `NODE_PIPELINE_H` 86→106
+- [x] feat(etl-tab): `FileViewPopup` — full-file read-only Monaco popup for SAS and Python files; opened on file/module node click
+- [x] feat(PipelineStepPanel): Python module names are clickable links opening `FileViewPopup`
+- [x] fix(etl-tab): Pipeline → block back nav — Target mode routes through `handleTargetBlockClick` so `BlockDetailPanel` back link returns to correct Python module
+- [x] feat(BlockDetailPanel): `parentPyFile` optional — hidden in Source mode; SAS source `file:line` reference is a clickable button opening SAS `FileViewPopup`; `onViewSourceFile` prop added
+- [x] fix(etl-tab): Source Blocks click shows `BlockDetailPanel` first (not code popup); `showBlockDetail` covers both Source and Target mode
+- [x] feat(etl-tab): Target Blocks redesign — compact graph nodes with segmented status bar; new `FileBlockListPanel` side panel with urgency-sorted blocks, rationale as primary label, `[SAS]` chip for traceability
 
 - [ ] #21: Consolidate lineage into a single primary view — `backlog` label
 - [ ] #20: Rollback / versioning based on lineage — `backlog` label

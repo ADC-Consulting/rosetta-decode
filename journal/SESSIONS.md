@@ -6,6 +6,43 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-24 — ETL tab polish: full-file popups, clickable refs, Source Blocks panel, Target Blocks redesign
+
+**Branch:** `feat/F67-etl-source-target-toggle`
+
+### Done
+- **Source Pipeline card descriptions**: fixed truncation — switched from `whiteSpace: nowrap` to webkit 2-line clamp; bumped `NODE_PIPELINE_H` 86→106 for dagre height budget
+- **Full-file popup on Files node click**: new `FileViewPopup` component (80vw×80vh Dialog, Monaco read-only); Source Files → SAS file; Target Files → Python file; `handleFileNodeClick` and `handleModuleClick` both open popup instead of side panel
+- **Python module names clickable**: `PipelineStepPanel` gains `onPyFileClick` prop; pyFile spans replaced with blue link buttons opening `FileViewPopup`
+- **Pipeline → block back nav fixed**: `PipelineStepPanel.onBlockClick` in Target mode routes through `handleTargetBlockClick` (sets `selectedPyModule`) so `BlockDetailPanel` back link works
+- **SAS source file link in BlockDetailPanel**: source `file:line` reference made a clickable button calling `onViewSourceFile`; opens SAS file in `FileViewPopup`; `parentPyFile` made optional — hidden in Source mode where no Python parent exists
+- **Source Blocks click → metadata panel first**: `LineageGraph.onBlockClick` now sets `selectedBlock` only (no `codePopupBlockId`); `showBlockDetail` condition extended to cover both Source and Target mode; View Code button inside the panel still opens code popup
+- **Target Blocks redesign**: graph nodes changed from inline block rows to compact cards (left accent bar + block count + segmented green/amber/red status bar); clicking a node opens new `FileBlockListPanel` side panel; panel sorts blocks by urgency (Manual → Review → Pass), shows rationale as primary label with `[SAS]` chip + type + line as secondary traceability; row click drills into `BlockDetailPanel` with existing back link
+- 4 commits, all 7 test gates green, branch pushed
+
+### Decisions
+- **Target Blocks: remove inline block rows from graph nodes** — SAS construct names (PROC_IMPORT, DATA_STEP) displayed in a target-Python context confuse non-SAS users. Compact card + `FileBlockListPanel` separates the "status at a glance" (segmented bar on node) from "block-level detail" (sorted panel). Rationale text is the human-readable primary label; SAS traceability demoted to secondary with explicit `[SAS]` chip. · revisit never
+
+### Open Questions
+- None
+
+### Next Session — Start Here
+1. Open PR for `feat/F67-etl-source-target-toggle`. Run `/git-pr-summary` to draft the description.
+2. After PR, review `.claude/plans/linear-discovering-sketch.md` for Data Storage tab polish (F35 fixes, P0–P2).
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/PipelineStepCard.tsx`
+- `src/frontend/src/components/LineageGraph.tsx`
+- `src/frontend/src/components/JobDetail/FileViewPopup.tsx` *(new)*
+- `src/frontend/src/components/JobDetail/FileBlockListPanel.tsx` *(new)*
+- `src/frontend/src/components/JobDetail/ETLTab.tsx`
+- `src/frontend/src/components/JobDetail/PipelineStepPanel.tsx`
+- `src/frontend/src/components/JobDetail/BlockDetailPanel.tsx`
+- `src/frontend/src/components/JobDetail/TargetGraph.tsx`
+- `journal/BACKLOG.md`, `journal/SESSIONS.md`, `journal/DECISIONS.md`
+
+---
+
 ## 2026-06-24 — Target ETL: Data tab type fix, Plan tab isAccepted fix, Module/Files/Blocks views working
 
 **Branch:** `feat/F67-etl-source-target-toggle`
