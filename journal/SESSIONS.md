@@ -6,6 +6,29 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-24 — PR #106 updated; Data Storage tab visual audit
+
+**Duration:** ~0.5h | **Focus:** PR description refresh + Data tab polish assessment
+
+### Done
+- Updated PR #106 description to cover all work on `feat/F67-etl-source-target-toggle` (F67–F73, ETL interaction fixes, Target Blocks redesign, Data/Plan tab bug fixes); previous description only covered the original 2 commits
+- Completed Data tab visual assessment across all views (schema panel, Data model ERD, Data flow diagram)
+- Identified 5 polish gaps: fitView on Data flow/ERD load (nodes cut off right); Data flow node labels truncated; Data flow nodes non-interactive; sidebar table status dots all gray; "Not run" as plain unstyled text
+
+### Decisions
+- none
+
+### Open Questions
+- none
+
+### Next Session — Start Here
+1. Implement Data Storage tab polish — 5 gaps catalogued in BACKLOG.md; delegate to frontend-builder
+
+### Files Touched
+- `journal/SESSIONS.md`, `journal/BACKLOG.md`
+
+---
+
 ## 2026-06-24 — ETL tab polish: full-file popups, clickable refs, Source Blocks panel, Target Blocks redesign
 
 **Branch:** `feat/F67-etl-source-target-toggle`

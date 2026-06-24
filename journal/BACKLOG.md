@@ -516,6 +516,14 @@
 - [x] feat(BlockDetailPanel): `parentPyFile` optional — hidden in Source mode; SAS source `file:line` reference is a clickable button opening SAS `FileViewPopup`; `onViewSourceFile` prop added
 - [x] fix(etl-tab): Source Blocks click shows `BlockDetailPanel` first (not code popup); `showBlockDetail` covers both Source and Target mode
 - [x] feat(etl-tab): Target Blocks redesign — compact graph nodes with segmented status bar; new `FileBlockListPanel` side panel with urgency-sorted blocks, rationale as primary label, `[SAS]` chip for traceability
+- [x] docs: updated PR #106 description to cover all work on branch (F67–F73, ETL interaction fixes, Target Blocks redesign, Data/Plan tab fixes)
+
+**Data Storage tab polish (5 gaps, assessed 2026-06-24)**
+- [ ] fitView on Data flow and ERD load — rightmost nodes currently cut off on initial render
+- [ ] Data flow node labels truncated ("Ingest source da…", "Clean and valida…") — widen nodes or wrap text
+- [ ] Data flow nodes non-interactive — no click handler; could link to ETL tab or show tooltip
+- [ ] Sidebar table status dots all gray — should reflect run status for MIGRATION OUTPUT tables (not run / run / error)
+- [ ] "Not run" plain text in output table header — should use a coloured badge (consistent with rest of app)
 
 - [ ] #21: Consolidate lineage into a single primary view — `backlog` label
 - [ ] #20: Rollback / versioning based on lineage — `backlog` label
