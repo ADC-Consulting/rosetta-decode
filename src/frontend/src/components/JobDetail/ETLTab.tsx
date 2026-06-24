@@ -153,10 +153,6 @@ export default function ETLTab({
   const hasTargetNodes =
     !!generatedFiles && Object.keys(generatedFiles).some((f) => f !== "pipeline.py");
 
-  const pyModuleCount = generatedFiles
-    ? Object.keys(generatedFiles).filter((f) => f !== "pipeline.py").length
-    : 0;
-
   // ── Accurate SAS→Python map for target view (parsed from provenance comments) ──
   const sasToPyMap = useMemo(
     () =>
@@ -264,20 +260,20 @@ export default function ETLTab({
           "text-xs text-muted-foreground border-b border-border shrink-0",
         ].join(" ")}
       >
-        <span>files: {new Set(blockPlans.map((b) => b.source_file)).size}</span>
-        {pyModuleCount > 0 && <span>modules: {pyModuleCount}</span>}
-        <span>blocks: {blockPlans.length}</span>
+        <span>{blockPlans.length} blocks</span>
         {trustReport && (
           <>
-            <span className="text-muted-foreground/40">|</span>
+            <span className="text-muted-foreground/40">·</span>
             <span className="text-green-700">
-              ✓ {trustReport.auto_verified + humanVerifiedBlocks.size}
+              ✓ {trustReport.auto_verified + humanVerifiedBlocks.size} migrated
             </span>
+            <span className="text-muted-foreground/40">·</span>
             <span className="text-amber-700">
-              ⚠ {trustReport.needs_review}
+              ⚠ {trustReport.needs_review} need review
             </span>
+            <span className="text-muted-foreground/40">·</span>
             <span className="text-red-700">
-              ✗ {trustReport.manual_todo}
+              ✗ {trustReport.manual_todo} manual
             </span>
           </>
         )}
