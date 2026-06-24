@@ -501,6 +501,15 @@
 
 - [x] F73: Replaced TB module dependency graph with `buildPipelineStepsGraph` — sequential step cards from `lineage.pipeline_steps`; each card shows step number, name, description, `.py` module badges; sequential edges, no dependency edges; fitView centering fixed via explicit node dimensions.
 
+**Post-F73 fixes (2026-06-24, same branch)**
+
+- [x] fix(data-tab): add `Number: "DOUBLE PRECISION"` to `SEMANTIC_TO_PG`; remove dead badge code; plain monospace type display
+- [x] fix(etl-tab): Target Pipeline LR layout; `onPipelineStepClick` + `mode="target"` wired to `PipelineStepPanel`
+- [x] feat(PipelineStepPanel): `mode` prop — target shows Python Modules section, reorders sections, hides SAS CODE, filters external DEPENDS ON
+- [x] fix(target-legend): `TargetLegend` `view` prop — header/label change to "PIPELINE STEPS" vs "PYTHON MODULES"
+- [x] fix(plan-tab): `isAccepted` derived from `job.status === "accepted"` not `Boolean(job.accepted_at)`; seed adds `accepted_at`
+- [x] fix(target-etl-files-blocks): `buildPyFileToSasFilesMap` + `buildSasFileToPyFilesMap` parse provenance comments — fixes zero block counts and missing edges in Files/Blocks views; handles merge and split scenarios
+
 - [ ] #21: Consolidate lineage into a single primary view — `backlog` label
 - [ ] #20: Rollback / versioning based on lineage — `backlog` label
 - [ ] #32: Specify decision-ready reports (technical + PO) — `backlog` label, deferred

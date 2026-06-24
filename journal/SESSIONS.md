@@ -6,6 +6,41 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-24 — Target ETL: Data tab type fix, Plan tab isAccepted fix, Module/Files/Blocks views working
+
+**Branch:** `feat/F67-etl-source-target-toggle`
+
+### Done
+- **Data tab — PostgreSQL type display**: added `Number: "DOUBLE PRECISION"` to `SEMANTIC_TO_PG` map; removed dead `SEMANTIC_COLORS`/`semanticBadgeClasses` code; switched type column to plain monospace text (no badge)
+- **ETL tab — Target Pipeline LR layout**: `buildPipelineStepsGraph` layout changed from TB → LR; added `onPipelineStepClick` and `mode="target"` wiring to open `PipelineStepPanel` on node click
+- **PipelineStepPanel target mode**: added `mode?: "source" | "target"` prop; Target shows Python Modules section (provenance-mapped `.py` names + SAS source), reordered sections, hides SAS CODE, filters DEPENDS ON to step-to-step only
+- **Target legend labels**: `TargetLegend` gains `view` prop; header and green entry label change to "PIPELINE STEPS" / "PYTHON MODULES" depending on sub-view
+- **Plan tab isAccepted fix**: `isAccepted` derived from `job.status === "accepted"` instead of `Boolean(job.accepted_at)`; `accepted_at=now` added to seed job constructor
+- **Target ETL Files + Blocks views — block counts and edges**: all nodes showed `0B`/`No blocks` and no edges because `sasFileToPyFile("sas/01_load_sources.sas")` → `"01_load_sources.py"` ≠ `"load_sources.py"`. Fixed by adding `buildPyFileToSasFilesMap` and `buildSasFileToPyFilesMap` to `sas-python-file-map.ts` — parse `# SAS: <file>:<line>` provenance comments for accurate mapping; wired into all graph builders in `TargetGraph.tsx` and `ETLTab.tsx`/`PipelineStepPanel.tsx`
+- 4 commits, all 7 test gates green
+
+### Decisions
+- **Provenance comment parsing for Python↔SAS mapping**: `sasFileToPyFile` (stem rename) is insufficient when generated Python filenames diverge from SAS stems or involve merging/splitting. The authoritative source is the `# SAS: file:line` comments already in every generated file. `buildPyFileToSasFilesMap` parses these; handles 1:1, merge (2 SAS→1 py), and split (1 SAS→2 py). · revisit never
+
+### Open Questions
+- None
+
+### Next Session — Start Here
+1. Open PR for `feat/F67-etl-source-target-toggle` (covers F67 + F69–F73 + Data tab fix + Plan tab fix + Files/Blocks view fix). Run `/git-pr-summary` to draft the description.
+2. After PR, review `.claude/plans/linear-discovering-sketch.md` for Data Storage tab polish (F35 fixes, P0–P2).
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/DataStorageTab.tsx`
+- `src/frontend/src/components/JobDetail/ETLTab.tsx`
+- `src/frontend/src/components/JobDetail/TargetGraph.tsx`
+- `src/frontend/src/components/JobDetail/PipelineStepPanel.tsx`
+- `src/frontend/src/pages/JobDetailPage.tsx`
+- `src/frontend/src/lib/sas-python-file-map.ts`
+- `scripts/seed_demo_job.py`
+- `journal/BACKLOG.md`, `journal/SESSIONS.md`
+
+---
+
 ## 2026-06-21 — F73 Target Pipeline: sequential step cards + fitView centering
 
 **Branch:** `feat/F67-etl-source-target-toggle`
