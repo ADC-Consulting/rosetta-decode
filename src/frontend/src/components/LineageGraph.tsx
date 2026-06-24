@@ -47,6 +47,7 @@ interface LineageGraphProps {
   blockPlans?: BlockPlan[];
   onFileNodeClick?: (file: FileNode) => void;
   onPipelineStepClick?: (step: PipelineStep) => void;
+  onBlockClick?: (blockId: string) => void;
   trustFiles?: TrustReportFile[];
   trustBlocks?: Record<string, TrustReportBlock>;
   initialView?: "blocks" | "files" | "pipeline";
@@ -757,6 +758,7 @@ function LineageGraphInner({
   blockPlans = [],
   onFileNodeClick,
   onPipelineStepClick,
+  onBlockClick,
   trustFiles,
   trustBlocks,
   initialView,
@@ -1032,6 +1034,14 @@ function LineageGraphInner({
         }
         return;
       }
+      if (view === "blocks") {
+        // Block node IDs use "::" separator; BlockPlan.block_id uses ":"
+        const blockId = node.id.replace("::", ":");
+        if (onBlockClick) {
+          onBlockClick(blockId);
+        }
+        return;
+      }
       if (view !== "files") return;
       const fileNode =
         lineage.file_nodes?.find((fn) => `file-${fn.filename}` === node.id) ?? null;
@@ -1056,7 +1066,7 @@ function LineageGraphInner({
         );
       }
     },
-    [view, lineage.pipeline_steps, lineage.file_nodes, setNodes, onFileNodeClick, onPipelineStepClick],
+    [view, lineage.pipeline_steps, lineage.file_nodes, setNodes, onFileNodeClick, onPipelineStepClick, onBlockClick],
   );
 
   if (lineage.nodes.length === 0 && view === "blocks") {
@@ -1254,6 +1264,7 @@ export default function LineageGraph({
   blockPlans,
   onFileNodeClick,
   onPipelineStepClick,
+  onBlockClick,
   trustFiles,
   trustBlocks,
   initialView,
@@ -1268,6 +1279,7 @@ export default function LineageGraph({
         blockPlans={blockPlans}
         onFileNodeClick={onFileNodeClick}
         onPipelineStepClick={onPipelineStepClick}
+        onBlockClick={onBlockClick}
         trustFiles={trustFiles}
         trustBlocks={trustBlocks}
         initialView={initialView}

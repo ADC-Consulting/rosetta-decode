@@ -30,6 +30,15 @@ export default function PipelineStepPanel({
 }: PipelineStepPanelProps): React.ReactElement {
   const [blocksExpanded, setBlocksExpanded] = useState(false);
 
+  // ── Step number helper ─────────────────────────────────────────────────────
+  const stepIndex = allSteps.findIndex((s) => s.step_id === step.step_id);
+  const stepNumber = stepIndex >= 0 ? stepIndex + 1 : null;
+
+  const stepNum = (id: string): number | string => {
+    const idx = allSteps.findIndex((s) => s.step_id === id);
+    return idx >= 0 ? idx + 1 : id;
+  };
+
   // ── Dependency computation ─────────────────────────────────────────────────
 
   // For each input dataset: find which other step produces it (if any)
@@ -96,7 +105,7 @@ export default function PipelineStepPanel({
       <div className="flex flex-col px-3 pt-2.5 pb-2 border-b border-border shrink-0">
         <div className="flex items-center justify-between">
           <span className="text-[10px] font-semibold text-muted-foreground">
-            STEP {step.step_id}
+            STEP {stepNumber ?? step.step_id}
           </span>
           <Button
             variant="ghost"
@@ -237,7 +246,7 @@ export default function PipelineStepPanel({
                       {/* Left arrow accent */}
                       <span className="text-blue-500 font-bold text-xs shrink-0">←</span>
                       <span className="text-xs font-medium text-foreground">
-                        Step {producer.step_id}
+                        Step {stepNum(producer.step_id)}
                       </span>
                       <span
                         className="text-xs text-muted-foreground truncate"
@@ -275,7 +284,7 @@ export default function PipelineStepPanel({
                     <div className="flex items-center gap-1.5">
                       <span className="text-green-600 font-bold text-xs shrink-0">→</span>
                       <span className="text-xs font-medium text-foreground">
-                        Step {consumer.step_id}
+                        Step {stepNum(consumer.step_id)}
                       </span>
                       <span
                         className="text-xs text-muted-foreground truncate"

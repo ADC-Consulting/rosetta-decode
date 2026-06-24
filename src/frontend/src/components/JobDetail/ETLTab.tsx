@@ -8,7 +8,12 @@ import type {
 } from "@/api/types";
 import LineageGraph from "@/components/LineageGraph";
 import { Skeleton } from "@/components/ui/skeleton";
-import { buildSasFileToPyFilesMap, pyFileToSasFiles, sasFileToPyFile } from "@/lib/sas-python-file-map";
+import {
+  buildPyFileToSasFilesMap,
+  buildSasFileToPyFilesMap,
+  pyFileToSasFiles,
+  sasFileToPyFile,
+} from "@/lib/sas-python-file-map";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import BlockCodePopup from "./BlockCodePopup";
@@ -75,6 +80,8 @@ export default function ETLTab({
   const [selectedBlock, setSelectedBlock] = useState<string | null>(null);
   const [selectedStep, setSelectedStep] = useState<PipelineStep | null>(null);
   const [graphView, setGraphView] = useState<"source" | "target">("source");
+  // Source sub-view state — lifted here so it survives panel open/close without remounting LineageGraph
+  const [sourceView, setSourceView] = useState<"pipeline" | "files" | "blocks">("pipeline");
   // Target sub-view state
   const [targetView, setTargetView] = useState<"pipeline" | "files" | "blocks">("pipeline");
   // Selected Python module for right panel (Target view only)
@@ -150,18 +157,6 @@ export default function ETLTab({
     ? Object.keys(generatedFiles).filter((f) => f !== "pipeline.py").length
     : 0;
 
-  // ── Derived SAS source files for the selected Python module ───────────────
-  const selectedPyModuleSasFiles = useMemo(() => {
-    if (!selectedPyModule) return [];
-    return pyFileToSasFiles(selectedPyModule, blockPlans);
-  }, [selectedPyModule, blockPlans]);
-
-  // ── Derive parentPyFile for block-detail back link ────────────────────────
-  const blockDetailParentPyFile = useMemo(() => {
-    if (!selectedBlock || !selectedBlockPlan) return selectedPyModule ?? "";
-    return selectedPyModule ?? sasFileToPyFile(selectedBlockPlan.source_file);
-  }, [selectedBlock, selectedBlockPlan, selectedPyModule]);
-
   // ── Accurate SAS→Python map for target view (parsed from provenance comments) ──
   const sasToPyMap = useMemo(
     () =>
@@ -171,6 +166,31 @@ export default function ETLTab({
     [generatedFiles],
   );
 
+  // ── Accurate Python→SAS map (parsed from provenance comments) ────────────
+  const pyToSasMap = useMemo(
+    () =>
+      generatedFiles
+        ? buildPyFileToSasFilesMap(generatedFiles)
+        : new Map<string, string[]>(),
+    [generatedFiles],
+  );
+
+  // ── Derived SAS source files for the selected Python module ───────────────
+  const selectedPyModuleSasFiles = useMemo(() => {
+    if (!selectedPyModule) return [];
+    const fromMap = pyToSasMap.get(selectedPyModule) ?? [];
+    if (fromMap.length > 0) return fromMap;
+    return pyFileToSasFiles(selectedPyModule, blockPlans);
+  }, [selectedPyModule, blockPlans, pyToSasMap]);
+
+  // ── Derive parentPyFile for block-detail back link ────────────────────────
+  const blockDetailParentPyFile = useMemo(() => {
+    if (!selectedBlock || !selectedBlockPlan) return selectedPyModule ?? "";
+    if (selectedPyModule) return selectedPyModule;
+    const pyFiles = sasToPyMap.get(selectedBlockPlan.source_file);
+    return pyFiles?.[0] ?? sasFileToPyFile(selectedBlockPlan.source_file);
+  }, [selectedBlock, selectedBlockPlan, selectedPyModule, sasToPyMap]);
+
   // ── Handlers ─────────────────────────────────────────────────────────────
   const handleToggle = (next: "source" | "target") => {
     setGraphView(next);
@@ -179,6 +199,7 @@ export default function ETLTab({
     setSelectedPyModule(null);
     setSelectedBlock(null);
     setCodePopupBlockId(null);
+    if (next === "source") setSourceView("pipeline"); // reset source sub-view on toggle back
   };
 
   const handleFileNodeClick = (file: FileNode) => {
@@ -205,10 +226,11 @@ export default function ETLTab({
   };
 
   const handleTargetBlockClick = (blockId: string) => {
-    // Find which pyModule this block belongs to
+    // Find which pyModule this block belongs to, using provenance map first
     const bp = blockPlans.find((b) => b.block_id === blockId);
     if (bp) {
-      const pyFile = sasFileToPyFile(bp.source_file);
+      const pyFiles = sasToPyMap.get(bp.source_file);
+      const pyFile = pyFiles?.[0] ?? sasFileToPyFile(bp.source_file);
       setSelectedPyModule(pyFile);
     }
     setSelectedBlock(blockId);
@@ -248,7 +270,7 @@ export default function ETLTab({
         )}
         {trustReport && (
           <>
-            <span className="text-muted-foreground">blocks:</span>
+            <span className="text-muted-foreground/40">|</span>
             <span className="text-green-700">
               ✓ {trustReport.auto_verified + humanVerifiedBlocks.size}
             </span>
@@ -298,16 +320,21 @@ export default function ETLTab({
               </div>
             ) : (
               <LineageGraph
-                key={(selectedFile || selectedStep) ? "with-panel" : "full"}
+                key="source-graph"
                 lineage={etlLineage}
                 blockPlans={blockPlans}
                 trustFiles={trustReport?.files}
                 trustBlocks={trustBlocks}
                 onFileNodeClick={handleFileNodeClick}
                 onPipelineStepClick={handlePipelineStepClick}
-                initialView="pipeline"
+                initialView={sourceView}
+                onViewChange={setSourceView}
                 selectedFilePath={selectedFile}
                 humanVerifiedBlocks={humanVerifiedBlocks}
+                onBlockClick={(blockId) => {
+                  setSelectedBlock(blockId);
+                  setCodePopupBlockId(blockId);
+                }}
               />
             )
           ) : (
