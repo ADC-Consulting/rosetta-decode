@@ -1,6 +1,7 @@
 import { getJobSchema, patchJobSchema } from "@/api/jobs";
 import type { TableSchema } from "@/api/types";
 import MonacoEditor from "@/components/MonacoEditor";
+import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -110,6 +111,14 @@ function sortedGroupKeys(groups: GroupedTables): (string | null)[] {
   const hasOther = groups.has(null);
   return hasOther ? [...named, null] : named;
 }
+
+// ── Schema status badge map ───────────────────────────────────────────────────
+
+const SCHEMA_STATUS_BADGE: Record<string, { label: string; className: string }> = {
+  migrated: { label: "Migrated", className: "bg-green-100 text-green-700 border-green-200" },
+  changed:  { label: "Changed",  className: "bg-amber-100 text-amber-700 border-amber-200" },
+  not_run:  { label: "Not run",  className: "bg-muted text-muted-foreground" },
+};
 
 // ── Main component ────────────────────────────────────────────────────────────
 
@@ -417,21 +426,13 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                       </span>
                     )}
                     {selectedTable.libname === null ? (
-                      <span
-                        className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium ${
-                          selectedTable.schema_status === "migrated"
-                            ? "bg-green-100 text-green-800"
-                            : selectedTable.schema_status === "changed"
-                              ? "bg-amber-100 text-amber-800"
-                              : "bg-muted text-muted-foreground"
-                        }`}
-                      >
-                        {selectedTable.schema_status === "migrated"
-                          ? "Migrated"
-                          : selectedTable.schema_status === "changed"
-                            ? "Changed"
-                            : "Not run"}
-                      </span>
+                      (() => {
+                        const b = SCHEMA_STATUS_BADGE[selectedTable.schema_status]
+                          ?? SCHEMA_STATUS_BADGE.not_run;
+                        return (
+                          <Badge variant="outline" className={b.className}>{b.label}</Badge>
+                        );
+                      })()
                     ) : (
                       <span className="text-xs text-muted-foreground">Source SAS data · read only</span>
                     )}

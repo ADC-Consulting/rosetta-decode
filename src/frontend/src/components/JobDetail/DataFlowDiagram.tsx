@@ -1,6 +1,7 @@
 import { getJobLineage } from "@/api/jobs";
 import type { JobLineageResponse, LineageNode } from "@/api/types";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import dagre from "dagre";
 import { useEffect, useState } from "react";
 import {
@@ -13,7 +14,6 @@ import {
   ReactFlowProvider,
   useEdgesState,
   useNodesState,
-  useReactFlow,
   type Edge,
   type Node,
   type NodeTypes,
@@ -34,10 +34,12 @@ interface FlowNodeData {
   nodeType: FlowNodeType;
   isSelected: boolean;
   onClick: () => void;
+  inputs?: string[];
+  outputs?: string[];
 }
 
 const SOURCE_W = 160;
-const STEP_W = 180;
+const STEP_W = 240;
 const OUTPUT_W = 160;
 const NODE_H = 64;
 
@@ -105,7 +107,9 @@ function SourceNode({ data }: { data: FlowNodeData }): React.ReactElement {
 }
 
 function StepNode({ data }: { data: FlowNodeData }): React.ReactElement {
-  return (
+  const hasContext = (data.inputs?.length ?? 0) + (data.outputs?.length ?? 0) > 0;
+
+  const nodeEl = (
     <div
       onClick={data.onClick}
       style={{
@@ -150,7 +154,6 @@ function StepNode({ data }: { data: FlowNodeData }): React.ReactElement {
             fontWeight: 700,
             color: "hsl(var(--primary))",
             fontFamily: "ui-monospace, monospace",
-            whiteSpace: "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis",
           }}
@@ -169,6 +172,23 @@ function StepNode({ data }: { data: FlowNodeData }): React.ReactElement {
         style={{ background: "transparent", border: "none" }}
       />
     </div>
+  );
+
+  if (!hasContext) return nodeEl;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{nodeEl}</TooltipTrigger>
+      <TooltipContent side="top" className="max-w-xs text-xs space-y-1">
+        <p className="font-semibold">{data.label}</p>
+        {data.inputs && data.inputs.length > 0 && (
+          <p><span className="text-muted-foreground">Reads: </span>{data.inputs.join(", ")}</p>
+        )}
+        {data.outputs && data.outputs.length > 0 && (
+          <p><span className="text-muted-foreground">Produces: </span>{data.outputs.join(", ")}</p>
+        )}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -318,6 +338,8 @@ function buildNodesAndEdges(
           nodeType: "step" as FlowNodeType,
           isSelected: false,
           onClick: () => {},
+          inputs: step.inputs,
+          outputs: step.outputs,
         } satisfies FlowNodeData,
       });
 
@@ -441,6 +463,10 @@ function buildNodesAndEdges(
       });
     });
 
+    const outputDatasetsForNode = lineageEdges
+      .filter((e) => e.source === ln.id)
+      .map((e) => e.dataset);
+
     nodes.push({
       id: `step-${ln.id}`,
       type: "step",
@@ -452,12 +478,10 @@ function buildNodesAndEdges(
         nodeType: "step" as FlowNodeType,
         isSelected: false,
         onClick: () => {},
+        inputs: inputDatasetsForNode,
+        outputs: outputDatasetsForNode,
       } satisfies FlowNodeData,
     });
-
-    const outputDatasetsForNode = lineageEdges
-      .filter((e) => e.source === ln.id)
-      .map((e) => e.dataset);
 
     outputDatasetsForNode.forEach((ds, idx) => {
       const outId = `out-${ds}`;
@@ -501,7 +525,6 @@ function DataFlowDiagramInner({
   selectedTable,
   onTableSelect,
 }: InnerProps): React.ReactElement {
-  const { fitView } = useReactFlow();
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
@@ -516,7 +539,6 @@ function DataFlowDiagramInner({
     const laidOut = applyDagreLayout(rawNodes, rawEdges);
     setNodes(laidOut);
     setEdges(rawEdges);
-    requestAnimationFrame(() => fitView({ padding: 0.2, duration: 300 }));
   }, [lineage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -576,6 +598,8 @@ function DataFlowDiagramInner({
           onEdgesChange={onEdgesChange}
           nodeTypes={NODE_TYPES}
           nodesDraggable
+          fitView
+          fitViewOptions={{ padding: 0.2 }}
         >
           <Controls />
           <Background />
