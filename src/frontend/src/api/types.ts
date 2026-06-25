@@ -465,6 +465,7 @@ export interface TableSchema {
   target_columns: ColumnSchema[];
   schema_status: string;
   ddl_source: string;
+  description?: string;
 }
 
 export interface PatchJobSchemaRequest {

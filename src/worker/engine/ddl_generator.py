@@ -70,6 +70,7 @@ def generate_create_table(
     table_name: str,
     target_schema: str,
     columns: list[dict[str, str]],
+    description: str = "",
 ) -> str:
     r"""Generate an ANSI SQL ``CREATE TABLE`` statement from column metadata dicts.
 
@@ -80,12 +81,18 @@ def generate_create_table(
 
     Column names are lowercased in the output.
 
+    When *description* is non-empty the statement includes a Databricks/Spark SQL
+    ``COMMENT`` clause after the closing parenthesis.  Single-quotes inside the
+    description are escaped as ``''``.
+
     Args:
         table_name: Unqualified table name (e.g. ``"dm_raw"``).
         target_schema: Target schema name (e.g. ``"public"`` or ``"clinical"``).
         columns: Ordered list of column metadata dicts.  Required keys per entry:
             ``"name"`` (str) — column identifier;
             ``"semantic_type"`` (str) — semantic type string used for SQL type mapping.
+        description: Optional human-readable table description.  When supplied, a
+            ``COMMENT 'description'`` clause is appended before the semicolon.
 
     Returns:
         A complete, semicolon-terminated ANSI SQL ``CREATE TABLE`` statement.
@@ -107,4 +114,8 @@ def generate_create_table(
         col_lines.append(f"{_INDENT}{col_name} {sql_type}{trailing_comma}")
 
     body = "\n".join(col_lines)
-    return f"CREATE TABLE {qualified_name} (\n{body}\n);"
+    comment = ""
+    if description:
+        escaped = description.replace("'", "''")
+        comment = f"\nCOMMENT '{escaped}'"
+    return f"CREATE TABLE {qualified_name} (\n{body}\n){comment};"

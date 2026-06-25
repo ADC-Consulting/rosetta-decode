@@ -228,6 +228,62 @@ def map_semantic_to_spark_type(semantic_type: str) -> str:
     return _SEMANTIC_TO_SPARK.get(semantic_type, "StringType()")
 
 
+# SAS: schema_utils.py:derive_table_descriptions
+
+
+def derive_table_descriptions(
+    data_schema: dict[str, dict[str, Any]],
+    plan: dict[str, Any],
+) -> dict[str, str]:
+    """Return {path: description} derived from existing migration plan data.
+
+    Output tables use the rationale of the block whose output_datasets includes
+    the table name. Source tables summarise pyreadstat column_labels when available.
+    No LLM calls.
+
+    Args:
+        data_schema: Keyed by file path; each entry has columns/column_types/
+            column_labels/row_count.
+        plan: The migration_plan dict — has "blocks" list, each with "rationale"
+            and "output_datasets".
+
+    Returns:
+        Dict keyed by path with a short description string.
+    """
+    import os as _os
+
+    # Build dataset_name (lower) → rationale from existing BlockPlan data
+    output_to_rationale: dict[str, str] = {}
+    for block in plan.get("blocks", []):
+        rationale: str = block.get("rationale", "")
+        for ds in block.get("output_datasets", []):
+            if rationale and ds.lower() not in output_to_rationale:
+                output_to_rationale[ds.lower()] = rationale
+
+    result: dict[str, str] = {}
+    for path, schema_info in data_schema.items():
+        ds_name = _os.path.splitext(_os.path.basename(path))[0]
+
+        # Output table: use block rationale
+        if ds_name.lower() in output_to_rationale:
+            result[path] = output_to_rationale[ds_name.lower()]
+            continue
+
+        # Source table: derive from pyreadstat column_labels
+        col_labels: dict[str, str] = schema_info.get("column_labels", {})
+        row_count: int | None = schema_info.get("row_count")
+        informative = [v for v in col_labels.values() if v and len(v) > 3][:3]
+
+        if informative:
+            suffix = f" ({row_count:,} rows)" if row_count else ""
+            result[path] = f"SAS source dataset. Columns include: {', '.join(informative)}{suffix}."
+        else:
+            row_str = f" — {row_count:,} rows" if row_count else ""
+            result[path] = f"SAS source dataset{row_str}."
+
+    return result
+
+
 # SAS: schema_utils.py:build_job_schema
 
 
@@ -406,5 +462,19 @@ async def build_job_schema(job: "Job", db: AsyncSession) -> "list[TableSchema]":
             t.ddl_source = "source_estimated"
             ddl_columns = [{"name": c.name, "semantic_type": c.semantic_type} for c in t.columns]
             t.ddl = generate_create_table(t.dataset_name, t.target_schema, ddl_columns)
+
+    # Stamp descriptions and regenerate DDL with COMMENT clause
+    descriptions = derive_table_descriptions(data_schema, plan)
+    for t in tables:
+        t.description = descriptions.get(t.path, "")
+        if t.ddl:
+            ddl_cols = (
+                [{"name": c.name, "semantic_type": c.sql_type or "TEXT"} for c in t.target_columns]
+                if t.target_columns
+                else [{"name": c.name, "semantic_type": c.semantic_type} for c in t.columns]
+            )
+            t.ddl = generate_create_table(
+                t.dataset_name, t.target_schema, ddl_cols, description=t.description
+            )
 
     return tables

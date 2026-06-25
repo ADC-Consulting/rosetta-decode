@@ -268,6 +268,11 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                             {table.path.split("/").at(-1) ?? table.path}
                           </span>
                         )}
+                        {table.description && (
+                          <span className="block text-xs text-muted-foreground/70 font-sans font-normal truncate">
+                            {table.description}
+                          </span>
+                        )}
                       </span>
                       <span className="text-xs text-muted-foreground shrink-0">
                         {table.columns.length > 0 ? `${table.columns.length} cols` : "—"}
@@ -309,6 +314,11 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                     {(nameCount.get(table.dataset_name) ?? 0) > 1 && (
                       <span className="block text-xs text-muted-foreground/60 font-sans font-normal truncate">
                         {table.path.split("/").at(-1) ?? table.path}
+                      </span>
+                    )}
+                    {table.description && (
+                      <span className="block text-xs text-muted-foreground/70 font-sans font-normal truncate">
+                        {table.description}
                       </span>
                     )}
                   </span>
@@ -415,6 +425,11 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                     <span className="font-mono text-sm font-semibold">
                       {selectedTable.dataset_name}
                     </span>
+                    {selectedTable.description && (
+                      <p className="text-xs text-muted-foreground mt-0.5 max-w-sm">
+                        {selectedTable.description}
+                      </p>
+                    )}
                     {selectedTable.libname && (
                       <span className="text-xs text-muted-foreground">
                         {selectedTable.libname} &rarr; {selectedTable.target_schema}

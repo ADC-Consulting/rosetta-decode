@@ -526,6 +526,15 @@
 - [x] F78 S-E: replace "Not run" plain text with coloured badge → `DataStorageTab.tsx`
 - [x] F78 S-F: `make test` exits 0
 
+**F79 — Data table descriptions (`docs/plans/latest/F79-table-descriptions.md`) — complete**
+- [x] F79 S-A: `derive_table_descriptions()` in schema_utils.py
+- [x] F79 S-B: wire description into `TableSchema` + `build_job_schema()`
+- [x] F79 S-C: DDL `COMMENT` clause in `generate_create_table()`
+- [x] F79 S-D: pass description to DDL generator in `build_job_schema()`
+- [x] F79 S-E: unit tests
+- [x] F79 S-F: frontend — TS type + sidebar subtitle + header subtitle
+- [x] F79 S-G: `make test` exits 0
+
 - [ ] #21: Consolidate lineage into a single primary view — `backlog` label
 - [ ] #20: Rollback / versioning based on lineage — `backlog` label
 - [ ] #32: Specify decision-ready reports (technical + PO) — `backlog` label, deferred
