@@ -406,6 +406,7 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                     const match = schemaData.tables.find((t) => t.dataset_name === name);
                     if (match) setSelectedPath(match.path);
                   }}
+                  outputTableNames={outputTables.map((t) => t.dataset_name)}
                 />
               )}
             </div>
