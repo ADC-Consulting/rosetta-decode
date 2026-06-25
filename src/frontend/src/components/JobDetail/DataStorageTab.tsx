@@ -564,7 +564,7 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                               </td>
                               <td className="px-3 py-2 font-mono text-xs whitespace-nowrap">
                                 {row.sql_type ? (
-                                  <span className="text-foreground">{row.sql_type}</span>
+                                  <span className="font-mono text-xs text-muted-foreground bg-muted/60 rounded px-1.5 py-0.5">{row.sql_type}</span>
                                 ) : (
                                   <span className="text-muted-foreground">—</span>
                                 )}
@@ -610,7 +610,7 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                                 </td>
                                 <td className="px-3 py-2 whitespace-nowrap">
                                   {pgType ? (
-                                    <span className="font-mono text-xs text-muted-foreground inline-flex items-center gap-1">
+                                    <span className="font-mono text-xs text-muted-foreground bg-muted/60 rounded px-1.5 py-0.5 inline-flex items-center gap-1">
                                       {pgType}
                                       {isOverridden && (
                                         <Pencil className="w-3 h-3" aria-label="Overridden type" />
