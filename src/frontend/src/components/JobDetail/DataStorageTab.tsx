@@ -452,24 +452,26 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                       <span className="text-xs text-muted-foreground">Source SAS data · read only</span>
                     )}
                   </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => setProjectView("data-model")}
-                      className="px-2 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                      title="View all tables as entity diagram"
-                    >
-                      Data model
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setProjectView("data-flow")}
-                      className="px-2 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                      title="View full pipeline data flow"
-                    >
-                      Data flow
-                    </button>
-                  </div>
+                  {selectedTable.libname === null && (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setProjectView("data-model")}
+                        className="px-2 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                        title="View all tables as entity diagram"
+                      >
+                        Data model
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setProjectView("data-flow")}
+                        className="px-2 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                        title="View full pipeline data flow"
+                      >
+                        Data flow
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Column table or no-columns notice */}
@@ -650,8 +652,8 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                   )
                 )}
 
-                {/* DDL collapsible */}
-                <div className="border-t border-border">
+                {/* DDL collapsible — output tables only */}
+                {selectedTable.libname === null && <div className="border-t border-border">
                   <Collapsible open={ddlOpen} onOpenChange={setDdlOpen}>
                     <div className="flex items-center justify-between pr-4">
                       <CollapsibleTrigger
@@ -693,7 +695,7 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                       )}
                     </CollapsibleContent>
                   </Collapsible>
-                </div>
+                </div>}
               </>
             )}
           </div>
