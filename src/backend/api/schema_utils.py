@@ -244,21 +244,29 @@ def derive_table_descriptions(
     Args:
         data_schema: Keyed by file path; each entry has columns/column_types/
             column_labels/row_count.
-        plan: The migration_plan dict — has "blocks" list, each with "rationale"
-            and "output_datasets".
+        plan: The migration_plan dict — has "block_plans" list, each with "rationale"
+            and "output_datasets" (libname-prefixed names like "outdir.foo" are handled).
 
     Returns:
         Dict keyed by path with a short description string.
     """
     import os as _os
 
-    # Build dataset_name (lower) → rationale from existing BlockPlan data
+    # Build bare dataset_name (lower, no libname prefix) → rationale from BlockPlan data.
+    # The serialised MigrationPlan key is "block_plans" (from the Pydantic field name).
+    # Skip output datasets whose libname is a source library (in libname_map) — those are
+    # raw/staging files that should use column_labels descriptions instead.
+    source_libnames: set[str] = {k.lower() for k in plan.get("libname_map", {})}
     output_to_rationale: dict[str, str] = {}
-    for block in plan.get("blocks", []):
+    for block in plan.get("block_plans", []):
         rationale: str = block.get("rationale", "")
         for ds in block.get("output_datasets", []):
-            if rationale and ds.lower() not in output_to_rationale:
-                output_to_rationale[ds.lower()] = rationale
+            parts = ds.lower().split(".", 1)
+            if len(parts) == 2 and parts[0] in source_libnames:
+                continue  # rawdir.* etc. — treat as source, not output
+            bare = parts[-1]
+            if rationale and bare not in output_to_rationale:
+                output_to_rationale[bare] = rationale
 
     result: dict[str, str] = {}
     for path, schema_info in data_schema.items():

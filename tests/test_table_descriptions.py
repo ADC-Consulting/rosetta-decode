@@ -17,7 +17,9 @@ def test_output_table_gets_block_rationale() -> None:
         }
     }
     plan: dict[str, object] = {
-        "blocks": [{"rationale": "Build ADSL subject-level dataset.", "output_datasets": ["adsl"]}]
+        "block_plans": [
+            {"rationale": "Build ADSL subject-level dataset.", "output_datasets": ["adsl"]}
+        ]
     }
     result = derive_table_descriptions(data_schema, plan)
     assert result["uploads/job1/adsl.csv"] == "Build ADSL subject-level dataset."
@@ -31,7 +33,7 @@ def test_source_table_uses_column_labels() -> None:
             "row_count": 150,
         }
     }
-    plan: dict[str, object] = {"blocks": []}
+    plan: dict[str, object] = {"block_plans": []}
     result = derive_table_descriptions(data_schema, plan)
     desc = result["raw/dm_raw.xpt"]
     assert "Subject Identifier" in desc
@@ -42,9 +44,31 @@ def test_source_table_fallback_when_no_labels() -> None:
     data_schema: dict[str, dict[str, object]] = {
         "raw/ae.xpt": {"columns": ["usubjid"], "column_labels": {}, "row_count": None}
     }
-    plan: dict[str, object] = {"blocks": []}
+    plan: dict[str, object] = {"block_plans": []}
     result = derive_table_descriptions(data_schema, plan)
     assert "SAS source dataset" in result["raw/ae.xpt"]
+
+
+def test_output_dataset_libname_prefix_stripped() -> None:
+    data_schema: dict[str, dict[str, object]] = {
+        "data/output/customer_revenue_daily.parquet": {
+            "columns": ["CUSTOMER_ID"],
+            "column_labels": {},
+            "row_count": None,
+        }
+    }
+    plan: dict[str, object] = {
+        "block_plans": [
+            {
+                "rationale": "Daily revenue aggregation per customer in EUR.",
+                "output_datasets": ["outdir.customer_revenue_daily"],
+            }
+        ]
+    }
+    result = derive_table_descriptions(data_schema, plan)
+    assert result["data/output/customer_revenue_daily.parquet"] == (
+        "Daily revenue aggregation per customer in EUR."
+    )
 
 
 def test_empty_plan_no_crash() -> None:
