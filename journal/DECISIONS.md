@@ -6,6 +6,15 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-06-25 — DataFlowDiagram two-tier ETL view
+
+- **Data flow diagram shows all ETL-produced tables with two visual tiers:** Source nodes and step nodes removed — the diagram is a pure data lineage view. All datasets emitted by any pipeline step are nodes; `outputTableNames` prop (fed from DataStorageTab's registered schema tables where `libname === null`) drives classification: "output" (green) vs "intermediate" (amber). `pureInputs`/`pureOutputs` logic replaced by `producedByAnyStep` set. · revisit never
+- **`outputTableNames` prop drives tier classification, not inclusion:** Every produced dataset appears; only the visual tier differs. "Final output" = registered in `data_schema` with `libname === null`. Everything else produced by ETL steps is "intermediate". This is the authoritative distinction. · revisit never
+- **`_normalise_pipeline_step_names._resolve()` detects file extensions before splitting:** `split(".")[-1]` was returning the extension ("csv", "xlsx") not the dataset stem. Fixed: right side used for SAS `libname.table` notation, left side for file references; detected via `_file_exts` frozenset. · revisit never
+- **Intermediate ETL tables are not deployed to Unity Catalog:** They exist as PySpark steps in the migration bundle but get no DDL or registered schema entries. Recommendation: materialise intermediates in a `staging` schema for migration validation — tracked as future feature `F-staging-materialise`. · revisit when planning migration validation workflow
+
+---
+
 ## 2026-06-24 — ETL tab Target Blocks redesign
 
 - **Target Blocks graph nodes show compact status cards, not inline block rows:** SAS construct names (PROC_IMPORT, DATA_STEP) displayed inside a Python-target graph confuse users unfamiliar with SAS. Block-level detail belongs in a side panel, not in graph nodes. Nodes now show only filename + block count + segmented green/amber/red bar. · revisit never

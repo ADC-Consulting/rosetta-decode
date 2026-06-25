@@ -535,6 +535,13 @@
 - [x] F79 S-F: frontend — TS type + sidebar subtitle + header subtitle
 - [x] F79 S-G: `make test` exits 0
 
+**Post-F79 fixes (2026-06-25, feat/F67-etl-source-target-toggle)**
+
+- [x] fix(F79): hide "Data model" and "Data flow" toggle buttons for source tables (`libname !== null`) → `DataStorageTab.tsx`
+- [x] fix(backend): `_normalise_pipeline_step_names._resolve()` detect file extensions vs SAS `libname.table` — fixes "csv"/"xlsx" node labels → `src/backend/api/routes/jobs.py`
+- [x] refactor(DataFlowDiagram): add `outputTableNames: string[]` prop; remove step/source nodes; show all ETL-produced tables with intermediate (amber) vs output (green) visual tiers → `DataFlowDiagram.tsx`, `DataStorageTab.tsx`
+- [ ] future(F-staging-materialise): materialise intermediate tables in `staging` schema during migration validation — not yet planned; add when migration validation workflow is scoped
+
 - [ ] #21: Consolidate lineage into a single primary view — `backlog` label
 - [ ] #20: Rollback / versioning based on lineage — `backlog` label
 - [ ] #32: Specify decision-ready reports (technical + PO) — `backlog` label, deferred

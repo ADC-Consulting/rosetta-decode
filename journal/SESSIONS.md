@@ -6,6 +6,36 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-25 — DataFlowDiagram two-tier ETL view + source table UI polish
+
+**Duration:** ~1.5h | **Focus:** DataFlowDiagram refactor, backend normalisation fix, Data tab source table polish
+
+### Done
+- **Source table UI polish**: Hid "Data model" and "Data flow" toggle buttons for source tables (`libname !== null`) — these have no proposed schema or DDL so the buttons are irrelevant
+- **Backend fix**: `_normalise_pipeline_step_names._resolve()` used `split(".")[-1]` which yielded the file extension ("csv", "xlsx") instead of the dataset stem; fixed by detecting file extensions via `_file_exts` frozenset and taking left side for file refs, right side for SAS `libname.table` notation
+- **DataFlowDiagram refactor**: Removed step nodes and source nodes; diagram is now a pure data lineage view of ETL-produced tables
+- **Two-tier ETL diagram**: All datasets produced by any pipeline step are shown; `outputTableNames` prop (registered output tables, `libname === null`) drives tier — amber "intermediate" for ETL artefacts, green "output" for registered outputs; status bar shows count of each tier
+- **Architectural discussion**: Intermediate tables are ETL artefacts not deployed to Databricks Unity Catalog; recommendation to materialise in `staging` schema during migration validation tracked as future `F-staging-materialise`
+
+### Decisions
+- Data flow shows all ETL-produced tables — `outputTableNames` classifies tier, not inclusion
+- `_normalise_pipeline_step_names._resolve()` now correctly extracts dataset stems from both file references and SAS libname.table notation
+- Intermediate ETL tables have no DDL/schema entry; `staging` materialisation deferred to future feature
+
+### Open Questions
+- none
+
+### Next Session — Start Here
+1. Open PR for `feat/F67-etl-source-target-toggle` if not already done — run `/git-pr-summary` to draft the description
+2. After PR, pick next item from Phase 3 backlog
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/DataStorageTab.tsx`
+- `src/frontend/src/components/JobDetail/DataFlowDiagram.tsx`
+- `src/backend/api/routes/jobs.py`
+
+---
+
 ## 2026-06-24 — PR #106 updated; Data Storage tab visual audit
 
 **Duration:** ~0.5h | **Focus:** PR description refresh + Data tab polish assessment
