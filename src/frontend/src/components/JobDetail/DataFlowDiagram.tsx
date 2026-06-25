@@ -27,7 +27,7 @@ interface DataFlowDiagramProps {
   outputTableNames: string[];
 }
 
-type FlowNodeType = "output";
+type FlowNodeType = "intermediate" | "output";
 
 interface FlowNodeData {
   label: string;
@@ -41,6 +41,64 @@ interface FlowNodeData {
 const TABLE_W = 160;
 const OUTPUT_W = 160;
 const NODE_H = 64;
+
+function IntermediateNode({ data }: { data: FlowNodeData }): React.ReactElement {
+  return (
+    <div
+      onClick={data.onClick}
+      style={{
+        width: TABLE_W,
+        minHeight: NODE_H,
+        background: data.isSelected ? "#fde68a" : "#fef9c3",
+        border: data.isSelected ? "2px solid #ca8a04" : "1.5px solid #fcd34d",
+        borderRadius: 8,
+        padding: "8px 12px",
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        cursor: "pointer",
+        boxShadow: data.isSelected ? "0 0 0 2px rgba(202,138,4,0.2)" : "0 1px 3px rgba(0,0,0,0.08)",
+      }}
+    >
+      <Handle type="target" position={Position.Left} style={{ background: "transparent", border: "none" }} />
+      <svg
+        width={16}
+        height={16}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="#92400e"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        style={{ flexShrink: 0 }}
+      >
+        <rect x={3} y={3} width={18} height={18} rx={2} ry={2} />
+        <line x1={3} y1={9} x2={21} y2={9} />
+        <line x1={3} y1={15} x2={21} y2={15} />
+        <line x1={9} y1={3} x2={9} y2={21} />
+        <line x1={15} y1={3} x2={15} y2={21} />
+      </svg>
+      <div style={{ overflow: "hidden" }}>
+        <div
+          title={data.label}
+          style={{
+            fontSize: 12,
+            fontWeight: 700,
+            color: "#78350f",
+            fontFamily: "ui-monospace, monospace",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {data.label}
+        </div>
+        <div style={{ fontSize: 10, color: "#ca8a04", marginTop: 2, fontWeight: 500 }}>intermediate</div>
+      </div>
+      <Handle type="source" position={Position.Right} style={{ background: "transparent", border: "none" }} />
+    </div>
+  );
+}
 
 function OutputNode({ data }: { data: FlowNodeData }): React.ReactElement {
   return (
@@ -111,6 +169,7 @@ function OutputNode({ data }: { data: FlowNodeData }): React.ReactElement {
 }
 
 const NODE_TYPES: NodeTypes = {
+  intermediate: IntermediateNode as React.ComponentType<{ data: FlowNodeData }>,
   output: OutputNode as React.ComponentType<{ data: FlowNodeData }>,
 };
 
@@ -146,43 +205,44 @@ function buildNodesAndEdges(
   if (lineage.pipeline_steps && lineage.pipeline_steps.length > 0) {
     const steps = lineage.pipeline_steps;
 
-    // Only datasets that are both produced by a step AND are real output tables
     const producedByAnyStep = new Set(steps.flatMap((s) => s.outputs));
-    const allOutputs = new Set(outputTableNames.filter((name) => producedByAnyStep.has(name)));
+    const outputNamesSet = new Set(outputTableNames);
 
-    allOutputs.forEach((ds) => {
+    // All produced datasets as nodes — final or intermediate
+    producedByAnyStep.forEach((ds) => {
+      const isFinal = outputNamesSet.has(ds);
       nodes.push({
         id: `out-${ds}`,
-        type: "output",
+        type: isFinal ? "output" : "intermediate",
         position: { x: 0, y: 0 },
         sourcePosition: Position.Right,
         targetPosition: Position.Left,
         data: {
           label: ds,
-          nodeType: "output" as FlowNodeType,
+          nodeType: (isFinal ? "output" : "intermediate") as FlowNodeType,
           isSelected: ds === selectedTable,
           onClick: () => onTableSelect(ds),
         } satisfies FlowNodeData,
       });
     });
 
-    // Edges between output tables via each step
+    // Edges: whenever a step consumes a produced dataset and emits another produced dataset
     const seenEdges = new Set<string>();
     steps.forEach((step) => {
-      const inOutputs = step.inputs.filter((inp) => allOutputs.has(inp));
-      const outOutputs = step.outputs.filter((out) => allOutputs.has(out));
-      inOutputs.forEach((inp) => {
-        outOutputs.forEach((out) => {
-          const edgeKey = `out-${inp}→out-${out}`;
-          if (seenEdges.has(edgeKey)) return;
-          seenEdges.add(edgeKey);
+      const inProduced = step.inputs.filter((inp) => producedByAnyStep.has(inp));
+      const outProduced = step.outputs; // always in producedByAnyStep
+      inProduced.forEach((inp) => {
+        outProduced.forEach((out) => {
+          const key = `out-${inp}→out-${out}`;
+          if (seenEdges.has(key)) return;
+          seenEdges.add(key);
           edges.push({
             id: `e-${inp}-${out}`,
             source: `out-${inp}`,
             target: `out-${out}`,
             type: "smoothstep",
-            style: { stroke: "#6ee7b7", strokeWidth: 1.5 },
-            markerEnd: { type: MarkerType.ArrowClosed, color: "#6ee7b7" },
+            style: { stroke: "#94a3b8", strokeWidth: 1.5 },
+            markerEnd: { type: MarkerType.ArrowClosed, color: "#94a3b8" },
           });
         });
       });
@@ -194,26 +254,25 @@ function buildNodesAndEdges(
   const lineageNodes: LineageNode[] = lineage.nodes ?? [];
   const lineageEdges = lineage.edges ?? [];
 
-  // Datasets produced by any lineage node, filtered to real output tables only
+  // All datasets produced by any lineage node
   const producerNodeIds = new Set(lineageNodes.map((ln) => ln.id));
   const outputTableNamesSet = new Set(outputTableNames);
-  const allLegacyOutputs = new Set(
-    lineageEdges
-      .filter((e) => producerNodeIds.has(e.source) && outputTableNamesSet.has(e.dataset))
-      .map((e) => e.dataset),
+  const allLegacyProduced = new Set(
+    lineageEdges.filter((e) => producerNodeIds.has(e.source)).map((e) => e.dataset),
   );
 
-  allLegacyOutputs.forEach((ds) => {
+  allLegacyProduced.forEach((ds) => {
     if (!nodes.find((n) => n.id === `out-${ds}`)) {
+      const isFinal = outputTableNamesSet.has(ds);
       nodes.push({
         id: `out-${ds}`,
-        type: "output",
+        type: isFinal ? "output" : "intermediate",
         position: { x: 0, y: 0 },
         sourcePosition: Position.Right,
         targetPosition: Position.Left,
         data: {
           label: ds,
-          nodeType: "output" as FlowNodeType,
+          nodeType: (isFinal ? "output" : "intermediate") as FlowNodeType,
           isSelected: ds === selectedTable,
           onClick: () => onTableSelect(ds),
         } satisfies FlowNodeData,
@@ -222,17 +281,17 @@ function buildNodesAndEdges(
   });
 
   // For each lineage node, find its input datasets and output datasets that are
-  // both in allLegacyOutputs, then add output-node → output-node edges.
+  // both in allLegacyProduced, then add dataset-node → dataset-node edges.
   const seenEdges = new Set<string>();
   lineageNodes.forEach((ln) => {
-    const inOutputs = lineageEdges
-      .filter((e) => e.target === ln.id && allLegacyOutputs.has(e.dataset))
+    const inProduced = lineageEdges
+      .filter((e) => e.target === ln.id && allLegacyProduced.has(e.dataset))
       .map((e) => e.dataset);
-    const outOutputs = lineageEdges
-      .filter((e) => e.source === ln.id && allLegacyOutputs.has(e.dataset))
+    const outProduced = lineageEdges
+      .filter((e) => e.source === ln.id && allLegacyProduced.has(e.dataset))
       .map((e) => e.dataset);
-    inOutputs.forEach((inp) => {
-      outOutputs.forEach((out) => {
+    inProduced.forEach((inp) => {
+      outProduced.forEach((out) => {
         const edgeKey = `out-${inp}→out-${out}`;
         if (seenEdges.has(edgeKey)) return;
         seenEdges.add(edgeKey);
@@ -241,8 +300,8 @@ function buildNodesAndEdges(
           source: `out-${inp}`,
           target: `out-${out}`,
           type: "smoothstep",
-          style: { stroke: "#6ee7b7", strokeWidth: 1.5 },
-          markerEnd: { type: MarkerType.ArrowClosed, color: "#6ee7b7" },
+          style: { stroke: "#94a3b8", strokeWidth: 1.5 },
+          markerEnd: { type: MarkerType.ArrowClosed, color: "#94a3b8" },
         });
       });
     });
@@ -293,7 +352,10 @@ function DataFlowDiagramInner({
     );
   }, [selectedTable, onTableSelect, setNodes]);
 
-  const tableCount = nodes.filter((n) => (n.data as FlowNodeData).nodeType === "output").length;
+  const intermediateCount = nodes.filter(
+    (n) => (n.data as FlowNodeData).nodeType === "intermediate",
+  ).length;
+  const finalCount = nodes.filter((n) => (n.data as FlowNodeData).nodeType === "output").length;
 
   if (nodes.length === 0) {
     return (
@@ -306,9 +368,11 @@ function DataFlowDiagramInner({
   return (
     <div className="flex flex-col w-full h-full min-h-0">
       <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-border text-xs text-muted-foreground bg-muted/10">
-        <span>Output tables</span>
+        <span>ETL tables</span>
         <span className="text-muted-foreground/40">·</span>
-        <span className="font-medium text-foreground">{tableCount} tables</span>
+        <span className="font-medium" style={{ color: "#ca8a04" }}>{intermediateCount} intermediate</span>
+        <span className="text-muted-foreground/40">·</span>
+        <span className="font-medium text-emerald-600">{finalCount} output</span>
       </div>
       <div className="flex-1 min-h-0 rounded-md border border-border overflow-hidden">
         <ReactFlow
