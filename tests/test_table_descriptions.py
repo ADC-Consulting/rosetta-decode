@@ -71,6 +71,56 @@ def test_output_dataset_libname_prefix_stripped() -> None:
     )
 
 
+def test_dataset_summaries_take_priority_over_rationale() -> None:
+    data_schema: dict[str, dict[str, object]] = {
+        "data/output/customer_revenue_daily.parquet": {
+            "columns": ["CUSTOMER_ID"],
+            "column_labels": {},
+            "row_count": 39874,
+        }
+    }
+    plan: dict[str, object] = {
+        "block_plans": [
+            {
+                "rationale": "GROUP BY aggregation with INNER JOIN.",
+                "output_datasets": ["outdir.customer_revenue_daily"],
+            }
+        ]
+    }
+    lineage: dict[str, object] = {
+        "dataset_summaries": {
+            "outdir.customer_revenue_daily": "Daily revenue per customer in EUR — 39,874 rows"
+        }
+    }
+    result = derive_table_descriptions(data_schema, plan, lineage=lineage)
+    assert result["data/output/customer_revenue_daily.parquet"] == (
+        "Daily revenue per customer in EUR — 39,874 rows"
+    )
+
+
+def test_pipeline_step_description_used_when_no_dataset_summary() -> None:
+    data_schema: dict[str, dict[str, object]] = {
+        "data/output/category_revenue.parquet": {
+            "columns": ["CATEGORY"],
+            "column_labels": {},
+            "row_count": 12,
+        }
+    }
+    plan: dict[str, object] = {"block_plans": []}
+    lineage: dict[str, object] = {
+        "pipeline_steps": [
+            {
+                "description": "Aggregate revenue by product category.",
+                "outputs": ["category_revenue"],
+            }
+        ]
+    }
+    result = derive_table_descriptions(data_schema, plan, lineage=lineage)
+    assert result["data/output/category_revenue.parquet"] == (
+        "Aggregate revenue by product category."
+    )
+
+
 def test_empty_plan_no_crash() -> None:
     result = derive_table_descriptions({}, {})
     assert result == {}

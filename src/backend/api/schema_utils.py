@@ -234,11 +234,16 @@ def map_semantic_to_spark_type(semantic_type: str) -> str:
 def derive_table_descriptions(
     data_schema: dict[str, dict[str, Any]],
     plan: dict[str, Any],
+    lineage: dict[str, Any] | None = None,
 ) -> dict[str, str]:
-    """Return {path: description} derived from existing migration plan data.
+    """Return {path: description} derived from existing migration plan and lineage data.
 
-    Output tables use the rationale of the block whose output_datasets includes
-    the table name. Source tables summarise pyreadstat column_labels when available.
+    Priority for output tables:
+    1. lineage.dataset_summaries — business-facing summaries written by the planner
+    2. lineage.pipeline_steps — description of the step that produces the table
+    3. block_plans rationale — fallback (migration-focused, less user-friendly)
+
+    Source tables use pyreadstat column_labels when available.
     No LLM calls.
 
     Args:
@@ -246,16 +251,35 @@ def derive_table_descriptions(
             column_labels/row_count.
         plan: The migration_plan dict — has "block_plans" list, each with "rationale"
             and "output_datasets" (libname-prefixed names like "outdir.foo" are handled).
+        lineage: Optional lineage dict — may contain "dataset_summaries" and
+            "pipeline_steps" with richer, business-facing descriptions.
 
     Returns:
         Dict keyed by path with a short description string.
     """
     import os as _os
 
-    # Build bare dataset_name (lower, no libname prefix) → rationale from BlockPlan data.
-    # The serialised MigrationPlan key is "block_plans" (from the Pydantic field name).
-    # Skip output datasets whose libname is a source library (in libname_map) — those are
-    # raw/staging files that should use column_labels descriptions instead.
+    lin: dict[str, Any] = lineage or {}
+
+    # Priority 1: lineage.dataset_summaries — bare name (strip libname prefix) → description
+    dataset_summaries: dict[str, str] = {}
+    for ds_key, summary in lin.get("dataset_summaries", {}).items():
+        bare = ds_key.split(".")[-1].lower()
+        if summary and bare not in dataset_summaries:
+            dataset_summaries[bare] = summary
+
+    # Priority 2: pipeline step description — for each table in step.outputs, use step.description
+    step_descriptions: dict[str, str] = {}
+    for step in lin.get("pipeline_steps", []):
+        step_desc: str = step.get("description", "")
+        if not step_desc:
+            continue
+        for ds in step.get("outputs", []):
+            bare = ds.split(".")[-1].lower()
+            if bare not in step_descriptions:
+                step_descriptions[bare] = step_desc
+
+    # Priority 3: block rationale — skip source-library datasets (rawdir.* etc.)
     source_libnames: set[str] = {k.lower() for k in plan.get("libname_map", {})}
     output_to_rationale: dict[str, str] = {}
     for block in plan.get("block_plans", []):
@@ -263,18 +287,24 @@ def derive_table_descriptions(
         for ds in block.get("output_datasets", []):
             parts = ds.lower().split(".", 1)
             if len(parts) == 2 and parts[0] in source_libnames:
-                continue  # rawdir.* etc. — treat as source, not output
+                continue
             bare = parts[-1]
             if rationale and bare not in output_to_rationale:
                 output_to_rationale[bare] = rationale
 
     result: dict[str, str] = {}
     for path, schema_info in data_schema.items():
-        ds_name = _os.path.splitext(_os.path.basename(path))[0]
+        ds_name = _os.path.splitext(_os.path.basename(path))[0].lower()
 
-        # Output table: use block rationale
-        if ds_name.lower() in output_to_rationale:
-            result[path] = output_to_rationale[ds_name.lower()]
+        # Output table: try each priority level
+        if ds_name in dataset_summaries:
+            result[path] = dataset_summaries[ds_name]
+            continue
+        if ds_name in step_descriptions:
+            result[path] = step_descriptions[ds_name]
+            continue
+        if ds_name in output_to_rationale:
+            result[path] = output_to_rationale[ds_name]
             continue
 
         # Source table: derive from pyreadstat column_labels
@@ -472,7 +502,7 @@ async def build_job_schema(job: "Job", db: AsyncSession) -> "list[TableSchema]":
             t.ddl = generate_create_table(t.dataset_name, t.target_schema, ddl_columns)
 
     # Stamp descriptions and regenerate DDL with COMMENT clause
-    descriptions = derive_table_descriptions(data_schema, plan)
+    descriptions = derive_table_descriptions(data_schema, plan, lineage=lineage_raw)
     for t in tables:
         t.description = descriptions.get(t.path, "")
         if t.ddl:
