@@ -435,7 +435,7 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                         {selectedTable.libname} &rarr; {selectedTable.target_schema}
                       </span>
                     )}
-                    {selectedTable.row_count != null && (
+                    {selectedTable.row_count != null && !selectedTable.description && (
                       <span className="text-xs text-muted-foreground">
                         {selectedTable.row_count.toLocaleString()} rows
                       </span>
