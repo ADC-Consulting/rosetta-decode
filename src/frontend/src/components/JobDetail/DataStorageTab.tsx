@@ -282,8 +282,8 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
 
         {/* Section 2: Migration output */}
         {outputTables.length > 0 && (
-          <div>
-            <div className="px-3 py-1.5 bg-muted/50 border-b border-border">
+          <div className="border-t-2 border-border">
+            <div className="px-3 py-1.5 bg-muted/80 border-b border-border">
               <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
                 Migration output
               </span>
