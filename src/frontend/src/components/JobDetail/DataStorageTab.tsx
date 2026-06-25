@@ -430,7 +430,7 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                         {selectedTable.description}
                       </p>
                     )}
-                    {selectedTable.libname && (
+                    {selectedTable.libname && selectedTable.libname !== selectedTable.target_schema && (
                       <span className="text-xs text-muted-foreground">
                         {selectedTable.libname} &rarr; {selectedTable.target_schema}
                       </span>
