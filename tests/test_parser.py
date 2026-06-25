@@ -124,6 +124,54 @@ def test_dependency_ordering(parser: SASParser) -> None:
     assert data_idx < sql_idx, "DATA step must precede the PROC SQL that consumes its output"
 
 
+# ── Macro definition stripping (regression: Fix B) ────────────────────────────
+
+
+def test_macro_definition_body_not_extracted_as_proc_block(parser: SASParser) -> None:
+    """A %macro…%mend definition body must NOT be extracted as a PROC SQL block.
+
+    Regression for the deterministic codegen bug where a ``proc sql`` inside an
+    (unexpanded) macro *definition* was matched by the PROC SQL extractor,
+    producing PySpark referencing unresolved &in/&out params.
+    """
+    macro_sas = (
+        "%macro m_first_dose(in=, out=);\n"
+        "    proc sql;\n"
+        "        create table &out as select min(exstdtc) as rfstdtc from &in;\n"
+        "    quit;\n"
+        "%mend m_first_dose;\n"
+    )
+    result = parser.parse({"macros/m_first_dose.sas": macro_sas})
+    # No translatable PROC SQL block from the definition body.
+    sql_blocks = [b for b in result.blocks if b.block_type == BlockType.PROC_SQL]
+    assert not sql_blocks, f"Macro definition body wrongly extracted: {sql_blocks}"
+    # No block should carry the unresolved macro params in its raw_sas.
+    for b in result.blocks:
+        assert "&in" not in b.raw_sas and "&out" not in b.raw_sas
+    # The macro def metadata is still captured.
+    assert any(md.name.upper() == "M_FIRST_DOSE" for md in result.macro_defs)
+
+
+def test_macro_def_stripping_preserves_subsequent_line_numbers(parser: SASParser) -> None:
+    """Stripping a macro definition must not shift line numbers of real blocks."""
+    sas = (
+        "%macro noop(in=, out=);\n"  # 1
+        "    proc sql;\n"  # 2
+        "        create table &out as select * from &in;\n"  # 3
+        "    quit;\n"  # 4
+        "%mend noop;\n"  # 5
+        "\n"  # 6
+        "DATA real_out;\n"  # 7
+        "    SET raw;\n"  # 8
+        "RUN;\n"  # 9
+    )
+    result = parser.parse({"prog.sas": sas})
+    data_blocks = [b for b in result.blocks if b.block_type == BlockType.DATA_STEP]
+    assert len(data_blocks) == 1
+    assert data_blocks[0].start_line == 7
+    assert data_blocks[0].end_line == 9
+
+
 # ── PROC type detection ───────────────────────────────────────────────────────
 
 

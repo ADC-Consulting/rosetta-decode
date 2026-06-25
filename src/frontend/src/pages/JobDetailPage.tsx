@@ -9,9 +9,14 @@ import {
   refineJob,
   saveVersion,
 } from "@/api/jobs";
-import type { BlockOverride, JobStatusValue } from "@/api/types";
+import type {
+  BlockOverride,
+  DeploymentTarget,
+  JobStatusValue,
+} from "@/api/types";
 // import ChangelogFeed from "@/components/JobDetail/ChangelogFeed";
 import ChevronTabBar from "@/components/JobDetail/ChevronTabBar";
+import DeploymentTargetFields from "@/components/JobDetail/DeploymentTargetFields";
 import DataStorageTab from "@/components/JobDetail/DataStorageTab";
 import ETLTab from "@/components/JobDetail/ETLTab";
 import PlanTab from "@/components/JobDetail/PlanTab";
@@ -52,6 +57,12 @@ export default function JobDetailPage(): React.ReactElement {
 
   // Confirmation / input dialogs
   const [showAcceptConfirm, setShowAcceptConfirm] = useState(false);
+  const [deploymentTarget, setDeploymentTarget] = useState<DeploymentTarget>({
+    delivery_format: "dlt",
+    provider: "azure",
+    ingestion_approach: "historical",
+    compute_mode: "serverless",
+  });
   const [showRefineDialog, setShowRefineDialog] = useState(false);
   const [refineHint, setRefineHint] = useState("");
   const lastSavedHashRef = useRef<Record<string, string>>({});
@@ -149,7 +160,7 @@ export default function JobDetailPage(): React.ReactElement {
   });
 
   const acceptMutation = useMutation({
-    mutationFn: () => acceptJob(id),
+    mutationFn: () => acceptJob(id, deploymentTarget),
     onSuccess: () => {
       setShowAcceptConfirm(false);
       void queryClient.invalidateQueries({ queryKey: ["job", id] });
@@ -398,14 +409,19 @@ export default function JobDetailPage(): React.ReactElement {
 
         {/* Accept-migration confirmation */}
         <Dialog open={showAcceptConfirm} onOpenChange={setShowAcceptConfirm}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-lg">
             <div className="space-y-2">
               <h2 className="text-base font-semibold">Accept migration</h2>
               <p className="text-sm text-muted-foreground">
-                Are you sure you want to finalize the migration? This will mark
-                the job as accepted.
+                Finalizing marks the job as accepted. Choose the deployment
+                target for the generated Databricks bundle.
               </p>
             </div>
+            <DeploymentTargetFields
+              value={deploymentTarget}
+              onChange={setDeploymentTarget}
+              disabled={acceptMutation.isPending}
+            />
             <DialogFooter>
               <Button
                 variant="outline"

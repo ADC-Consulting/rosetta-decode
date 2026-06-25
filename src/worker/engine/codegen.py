@@ -29,6 +29,16 @@ logger = logging.getLogger(__name__)
 
 # SAS: codegen.py:1
 
+
+class CodegenError(Exception):
+    """Raised when assembled code violates a structural invariant.
+
+    The primary case is an untranslatable (stub) block whose output dataset is
+    consumed by another block — the stub never creates the dataset, so the
+    downstream read raises ``NameError`` at runtime.
+    """
+
+
 # ── Jinja2 templates ──────────────────────────────────────────────────────────
 
 _MODULE_TEMPLATE = """\
@@ -249,6 +259,15 @@ class CodeGenerator:
         Returns:
             Complete Python source ready to be saved as a single ``pipeline.py``.
         """
+        for b in blocks:
+            if "orderBy" in b.python_code:
+                logger.warning(
+                    "assemble_flat: block %s:%s (type=%s output_var=%r) contains orderBy",
+                    b.source_block.source_file,
+                    b.source_block.start_line,
+                    b.source_block.block_type,
+                    b.output_var,
+                )
         source_files = sorted({b.source_block.source_file for b in blocks})
         entries = [_BlockEntry(header=_block_header(b), block=b) for b in blocks]
         rendered = str(
@@ -272,4 +291,41 @@ class CodeGenerator:
             rf"\b{re.escape(last_output_var)}\s*=", rendered
         ):
             rendered += f"\nresult = {last_output_var}\n"
+        self._assert_no_consumed_stub_outputs(blocks)
         return rendered
+
+    @staticmethod
+    def _assert_no_consumed_stub_outputs(blocks: list[GeneratedBlock]) -> None:
+        """Verify no untranslatable (stub) block produces a consumed dataset.
+
+        A block flagged ``is_untranslatable`` emits only a ``# SAS-UNRECOGNIZED``
+        comment and never creates its output dataset. If any block reads that
+        dataset (it appears in some block's ``input_datasets``), the assembled
+        pipeline raises ``NameError`` at runtime when the downstream block runs.
+        This is defense-in-depth: the planner guardrail should already have
+        upgraded such blocks away from MANUAL, but this catches the bug even if
+        that guardrail is bypassed.
+
+        Args:
+            blocks: Translated blocks to validate.
+
+        Raises:
+            CodegenError: When an untranslatable block's output dataset stem is
+                consumed by another block.
+        """
+        consumed_stems: set[str] = set()
+        for b in blocks:
+            for ds in b.source_block.input_datasets:
+                consumed_stems.add(ds.lower().split(".")[-1])
+
+        for b in blocks:
+            if not b.is_untranslatable:
+                continue
+            for ds in b.source_block.output_datasets:
+                stem = ds.lower().split(".")[-1]
+                if stem in consumed_stems:
+                    raise CodegenError(
+                        f"Block {b.source_block.source_file}:{b.source_block.start_line} "
+                        f"is untranslated (stub) but its output '{stem}' is consumed "
+                        "downstream — pipeline would NameError."
+                    )

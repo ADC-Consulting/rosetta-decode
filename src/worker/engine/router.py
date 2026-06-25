@@ -112,7 +112,27 @@ class _ProcSortHelper:
             A GeneratedBlock with inline sort code and ``is_untranslatable=False``.
         """
         vars_, ascending = self._parse_by_clause(block.raw_sas)
-        out_dataset, in_dataset = self._parse_out_dataset(block.raw_sas, block.input_datasets)
+
+        # Resolve input variable the same way _SimpleCopyHelper does: look up the
+        # full SAS name (e.g. "work.adsl_age") in the stems dict so that prior-block
+        # outputs are found by their Python variable name, and external datasets fall
+        # back to the underscore form (e.g. "work_adsl_age").
+        stems = build_block_output_stems(context.blocks)
+        raw_in = block.input_datasets[0].lower() if block.input_datasets else "df"
+        in_underscore = raw_in.replace(".", "_")
+        in_dataset = stems.get(raw_in, stems.get(in_underscore, in_underscore))
+        logger.warning(
+            "ProcSort %s:%s raw_in=%r resolved in_dataset=%r stems_keys=%s",
+            block.source_file,
+            block.start_line,
+            raw_in,
+            in_dataset,
+            sorted(stems.keys()),
+        )
+
+        out_match = re.search(r"\bOUT\s*=\s*([\w.]+)", block.raw_sas, re.IGNORECASE)
+        raw_out = out_match.group(1).lower() if out_match else raw_in
+        out_dataset = raw_out.split(".")[-1]
 
         order_cols = ", ".join(
             f'F.col("{v}").asc()' if asc else f'F.col("{v}").desc()'
@@ -128,6 +148,7 @@ class _ProcSortHelper:
         return GeneratedBlock(
             source_block=block,
             python_code=python_code,
+            output_var=out_dataset,
             is_untranslatable=False,
         )
 

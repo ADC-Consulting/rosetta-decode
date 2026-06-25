@@ -99,6 +99,7 @@ def test_windowed_context_includes_macro_files() -> None:
         source_files={
             "sas/01_load.sas": "proc import; run;",
             "macros/clean_string.sas": "%macro clean_string(x); &x; %mend;",
+            "macros/fmt_date.sas": "%macro fmt_date(d); put(&d, yymmdd10.); %mend;",
             "autoexec.sas": "libname rawdir 'data/raw/';",
         },
         data_files={
@@ -112,16 +113,36 @@ def test_windowed_context_includes_macro_files() -> None:
         },
         libname_map={"rawdir": "data/raw/"},
     )
-    block = _make_block()
-    windowed = ctx.windowed_context(block)
-    # Macro and autoexec files must be present
+    # Block that calls %clean_string but not %fmt_date
+    block_calls_clean = SASBlock(
+        block_type=BlockType.PROC_IMPORT,
+        source_file="01_load_sources.sas",
+        start_line=3,
+        end_line=6,
+        raw_sas=(
+            "%clean_string(name) proc import datafile=csvcust"
+            " out=rawdir.customers dbms=csv replace; run;"
+        ),
+        input_datasets=[],
+        output_datasets=["rawdir.customers"],
+    )
+    windowed = ctx.windowed_context(block_calls_clean)
+    # Called macro included; uncalled macro excluded; autoexec always included
     assert "macros/clean_string.sas" in windowed.source_files
+    assert "macros/fmt_date.sas" not in windowed.source_files
     assert "autoexec.sas" in windowed.source_files
     # Regular SAS program file must NOT be present
     assert "sas/01_load.sas" not in windowed.source_files
     # data_files and libname_map must pass through
     assert windowed.data_files == ctx.data_files
     assert windowed.libname_map == ctx.libname_map
+
+    # Block with no macro calls: only autoexec passes through
+    block_no_macros = _make_block()
+    windowed_no_macros = ctx.windowed_context(block_no_macros)
+    assert "macros/clean_string.sas" not in windowed_no_macros.source_files
+    assert "macros/fmt_date.sas" not in windowed_no_macros.source_files
+    assert "autoexec.sas" in windowed_no_macros.source_files
 
 
 def test_windowed_context_no_macro_files() -> None:

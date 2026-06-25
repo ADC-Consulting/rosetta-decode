@@ -149,6 +149,31 @@ async def test_proc_sort_helper_out_dataset() -> None:
     assert "work2 = source.orderBy(" in result.python_code
 
 
+@pytest.mark.asyncio
+async def test_proc_sort_helper_inplace_sets_output_var() -> None:
+    """In-place PROC SORT must advertise output_var so codegen's binding check passes.
+
+    Regression guard for the NameError: an in-place sort emits
+    ``adsl_age = adsl_age.orderBy(...)`` and must report output_var=adsl_age,
+    matching the variable its python_code binds (fix #3).
+    """
+    raw = "PROC SORT DATA=work.adsl_age; BY USUBJID; RUN;"
+    block = _make_block(BlockType.PROC_SORT, raw_sas=raw, input_datasets=["work.adsl_age"])
+    ctx = JobContext(
+        source_files={},
+        resolved_macros=[],
+        dependency_order=[],
+        risk_flags=[],
+        blocks=[],
+        generated=[],
+    )
+    helper = _ProcSortHelper()
+    result = await helper.translate(block, ctx)
+    assert result.output_var == "adsl_age"
+    # The emitted code must bind the same variable it advertises.
+    assert f"{result.output_var} =" in result.python_code
+
+
 # ── Strategy-based routing tests ─────────────────────────────────────────────
 
 

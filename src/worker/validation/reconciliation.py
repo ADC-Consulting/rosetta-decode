@@ -984,6 +984,12 @@ class ReconciliationService:
         namespace: dict[str, Any] = {"backend": backend, "pd": pd}
         if spark is not None:
             namespace["spark"] = spark
+        # F76: portable generated code reads external files via
+        # ``DATA_ROOT = os.environ.get("ROSETTA_DATA_ROOT", "/workspace/data")``.
+        # The in-process recon path supplies no job-specific data dir, so DATA_ROOT
+        # falls back to the historical ``/workspace/data`` literal — identical to the
+        # pre-F76 behaviour, keeping reconciliation results inert. The job-specific
+        # dir is wired via ``ROSETTA_DATA_ROOT`` in the executor for the remote path.
         _safe_exec(python_code, namespace)
 
         # Prefer an explicit "result" variable; fall back to last DataFrame-like value.

@@ -52,6 +52,29 @@ def _strip_block_comments(source: str) -> str:
     return _BLOCK_COMMENT_RE.sub(_replace, source)
 
 
+def _strip_macro_defs(source: str) -> str:
+    """Replace %MACRO … %MEND definition spans with blank lines.
+
+    Macro *definition* bodies must never be extracted as translatable blocks: a
+    ``proc sql`` inside an unexpanded ``%macro`` body would otherwise match the
+    PROC extractors and emit code referencing unresolved ``&in``/``&out`` params.
+    Each definition span is replaced with the same number of newline characters
+    it spanned so that downstream ``start_line``/``end_line`` calculations (which
+    count newlines in ``source[:m.start()]``) remain accurate.
+
+    Args:
+        source: SAS source text (typically already macro-call-expanded).
+
+    Returns:
+        Source with every macro-definition body replaced by blank lines.
+    """
+
+    def _replace(m: re.Match[str]) -> str:
+        return "\n" * m.group(0).count("\n")
+
+    return _MACRO_DEF_RE.sub(_replace, source)
+
+
 # DATA step: DATA <name(s)>; … RUN;
 _DATA_STEP_RE = re.compile(
     r"(?i)(DATA\s+\S[^;]*;.*?RUN\s*;)",
@@ -1167,10 +1190,17 @@ class SASParser:
         for filename, source in files.items():
             expanded_source = expand_macro_calls(source, all_macro_defs_map)
 
+            # Strip %MACRO … %MEND definition bodies before block extraction so a
+            # ``proc sql`` inside an (unexpanded) macro definition is never picked
+            # up as a translatable block with unresolved &in/&out params. Newlines
+            # are preserved so line numbers stay accurate. Macro-def *metadata* is
+            # still captured below from ``expanded_source`` (which keeps the defs).
+            defs_stripped = _strip_macro_defs(expanded_source)
+
             # Strip block comments before regex matching so that PROC keywords
             # inside /* ... */ comments don't produce phantom blocks.
             # The original source is kept for raw_sas capture inside each extractor.
-            source_stripped = _strip_block_comments(expanded_source)
+            source_stripped = _strip_block_comments(defs_stripped)
             covered: list[tuple[int, int]] = []
 
             for pattern in (

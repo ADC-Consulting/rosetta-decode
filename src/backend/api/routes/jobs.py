@@ -32,7 +32,6 @@ from src.backend.api.schemas import (
     BlockRevisionResponse,
     BomSummary,
     ChangelogEntry,
-    ColumnSchema,
     CostEstimate,
     ExecuteRequest,
     ExecuteResponse,
@@ -61,7 +60,6 @@ from src.backend.api.schemas import (
     SaveVersionRequest,
     SaveVersionResponse,
     ScopingSummaryResponse,
-    TableSchema,
     TokenUsageStats,
     TrustReportBlock,
     TrustReportFile,
@@ -400,6 +398,7 @@ async def download_job(
     )
     seen_blocks: set[str] = set()
     per_block_verification: list[dict[str, Any]] = []
+    per_block_code: dict[str, str] = {}  # SAS: jobs.py:download_job
     for rev in rev_result.scalars().all():
         if rev.block_id in seen_blocks:
             continue
@@ -414,8 +413,19 @@ async def download_job(
                 "reconciliation_status": rev.reconciliation_status,
             }
         )
+        if rev.python_code:
+            per_block_code[rev.block_id] = rev.python_code
 
-    zip_bytes = build_migration_package(job, per_block_verification)
+    from src.backend.api.schema_utils import build_job_schema  # SAS: jobs.py:download_job
+
+    schema = await build_job_schema(job, session)
+
+    zip_bytes = build_migration_package(
+        job,
+        per_block_verification,
+        per_block_code=per_block_code,
+        schema=schema,
+    )
 
     return StreamingResponse(
         io.BytesIO(zip_bytes),
@@ -593,12 +603,7 @@ async def get_job_schema(
     Raises:
         HTTPException: 404 if the job does not exist.
     """
-    from src.backend.api.schema_utils import (  # SAS: schema_utils.py:1
-        infer_pk_fk,
-        map_python_dtype_to_sql,
-        map_sas_to_semantic_type,
-    )
-    from src.worker.engine.ddl_generator import generate_create_table  # SAS: ddl_generator.py:63
+    from src.backend.api.schema_utils import build_job_schema  # SAS: schema_utils.py:1
 
     result = await session.execute(select(Job).where(Job.id == str(job_id)))
     job = result.scalar_one_or_none()
@@ -606,105 +611,11 @@ async def get_job_schema(
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
 
     plan: dict[str, Any] = job.migration_plan or {}
-    overrides: dict[str, Any] = (job.user_overrides or {}).get("schema_overrides", {})
-
     libname_map: dict[str, str] = plan.get("libname_map", {})
-    data_schema: dict[str, dict[str, Any]] = plan.get("data_schema", {})
+
+    tables = await build_job_schema(job, session)
+
     relationships_raw: list[dict[str, Any]] = plan.get("relationships", [])
-    # SAS: jobs.py:output_schema — execution-time schema from ReconciliationService
-    output_schema: dict[str, list[dict[str, str]]] = plan.get("output_schema", {})
-
-    tables: list[TableSchema] = []
-    for path, schema_info in data_schema.items():
-        columns_raw: list[str] = schema_info.get("columns", [])
-        col_types: dict[str, str] = schema_info.get("column_types", {})
-        col_labels: dict[str, str] = schema_info.get("column_labels", {})
-        col_formats: dict[str, str] = schema_info.get("column_formats", {})
-        row_count: int | None = schema_info.get("row_count")
-
-        # Determine libname from path prefix match
-        # libname_map is {libname_key: folder_path} e.g. {"raw": "./data/raw"}
-        # Normalise lib_path by stripping leading "./" and trailing "/" for comparison
-        libname: str | None = None
-        norm_path = path.lstrip("./")
-        for lib_name, lib_path in libname_map.items():
-            norm_lib = lib_path.lstrip("./").rstrip("/")
-            if norm_path.startswith(norm_lib + "/") or norm_lib in norm_path:
-                libname = lib_name
-                break
-
-        # Determine target_schema from per-path override, libname override, or libname
-        path_overrides: dict[str, Any] = overrides.get(path, {})
-        libname_key = f"__libname__{libname}" if libname else None
-        libname_override_entry: dict[str, Any] = (
-            overrides.get(libname_key, {}) if libname_key else {}
-        )
-        default_schema = libname_override_entry.get("target_schema") or libname or "public"
-        target_schema: str = path_overrides.get("target_schema", default_schema)
-
-        # Build column list
-        col_type_overrides: dict[str, str] = path_overrides.get("column_type_overrides", {})
-        columns: list[ColumnSchema] = []
-        for col_name in columns_raw:
-            sas_type = col_types.get(col_name, "")
-            sas_format: str | None = col_formats.get(col_name)
-            label: str | None = col_labels.get(col_name)
-            semantic_type = map_sas_to_semantic_type(sas_type, sas_format)
-            override_type: str | None = col_type_overrides.get(col_name)
-            columns.append(
-                ColumnSchema(
-                    name=col_name,
-                    sas_type=sas_type,
-                    sas_format=sas_format,
-                    label=label,
-                    semantic_type=semantic_type,
-                    override_type=override_type,
-                )
-            )
-
-        dataset_name = os.path.splitext(os.path.basename(path))[0]
-        tables.append(
-            TableSchema(
-                path=path,
-                dataset_name=dataset_name,
-                libname=libname,
-                target_schema=target_schema,
-                columns=columns,
-                row_count=row_count,
-                ddl="",  # filled in below after pk/fk inference
-            )
-        )
-
-    # SAS: jobs.py:pipeline_output_enrichment — add placeholder entries for output datasets
-    # produced by the migration that are not already tracked in data_schema.
-    lineage_raw: dict[str, Any] = job.lineage or {}
-    pipeline_steps: list[dict[str, Any]] = lineage_raw.get("pipeline_steps", [])
-    if pipeline_steps:
-        all_inputs: set[str] = {
-            ds.lower() for step in pipeline_steps for ds in step.get("inputs", [])
-        }
-        all_outputs: set[str] = {ds for step in pipeline_steps for ds in step.get("outputs", [])}
-        # Pure outputs are datasets that are never consumed as input by another step.
-        pure_outputs: set[str] = {ds for ds in all_outputs if ds.lower() not in all_inputs}
-        existing_names: set[str] = {t.dataset_name.lower() for t in tables}
-        for ds_name in sorted(pure_outputs):
-            if ds_name.lower() in existing_names:
-                continue
-            tables.append(
-                TableSchema(
-                    path=f"output/{ds_name}",
-                    dataset_name=ds_name,
-                    libname=None,
-                    target_schema="public",
-                    columns=[],
-                    target_columns=[],
-                    row_count=None,
-                    ddl="",
-                    ddl_source="source_estimated",
-                    schema_status="not_run",
-                )
-            )
-
     relationships: list[RelationshipSchema] = [
         RelationshipSchema(**r)
         for r in relationships_raw
@@ -719,63 +630,6 @@ async def get_job_schema(
             )
         )
     ]
-
-    # SAS: jobs.py:pk_fk_inference — build target_columns and infer pk/fk for each table
-    tables_for_inference = [
-        {
-            "dataset_name": t.dataset_name,
-            "columns": [c.name for c in t.target_columns] or [c.name for c in t.columns],
-            "column_types": {c.name: (c.python_type or "") for c in t.target_columns},
-            "target_columns": [],
-        }
-        for t in tables
-    ]
-    pk_fk = infer_pk_fk(
-        tables_for_inference,
-        [r.model_dump() for r in relationships],
-        user_pk_overrides=overrides.get("pk_overrides", {}),
-        user_fk_overrides=overrides.get("fk_overrides", {}),
-    )
-
-    # Enrich each table with target_columns, schema_status, ddl_source, and DDL
-    for t in tables:
-        raw_target_cols: list[dict[str, str]] = output_schema.get(t.dataset_name, [])
-        pk_fk_entry = pk_fk.get(t.dataset_name, {"pks": [], "fks": {}})
-        pks: list[str] = pk_fk_entry.get("pks", [])
-        fks: dict[str, str] = pk_fk_entry.get("fks", {})
-
-        if raw_target_cols:
-            target_columns: list[ColumnSchema] = [
-                ColumnSchema(
-                    name=col_info["name"],
-                    sas_type="",
-                    python_type=col_info.get("python_type"),
-                    sql_type=map_python_dtype_to_sql(col_info.get("python_type", "object")),
-                    is_pk=col_info["name"] in pks,
-                    is_fk=col_info["name"] in fks,
-                    fk_ref=fks.get(col_info["name"]),
-                )
-                for col_info in raw_target_cols
-            ]
-            t.target_columns = target_columns
-
-            if len(target_columns) == len(t.columns):
-                t.schema_status = "migrated"
-            else:
-                t.schema_status = "changed"
-            t.ddl_source = "target"
-
-            # Re-generate DDL from target columns
-            ddl_columns = [
-                {"name": c.name, "semantic_type": c.sql_type or "TEXT"} for c in target_columns
-            ]
-            t.ddl = generate_create_table(t.dataset_name, t.target_schema, ddl_columns)
-        else:
-            t.schema_status = "not_run"
-            t.ddl_source = "source_estimated"
-            # Generate DDL from source columns (original path)
-            ddl_columns = [{"name": c.name, "semantic_type": c.semantic_type} for c in t.columns]
-            t.ddl = generate_create_table(t.dataset_name, t.target_schema, ddl_columns)
 
     return JobSchemaResponse(
         job_id=job_id,
@@ -912,6 +766,13 @@ async def accept_job(
     overrides: dict[str, Any] = dict(job.user_overrides or {})
     if request.notes is not None:
         overrides["acceptance_note"] = request.notes
+    if request.deployment_target is not None:
+        # F75: persist questionnaire answers in the existing JSON column.
+        # by_alias=True emits the JSON key ``schema`` (not ``schema_``);
+        # exclude_none drops unanswered questions so defaults apply downstream.
+        overrides["deployment_target"] = request.deployment_target.model_dump(
+            by_alias=True, exclude_none=True
+        )
 
     await session.execute(
         update(Job)

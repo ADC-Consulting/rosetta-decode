@@ -10,6 +10,7 @@ rather than duplicating it.
 
 from __future__ import annotations
 
+import keyword
 import logging
 import re
 from dataclasses import dataclass, field
@@ -802,6 +803,23 @@ def build_block_output_stems(all_blocks: list[Any]) -> dict[str, str]:
     return stems
 
 
+def _safe_ident(name: str) -> str:
+    """Return *name* suffixed with ``_`` when it collides with a Python keyword.
+
+    A SAS dataset or stem may legitimately be named ``in``, ``class``, ``import``,
+    etc. Emitting such a name verbatim as a Python variable produces a
+    ``SyntaxError``. Appending ``_`` (``in`` → ``in_``) yields a valid identifier
+    while staying recognisable. Non-keyword names are returned unchanged.
+
+    Args:
+        name: A resolved variable or dataset stem name.
+
+    Returns:
+        The keyword-safe identifier.
+    """
+    return f"{name}_" if keyword.iskeyword(name) else name
+
+
 def normalise_input_vars_in_code(
     python_code: str,
     input_datasets: list[str],
@@ -842,13 +860,21 @@ def normalise_input_vars_in_code(
                 "%s: '%s' NOT in stems → external form '%s'", agent_name, ds_lower, correct
             )
 
+        # Guard against names colliding with Python keywords (e.g. ``in`` → ``in_``).
+        correct = _safe_ident(correct)
+
         underscore_form = ds_lower.replace(".", "_")
         dot_form = ds_lower
 
-        for wrong, pattern in (
-            (underscore_form, rf"\b{re.escape(underscore_form)}\b"),
-            (dot_form, re.escape(dot_form)),
-        ):
+        subs = [(underscore_form, rf"\b{re.escape(underscore_form)}\b")]
+        if dot_form != underscore_form:
+            # Only substitute the dotted form when the dataset is libname-qualified.
+            # For a dotless external name (e.g. ``in``) the dot form equals the
+            # underscore form; re-running the substring substitution would corrupt
+            # an already-corrected token (``in_`` → ``in__``).
+            subs.append((dot_form, re.escape(dot_form)))
+
+        for wrong, pattern in subs:
             if wrong == correct:
                 continue  # already the right form — no substitution needed
             if not re.search(pattern, python_code):
@@ -888,7 +914,17 @@ def normalise_output_var(
         if ds.lower() == stem:
             continue  # no libname prefix — nothing to correct
         if fov in (ds.lower(), ds.lower().replace(".", "_")):
-            return stem
+            return _safe_ident(stem)
+    # When there is exactly one output dataset, the correct stem is authoritative —
+    # the LLM may return a partial or abbreviated name (e.g. "adsl" for "adsl_age").
+    if len(output_datasets) == 1:
+        correct_stem = _safe_ident(output_datasets[0].lower().split(".")[-1])
+        if fov != correct_stem:
+            return correct_stem
+    # No libname correction needed, but still guard a bare keyword name
+    # (``in`` → ``in_``) so the recorded output_var is a valid Python identifier.
+    if keyword.iskeyword(output_var):
+        return _safe_ident(output_var)
     return output_var
 
 
@@ -913,7 +949,7 @@ def normalise_output_var_in_code(
         Python source with all libname-qualified output variables replaced.
     """
     for ds in output_datasets:
-        stem = ds.lower().split(".")[-1]  # customers
+        stem = _safe_ident(ds.lower().split(".")[-1])  # customers (keyword-safe)
         if ds.lower() == stem:
             continue  # no libname prefix — nothing to correct
         underscore_form = ds.lower().replace(".", "_")  # outdir_customers
@@ -1482,3 +1518,131 @@ def enforce_csv_read_schema(
             )
 
     return python_code
+
+
+# ── Portable-codegen post-processors (F76 Workstream 1) ──────────────────────
+#
+# These two deterministic, idempotent transforms make per-block generated code
+# portable so the SAME code runs under the local executor AND the Databricks
+# bundle. They are applied per block in the translation pipeline alongside the
+# other normalisers. Neither changes execution semantics for local runs: the
+# data-root constant defaults to the historical ``/workspace/data`` literal, and
+# the ``result`` binding only ever ADDS the block's existing output variable.
+
+# The literal local data-root prefix the LLM is told to read external files from.
+_LOCAL_DATA_ROOT_PREFIX = "/workspace/data/"
+# The module-level constant line injected once when a block reads external files.
+_DATA_ROOT_CONST_LINE = 'DATA_ROOT = os.environ.get("ROSETTA_DATA_ROOT", "/workspace/data")'
+# Matches a quoted string literal that starts with the local data-root prefix,
+# e.g. ``"/workspace/data/dm.csv"`` or ``'/workspace/data/raw/ex.csv'``. The
+# opening quote is captured so single/double quotes are handled symmetrically;
+# the remainder (after the prefix, before the closing quote) is captured as
+# ``rest`` so it can be spliced into an f-string. An optional leading ``f``/``F``
+# is consumed and dropped so an already-f-string path is not double-wrapped.
+_DATA_ROOT_PATH_RE = re.compile(
+    r"""[fF]?(?P<q>['"])"""  # optional f-prefix + opening quote
+    r"""/workspace/data/"""  # the literal local prefix
+    r"""(?P<rest>[^'"]*)"""  # path remainder (no embedded quotes)
+    r"""(?P=q)"""  # matching closing quote
+)
+
+
+def parameterize_data_root(python_code: str) -> str:
+    """Rewrite literal ``/workspace/data/`` reads to a portable ``DATA_ROOT`` constant.
+
+    Generated block code reads external files from the literal local prefix
+    ``/workspace/data/<name>``. To make the SAME code runnable on Databricks (where
+    the landing path is a UC Volume), this rewrites each such string literal to an
+    f-string ``f"{DATA_ROOT}/<name>"`` and injects, exactly once near the top, the
+    module constant::
+
+        DATA_ROOT = os.environ.get("ROSETTA_DATA_ROOT", "/workspace/data")
+
+    The executor sets ``ROSETTA_DATA_ROOT`` to the job's data directory, so locally
+    the resolved path is identical to the previous literal — the rewrite is inert
+    for local reconciliation. ``import os`` is added if absent. The transform is
+    idempotent: an already-f-string path is left unchanged and the constant/import
+    are never duplicated. Code with no ``/workspace/data/`` prefix is returned
+    unchanged (no constant injected).
+
+    Args:
+        python_code: Generated Python source for a single block.
+
+    Returns:
+        The portable Python source, or *python_code* unchanged when it reads no
+        local data-root paths.
+    """
+    if _LOCAL_DATA_ROOT_PREFIX not in python_code:
+        return python_code
+
+    def _replace(match: re.Match[str]) -> str:
+        return f'f"{{DATA_ROOT}}/{match.group("rest")}"'
+
+    rewritten = _DATA_ROOT_PATH_RE.sub(_replace, python_code)
+
+    # Inject the module constant exactly once near the top, after any import block.
+    if _DATA_ROOT_CONST_LINE not in rewritten:
+        rewritten = _ensure_os_import(rewritten)
+        rewritten = _insert_after_imports(rewritten, _DATA_ROOT_CONST_LINE)
+    else:
+        rewritten = _ensure_os_import(rewritten)
+    return rewritten
+
+
+def _ensure_os_import(python_code: str) -> str:
+    """Return *python_code* with a top-level ``import os`` present (idempotent)."""
+    if re.search(r"^\s*import os\b", python_code, re.MULTILINE):
+        return python_code
+    return "import os\n" + python_code
+
+
+def _insert_after_imports(python_code: str, line: str) -> str:
+    """Insert *line* after the leading import/``from`` block of *python_code*.
+
+    Skips a leading run of blank, comment, ``import`` and ``from`` lines so the
+    constant lands below the imports but above the first statement. Falls back to
+    prepending when no such block exists.
+    """
+    lines = python_code.split("\n")
+    insert_at = 0
+    for idx, text in enumerate(lines):
+        stripped = text.strip()
+        if stripped == "" or stripped.startswith("#"):
+            insert_at = idx + 1
+            continue
+        if stripped.startswith(("import ", "from ")):
+            insert_at = idx + 1
+            continue
+        break
+    lines.insert(insert_at, line)
+    return "\n".join(lines)
+
+
+def ensure_result_assignment(python_code: str, output_var: str | None) -> str:
+    """Guarantee the block binds its output to ``result`` (the executor contract).
+
+    Both the local executor (``globals()['result']``) and the Databricks renderers
+    (``return result`` / ``saveAsTable(result)``) rely on every block exposing its
+    final DataFrame as ``result``. When the generated code already binds ``result``
+    (a line whose first non-space token is ``result =``), it is returned unchanged.
+    Otherwise, when
+    *output_var* is a non-empty Python identifier, ``result = <output_var>`` is
+    appended. When *output_var* is missing or not a bare identifier, the code is
+    returned unchanged (we never guess the output variable).
+
+    Idempotent: re-running never appends a second binding.
+
+    Args:
+        python_code: Generated Python source for a single block (already output-var
+            normalised so *output_var* matches the variable used in the code).
+        output_var: The block's resolved output variable name, or ``None``.
+
+    Returns:
+        The Python source, with a trailing ``result = <output_var>`` appended only
+        when needed.
+    """
+    if re.search(r"^\s*result\s*=", python_code, re.MULTILINE):
+        return python_code
+    if not output_var or not output_var.isidentifier():
+        return python_code
+    return python_code.rstrip("\n") + f"\nresult = {output_var}\n"

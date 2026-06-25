@@ -366,6 +366,40 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-19 — DBX bundle: same-table fold + DLT/Spark Job modularization
+
+**Branch:** `feat/F75-deployment-target-questionnaire`
+
+### Done
+- **Same-table writer fold:** multiple SAS blocks writing the same dataset (build + in-place `proc sort` / `data x; set x;` rewrite) now fold into one `@dlt.table` / one Spark Job task. Fixed duplicate `@dlt.table` decorators with invalid self-`dlt.read`, and last-writer-wins silent overwrite in Spark Job modules. `build_dataset_graph` gains `ordered_writers` (sorted by `source_file/start_line`) and `normalised_plans`; shared `_fold_chain_body` helper; first-writer dedup in both renderers.
+- **DLT pipeline modularized:** `render_dlt_pipeline` now returns `dict[str, str]` — one `transformations/<source_stem>_dlt.py` per SAS source file. `databricks.yml` `libraries` lists all files sorted.
+- **Spark Job modules grouped by source file:** `jobs/<source_stem>/<table>.py` subdirectories mirror the DLT structure. `build_dataset_graph` gains `dataset_source_file` mapping; `render_databricks_yml_spark_job` uses it for `python_file` paths.
+- **YAML readability:** shared `_format_yaml` helper inserts blank lines between top-level sections in both YAML renderers.
+- **Tests:** `TestSameTableFold`, `TestDltModularization`, `TestSparkJobModularization`, `TestFormatYaml` — all 7 `make test` gates green.
+
+### Decisions
+- **Fold localized to bundle layer, not `migration_plan`:** mutating `migration_plan` would break the frontend ETL/Plan/Lineage tabs which consume it as the comparison baseline. The fold is a bundle-rendering concern only. · revisit never
+- **Fold order = `(source_file, start_line)`, not list position:** the topo sort adds no edge between two co-writers of the same table, so positional order is not a safe ordering signal. Explicit sort is the invariant. · revisit never
+- **Multi-output block inside a fold chain → NotImplementedError stub:** `result` is ambiguous across outputs; emitting plausible-but-wrong code is worse than an honest stub with per-stage `# MANUAL:` comments. · revisit never
+
+### Open Questions
+- None
+
+### Next Session — Start Here
+1. Continue F75 (deployment target questionnaire) — check `docs/plans/latest/F75-deployment-target-questionnaire.md` for next subtask
+2. Consider DBX domain-expert validation pass on real generated bundle artefacts from `05_build_adam_adsl.sas`
+
+### Files Touched
+- `src/backend/api/databricks_bundle.py`
+- `src/backend/api/packaging.py`
+- `tests/test_databricks_bundle.py`
+- `tests/test_packaging.py`
+- `journal/BACKLOG.md`
+- `journal/SESSIONS.md`
+- `journal/DECISIONS.md`
+
+---
+
 ## 2026-06-17 — F68 post-acceptance workflow
 
 **Branch:** `feat/F68-post-acceptance-workflow`

@@ -16,6 +16,22 @@ export interface JobStatus {
   skip_llm: boolean;
 }
 
+// ── F75: Accept-time deployment target ────────────────────────────────────────
+
+export type DeploymentProvider = "azure" | "aws" | "gcp";
+export type DeploymentIngestionApproach = "historical" | "staging";
+export type DeploymentComputeMode = "serverless" | "classic";
+export type DeliveryFormat = "dlt" | "spark_job";
+
+export interface DeploymentTarget {
+  delivery_format?: DeliveryFormat;
+  provider?: DeploymentProvider;
+  ingestion_approach?: DeploymentIngestionApproach;
+  compute_mode?: DeploymentComputeMode;
+  catalog?: string;
+  schema?: string;
+}
+
 export interface JobSummary {
   job_id: string;
   status: JobStatusValue;

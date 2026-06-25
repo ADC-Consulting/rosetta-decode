@@ -188,6 +188,60 @@ function StatusChip({
 }
 
 // ---------------------------------------------------------------------------
+// Strategy pill — colors deliberately avoid red/green (those signal recon
+// fail/pass on the status icon in this view). translated=quiet slate,
+// translated_with_review=amber (caution), manual=violet (not red).
+// ---------------------------------------------------------------------------
+
+interface StrategyPillConfig {
+  label: string;
+  className: string;
+  icon?: LucideIcon;
+}
+
+const STRATEGY_PILL: Record<string, StrategyPillConfig> = {
+  translated: {
+    label: "translated",
+    className: "text-slate-600 dark:text-slate-300 border-slate-400/40",
+    icon: Code2,
+  },
+  translated_with_review: {
+    label: "review",
+    className: "text-amber-600 dark:text-amber-400 border-amber-500/40",
+    icon: ScanText,
+  },
+  manual: {
+    label: "manual",
+    className: "text-violet-600 dark:text-violet-400 border-violet-500/40",
+    icon: ClipboardList,
+  },
+};
+
+function StrategyPill({
+  strategy,
+}: {
+  strategy: string;
+}): React.ReactElement | null {
+  const config = STRATEGY_PILL[strategy];
+  if (!config) return null;
+  const Icon = config.icon;
+  return (
+    <Badge
+      variant="outline"
+      title={`strategy: ${strategy}`}
+      aria-label={`strategy: ${strategy}`}
+      className={cn(
+        "w-22 justify-center gap-1 text-[11px] px-2 py-0.5 tabular-nums shrink-0",
+        config.className,
+      )}
+    >
+      {Icon && <Icon size={10} aria-hidden />}
+      {config.label}
+    </Badge>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -319,11 +373,13 @@ function BlockGroup({
   isFirst,
   isLast,
   lastRef,
+  strategy,
 }: {
   group: GroupedBlock;
   isFirst: boolean;
   isLast: boolean;
   lastRef: React.RefObject<HTMLDivElement | null>;
+  strategy?: string;
 }): React.ReactElement {
   const [userToggled, setExpanded] = useState<boolean | null>(null);
   const blockState = deriveBlockState(group);
@@ -393,6 +449,9 @@ function BlockGroup({
               attempt {attempt}
             </Badge>
           )}
+
+          {/* Strategy pill — sourced from migration_planning block_plans */}
+          {strategy !== undefined && <StrategyPill strategy={strategy} />}
 
           {/* Chevron — shown whenever block can be expanded */}
           {canExpand && (
@@ -911,6 +970,21 @@ export default function LiveTraceDialog({
     return order.map((id) => groups.get(id)!);
   }, [events]);
 
+  // Strategy lookup, keyed by block_id, sourced from the migration_planning
+  // plan_result event (block_plans). No backend/SSE change needed — the dialog
+  // already receives every block's strategy during the planning phase.
+  const strategyByBlock = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const ev of events) {
+      if (ev.event_type === "plan_result") {
+        for (const bp of (ev as PlanResultEvent).block_plans ?? []) {
+          map.set(bp.block_id, bp.strategy);
+        }
+      }
+    }
+    return map;
+  }, [events]);
+
   const errorEvents = useMemo(
     () => events.filter((e) => e.event_type === "error") as TraceErrorEvent[],
     [events],
@@ -1082,6 +1156,7 @@ export default function LiveTraceDialog({
                             isFirst={idx === 0}
                             isLast={idx === arr.length - 1}
                             lastRef={lastItemRef}
+                            strategy={strategyByBlock.get(group.blockId)}
                           />
                         ))}
                       {pipelineGroup && (
