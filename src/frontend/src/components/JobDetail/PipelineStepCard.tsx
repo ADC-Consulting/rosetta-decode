@@ -6,6 +6,7 @@ export type PipelineStepData = {
   description: string;
   inputCount: number;
   outputCount: number;
+  status?: "migrated" | "manual_review" | "unrecognized";
 };
 
 interface PipelineStepCardProps {
@@ -37,11 +38,17 @@ export function PipelineStepCard({
           overflow: "hidden",
         }}
       >
-        {/* Indigo gradient accent bar */}
+        {/* Status-driven accent bar */}
         <div
           style={{
             height: 3,
-            background: "linear-gradient(90deg, #6366f1 0%, #a5b4fc 100%)",
+            background: data.status === "migrated"
+              ? "#22c55e"
+              : data.status === "unrecognized"
+              ? "#ef4444"
+              : data.status === "manual_review"
+              ? "#f59e0b"
+              : "linear-gradient(90deg, #6366f1 0%, #a5b4fc 100%)",
           }}
         />
 
@@ -94,8 +101,9 @@ export function PipelineStepCard({
                   color: "#64748b",
                   marginTop: 2,
                   overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
+                  display: "-webkit-box",
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: "vertical",
                 }}
               >
                 {data.description}

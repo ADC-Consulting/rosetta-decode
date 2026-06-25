@@ -14,11 +14,13 @@ import { Handle, Position } from "reactflow";
 export type FileNodeData = {
   filename: string;
   fullPath: string;
-  file_type: FileNode["file_type"];
+  file_type: FileNode["file_type"] | "MODULE";
   status: FileNode["status"];
   blockCount: number;
   connectionCount: number;
   isSelected: boolean;
+  hasIncoming?: boolean;   // default true — show target handle
+  hasOutgoing?: boolean;   // default true — show source handle
 };
 
 const STATUS_COLOR: Record<NonNullable<FileNode["status"]>, string> = {
@@ -34,7 +36,7 @@ type PillStyle = {
   icon: React.ReactElement;
 };
 
-const FILE_TYPE_PILL: Record<FileNode["file_type"], PillStyle> = {
+const FILE_TYPE_PILL: Record<FileNode["file_type"] | "MODULE", PillStyle> = {
   PROGRAM: {
     bg: "#dbeafe",
     color: "#1d4ed8",
@@ -65,6 +67,12 @@ const FILE_TYPE_PILL: Record<FileNode["file_type"], PillStyle> = {
     label: "OTHER",
     icon: <File size={10} />,
   },
+  MODULE: {
+    bg: "#f0fdf4",
+    color: "#15803d",
+    label: ".py",
+    icon: <FileCode2 size={10} />,
+  },
 };
 
 interface FileNodeCardProps {
@@ -78,16 +86,18 @@ export function FileNodeCard({ data }: FileNodeCardProps): React.ReactElement {
 
   return (
     <>
-      <Handle
-        type="target"
-        position={Position.Left}
-        style={{
-          background: accentColor,
-          width: 8,
-          height: 8,
-          border: "2px solid #fff",
-        }}
-      />
+      {(data.hasIncoming ?? true) && (
+        <Handle
+          type="target"
+          position={Position.Left}
+          style={{
+            background: accentColor,
+            width: 8,
+            height: 8,
+            border: "2px solid #fff",
+          }}
+        />
+      )}
       <div
         style={{
           width: 220,
@@ -187,27 +197,29 @@ export function FileNodeCard({ data }: FileNodeCardProps): React.ReactElement {
                     fontSize: 10,
                     fontFamily: "ui-monospace, monospace",
                     fontWeight: data.connectionCount >= 4 ? 700 : 400,
-                    color: data.connectionCount >= 4 ? "#f59e0b" : "#94a3b8",
+                    color: "#64748b",
                   }}
-                  title={`${data.connectionCount} file connections`}
+                  title={`${data.connectionCount} file connections (in + out)`}
                 >
-                  {data.connectionCount}⇔
+                  {data.connectionCount}↔
                 </span>
               )}
             </div>
           </div>
         </div>
       </div>
-      <Handle
-        type="source"
-        position={Position.Right}
-        style={{
-          background: accentColor,
-          width: 8,
-          height: 8,
-          border: "2px solid #fff",
-        }}
-      />
+      {(data.hasOutgoing ?? true) && (
+        <Handle
+          type="source"
+          position={Position.Right}
+          style={{
+            background: accentColor,
+            width: 8,
+            height: 8,
+            border: "2px solid #fff",
+          }}
+        />
+      )}
     </>
   );
 }

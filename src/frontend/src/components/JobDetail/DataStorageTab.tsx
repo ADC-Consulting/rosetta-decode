@@ -19,27 +19,12 @@ const SEMANTIC_TO_PG: Record<string, string> = {
   String: "TEXT",
   Integer: "BIGINT",
   Float: "DOUBLE PRECISION",
+  Number: "DOUBLE PRECISION",
   Decimal: "DECIMAL",
   Date: "DATE",
   DateTime: "TIMESTAMP",
   Boolean: "BOOLEAN",
 };
-
-// ── Semantic type badge colours ───────────────────────────────────────────────
-
-const SEMANTIC_COLORS: Record<string, string> = {
-  String: "bg-muted text-muted-foreground",
-  Integer: "bg-blue-100 text-blue-800",
-  Float: "bg-blue-100 text-blue-800",
-  Decimal: "bg-amber-100 text-amber-800",
-  Date: "bg-green-100 text-green-800",
-  DateTime: "bg-teal-100 text-teal-800",
-  Boolean: "bg-purple-100 text-purple-800",
-};
-
-function semanticBadgeClasses(type: string): string {
-  return SEMANTIC_COLORS[type] ?? "bg-muted text-muted-foreground";
-}
 
 function statusDotClass(status: string): string {
   if (status === "migrated") return "bg-green-500";
@@ -624,9 +609,7 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                                 </td>
                                 <td className="px-3 py-2 whitespace-nowrap">
                                   {pgType ? (
-                                    <span
-                                      className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium ${semanticBadgeClasses(semanticType)}`}
-                                    >
+                                    <span className="font-mono text-xs text-muted-foreground inline-flex items-center gap-1">
                                       {pgType}
                                       {isOverridden && (
                                         <Pencil className="w-3 h-3" aria-label="Overridden type" />

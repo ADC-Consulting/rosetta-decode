@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { BlockPlan, PipelineStep, TrustReportBlock } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { ChevronDown, ChevronRight, X } from "lucide-react";
+import { sasFileToPyFile } from "@/lib/sas-python-file-map";
 import { BlockRow } from "./blockRowHelpers";
 
 interface PipelineStepPanelProps {
@@ -12,6 +13,9 @@ interface PipelineStepPanelProps {
   humanVerifiedBlocks: Set<string>;
   onBlockClick: (blockId: string) => void;
   onClose: () => void;
+  mode?: "source" | "target";
+  sasToPyMap?: Map<string, string[]>;
+  onPyFileClick?: (pyFile: string) => void;
 }
 
 export default function PipelineStepPanel({
@@ -22,8 +26,20 @@ export default function PipelineStepPanel({
   humanVerifiedBlocks,
   onBlockClick,
   onClose,
+  mode = "source",
+  sasToPyMap,
+  onPyFileClick,
 }: PipelineStepPanelProps): React.ReactElement {
   const [blocksExpanded, setBlocksExpanded] = useState(false);
+
+  // ── Step number helper ─────────────────────────────────────────────────────
+  const stepIndex = allSteps.findIndex((s) => s.step_id === step.step_id);
+  const stepNumber = stepIndex >= 0 ? stepIndex + 1 : null;
+
+  const stepNum = (id: string): number | string => {
+    const idx = allSteps.findIndex((s) => s.step_id === id);
+    return idx >= 0 ? idx + 1 : id;
+  };
 
   // ── Dependency computation ─────────────────────────────────────────────────
 
@@ -42,6 +58,10 @@ export default function PipelineStepPanel({
       (s) => s.step_id !== step.step_id && s.inputs.includes(ds),
     ) ?? null,
   }));
+
+  // In target mode, only show upstream entries that have a producer step (skip external inputs)
+  const upstreamToShow =
+    mode === "target" ? upstream.filter(({ producer }) => producer !== null) : upstream;
 
   // ── Block list + status summary ────────────────────────────────────────────
 
@@ -70,6 +90,7 @@ export default function PipelineStepPanel({
   const nReview = displayBlocks.filter(
     (bp) =>
       !humanVerifiedBlocks.has(bp.block_id) &&
+      trustBlocks[bp.block_id]?.reconciliation_status !== "pass" &&
       (trustBlocks[bp.block_id]?.needs_attention ?? false),
   ).length;
   const nManual = displayBlocks.filter((bp) => bp.strategy === "manual").length;
@@ -87,7 +108,7 @@ export default function PipelineStepPanel({
       <div className="flex flex-col px-3 pt-2.5 pb-2 border-b border-border shrink-0">
         <div className="flex items-center justify-between">
           <span className="text-[10px] font-semibold text-muted-foreground">
-            STEP {step.step_id}
+            STEP {stepNumber ?? step.step_id}
           </span>
           <Button
             variant="ghost"
@@ -114,19 +135,126 @@ export default function PipelineStepPanel({
           </p>
         )}
 
+        {/* ── PYTHON MODULES (Target mode only) ───────────────────────────── */}
+        {mode === "target" && step.files.length > 0 && (
+          <div className="border-b border-border">
+            <div className={sectionLabel}>Python modules</div>
+            <div className="px-3 pb-2 flex flex-col gap-2">
+              {(() => {
+                const seen = new Set<string>();
+                const rows: Array<{ pyFile: string; sasFile: string }> = [];
+                for (const sasFile of step.files) {
+                  const pyFiles = sasToPyMap?.get(sasFile) ?? [sasFileToPyFile(sasFile)];
+                  for (const pyFile of pyFiles) {
+                    const key = `${pyFile}||${sasFile}`;
+                    if (!seen.has(key)) {
+                      seen.add(key);
+                      rows.push({ pyFile, sasFile });
+                    }
+                  }
+                }
+                return rows.map(({ pyFile, sasFile }) => (
+                  <div key={`${pyFile}||${sasFile}`} className="flex flex-col gap-0.5">
+                    <button
+                      type="button"
+                      onClick={() => onPyFileClick?.(pyFile)}
+                      className="text-xs font-mono text-blue-600 hover:text-blue-800 hover:underline truncate text-left transition-colors"
+                      title={pyFile}
+                    >
+                      {pyFile.split("/").pop() ?? pyFile}
+                    </button>
+                    <span className="text-[11px] font-mono text-muted-foreground truncate ml-2">
+                      ← {sasFile.split("/").pop()}
+                    </span>
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
+        )}
+
+        {/* ── MIGRATION STATUS (Target mode: rendered before depends-on) ───── */}
+        {mode === "target" && (
+          <div className="border-b border-border">
+            <button
+              type="button"
+              className="w-full flex items-center justify-between px-3 pt-3 pb-1 hover:bg-muted/40 transition-colors"
+              onClick={() => setBlocksExpanded((v) => !v)}
+              aria-expanded={blocksExpanded}
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Migration
+                </span>
+                <span className="text-[10px] text-muted-foreground">
+                  {displayBlocks.length} blocks
+                </span>
+              </div>
+              {blocksExpanded ? (
+                <ChevronDown size={12} className="text-muted-foreground" />
+              ) : (
+                <ChevronRight size={12} className="text-muted-foreground" />
+              )}
+            </button>
+
+            {/* Status badge row */}
+            <div className="flex items-center gap-2 px-3 pb-2">
+              {displayBlocks.length === 0 ? (
+                <span className="text-[11px] text-muted-foreground">No blocks</span>
+              ) : (
+                <>
+                  {nVerified > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium bg-green-100 text-green-800 border border-green-200">
+                      ✓ {nVerified}
+                    </span>
+                  )}
+                  {nReview > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium bg-amber-100 text-amber-800 border border-amber-200">
+                      ⚠ {nReview}
+                    </span>
+                  )}
+                  {nManual > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium bg-red-100 text-red-800 border border-red-200">
+                      ✗ {nManual}
+                    </span>
+                  )}
+                  {nVerified === 0 && nReview === 0 && nManual === 0 && (
+                    <span className="text-[11px] text-muted-foreground">pending</span>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Expandable block list */}
+            {blocksExpanded && displayBlocks.length > 0 && (
+              <div className="border-t border-border">
+                {displayBlocks.map((bp) => (
+                  <BlockRow
+                    key={bp.block_id}
+                    bp={bp}
+                    trustBlock={trustBlocks[bp.block_id]}
+                    isHumanVerified={humanVerifiedBlocks.has(bp.block_id)}
+                    onClick={() => onBlockClick(bp.block_id)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ── DEPENDS ON ──────────────────────────────────────────────────── */}
-        {upstream.length > 0 && (
+        {upstreamToShow.length > 0 && (
           <div className="border-b border-border">
             <div className={sectionLabel}>Depends on</div>
             <div className="px-3 pb-2 flex flex-col gap-2">
-              {upstream.map(({ dataset, producer }) => (
+              {upstreamToShow.map(({ dataset, producer }) => (
                 <div key={dataset} className="flex flex-col gap-0.5">
                   {producer ? (
                     <div className="flex items-center gap-1.5">
                       {/* Left arrow accent */}
                       <span className="text-blue-500 font-bold text-xs shrink-0">←</span>
                       <span className="text-xs font-medium text-foreground">
-                        Step {producer.step_id}
+                        Step {stepNum(producer.step_id)}
                       </span>
                       <span
                         className="text-xs text-muted-foreground truncate"
@@ -164,7 +292,7 @@ export default function PipelineStepPanel({
                     <div className="flex items-center gap-1.5">
                       <span className="text-green-600 font-bold text-xs shrink-0">→</span>
                       <span className="text-xs font-medium text-foreground">
-                        Step {consumer.step_id}
+                        Step {stepNum(consumer.step_id)}
                       </span>
                       <span
                         className="text-xs text-muted-foreground truncate"
@@ -191,8 +319,8 @@ export default function PipelineStepPanel({
           </div>
         )}
 
-        {/* ── CODE (SAS files) ────────────────────────────────────────────── */}
-        {step.files.length > 0 && (
+        {/* ── CODE (SAS files — Source mode only) ────────────────────────── */}
+        {mode !== "target" && step.files.length > 0 && (
           <div className="border-b border-border">
             <div className={sectionLabel}>Code</div>
             <div className="px-3 pb-2 flex flex-col gap-0.5">
@@ -209,72 +337,74 @@ export default function PipelineStepPanel({
           </div>
         )}
 
-        {/* ── MIGRATION STATUS ─────────────────────────────────────────────── */}
-        <div>
-          <button
-            type="button"
-            className="w-full flex items-center justify-between px-3 pt-3 pb-1 hover:bg-muted/40 transition-colors"
-            onClick={() => setBlocksExpanded((v) => !v)}
-            aria-expanded={blocksExpanded}
-          >
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Migration
-              </span>
-              <span className="text-[10px] text-muted-foreground">
-                {displayBlocks.length} blocks
-              </span>
-            </div>
-            {blocksExpanded ? (
-              <ChevronDown size={12} className="text-muted-foreground" />
-            ) : (
-              <ChevronRight size={12} className="text-muted-foreground" />
-            )}
-          </button>
+        {/* ── MIGRATION STATUS (Source mode only — Target renders it above) ── */}
+        {mode !== "target" && (
+          <div>
+            <button
+              type="button"
+              className="w-full flex items-center justify-between px-3 pt-3 pb-1 hover:bg-muted/40 transition-colors"
+              onClick={() => setBlocksExpanded((v) => !v)}
+              aria-expanded={blocksExpanded}
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Migration
+                </span>
+                <span className="text-[10px] text-muted-foreground">
+                  {displayBlocks.length} blocks
+                </span>
+              </div>
+              {blocksExpanded ? (
+                <ChevronDown size={12} className="text-muted-foreground" />
+              ) : (
+                <ChevronRight size={12} className="text-muted-foreground" />
+              )}
+            </button>
 
-          {/* Status badge row */}
-          <div className="flex items-center gap-2 px-3 pb-2">
-            {displayBlocks.length === 0 ? (
-              <span className="text-[11px] text-muted-foreground">No blocks</span>
-            ) : (
-              <>
-                {nVerified > 0 && (
-                  <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium bg-green-100 text-green-800 border border-green-200">
-                    ✓ {nVerified}
-                  </span>
-                )}
-                {nReview > 0 && (
-                  <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium bg-amber-100 text-amber-800 border border-amber-200">
-                    ⚠ {nReview}
-                  </span>
-                )}
-                {nManual > 0 && (
-                  <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium bg-red-100 text-red-800 border border-red-200">
-                    ✗ {nManual}
-                  </span>
-                )}
-                {nVerified === 0 && nReview === 0 && nManual === 0 && (
-                  <span className="text-[11px] text-muted-foreground">pending</span>
-                )}
-              </>
+            {/* Status badge row */}
+            <div className="flex items-center gap-2 px-3 pb-2">
+              {displayBlocks.length === 0 ? (
+                <span className="text-[11px] text-muted-foreground">No blocks</span>
+              ) : (
+                <>
+                  {nVerified > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium bg-green-100 text-green-800 border border-green-200">
+                      ✓ {nVerified}
+                    </span>
+                  )}
+                  {nReview > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium bg-amber-100 text-amber-800 border border-amber-200">
+                      ⚠ {nReview}
+                    </span>
+                  )}
+                  {nManual > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium bg-red-100 text-red-800 border border-red-200">
+                      ✗ {nManual}
+                    </span>
+                  )}
+                  {nVerified === 0 && nReview === 0 && nManual === 0 && (
+                    <span className="text-[11px] text-muted-foreground">pending</span>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Expandable block list */}
+            {blocksExpanded && displayBlocks.length > 0 && (
+              <div className="border-t border-border">
+                {displayBlocks.map((bp) => (
+                  <BlockRow
+                    key={bp.block_id}
+                    bp={bp}
+                    trustBlock={trustBlocks[bp.block_id]}
+                    isHumanVerified={humanVerifiedBlocks.has(bp.block_id)}
+                    onClick={() => onBlockClick(bp.block_id)}
+                  />
+                ))}
+              </div>
             )}
           </div>
-
-          {/* Expandable block list */}
-          {blocksExpanded && displayBlocks.length > 0 && (
-            <div className="border-t border-border">
-              {displayBlocks.map((bp) => (
-                <BlockRow
-                  key={bp.block_id}
-                  bp={bp}
-                  trustBlock={trustBlocks[bp.block_id]}
-                  isHumanVerified={humanVerifiedBlocks.has(bp.block_id)}
-                  onClick={() => onBlockClick(bp.block_id)}
-                />
-              ))}
-            </div>
-          )}
-        </div>
+        )}
 
       </div>
     </div>

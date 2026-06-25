@@ -47,11 +47,13 @@ interface LineageGraphProps {
   blockPlans?: BlockPlan[];
   onFileNodeClick?: (file: FileNode) => void;
   onPipelineStepClick?: (step: PipelineStep) => void;
+  onBlockClick?: (blockId: string) => void;
   trustFiles?: TrustReportFile[];
   trustBlocks?: Record<string, TrustReportBlock>;
   initialView?: "blocks" | "files" | "pipeline";
   selectedFilePath?: string | null;
   humanVerifiedBlocks?: Set<string>;
+  onViewChange?: (view: "pipeline" | "files" | "blocks") => void;
 }
 
 type NodeData = {
@@ -78,11 +80,6 @@ const STATUS_STYLE: Record<
   },
 };
 
-const STATUS_LABEL: Record<LineageNode["status"], string> = {
-  migrated: "Migrated",
-  manual_review: "Needs review",
-  unrecognized: "Manual required",
-};
 
 const STATUS_SYMBOL: Record<
   LineageNode["status"],
@@ -115,7 +112,7 @@ const NODE_H = 72;
 const NODE_FILE_W = 220;
 const NODE_FILE_H = 96;
 const NODE_PIPELINE_W = 240;
-const NODE_PIPELINE_H = 86;
+const NODE_PIPELINE_H = 106;
 
 // ---------------------------------------------------------------------------
 // Edge reason colors — files view
@@ -547,7 +544,33 @@ function buildFileEdges(fileEdges: FileEdge[]): Edge[] {
 // Builders — pipeline view
 // ---------------------------------------------------------------------------
 
-function buildPipelineNodes(steps: PipelineStep[]): Node<PipelineStepData>[] {
+function computeStepStatus(
+  step: PipelineStep,
+  blockPlans: BlockPlan[],
+  trustBlocks: Record<string, TrustReportBlock>,
+  humanVerifiedBlocks: Set<string>,
+): "migrated" | "manual_review" | "unrecognized" {
+  const stepBlocks = blockPlans.filter((bp) => step.blocks.includes(bp.block_id));
+  if (stepBlocks.length === 0) return "migrated";
+  let hasFailure = false;
+  let hasReview = false;
+  for (const bp of stepBlocks) {
+    if (humanVerifiedBlocks.has(bp.block_id)) continue;
+    if (bp.strategy === "manual") { hasFailure = true; continue; }
+    const tb = trustBlocks[bp.block_id];
+    if (tb?.needs_attention) hasReview = true;
+  }
+  if (hasFailure) return "unrecognized";
+  if (hasReview) return "manual_review";
+  return "migrated";
+}
+
+function buildPipelineNodes(
+  steps: PipelineStep[],
+  blockPlans: BlockPlan[],
+  trustBlocks: Record<string, TrustReportBlock>,
+  humanVerifiedBlocks: Set<string>,
+): Node<PipelineStepData>[] {
   return steps.map((s, i) => ({
     id: `step-${s.step_id}`,
     type: "pipelineNode",
@@ -558,6 +581,7 @@ function buildPipelineNodes(steps: PipelineStep[]): Node<PipelineStepData>[] {
       description: s.description,
       inputCount: s.inputs.length,
       outputCount: s.outputs.length,
+      status: computeStepStatus(s, blockPlans, trustBlocks, humanVerifiedBlocks),
     },
   }));
 }
@@ -627,50 +651,6 @@ const LEGEND_BOX_STYLE: React.CSSProperties = {
   gap: 5,
 };
 
-function Legend(): React.ReactElement {
-  return (
-    <div style={LEGEND_BOX_STYLE}>
-      {(Object.keys(STATUS_STYLE) as LineageNode["status"][]).map((s) => (
-        <div key={s} style={{ display: "flex", alignItems: "center", gap: 7 }}>
-          <div
-            style={{
-              width: 20,
-              height: 14,
-              borderRadius: 3,
-              background: "#e8e8e8",
-              borderWidth: "1.5px",
-              borderStyle: "solid",
-              borderColor: STATUS_STYLE[s].border,
-              borderBottomWidth: "3px",
-              flexShrink: 0,
-            }}
-          />
-          <span style={{ fontSize: 11, color: "#444", fontWeight: 500 }}>
-            {STATUS_LABEL[s]}
-          </span>
-        </div>
-      ))}
-      {/* Human-verified indicator */}
-      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-        <div
-          style={{
-            width: 20,
-            height: 14,
-            borderRadius: 3,
-            background: "#f0fdfa",
-            borderWidth: "1.5px",
-            borderStyle: "solid",
-            borderColor: "#0d9488",
-            borderBottomWidth: "3px",
-            flexShrink: 0,
-          }}
-        />
-        <span style={{ fontSize: 11, color: "#444", fontWeight: 500 }}>Human verified</span>
-      </div>
-    </div>
-  );
-}
-
 const SECTION_LABEL_STYLE: React.CSSProperties = {
   fontSize: 9,
   fontWeight: 700,
@@ -681,7 +661,7 @@ const SECTION_LABEL_STYLE: React.CSSProperties = {
   marginTop: 2,
 };
 
-const FILE_STATUS_ENTRIES: { color: string; label: string }[] = [
+const STATUS_ENTRIES: { color: string; label: string }[] = [
   { color: "#22c55e", label: "All migrated" },
   { color: "#f59e0b", label: "Needs review" },
   { color: "#ef4444", label: "Has failures" },
@@ -695,26 +675,45 @@ const EDGE_ENTRIES: { reason: string; color: string; dash?: string }[] = [
   })),
 ];
 
+function StatusLegend(): React.ReactElement {
+  return (
+    <div style={LEGEND_BOX_STYLE}>
+      <div style={SECTION_LABEL_STYLE}>Status</div>
+      {STATUS_ENTRIES.map(({ color, label }) => (
+        <div key={label} style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <div style={{ width: 18, height: 3, borderRadius: 2, background: color, flexShrink: 0 }} />
+          <span style={{ fontSize: 11, color: "#444", fontWeight: 500 }}>{label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function BlocksLegend(): React.ReactElement {
+  return (
+    <div style={LEGEND_BOX_STYLE}>
+      <div style={SECTION_LABEL_STYLE}>Status</div>
+      {[
+        ...STATUS_ENTRIES,
+        { color: "#0d9488", label: "Human verified" },
+      ].map(({ color, label }) => (
+        <div key={label} style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <div style={{ width: 18, height: 3, borderRadius: 2, background: color, flexShrink: 0 }} />
+          <span style={{ fontSize: 11, color: "#444", fontWeight: 500 }}>{label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function FilesLegend(): React.ReactElement {
   return (
     <div style={LEGEND_BOX_STYLE}>
-      {/* Files section */}
-      <div style={SECTION_LABEL_STYLE}>Files</div>
-      {FILE_STATUS_ENTRIES.map(({ color, label }) => (
+      {/* Status section */}
+      <div style={SECTION_LABEL_STYLE}>Status</div>
+      {STATUS_ENTRIES.map(({ color, label }) => (
         <div key={label} style={{ display: "flex", alignItems: "center", gap: 7 }}>
-          <div
-            style={{
-              width: 20,
-              height: 14,
-              borderRadius: 3,
-              background: "#e8e8e8",
-              borderTop: "1.5px solid transparent",
-              borderLeft: "1.5px solid transparent",
-              borderRight: "1.5px solid transparent",
-              borderBottom: `3px solid ${color}`,
-              flexShrink: 0,
-            }}
-          />
+          <div style={{ width: 18, height: 3, borderRadius: 2, background: color, flexShrink: 0 }} />
           <span style={{ fontSize: 11, color: "#444", fontWeight: 500 }}>
             {label}
           </span>
@@ -756,11 +755,13 @@ function LineageGraphInner({
   blockPlans = [],
   onFileNodeClick,
   onPipelineStepClick,
+  onBlockClick,
   trustFiles,
   trustBlocks,
   initialView,
   selectedFilePath,
   humanVerifiedBlocks,
+  onViewChange,
 }: LineageGraphProps): React.ReactElement {
   const { fitView } = useReactFlow();
   const [nodes, setNodes, onNodesChange] = useNodesState<NodeData>([]);
@@ -819,7 +820,7 @@ function LineageGraphInner({
     } else if (view === "pipeline" && lineage.pipeline_steps?.length) {
       const pEdges = buildPipelineEdges(lineage.pipeline_steps);
       newNodes = applyDagreLayout(
-        buildPipelineNodes(lineage.pipeline_steps),
+        buildPipelineNodes(lineage.pipeline_steps, blockPlans, trustBlocks ?? {}, humanVerifiedBlocks ?? new Set()),
         pEdges,
         NODE_PIPELINE_W,
         NODE_PIPELINE_H,
@@ -1030,6 +1031,14 @@ function LineageGraphInner({
         }
         return;
       }
+      if (view === "blocks") {
+        // Block node IDs use "::" separator; BlockPlan.block_id uses ":"
+        const blockId = node.id.replace("::", ":");
+        if (onBlockClick) {
+          onBlockClick(blockId);
+        }
+        return;
+      }
       if (view !== "files") return;
       const fileNode =
         lineage.file_nodes?.find((fn) => `file-${fn.filename}` === node.id) ?? null;
@@ -1054,7 +1063,7 @@ function LineageGraphInner({
         );
       }
     },
-    [view, lineage.pipeline_steps, lineage.file_nodes, setNodes, onFileNodeClick, onPipelineStepClick],
+    [view, lineage.pipeline_steps, lineage.file_nodes, setNodes, onFileNodeClick, onPipelineStepClick, onBlockClick],
   );
 
   if (lineage.nodes.length === 0 && view === "blocks") {
@@ -1158,7 +1167,10 @@ function LineageGraphInner({
           return (
             <button
               key={v}
-              onClick={() => setView(v)}
+              onClick={() => {
+                setView(v);
+                onViewChange?.(v);
+              }}
               disabled={disabled}
               style={{
                 ...btnBase,
@@ -1212,14 +1224,19 @@ function LineageGraphInner({
         <Background />
         {nodes.length > 15 && <MiniMap />}
       </ReactFlow>
-      {/* Sticky legend — bottom-left of canvas */}
+      {/* Sticky legend — bottom-right of canvas */}
+      {view === "pipeline" && (
+        <div style={{ position: "absolute", bottom: 12, right: 12, zIndex: 10 }}>
+          <StatusLegend />
+        </div>
+      )}
       {view === "blocks" && (
-        <div style={{ position: "absolute", bottom: 12, left: 12, zIndex: 10 }}>
-          <Legend />
+        <div style={{ position: "absolute", bottom: 12, right: 12, zIndex: 10 }}>
+          <BlocksLegend />
         </div>
       )}
       {view === "files" && (
-        <div style={{ position: "absolute", bottom: 12, left: 12, zIndex: 10 }}>
+        <div style={{ position: "absolute", bottom: 12, right: 12, zIndex: 10 }}>
           <FilesLegend />
         </div>
       )}
@@ -1249,11 +1266,13 @@ export default function LineageGraph({
   blockPlans,
   onFileNodeClick,
   onPipelineStepClick,
+  onBlockClick,
   trustFiles,
   trustBlocks,
   initialView,
   selectedFilePath,
   humanVerifiedBlocks,
+  onViewChange,
 }: LineageGraphProps): React.ReactElement {
   return (
     <ReactFlowProvider>
@@ -1262,11 +1281,13 @@ export default function LineageGraph({
         blockPlans={blockPlans}
         onFileNodeClick={onFileNodeClick}
         onPipelineStepClick={onPipelineStepClick}
+        onBlockClick={onBlockClick}
         trustFiles={trustFiles}
         trustBlocks={trustBlocks}
         initialView={initialView}
         selectedFilePath={selectedFilePath}
         humanVerifiedBlocks={humanVerifiedBlocks}
+        onViewChange={onViewChange}
       />
     </ReactFlowProvider>
   );

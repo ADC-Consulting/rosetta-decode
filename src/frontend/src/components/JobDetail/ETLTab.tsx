@@ -8,11 +8,22 @@ import type {
 } from "@/api/types";
 import LineageGraph from "@/components/LineageGraph";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  buildPyFileToSasFilesMap,
+  buildSasFileToPyFilesMap,
+  pyFileToSasFiles,
+  sasFileToPyFile,
+} from "@/lib/sas-python-file-map";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import BlockCodePopup from "./BlockCodePopup";
+import BlockDetailPanel from "./BlockDetailPanel";
 import BlockInspectorPanel from "./BlockInspectorPanel";
+import FileBlockListPanel from "./FileBlockListPanel";
+import FileViewPopup from "./FileViewPopup";
 import PipelineStepPanel from "./PipelineStepPanel";
+import PythonModulePanel from "./PythonModulePanel";
+import TargetGraph from "./TargetGraph";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -25,6 +36,7 @@ interface ETLTabProps {
   jobSources: Record<string, string> | undefined;
   isReviewable: boolean;
   isAccepted?: boolean;
+  generatedFiles: Record<string, string> | null;
 }
 
 type BlockStatus =
@@ -62,12 +74,30 @@ export default function ETLTab({
   jobSources,
   isReviewable,
   isAccepted = false,
+  generatedFiles,
 }: ETLTabProps): React.ReactElement {
   const queryClient = useQueryClient();
 
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [selectedBlock, setSelectedBlock] = useState<string | null>(null);
   const [selectedStep, setSelectedStep] = useState<PipelineStep | null>(null);
+  const [graphView, setGraphView] = useState<"source" | "target">("source");
+  // Source sub-view state — lifted here so it survives panel open/close without remounting LineageGraph
+  const [sourceView, setSourceView] = useState<"pipeline" | "files" | "blocks">("pipeline");
+  // Target sub-view state
+  const [targetView, setTargetView] = useState<"pipeline" | "files" | "blocks">("pipeline");
+  // Selected Python module for right panel (Target view only)
+  const [selectedPyModule, setSelectedPyModule] = useState<string | null>(null);
+  // Block code popup — separate from selectedBlock so target panel doesn't auto-open popup
+  const [codePopupBlockId, setCodePopupBlockId] = useState<string | null>(null);
+  // Selected Python file in blocks view (opens FileBlockListPanel)
+  const [selectedTargetPyFile, setSelectedTargetPyFile] = useState<string | null>(null);
+  // Full-file view popup (Source Files + Target Files node clicks)
+  const [fileViewPopup, setFileViewPopup] = useState<{
+    filename: string;
+    language: "sas" | "python";
+    content: string;
+  } | null>(null);
 
   // ── Lineage ──────────────────────────────────────────────────────────────
   const { data: lineageData, isLoading: isLineageLoading } = useQuery({
@@ -124,10 +154,71 @@ export default function ETLTab({
     (bp) => bp.block_id === selectedBlock,
   );
 
+  // Code popup block plan (may differ from selectedBlock when in target view)
+  const codePopupBlockPlan = blockPlans.find(
+    (bp) => bp.block_id === codePopupBlockId,
+  );
+
+  // ── Target view derived values ────────────────────────────────────────────
+  const hasTargetNodes =
+    !!generatedFiles && Object.keys(generatedFiles).some((f) => f !== "pipeline.py");
+
+  // ── Accurate SAS→Python map for target view (parsed from provenance comments) ──
+  const sasToPyMap = useMemo(
+    () =>
+      generatedFiles
+        ? buildSasFileToPyFilesMap(generatedFiles)
+        : new Map<string, string[]>(),
+    [generatedFiles],
+  );
+
+  // ── Accurate Python→SAS map (parsed from provenance comments) ────────────
+  const pyToSasMap = useMemo(
+    () =>
+      generatedFiles
+        ? buildPyFileToSasFilesMap(generatedFiles)
+        : new Map<string, string[]>(),
+    [generatedFiles],
+  );
+
+  // ── Derived SAS source files for the selected Python module ───────────────
+  const selectedPyModuleSasFiles = useMemo(() => {
+    if (!selectedPyModule) return [];
+    const fromMap = pyToSasMap.get(selectedPyModule) ?? [];
+    if (fromMap.length > 0) return fromMap;
+    return pyFileToSasFiles(selectedPyModule, blockPlans);
+  }, [selectedPyModule, blockPlans, pyToSasMap]);
+
+  // ── Derive parentPyFile for block-detail back link ────────────────────────
+  const blockDetailParentPyFile = useMemo(() => {
+    if (!selectedBlock || !selectedBlockPlan) return selectedPyModule ?? "";
+    if (selectedPyModule) return selectedPyModule;
+    const pyFiles = sasToPyMap.get(selectedBlockPlan.source_file);
+    return pyFiles?.[0] ?? sasFileToPyFile(selectedBlockPlan.source_file);
+  }, [selectedBlock, selectedBlockPlan, selectedPyModule, sasToPyMap]);
+
   // ── Handlers ─────────────────────────────────────────────────────────────
+  const handleToggle = (next: "source" | "target") => {
+    setGraphView(next);
+    setSelectedFile(null);
+    setSelectedStep(null);
+    setSelectedPyModule(null);
+    setSelectedBlock(null);
+    setCodePopupBlockId(null);
+    setSelectedTargetPyFile(null);
+    if (next === "target") {
+      setTargetView(sourceView);
+    } else {
+      setSourceView(targetView);
+    }
+  };
+
   const handleFileNodeClick = (file: FileNode) => {
-    setSelectedFile(file.filename);
-    setSelectedStep(null); // close step panel when file panel opens
+    setFileViewPopup({
+      filename: file.filename,
+      language: "sas",
+      content: jobSources?.[file.filename] ?? "",
+    });
   };
 
   const handlePipelineStepClick = (step: PipelineStep) => {
@@ -142,7 +233,60 @@ export default function ETLTab({
     // Don't close modal — let user see the Verified badge update, then close manually
   };
 
+  // Target view handlers
+  const handleModuleClick = (pyFile: string) => {
+    setFileViewPopup({
+      filename: pyFile,
+      language: "python",
+      content: generatedFiles?.[pyFile] ?? "",
+    });
+  };
+
+  const handleTargetBlockClick = (blockId: string) => {
+    // Find which pyModule this block belongs to, using provenance map first
+    const bp = blockPlans.find((b) => b.block_id === blockId);
+    if (bp) {
+      const pyFiles = sasToPyMap.get(bp.source_file);
+      const pyFile = pyFiles?.[0] ?? sasFileToPyFile(bp.source_file);
+      setSelectedPyModule(pyFile);
+    }
+    setSelectedBlock(blockId);
+  };
+
+  const handleSourceViewChange = (view: "pipeline" | "files" | "blocks") => {
+    setSourceView(view);
+    setSelectedFile(null);
+    setSelectedStep(null);
+    setFileViewPopup(null);
+  };
+
+  const handleTargetViewChange = (view: "pipeline" | "files" | "blocks") => {
+    setTargetView(view);
+    setSelectedPyModule(null);
+    setSelectedBlock(null);
+    setSelectedStep(null);
+    setFileViewPopup(null);
+    setSelectedTargetPyFile(null);
+  };
+
+  // ── Determine right panel for target view ─────────────────────────────────
+  // When a block is selected (any mode) → show BlockDetailPanel
+  // When a module is selected in target mode (no block) → show PythonModulePanel
+  // When a pyFile is selected in blocks view → show FileBlockListPanel
+  const showBlockDetail = !!selectedBlock && !!selectedBlockPlan;
+  const showTargetModulePanel =
+    graphView === "target" && targetView !== "blocks" && !!selectedPyModule && !showBlockDetail;
+  const showFileBlockListPanel =
+    graphView === "target" && targetView === "blocks" && !!selectedTargetPyFile && !showBlockDetail;
+
   // ── Render ───────────────────────────────────────────────────────────────
+  const hasSidePanel =
+    selectedFile ||
+    selectedStep ||
+    showTargetModulePanel ||
+    showBlockDetail ||
+    showFileBlockListPanel;
+
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden">
       {/* ── Summary bar ─────────────────────────────────────────────────── */}
@@ -152,58 +296,117 @@ export default function ETLTab({
           "text-xs text-muted-foreground border-b border-border shrink-0",
         ].join(" ")}
       >
-        <span>files: {new Set(blockPlans.map((b) => b.source_file)).size}</span>
-        <span>blocks: {blockPlans.length}</span>
+        <span>{blockPlans.length} blocks</span>
         {trustReport && (
           <>
+            <span className="text-muted-foreground/40">·</span>
             <span className="text-green-700">
-              ✓ verified: {trustReport.auto_verified + humanVerifiedBlocks.size}
+              ✓ {trustReport.auto_verified + humanVerifiedBlocks.size} migrated
             </span>
+            <span className="text-muted-foreground/40">·</span>
             <span className="text-amber-700">
-              ⚠ review: {trustReport.needs_review}
+              ⚠ {trustReport.needs_review} need review
             </span>
+            <span className="text-muted-foreground/40">·</span>
             <span className="text-red-700">
-              ✗ manual: {trustReport.manual_todo}
+              ✗ {trustReport.manual_todo} manual
             </span>
           </>
         )}
+        <div className="ml-auto flex items-center gap-1">
+          {/* Source / Target toggle */}
+          {(["source", "target"] as const).map((v) => {
+            const disabled = v === "target" && !hasTargetNodes;
+            return (
+              <button
+                key={v}
+                onClick={() => handleToggle(v)}
+                disabled={disabled}
+                title={v === "source" ? "SAS source pipeline" : "Generated Python modules"}
+                className={[
+                  "px-2 py-0.5 rounded text-[11px] font-medium border transition-colors",
+                  graphView === v
+                    ? "bg-foreground text-background border-foreground"
+                    : "bg-transparent text-muted-foreground border-border hover:border-foreground/40",
+                  disabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer",
+                ].join(" ")}
+              >
+                {v.charAt(0).toUpperCase() + v.slice(1)}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* ── Body: graph + optional side panel ───────────────────────────── */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Graph — shrinks when side panel is open */}
-        <div className={(selectedFile || selectedStep) ? "flex-1 min-w-0" : "w-full"}>
-          {isLineageLoading ? (
-            <Skeleton className="h-full w-full rounded" />
-          ) : !etlLineage || etlLineage.nodes.length === 0 ? (
-            <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
-              No lineage data available for this job.
-            </div>
+        <div className={hasSidePanel ? "flex-1 min-w-0" : "w-full"}>
+          {graphView === "source" ? (
+            isLineageLoading ? (
+              <Skeleton className="h-full w-full rounded" />
+            ) : !etlLineage || etlLineage.nodes.length === 0 ? (
+              <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+                No lineage data available for this job.
+              </div>
+            ) : (
+              <LineageGraph
+                key="source-graph"
+                lineage={etlLineage}
+                blockPlans={blockPlans}
+                trustFiles={trustReport?.files}
+                trustBlocks={trustBlocks}
+                onFileNodeClick={handleFileNodeClick}
+                onPipelineStepClick={handlePipelineStepClick}
+                initialView={sourceView}
+                onViewChange={handleSourceViewChange}
+                selectedFilePath={selectedFile}
+                humanVerifiedBlocks={humanVerifiedBlocks}
+                onBlockClick={(blockId) => {
+                  setSelectedBlock(blockId);
+                }}
+              />
+            )
           ) : (
-            <LineageGraph
-              key={(selectedFile || selectedStep) ? "with-panel" : "full"}
-              lineage={etlLineage}
+            <TargetGraph
+              key={`target-${targetView}`}
+              lineage={etlLineage ?? { job_id: jobId, nodes: [], edges: [] }}
+              generatedFiles={generatedFiles ?? {}}
               blockPlans={blockPlans}
               trustFiles={trustReport?.files}
               trustBlocks={trustBlocks}
-              onFileNodeClick={handleFileNodeClick}
-              onPipelineStepClick={handlePipelineStepClick}
-              initialView="pipeline"
-              selectedFilePath={selectedFile}
-              humanVerifiedBlocks={humanVerifiedBlocks}
+              view={targetView}
+              onViewChange={handleTargetViewChange}
+              onFileClick={(sasFiles) => {
+                setSelectedFile(sasFiles[0] ?? null);
+                setSelectedStep(null);
+              }}
+              onModuleClick={handleModuleClick}
+              onBlockClick={handleTargetBlockClick}
+              onBlocksFileClick={(pyFile) => {
+                setSelectedTargetPyFile(pyFile);
+                setSelectedBlock(null);
+                setSelectedPyModule(null);
+              }}
+              onPipelineStepClick={setSelectedStep}
+              selectedBlockId={selectedBlock}
             />
           )}
         </div>
 
-        {/* Block inspector side panel */}
-        {selectedFile && (
+        {/* Source view: Block inspector side panel */}
+        {graphView === "source" && selectedFile && (
           <div className="w-80 border-l border-border overflow-y-auto shrink-0">
             <BlockInspectorPanel
               sourceFile={selectedFile}
+              displayTitle={undefined}
               blockPlans={blockPlans}
               trustBlocks={trustBlocks}
               humanVerifiedBlocks={humanVerifiedBlocks}
-              onBlockClick={(blockId) => setSelectedBlock(blockId)}
+              onBlockClick={(blockId) => {
+                setSelectedBlock(blockId);
+                setCodePopupBlockId(blockId);
+              }}
               onClose={() => setSelectedFile(null)}
             />
           </div>
@@ -218,32 +421,122 @@ export default function ETLTab({
               blockPlans={blockPlans}
               trustBlocks={trustBlocks}
               humanVerifiedBlocks={humanVerifiedBlocks}
-              onBlockClick={(blockId) => setSelectedBlock(blockId)}
+              onBlockClick={(blockId) => {
+                if (graphView === "target") {
+                  handleTargetBlockClick(blockId);
+                } else {
+                  setSelectedBlock(blockId);
+                  setCodePopupBlockId(blockId);
+                }
+              }}
               onClose={() => setSelectedStep(null)}
+              mode={graphView === "target" ? "target" : "source"}
+              sasToPyMap={graphView === "target" ? sasToPyMap : undefined}
+              onPyFileClick={(pyFile) => {
+                setFileViewPopup({
+                  filename: pyFile,
+                  language: "python",
+                  content: generatedFiles?.[pyFile] ?? "",
+                });
+              }}
+            />
+          </div>
+        )}
+
+        {/* Target view: Python module panel */}
+        {showTargetModulePanel && (
+          <div className="w-80 border-l border-border overflow-y-auto shrink-0">
+            <PythonModulePanel
+              pyFile={selectedPyModule!}
+              sasSourceFiles={selectedPyModuleSasFiles}
+              blockPlans={blockPlans}
+              trustBlocks={trustBlocks}
+              humanVerifiedBlocks={humanVerifiedBlocks}
+              onBlockClick={(blockId) => {
+                setSelectedBlock(blockId);
+              }}
+              onClose={() => {
+                setSelectedPyModule(null);
+                setSelectedBlock(null);
+              }}
+            />
+          </div>
+        )}
+
+        {/* Target blocks view: file block list panel */}
+        {showFileBlockListPanel && (
+          <div className="w-80 border-l border-border overflow-y-auto shrink-0">
+            <FileBlockListPanel
+              pyFile={selectedTargetPyFile!}
+              blockPlans={blockPlans}
+              trustBlocks={trustBlocks}
+              humanVerifiedBlocks={humanVerifiedBlocks}
+              sasFiles={pyToSasMap.get(selectedTargetPyFile!) ?? pyFileToSasFiles(selectedTargetPyFile!, blockPlans)}
+              onBlockClick={handleTargetBlockClick}
+              onClose={() => setSelectedTargetPyFile(null)}
+            />
+          </div>
+        )}
+
+        {/* Block detail panel (Source and Target views) */}
+        {showBlockDetail && selectedBlockPlan && (
+          <div className="w-80 border-l border-border overflow-y-auto shrink-0">
+            <BlockDetailPanel
+              blockId={selectedBlock!}
+              blockPlan={selectedBlockPlan}
+              trustBlock={trustBlocks[selectedBlock!]}
+              isHumanVerified={humanVerifiedBlocks.has(selectedBlock!)}
+              parentPyFile={graphView === "target" ? blockDetailParentPyFile : undefined}
+              onBack={() => setSelectedBlock(null)}
+              onViewCode={(blockId) => {
+                setCodePopupBlockId(blockId);
+              }}
+              onClose={() => {
+                setSelectedBlock(null);
+                setSelectedPyModule(null);
+                setSelectedTargetPyFile(null);
+              }}
+              onViewSourceFile={(sasFile) => {
+                setFileViewPopup({
+                  filename: sasFile,
+                  language: "sas",
+                  content: jobSources?.[sasFile] ?? "",
+                });
+              }}
             />
           </div>
         )}
       </div>
 
       {/* ── Code popup modal ────────────────────────────────────────────── */}
-      {selectedBlock && selectedBlockPlan && (
+      {codePopupBlockId && codePopupBlockPlan && (
         <BlockCodePopup
           jobId={jobId}
-          blockId={selectedBlock}
-          sourceFile={selectedBlockPlan.source_file}
-          blockType={selectedBlockPlan.block_type}
+          blockId={codePopupBlockId}
+          sourceFile={codePopupBlockPlan.source_file}
+          blockType={codePopupBlockPlan.block_type}
           status={deriveBlockStatus(
-            selectedBlock,
-            selectedBlockPlan,
+            codePopupBlockId,
+            codePopupBlockPlan,
             trustBlocks,
             humanVerifiedBlocks,
           )}
-          sasSource={jobSources?.[selectedBlockPlan.source_file] ?? ""}
-          startLine={selectedBlockPlan.start_line}
-          endLine={selectedBlockPlan.end_line}
-          onClose={() => setSelectedBlock(null)}
+          sasSource={jobSources?.[codePopupBlockPlan.source_file] ?? ""}
+          startLine={codePopupBlockPlan.start_line}
+          endLine={codePopupBlockPlan.end_line}
+          onClose={() => setCodePopupBlockId(null)}
           onVerified={handleVerified}
           jobAccepted={isAccepted}
+        />
+      )}
+
+      {/* ── Full-file view popup (Source Files + Target Files node clicks) ── */}
+      {fileViewPopup && (
+        <FileViewPopup
+          filename={fileViewPopup.filename}
+          language={fileViewPopup.language}
+          content={fileViewPopup.content}
+          onClose={() => setFileViewPopup(null)}
         />
       )}
     </div>

@@ -2,7 +2,7 @@
 
 **Phase:** 3
 **Area:** Frontend
-**Status:** in-progress
+**Status:** complete
 
 ## Goal
 
@@ -60,7 +60,7 @@ export function pyFileToSasFiles(pyFile: string, blockPlans: BlockPlan[]): strin
 }
 ```
 
-- [ ] done
+- [x] done
 
 ### S-B: TargetGraph component
 **File:** `src/frontend/src/components/JobDetail/TargetGraph.tsx`
@@ -109,7 +109,7 @@ interface TargetGraphProps {
 
 Wrap in `ReactFlowProvider`. Include `Controls`, `Background`, `fitView`.
 
-- [ ] done
+- [x] done
 
 ### S-C: Source / Target toggle in ETLTab + prop plumbing
 **File:** `src/frontend/src/components/JobDetail/ETLTab.tsx`
@@ -194,14 +194,14 @@ const hasTargetNodes = !!generatedFiles &&
 
 **Caller (JobDetailPage or equivalent):** add `generatedFiles={jobStatus?.generated_files ?? null}` when rendering `<ETLTab>`.
 
-- [ ] done
+- [x] done
 
 ### S-D: Tests green
 **File:** n/a
 **Depends on:** S-C
 **Done when:** `make test` exits 0 — all 7 gates pass.
 
-- [ ] done
+- [x] done
 
 ## Known limitations (in-scope for follow-up, not this feature)
 

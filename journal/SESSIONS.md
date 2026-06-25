@@ -6,6 +6,366 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-24 — PR #106 updated; Data Storage tab visual audit
+
+**Duration:** ~0.5h | **Focus:** PR description refresh + Data tab polish assessment
+
+### Done
+- Updated PR #106 description to cover all work on `feat/F67-etl-source-target-toggle` (F67–F73, ETL interaction fixes, Target Blocks redesign, Data/Plan tab bug fixes); previous description only covered the original 2 commits
+- Completed Data tab visual assessment across all views (schema panel, Data model ERD, Data flow diagram)
+- Identified 5 polish gaps: fitView on Data flow/ERD load (nodes cut off right); Data flow node labels truncated; Data flow nodes non-interactive; sidebar table status dots all gray; "Not run" as plain unstyled text
+
+### Decisions
+- none
+
+### Open Questions
+- none
+
+### Next Session — Start Here
+1. Implement Data Storage tab polish — 5 gaps catalogued in BACKLOG.md; delegate to frontend-builder
+
+### Files Touched
+- `journal/SESSIONS.md`, `journal/BACKLOG.md`
+
+---
+
+## 2026-06-24 — ETL tab polish: full-file popups, clickable refs, Source Blocks panel, Target Blocks redesign
+
+**Branch:** `feat/F67-etl-source-target-toggle`
+
+### Done
+- **Source Pipeline card descriptions**: fixed truncation — switched from `whiteSpace: nowrap` to webkit 2-line clamp; bumped `NODE_PIPELINE_H` 86→106 for dagre height budget
+- **Full-file popup on Files node click**: new `FileViewPopup` component (80vw×80vh Dialog, Monaco read-only); Source Files → SAS file; Target Files → Python file; `handleFileNodeClick` and `handleModuleClick` both open popup instead of side panel
+- **Python module names clickable**: `PipelineStepPanel` gains `onPyFileClick` prop; pyFile spans replaced with blue link buttons opening `FileViewPopup`
+- **Pipeline → block back nav fixed**: `PipelineStepPanel.onBlockClick` in Target mode routes through `handleTargetBlockClick` (sets `selectedPyModule`) so `BlockDetailPanel` back link works
+- **SAS source file link in BlockDetailPanel**: source `file:line` reference made a clickable button calling `onViewSourceFile`; opens SAS file in `FileViewPopup`; `parentPyFile` made optional — hidden in Source mode where no Python parent exists
+- **Source Blocks click → metadata panel first**: `LineageGraph.onBlockClick` now sets `selectedBlock` only (no `codePopupBlockId`); `showBlockDetail` condition extended to cover both Source and Target mode; View Code button inside the panel still opens code popup
+- **Target Blocks redesign**: graph nodes changed from inline block rows to compact cards (left accent bar + block count + segmented green/amber/red status bar); clicking a node opens new `FileBlockListPanel` side panel; panel sorts blocks by urgency (Manual → Review → Pass), shows rationale as primary label with `[SAS]` chip + type + line as secondary traceability; row click drills into `BlockDetailPanel` with existing back link
+- 4 commits, all 7 test gates green, branch pushed
+
+### Decisions
+- **Target Blocks: remove inline block rows from graph nodes** — SAS construct names (PROC_IMPORT, DATA_STEP) displayed in a target-Python context confuse non-SAS users. Compact card + `FileBlockListPanel` separates the "status at a glance" (segmented bar on node) from "block-level detail" (sorted panel). Rationale text is the human-readable primary label; SAS traceability demoted to secondary with explicit `[SAS]` chip. · revisit never
+
+### Open Questions
+- None
+
+### Next Session — Start Here
+1. Open PR for `feat/F67-etl-source-target-toggle`. Run `/git-pr-summary` to draft the description.
+2. After PR, review `.claude/plans/linear-discovering-sketch.md` for Data Storage tab polish (F35 fixes, P0–P2).
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/PipelineStepCard.tsx`
+- `src/frontend/src/components/LineageGraph.tsx`
+- `src/frontend/src/components/JobDetail/FileViewPopup.tsx` *(new)*
+- `src/frontend/src/components/JobDetail/FileBlockListPanel.tsx` *(new)*
+- `src/frontend/src/components/JobDetail/ETLTab.tsx`
+- `src/frontend/src/components/JobDetail/PipelineStepPanel.tsx`
+- `src/frontend/src/components/JobDetail/BlockDetailPanel.tsx`
+- `src/frontend/src/components/JobDetail/TargetGraph.tsx`
+- `journal/BACKLOG.md`, `journal/SESSIONS.md`, `journal/DECISIONS.md`
+
+---
+
+## 2026-06-24 — Target ETL: Data tab type fix, Plan tab isAccepted fix, Module/Files/Blocks views working
+
+**Branch:** `feat/F67-etl-source-target-toggle`
+
+### Done
+- **Data tab — PostgreSQL type display**: added `Number: "DOUBLE PRECISION"` to `SEMANTIC_TO_PG` map; removed dead `SEMANTIC_COLORS`/`semanticBadgeClasses` code; switched type column to plain monospace text (no badge)
+- **ETL tab — Target Pipeline LR layout**: `buildPipelineStepsGraph` layout changed from TB → LR; added `onPipelineStepClick` and `mode="target"` wiring to open `PipelineStepPanel` on node click
+- **PipelineStepPanel target mode**: added `mode?: "source" | "target"` prop; Target shows Python Modules section (provenance-mapped `.py` names + SAS source), reordered sections, hides SAS CODE, filters DEPENDS ON to step-to-step only
+- **Target legend labels**: `TargetLegend` gains `view` prop; header and green entry label change to "PIPELINE STEPS" / "PYTHON MODULES" depending on sub-view
+- **Plan tab isAccepted fix**: `isAccepted` derived from `job.status === "accepted"` instead of `Boolean(job.accepted_at)`; `accepted_at=now` added to seed job constructor
+- **Target ETL Files + Blocks views — block counts and edges**: all nodes showed `0B`/`No blocks` and no edges because `sasFileToPyFile("sas/01_load_sources.sas")` → `"01_load_sources.py"` ≠ `"load_sources.py"`. Fixed by adding `buildPyFileToSasFilesMap` and `buildSasFileToPyFilesMap` to `sas-python-file-map.ts` — parse `# SAS: <file>:<line>` provenance comments for accurate mapping; wired into all graph builders in `TargetGraph.tsx` and `ETLTab.tsx`/`PipelineStepPanel.tsx`
+- 4 commits, all 7 test gates green
+
+### Decisions
+- **Provenance comment parsing for Python↔SAS mapping**: `sasFileToPyFile` (stem rename) is insufficient when generated Python filenames diverge from SAS stems or involve merging/splitting. The authoritative source is the `# SAS: file:line` comments already in every generated file. `buildPyFileToSasFilesMap` parses these; handles 1:1, merge (2 SAS→1 py), and split (1 SAS→2 py). · revisit never
+
+### Open Questions
+- None
+
+### Next Session — Start Here
+1. Open PR for `feat/F67-etl-source-target-toggle` (covers F67 + F69–F73 + Data tab fix + Plan tab fix + Files/Blocks view fix). Run `/git-pr-summary` to draft the description.
+2. After PR, review `.claude/plans/linear-discovering-sketch.md` for Data Storage tab polish (F35 fixes, P0–P2).
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/DataStorageTab.tsx`
+- `src/frontend/src/components/JobDetail/ETLTab.tsx`
+- `src/frontend/src/components/JobDetail/TargetGraph.tsx`
+- `src/frontend/src/components/JobDetail/PipelineStepPanel.tsx`
+- `src/frontend/src/pages/JobDetailPage.tsx`
+- `src/frontend/src/lib/sas-python-file-map.ts`
+- `scripts/seed_demo_job.py`
+- `journal/BACKLOG.md`, `journal/SESSIONS.md`
+
+---
+
+## 2026-06-21 — F73 Target Pipeline: sequential step cards + fitView centering
+
+**Branch:** `feat/F67-etl-source-target-toggle`
+
+### Done
+- Replaced TB module dependency graph (messy crossing edges) with `buildPipelineStepsGraph` — uses `lineage.pipeline_steps` as primary nodes; each card shows step number badge, step name, description, and `.py` module badges derived from `step.blocks → blockPlans → source_file → sasFileToPyFile`
+- Sequential edges connect steps in execution order; no dependency-based edges
+- `PipelineTargetStepNode` component renders the step cards; added `pipelineTargetStep` to `NODE_TYPES`
+- Fixed fitView centering: added explicit `width: 260, height: 140` on each node so ReactFlow can compute the bounding box before DOM measurement; switched to `fitView` prop with `maxZoom: 0.8` to prevent the narrow column from over-zooming
+- Two commits: `feat(F73)` and `fix(F73)`; all 7 test gates green; pushed
+
+### Decisions
+- **Target Pipeline = sequential pipeline step cards, not module dependency graph** — the dependency graph (Files view) is the right place for data dependencies; Pipeline should answer "what are the steps of the migration" · revisit never
+
+### Open Questions
+- Step 1 is very slightly clipped at the top edge of the initial fitView — padding of 12% is borderline; could increase to 0.18 if it becomes a complaint
+
+### Next Session — Start Here
+1. Open PR for `feat/F67-etl-source-target-toggle` (covers F67 + F69 + F70 + F71 + F72 + F73). Run `/git-pr-summary` to draft the description.
+2. After PR is open, review `.claude/plans/linear-discovering-sketch.md` — Data Storage tab polish (F35 fixes, P0–P2) — that is the next candidate for work.
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/TargetGraph.tsx` (major — `buildPipelineStepsGraph`, `PipelineTargetStepNode`, fitView fix)
+- `journal/BACKLOG.md`, `journal/SESSIONS.md`
+
+---
+
+## 2026-06-19 — F72 Target Pipeline: TB execution flow
+
+**Branch:** `feat/F67-etl-source-target-toggle`
+
+### Done
+- Replaced bridge view (SAS step cards ← edges → Python module cards) with a clean top-to-bottom execution flow of Python modules — same data as Files view but `rankdir: "TB"` so the Pipeline slot shows execution order rather than dependency graph
+- `buildModulesGraph` gained a `rankdir: "LR" | "TB" = "LR"` parameter; Pipeline routes to TB, Files to LR; both views share one code path
+- Removed all bridge components: `BridgeStepNode`, `BridgeModuleNode`, `BridgeLegend`, `buildBridgeGraph` (~400 lines deleted)
+- Removed `selectedStepId` + `onPipelineStepClick` props from `TargetGraph` and `ETLTab` (no longer needed for Pipeline slot)
+- `TargetLegend` now renders for all three sub-views (was Pipeline-only legacy of bridge era)
+- `make test` green; committed as `refactor(F72): replace bridge view with TB module execution flow in Target Pipeline`
+- Browser-verified: step cards with step numbers, edges connecting dependent modules, clean TB layout ✅
+
+### Decisions
+- **Target Pipeline = TB module execution flow, Target Files = LR dependency graph** — distinct informational purpose per sub-view; bridge view (two-column SAS→Python mapping) was too complex and didn't serve the "see the proposed pipeline" goal
+- **Bridge view scrapped entirely** — no value to salvage; the TB modules layout is cleaner and more actionable
+
+### Open Questions
+- None
+
+### Next Session — Start Here
+1. Open PR for `feat/F67-etl-source-target-toggle` (covers F67 + F69 + F70 + F71 + F72). Use `/git-pr-summary` to generate the description.
+2. Review the plan file at `.claude/plans/linear-discovering-sketch.md` — Data Storage tab polish (F35 fixes) — this is the next candidate for work.
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/TargetGraph.tsx` (major — bridge removed, TB parameter added)
+- `src/frontend/src/components/JobDetail/ETLTab.tsx` (minor — bridge props removed)
+- `journal/BACKLOG.md`, `journal/SESSIONS.md`
+
+---
+
+## 2026-06-19 — F70 bridge view + F71 ETL tab polish
+
+**Branch:** `feat/F67-etl-source-target-toggle` (consolidated from F69)
+
+### Done
+- Pushed back on P0 criticism (Pipeline/Files/Blocks label confusion): labels themselves are fine; the real issue was Target Pipeline and Target Files showing identical data with different layouts
+- Replaced Target Pipeline with a SAS→Python **bridge view**: amber step cards (left) connected by edges to slate Python module cards (right); dagre LR; `buildBridgeGraph` in TargetGraph.tsx
+- Fixed 5 bridge view issues: orphaned module "standalone" badge, step card `cursor:default`, removed redundant "SAS STEP" label, `BridgeLegend` (bottom-left, Pipeline view only), edge annotation
+- Completed **F71** (4 subtasks): S01 bridge step clicks → PipelineStepPanel; S02 step number `#N` badge; S03 "blocks:" trust label in summary bar; S04 BlockDetailPanel back link restyled as blue breadcrumb
+- Browser-verified all flows: bridge step click → PipelineStepPanel ✅, module click → PythonModulePanel ✅, block click → BlockDetailPanel with breadcrumb ✅, Files + Blocks views unaffected ✅
+- Merged `feat/F69-target-view-polish` into `feat/F67-etl-source-target-toggle` to consolidate all ETL work onto one branch; deleted F69 locally and remotely
+
+### Decisions
+- **Bridge view edges derived from `step.files`** — discovered post-ship that this is wrong for steps with multiple SAS code files (step.files holds data dependency paths, not code filenames). Bug masked for steps 2–6 (each references one SAS file). Correct approach: `step.blocks → blockPlans → source_file → sasFileToPyFile`. Logged as F72.
+- **Target Pipeline = bridge view, Target Files = dependency graph** — gives each sub-view a distinct informational purpose; previously both showed the same module dependency graph with different layout directions.
+
+### Open Questions
+- Should bridge view step cards show a hover highlight + selected state when the step panel is open?
+
+### Next Session — Start Here
+1. Fix F72: in `buildBridgeGraph` (`TargetGraph.tsx`), replace `step.files` edge derivation with `step.blocks → blockPlans → source_file → sasFileToPyFile`. Then browser-verify step #1 now has edges.
+2. Open PR for `feat/F67-etl-source-target-toggle` (covers F67+F69+F70+F71) once F72 is fixed.
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/TargetGraph.tsx`
+- `src/frontend/src/components/JobDetail/ETLTab.tsx`
+- `src/frontend/src/components/JobDetail/BlockDetailPanel.tsx`
+- `docs/plans/latest/F71-etl-tab-polish.md` (new)
+- `journal/BACKLOG.md`, `journal/SESSIONS.md`
+
+---
+
+## 2026-06-18 — F70 Target ETL sub-views — Steps / Modules / Blocks
+
+**Branch:** `feat/F69-target-view-polish` (same branch — F70 extends F69)
+
+### Done
+- Implemented all 9 F70 subtasks — purely frontend, no backend changes
+- **S-A**: `targetView: "steps" | "modules" | "blocks"` state in ETLTab; `Steps | Modules | Blocks` button group in summary bar visible only when Target is active; default `"steps"`
+- **S-B**: `TargetGraph` accepts `view`, `onModuleClick`, `onBlockClick` props; internal `useMemo` branches on `view`; `rawEdges` derivation shared across all three branches
+- **S-C**: Steps view — dagre TB layout (`rankdir: "TB"`); `PipelineStepNode` module-scope component (filename, `.py` badge, trust colour bar, block count, `deps: N → N`); `NODE_TYPES` extended; `key={`target-${targetView}`}` forces clean ReactFlow remount on view change
+- **S-D**: Modules view — existing `FileNodeCard` LR graph preserved and gated behind `view === "modules"`
+- **S-E**: Blocks view — `BlocksFileNode` with computed heights (`BLOCKS_BASE_H + BLOCK_ROW_H × blockCount`); inline block rows with type badge, `:line`, status icon; clicking row calls `onBlockClick`
+- **S-F**: `PythonModulePanel.tsx` (new) — `.py` header + block count + close; single-source = flat block list; multi-source = `bg-slate-50` tinted group headers per SAS source; `BlockRow` reuse
+- **S-G**: `selectedPyModule` state in ETLTab; right-slot switches between `PythonModulePanel` (module selected) and `BlockDetailPanel` (block selected); `codePopupBlockId` separate from `selectedBlock` to avoid coupling
+- **S-H**: `BlockDetailPanel.tsx` (new) — `← {parentPyFile}` back link + close; block type, file:lines, strategy badge, confidence % bar, recon status; `ⓘ` Popover for rationale; "View Code" → `BlockCodePopup`
+- **S-I**: `make test` exits 0 — all 7 gates green (tsc, eslint, frontend-build critical)
+- Browser-verified all three views and both right panels — Steps node click → PythonModulePanel, block row click → BlockDetailPanel, back link returns to PythonModulePanel, View Code opens BlockCodePopup ✅
+- All subtasks marked `[x] done` in plan file; plan Status set to `complete`
+
+### Decisions
+- Sub-toggle placed in summary bar (not inside canvas) — consistent with Source/Target toggle; keeps ReactFlow canvas uncluttered
+- Names Steps/Modules/Blocks (not Pipeline/Files/Blocks) — Source uses Pipeline/Files/Blocks for SAS artefacts; distinct labels prevent confusion
+- Steps view uses TB layout (Modules stays LR) — different visual language for execution order vs dependency graph
+
+### Open Questions
+- none
+
+### Next Session — Start Here
+1. Commit F69 + F70 changes — two logical commits: `feat(F69): target view polish` then `feat(F70): Target ETL Steps/Modules/Blocks sub-views`
+2. Open PRs for F69 and F70
+3. Next feature: Data Storage tab polish — plan already drafted in `.claude/plans/linear-discovering-sketch.md`
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/ETLTab.tsx`
+- `src/frontend/src/components/JobDetail/TargetGraph.tsx`
+- `src/frontend/src/components/JobDetail/PythonModulePanel.tsx` (new)
+- `src/frontend/src/components/JobDetail/BlockDetailPanel.tsx` (new)
+- `src/frontend/src/components/JobDetail/BlockInspectorPanel.tsx`
+- `src/frontend/src/components/JobDetail/FileNodeCard.tsx`
+- `src/frontend/src/lib/sas-python-file-map.ts` (new on this branch)
+- `docs/plans/latest/F70-target-etl-subviews.md`
+- `journal/BACKLOG.md`, `journal/SESSIONS.md`
+
+---
+
+## 2026-06-18 — F69 Target view polish — all 10 subtasks implemented
+
+**Branch:** `feat/F69-target-view-polish`
+
+### Done
+- Implemented all 10 F69 subtasks — purely frontend, no backend changes
+- **S-A**: `BlockInspectorPanel` `displayTitle?` prop; ETLTab passes `sasFileToPyFile(selectedFile)` when in Target view so inspector header shows `.py` filename
+- **S-B**: `FileNodeData` extended with `hasIncoming?`/`hasOutgoing?`; `FileNodeCard` conditionally renders each `<Handle>`; `TargetGraph` computes these from `rawEdges` sets — eliminates phantom arrow on root node
+- **S-C**: Connection count color changed from amber threshold to always `#64748b`; `⇔` → `↔`; tooltip updated
+- **S-D**: Summary bar branches on `graphView` — `modules: N` in Target view, `files/blocks` in Source
+- **S-E**: `FileNodeData.file_type` widened to include `"MODULE"`; `FILE_TYPE_PILL` gets green `.py` badge entry; `TargetGraph` passes `file_type: "MODULE"`
+- **S-F**: `SectionLabelNode` custom ReactFlow node type; inserted between connected cluster and isolated row with "No data dependencies detected" label + horizontal rule dividers
+- **S-G**: Target node `filename` passes full `pyFile` (with `.py` extension) instead of stem
+- **S-H**: Legend swatches changed to `width: 18, height: 3, borderRadius: 2` — matches accent bar shape
+- **S-I**: Toggle buttons get `title` attributes — `"SAS source pipeline"` / `"Generated Python modules"`
+- **S-J**: `make test` exits 0 — all 7 gates green
+- `sas-python-file-map.ts` and `TargetGraph.tsx` recreated on this branch (off main, not off F67 branch)
+- All subtasks marked `[x] done` in plan file; plan Status set to `complete`
+
+### Decisions
+- none
+
+### Open Questions
+- F67 PR #106 still open — needs review/merge; F69 branch includes all F67 code since it was cut off main before F67 merged
+
+### Next Session — Start Here
+1. Open PR for `feat/F69-target-view-polish` (closes issue for F69 Target view polish)
+2. Check F67 PR #106 status — if merged, confirm F69 branch history is clean
+3. Next feature from backlog: Data Storage tab polish (plan drafted in `.claude/plans/`)
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/BlockInspectorPanel.tsx`
+- `src/frontend/src/components/JobDetail/ETLTab.tsx`
+- `src/frontend/src/components/JobDetail/FileNodeCard.tsx`
+- `src/frontend/src/components/JobDetail/TargetGraph.tsx` (new on this branch)
+- `src/frontend/src/lib/sas-python-file-map.ts` (new on this branch)
+- `src/frontend/src/pages/JobDetailPage.tsx`
+- `docs/plans/latest/F69-target-view-polish.md`
+- `journal/BACKLOG.md`, `journal/SESSIONS.md`
+
+---
+
+## 2026-06-17 — F69 plan written, branch created, no code yet
+
+**Branch:** `feat/F69-target-view-polish`
+
+### Done
+- Wrote `docs/plans/latest/F69-target-view-polish.md` — 10 subtasks (S-A through S-J) covering all 11 issues from the Target view critique
+- Discovered main branch already used F68 (`F68-post-acceptance-workflow`) — renumbered to F69, resolved BACKLOG.md merge conflict
+- Created branch `feat/F69-target-view-polish` off fresh main (main had 53 files of new work from others)
+- No implementation started — user ended session before agent delegation
+
+### Decisions
+- none
+
+### Open Questions
+- none — plan is fully specified and ready to implement
+
+### Next Session — Start Here
+1. Implement S-A through S-D (P0/P1 fixes) via `frontend-builder` — see `docs/plans/latest/F69-target-view-polish.md`
+2. Then S-E through S-J (P2/P3 fixes) in a second delegation
+3. Run `make test`, then commit
+
+### Files Touched
+- `docs/plans/latest/F69-target-view-polish.md` (new)
+- `journal/BACKLOG.md` (F68 post-acceptance added from main, F69 entries added)
+
+---
+
+## 2026-06-17 — Target view critique: 11 issues identified, F68 plan scoped
+
+**Branch:** `feat/F67-etl-source-target-toggle` (review only — no code written)
+
+### Done
+- Browser review of the Target ETL pipeline view on the pharma-sandbox-medium job
+- Identified 11 issues across P0–P3 priority levels via screenshots, code reading (`TargetGraph.tsx`, `FileNodeCard.tsx`, `ETLTab.tsx`), and live interaction
+- Critique documented in conversation; all 11 issues added to BACKLOG.md as F68 subtasks
+- No plan file written yet (user invoked /session-end before writing it)
+
+### Decisions
+- none
+
+### Open Questions
+- P0 phantom arrow: root cause unclear — could be a dangling ReactFlow edge whose source is at `{0,0}`, or a handle rendering artifact. Needs `console.log(rawEdges)` to confirm before fixing.
+
+### Next Session — Start Here
+1. Write `docs/plans/latest/F68-target-view-polish.md` (use `/plan-feature`) covering the 11 issues from BACKLOG.md
+2. Implement P0 fixes first (inspector header `.sas`→`.py`, phantom arrow)
+3. Then P1 (amber collision, summary bar stats)
+
+### Files Touched
+- `journal/BACKLOG.md` (F68 items added)
+
+---
+
+## 2026-06-16 — F67 complete: ETL Source/Target toggle + four UX fixes
+
+**Branch:** `feat/F67-etl-source-target-toggle`
+
+### Done
+- S-A: `sas-python-file-map.ts` — `sasFileToPyFile` and `pyFileToSasFiles` pure TS utilities
+- S-B: `TargetGraph.tsx` — ReactFlow graph of Python modules; dagre LR layout; trust-coloured nodes; remapped/deduped edges; sticky legend
+- S-C: `ETLTab.tsx` — Source / Target toggle buttons in summary bar; `handleToggle` clears side-panel state; `TargetGraph` conditionally rendered; `generatedFiles` prop threaded from `JobDetailPage`
+- S-D: `make test` exits 0 (all 7 gates)
+- Fix 1: sub-view reset — lifted `lineageView` state into `ETLTab`; added `onViewChange` callback to `LineageGraph` so sub-view survives the `key`-prop remount on panel open/close
+- Fix 2: no selection ring on Target nodes — split `useMemo` into expensive layout pass (deps: data) + cheap selection overlay pass (deps: `selectedSasFile`); synced via `useEffect`
+- Fix 3: legend overlaps zoom controls — moved legend from `bottom/left: 12` to `bottom/right: 12` (also moved in `TargetGraph`)
+- Fix 4: isolated nodes visually mislead as upstream — dagre runs only on connected nodes; isolated placed in horizontal row at `y = connectedBottom + 60`
+
+### Decisions
+- Split useMemo is the correct pattern for ReactFlow when layout is expensive but selection is cheap: layout memo deps = data only, selection memo deps = layoutedNodes + selectedSasFile. The `useEffect` sync keeps ReactFlow internal state in step without forcing a remount.
+- Isolated nodes that have no edges in the Python target graph are placed in a row *below* the connected cluster, not mixed in — dagre would otherwise place them in the leftmost rank, falsely implying they are upstream.
+
+### Open Questions
+- P2/P3 follow-up improvements noted during review (not blocking the PR): panel header shows SAS filename from Target view; "PROGRAM" badge on Target nodes; summary bar stats don't reflect Target context; no tooltips on toggle buttons.
+- Pre-existing `ReferenceError: panOrigin is not defined` in `SchemaCanvas.tsx:165` (F35 bug, not F67).
+
+### Next Session — Start Here
+1. Open PR for `feat/F67-etl-source-target-toggle` closing issue #67.
+2. Optionally pick up Data Storage tab polish plan (`.claude/plans/linear-discovering-sketch.md`) — all P0–P2 fixes are defined and ready to implement.
+
+### Files Touched
+- `src/frontend/src/lib/sas-python-file-map.ts` (new)
+- `src/frontend/src/components/JobDetail/TargetGraph.tsx` (new)
+- `src/frontend/src/components/JobDetail/ETLTab.tsx`
+- `src/frontend/src/components/LineageGraph.tsx` (onViewChange callback)
+- `src/frontend/src/pages/JobDetailPage.tsx` (generatedFiles prop)
+- `docs/plans/latest/F67-etl-source-target-toggle.md`
+
+---
+
 ## 2026-06-19 — DBX bundle: same-table fold + DLT/Spark Job modularization
 
 **Branch:** `feat/F75-deployment-target-questionnaire`
@@ -16,7 +376,6 @@ Most recent session on top. Each entry should answer:
 - **Spark Job modules grouped by source file:** `jobs/<source_stem>/<table>.py` subdirectories mirror the DLT structure. `build_dataset_graph` gains `dataset_source_file` mapping; `render_databricks_yml_spark_job` uses it for `python_file` paths.
 - **YAML readability:** shared `_format_yaml` helper inserts blank lines between top-level sections in both YAML renderers.
 - **Tests:** `TestSameTableFold`, `TestDltModularization`, `TestSparkJobModularization`, `TestFormatYaml` — all 7 `make test` gates green.
-- Committed as `2479d0a`.
 
 ### Decisions
 - **Fold localized to bundle layer, not `migration_plan`:** mutating `migration_plan` would break the frontend ETL/Plan/Lineage tabs which consume it as the comparison baseline. The fold is a bundle-rendering concern only. · revisit never

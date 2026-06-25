@@ -443,13 +443,13 @@
   - [x] F59 S-G: `make test` exits 0
 - [x] #58: Record-level reconciliation (row-by-row diff) — row_hash_diff + ReconConfig + LLM key resolution
 - [ ] #59: Artefact versioning — group jobs by input_hash
-**F67 — ETL tab: Source / Target toggle (#67) → see `docs/plans/latest/F67-etl-source-target-toggle.md`**
-- [ ] F67 S-A: `sasFileToPyFile` + `pyFileToSasFiles` utility → `src/frontend/src/lib/sas-python-file-map.ts`
-- [ ] F67 S-B: `TargetGraph` component — Python file nodes, remapped edges, trust-coloured, legend → `src/frontend/src/components/JobDetail/TargetGraph.tsx`
-- [ ] F67 S-C: Source / Target toggle in ETLTab + wire TargetGraph → `src/frontend/src/components/JobDetail/ETLTab.tsx`
-- [ ] F67 S-D: `make test` exits 0
+**F67 — ETL tab: Source / Target toggle (#67) → see `docs/plans/latest/F67-etl-source-target-toggle.md` — complete**
+- [x] F67 S-A: `sasFileToPyFile` + `pyFileToSasFiles` utility → `src/frontend/src/lib/sas-python-file-map.ts`
+- [x] F67 S-B: `TargetGraph` component — Python file nodes, remapped edges, trust-coloured, legend → `src/frontend/src/components/JobDetail/TargetGraph.tsx`
+- [x] F67 S-C: Source / Target toggle in ETLTab + wire TargetGraph → `src/frontend/src/components/JobDetail/ETLTab.tsx`
+- [x] F67 S-D: `make test` exits 0
 
-**F68 — Post-acceptance workflow (#68) → see `docs/plans/latest/F68-post-acceptance-workflow.md`**
+**F68 — Post-acceptance workflow (#68) → see `docs/plans/latest/F68-post-acceptance-workflow.md` — complete**
 - [x] F68 S-A: Alembic migration 020 — add `accepted_by` → `alembic/versions/020_add_accepted_by.py`
 - [x] F68 S-B: Job model `accepted_by` column → `src/backend/db/models.py`
 - [x] F68 S-C: Migration-package builder → `src/backend/api/packaging.py`
@@ -462,6 +462,68 @@
 - [x] F68 S-J: Read-only editors in delivered mode → `EditorTab.tsx`
 - [x] F68 S-K: Verdict strip accepted state → `PlanTab.tsx`
 - [x] F68 S-L: `make test` exits 0
+**F69 — Target view polish → see `docs/plans/latest/F69-target-view-polish.md` — complete**
+- [x] F69 S-A: inspector header `.sas` → `.py` in Target view → `BlockInspectorPanel.tsx`, `ETLTab.tsx`
+- [x] F69 S-B: hide handles on nodes with no edges in that direction → `FileNodeCard.tsx`, `TargetGraph.tsx`
+- [x] F69 S-C: connection count — drop amber color, fix `⇔` → `↔` → `FileNodeCard.tsx`
+- [x] F69 S-D: summary bar shows `modules: N` in Target view → `ETLTab.tsx`
+- [x] F69 S-E: replace `PROGRAM` badge with `.py` badge on Target nodes → `FileNodeCard.tsx`, `TargetGraph.tsx`
+- [x] F69 S-F: isolated row divider + "No data dependencies detected" label → `TargetGraph.tsx`
+- [x] F69 S-G: node names include `.py` extension → `TargetGraph.tsx`
+- [x] F69 S-H: legend swatches are rectangles, not circles → `TargetGraph.tsx`
+- [x] F69 S-I: tooltip on Source/Target toggle buttons → `ETLTab.tsx`
+- [x] F69 S-J: `make test` exits 0
+
+**F70 — Target ETL sub-views: Steps / Modules / Blocks → see `docs/plans/latest/F70-target-etl-subviews.md` — complete**
+- [x] F70 S-A: `Steps | Modules | Blocks` toggle in ETLTab summary bar (Target-only); `targetView` state
+- [x] F70 S-B: TargetGraph `view` prop + layout switching; shared `rawEdges` derivation across branches
+- [x] F70 S-C: Steps view — dagre TB layout, `PipelineStepNode` (filename, `.py` badge, trust bar, `deps: N → N`)
+- [x] F70 S-D: Modules view — existing dagre LR graph gated behind `view === "modules"`
+- [x] F70 S-E: Blocks view — expanded node cards in-place; heights computed from block count; `BlocksFileNode`
+- [x] F70 S-F: `PythonModulePanel` component — tinted group headers for multi-source modules, `BlockRow` reuse
+- [x] F70 S-G: ETLTab wiring — `selectedPyModule`, right-slot switching between `PythonModulePanel` / `BlockDetailPanel`
+- [x] F70 S-H: `BlockDetailPanel` component — back link, strategy/confidence/recon, `ⓘ` rationale popover, "View Code"
+- [x] F70 S-I: `make test` exits 0
+
+**F71 — ETL Tab Polish** (`docs/plans/latest/F71-etl-tab-polish.md`)
+
+- [x] F71 S01: Wire bridge step clicks to PipelineStepPanel → see `docs/plans/latest/F71-etl-tab-polish.md`
+- [x] F71 S02: Step number badge on bridge step cards → see `docs/plans/latest/F71-etl-tab-polish.md`
+- [x] F71 S03: Label trust stats "blocks:" in summary bar → see `docs/plans/latest/F71-etl-tab-polish.md`
+- [x] F71 S04: Promote BlockDetailPanel back link to breadcrumb → see `docs/plans/latest/F71-etl-tab-polish.md`
+- [x] F71 S05: `make test` exits 0
+
+**F72 — Target Pipeline view overhaul**
+
+- [x] F72: Replaced bridge view with TB module execution flow — `buildModulesGraph` gains `rankdir` param; Pipeline sub-view uses TB (top-to-bottom), Files stays LR; all bridge components removed.
+
+**F73 — Target Pipeline sequential step cards**
+
+- [x] F73: Replaced TB module dependency graph with `buildPipelineStepsGraph` — sequential step cards from `lineage.pipeline_steps`; each card shows step number, name, description, `.py` module badges; sequential edges, no dependency edges; fitView centering fixed via explicit node dimensions.
+
+**Post-F73 fixes (2026-06-24, same branch)**
+
+- [x] fix(data-tab): add `Number: "DOUBLE PRECISION"` to `SEMANTIC_TO_PG`; remove dead badge code; plain monospace type display
+- [x] fix(etl-tab): Target Pipeline LR layout; `onPipelineStepClick` + `mode="target"` wired to `PipelineStepPanel`
+- [x] feat(PipelineStepPanel): `mode` prop — target shows Python Modules section, reorders sections, hides SAS CODE, filters external DEPENDS ON
+- [x] fix(target-legend): `TargetLegend` `view` prop — header/label change to "PIPELINE STEPS" vs "PYTHON MODULES"
+- [x] fix(plan-tab): `isAccepted` derived from `job.status === "accepted"` not `Boolean(job.accepted_at)`; seed adds `accepted_at`
+- [x] fix(target-etl-files-blocks): `buildPyFileToSasFilesMap` + `buildSasFileToPyFilesMap` parse provenance comments — fixes zero block counts and missing edges in Files/Blocks views; handles merge and split scenarios
+- [x] fix(etl-tab): Source Pipeline card descriptions wrap to 2 lines (webkit clamp); `NODE_PIPELINE_H` 86→106
+- [x] feat(etl-tab): `FileViewPopup` — full-file read-only Monaco popup for SAS and Python files; opened on file/module node click
+- [x] feat(PipelineStepPanel): Python module names are clickable links opening `FileViewPopup`
+- [x] fix(etl-tab): Pipeline → block back nav — Target mode routes through `handleTargetBlockClick` so `BlockDetailPanel` back link returns to correct Python module
+- [x] feat(BlockDetailPanel): `parentPyFile` optional — hidden in Source mode; SAS source `file:line` reference is a clickable button opening SAS `FileViewPopup`; `onViewSourceFile` prop added
+- [x] fix(etl-tab): Source Blocks click shows `BlockDetailPanel` first (not code popup); `showBlockDetail` covers both Source and Target mode
+- [x] feat(etl-tab): Target Blocks redesign — compact graph nodes with segmented status bar; new `FileBlockListPanel` side panel with urgency-sorted blocks, rationale as primary label, `[SAS]` chip for traceability
+- [x] docs: updated PR #106 description to cover all work on branch (F67–F73, ETL interaction fixes, Target Blocks redesign, Data/Plan tab fixes)
+
+**Data Storage tab polish (5 gaps, assessed 2026-06-24)**
+- [ ] fitView on Data flow and ERD load — rightmost nodes currently cut off on initial render
+- [ ] Data flow node labels truncated ("Ingest source da…", "Clean and valida…") — widen nodes or wrap text
+- [ ] Data flow nodes non-interactive — no click handler; could link to ETL tab or show tooltip
+- [ ] Sidebar table status dots all gray — should reflect run status for MIGRATION OUTPUT tables (not run / run / error)
+- [ ] "Not run" plain text in output table header — should use a coloured badge (consistent with rest of app)
 
 - [ ] #21: Consolidate lineage into a single primary view — `backlog` label
 - [ ] #20: Rollback / versioning based on lineage — `backlog` label

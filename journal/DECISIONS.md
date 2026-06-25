@@ -6,6 +6,14 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-06-24 — ETL tab Target Blocks redesign
+
+- **Target Blocks graph nodes show compact status cards, not inline block rows:** SAS construct names (PROC_IMPORT, DATA_STEP) displayed inside a Python-target graph confuse users unfamiliar with SAS. Block-level detail belongs in a side panel, not in graph nodes. Nodes now show only filename + block count + segmented green/amber/red bar. · revisit never
+- **FileBlockListPanel uses rationale as primary label with `[SAS]` chip as secondary:** The LLM-generated rationale ("Import vital signs data") is meaningful to any user; the SAS construct type is traceability info only. Explicit `[SAS]` chip prevents the construct name from being mistaken for Python code. · revisit never
+- **FileBlockListPanel sorts by urgency (Manual → Review → Pass):** Users opening a file's block list are most likely investigating a problem. Showing attention-requiring blocks first reduces scroll-to-find. · revisit never
+
+---
+
 ## 2026-06-19 — DBX bundle fold + modularization
 
 - **Same-table fold localized to bundle layer:** mutating `migration_plan` upstream would break the ETL/Plan/Lineage tabs which use it as the comparison baseline; fold is a bundle-rendering concern only. · revisit never
