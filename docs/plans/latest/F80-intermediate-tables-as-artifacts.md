@@ -2,7 +2,7 @@
 
 **Phase:** 3
 **Area:** Frontend
-**Status:** in-progress
+**Status:** complete
 
 ## Goal
 
@@ -36,23 +36,23 @@ Done looks like:
 
 ## Subtasks
 
-### S-A: Source / Migration toggle state + sidebar restructure
+### S-A: Source / Target toggle state + sidebar restructure
 **File:** `src/frontend/src/components/JobDetail/DataStorageTab.tsx`
 **Depends on:** none
-**Done when:** `sidebarView: "source" | "migration"` state added; Source view renders the existing libname-grouped table list with plain libname group headers (drop the "SAS: {libname}" sub-label); Migration view renders output tables (`libname === null`) under an "Output" section header; toggle strip matches ETL tab button styling.
-- [ ] done
+**Done when:** `sidebarView: "source" | "target"` state added; Source view renders the existing libname-grouped table list with plain libname group headers + table count badge; Target view renders output tables under "Output" section; toggle strip with context subtitle matches ETL tab styling; selection persists per view.
+- [x] done
 
 ### S-B: DataFlow node click routing
 **File:** `src/frontend/src/components/JobDetail/DataStorageTab.tsx`
 **Depends on:** S-A
-**Done when:** `onTableSelect` callback passed to `DataFlowDiagram` switches `sidebarView` to `"migration"` before setting `selectedPath` — so clicking an output node in the diagram always lands in the correct sidebar section. Intermediate node clicks (`table_type === "intermediate"`, or simply: `schemaData.tables` has no entry for the name) are silently ignored.
-- [ ] done
+**Done when:** `onTableSelect` callback passed to `DataFlowDiagram` switches `sidebarView` to `"target"` before setting `selectedPath`; intermediate node clicks silently ignored.
+- [x] done
 
 ### S-C: `make test` exits 0
 **File:** n/a
 **Depends on:** S-A, S-B
 **Done when:** `make test` exits 0 with all 7 gates green.
-- [ ] done
+- [x] done
 
 ## Dependencies on other features
 
