@@ -477,9 +477,9 @@ async def build_job_schema(job: "Job", db: AsyncSession) -> "list[TableSchema]":
                     sas_type="",
                     python_type=col_info.get("python_type"),
                     sql_type=map_python_dtype_to_sql(col_info.get("python_type", "object")),
-                    is_pk=col_info["name"] in pks,
-                    is_fk=col_info["name"] in fks,
-                    fk_ref=fks.get(col_info["name"]),
+                    is_pk=col_info["name"].lower() in pks,
+                    is_fk=col_info["name"].lower() in fks,
+                    fk_ref=fks.get(col_info["name"].lower()),
                 )
                 for col_info in raw_target_cols
             ]
