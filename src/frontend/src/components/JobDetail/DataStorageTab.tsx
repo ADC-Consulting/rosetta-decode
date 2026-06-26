@@ -144,8 +144,10 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
 
   const selectedPath = useMemo(() => {
     if (manualSelectedPath) return manualSelectedPath;
-    return schemaData?.tables[0]?.path ?? null;
-  }, [manualSelectedPath, schemaData]);
+    if (sidebarView === "source")
+      return schemaData?.tables.find((t) => t.libname !== null)?.path ?? null;
+    return schemaData?.tables.find((t) => t.libname === null)?.path ?? null;
+  }, [manualSelectedPath, schemaData, sidebarView]);
 
   useEffect(() => {
     const table = schemaData?.tables.find((t) => t.path === selectedPath);
@@ -161,8 +163,7 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
 
   const handleSidebarViewChange = (v: "source" | "target") => {
     setSidebarView(v);
-    if (v === "source" && sourceSelectedPath) setSelectedPath(sourceSelectedPath);
-    if (v === "target" && targetSelectedPath) setSelectedPath(targetSelectedPath);
+    setSelectedPath(v === "source" ? sourceSelectedPath : targetSelectedPath);
   };
 
   // ── Guard states ─────────────────────────────────────────────────────────────

@@ -112,14 +112,30 @@ export function SchemaCanvasNodesLayer({
                         onSelectField({ nodeId: node.id, columnName: column.name });
                       }}
                     >
+                      {/* PK / FK icon prefix */}
+                      {column.isPrimaryKey ? (
+                        <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }} aria-label="Primary key">
+                          <circle cx={7} cy={17} r={4} />
+                          <path d="M10.76 13.24 21 3" />
+                          <path d="M18 5l2 2" />
+                          <path d="M15 8l2 2" />
+                        </svg>
+                      ) : column.isForeignKey ? (
+                        <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }} aria-label="Foreign key">
+                          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                        </svg>
+                      ) : (
+                        <span style={{ width: 11, flexShrink: 0 }} />
+                      )}
                       <span className="col-name">{column.name}</span>
                       <span className="col-type">{column.type}</span>
                       <span className="col-flags" style={{ display: "flex", gap: 2, alignItems: "center" }}>
                         {column.isPrimaryKey && (
-                          <span style={{ display: "inline-flex", alignItems: "center", borderRadius: 3, padding: "1px 4px", fontSize: 10, fontWeight: 600, background: "#fef9c3", color: "#854d0e" }}>PK</span>
+                          <span style={{ display: "inline-flex", alignItems: "center", borderRadius: 3, padding: "1px 4px", fontSize: 10, fontWeight: 700, background: "#fef3c7", color: "#92400e", border: "1px solid #fcd34d" }}>PK</span>
                         )}
                         {column.isForeignKey && (
-                          <span style={{ display: "inline-flex", alignItems: "center", borderRadius: 3, padding: "1px 4px", fontSize: 10, fontWeight: 600, background: "#dbeafe", color: "#1e40af" }}>FK</span>
+                          <span style={{ display: "inline-flex", alignItems: "center", borderRadius: 3, padding: "1px 4px", fontSize: 10, fontWeight: 700, background: "#dbeafe", color: "#1d4ed8", border: "1px solid #93c5fd" }}>FK</span>
                         )}
                         {column.isUnique && !column.isPrimaryKey && (
                           <span style={{ display: "inline-flex", alignItems: "center", borderRadius: 3, padding: "1px 4px", fontSize: 10, fontWeight: 600, background: "#f3e8ff", color: "#6b21a8" }}>UQ</span>
