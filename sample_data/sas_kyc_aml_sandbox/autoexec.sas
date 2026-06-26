@@ -1,0 +1,18 @@
+/* autoexec.sas — Meridian Asset Partners KYC/AML batch environment
+   Platform Engineering / K. Ostrowski
+   Last updated: 2020-08-11
+*/
+OPTIONS COMPRESS=YES NOFMTERR NOSYMBOLGEN MPRINT NOMLOGIC;
+OPTIONS LINESIZE=132 PAGESIZE=MAX CENTER NODATE;
+
+%LET AS_OF_DT   = 20241231;
+%LET RUN_ENV    = PRD;
+%LET BATCH_ROOT = \\mer-sas-prod\data;
+
+LIBNAME RAWLIB  "&BATCH_ROOT.\raw\&AS_OF_DT.";
+LIBNAME STAGLIB "&BATCH_ROOT.\staging";
+LIBNAME REFLIB  "&BATCH_ROOT.\ref";
+LIBNAME OUTLIB  "&BATCH_ROOT.\output\&AS_OF_DT.";
+LIBNAME FMTLIB  "\\mer-sas-prod\formats";
+
+OPTIONS FMTSEARCH=(FMTLIB WORK);
