@@ -540,7 +540,10 @@
 - [x] fix(F79): hide "Data model" and "Data flow" toggle buttons for source tables (`libname !== null`) → `DataStorageTab.tsx`
 - [x] fix(backend): `_normalise_pipeline_step_names._resolve()` detect file extensions vs SAS `libname.table` — fixes "csv"/"xlsx" node labels → `src/backend/api/routes/jobs.py`
 - [x] refactor(DataFlowDiagram): add `outputTableNames: string[]` prop; remove step/source nodes; show all ETL-produced tables with intermediate (amber) vs output (green) visual tiers → `DataFlowDiagram.tsx`, `DataStorageTab.tsx`
-- [ ] future(F-staging-materialise): materialise intermediate tables in `staging` schema during migration validation — not yet planned; add when migration validation workflow is scoped
+**F80 — Data Storage tab Source / Migration sidebar toggle → see `docs/plans/latest/F80-intermediate-tables-as-artifacts.md`**
+- [ ] F80 S-A: Source / Migration toggle + sidebar restructure → `DataStorageTab.tsx`
+- [ ] F80 S-B: DataFlow node click auto-switches to Migration view → `DataStorageTab.tsx`
+- [ ] F80 S-C: `make test` exits 0
 
 - [ ] #21: Consolidate lineage into a single primary view — `backlog` label
 - [ ] #20: Rollback / versioning based on lineage — `backlog` label
