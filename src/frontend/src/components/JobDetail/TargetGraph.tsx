@@ -366,7 +366,7 @@ function PipelineStepNode({ data }: NodeProps<PipelineStepNodeData>): React.Reac
             }}
           >
             <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "ui-monospace, monospace" }}>
-              {data.blockCount} {data.blockCount === 1 ? "block" : "blocks"}
+              {data.blockCount} {data.blockCount === 1 ? "step" : "steps"}
             </span>
             <span style={{ fontSize: 10, color: "#64748b", fontFamily: "ui-monospace, monospace" }}>
               deps: {data.inCount}{"  →"} {data.outCount}
@@ -613,7 +613,7 @@ function BlocksFileNode({ data }: NodeProps<BlocksFileNodeData>): React.ReactEle
         {/* Block count */}
         <div style={{ padding: "0 10px 5px" }}>
           <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "ui-monospace, monospace" }}>
-            {data.totalCount} {data.totalCount === 1 ? "block" : "blocks"}
+            {data.totalCount} {data.totalCount === 1 ? "step" : "steps"}
           </span>
         </div>
         {/* Segmented bar */}
@@ -1186,22 +1186,29 @@ function TargetGraphInner({
           {/* Divider */}
           <div style={{ width: 1, height: 20, background: "#e2e8f0", margin: "0 6px" }} />
 
-          {(["pipeline", "files", "blocks"] as const).map((v) => (
-            <button
-              key={v}
-              onClick={() => onViewChange(v)}
-              style={{
-                ...btnBase,
-                fontSize: 11,
-                padding: "2px 8px",
-                ...(view === v
-                  ? { background: "#1e293b", color: "#fff", borderColor: "#1e293b" }
-                  : {}),
-              }}
-            >
-              {v.charAt(0).toUpperCase() + v.slice(1)}
-            </button>
-          ))}
+          {(["pipeline", "files", "blocks"] as const).map((v) => {
+            const VIEW_LABELS: Record<"pipeline" | "files" | "blocks", string> = {
+              pipeline: "Pipeline",
+              files: "Files",
+              blocks: "Steps",
+            };
+            return (
+              <button
+                key={v}
+                onClick={() => onViewChange(v)}
+                style={{
+                  ...btnBase,
+                  fontSize: 11,
+                  padding: "2px 8px",
+                  ...(view === v
+                    ? { background: "#1e293b", color: "#fff", borderColor: "#1e293b" }
+                    : {}),
+                }}
+              >
+                {VIEW_LABELS[v]}
+              </button>
+            );
+          })}
         </div>
       )}
       <>

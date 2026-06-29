@@ -238,7 +238,7 @@ export default function JobDetailPage(): React.ReactElement {
                 <span className="text-xs text-muted-foreground">
                   {new Set(planData.block_plans.map((b) => b.source_file)).size} files
                   {" · "}
-                  {planData.block_plans.length} blocks
+                  {planData.block_plans.length} steps
                 </span>
               )}
             </div>

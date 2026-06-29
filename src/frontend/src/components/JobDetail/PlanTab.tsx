@@ -137,24 +137,24 @@ const CONFIDENCE_HELP = `What the confidence score tells you:
 
 • Medium (65–84%) — The translation is likely correct but has not been fully verified, or the agent had some uncertainty. Worth a quick review.
 
-• Low (40–64%) — The agent flagged uncertainty, or the output did not match the reference. Requires human review before the block can be trusted.
+• Low (40–64%) — The agent flagged uncertainty, or the output did not match the reference. Requires human review before the step can be trusted.
 
-• Very Low (< 40%) — The agent had very low confidence, or the block failed reconciliation and was already low confidence. Likely needs manual rewrite.
+• Very Low (< 40%) — The agent had very low confidence, or the step failed reconciliation and was already low confidence. Likely needs manual rewrite.
 
 What it does not guarantee:
 
-A High confidence score does not mean the output is semantically correct in all edge cases — it means the automated checks passed and the LLM was confident. A human reviewer should still check any block that is business-critical.
+A High confidence score does not mean the output is semantically correct in all edge cases — it means the automated checks passed and the LLM was confident. A human reviewer should still check any step that is business-critical.
 
-Confidence is computed per block (DATA step, PROC, etc.), not per column or per row.
+Confidence is computed per step (DATA step, PROC, etc.), not per column or per row.
 
 If no reference CSV was uploaded, there is no reconciliation to validate against — the score reflects LLM self-assessment only.
 
 What criticality means:
 
-Criticality is a post-translation signal that combines strategy, confidence, reconciliation outcome, and blast radius (how many downstream files depend on this block). It differs from Risk, which is a static pre-translation assessment of SAS construct complexity.
+Criticality is a post-translation signal that combines strategy, confidence, reconciliation outcome, and blast radius (how many downstream files depend on this step). It differs from Risk, which is a static pre-translation assessment of SAS construct complexity.
 
-• Critical — Strategy is manual, or confidence was very low. Block needs human authoring or rewrite.
-• High — Confidence was low, reconciliation failed, or this block feeds 3+ downstream files.
+• Critical — Strategy is manual, or confidence was very low. Step needs human authoring or rewrite.
+• High — Confidence was low, reconciliation failed, or this step feeds 3+ downstream files.
 • Medium — Translation ran with medium confidence. Worth a spot check before accepting.
 • Low — High confidence, reconciliation passed, minimal downstream impact.`;
 
@@ -235,7 +235,7 @@ function FileSection({ file }: { file: TrustReportFile }): React.ReactElement {
       </button>
       {open && (
         <div className="border-t border-border px-4 py-3 grid grid-cols-2 gap-x-8 gap-y-1 text-sm">
-          <span className="text-muted-foreground">Total blocks</span>
+          <span className="text-muted-foreground">Total steps</span>
           <span>{file.total_blocks}</span>
           <span className="text-muted-foreground">Auto-verified</span>
           <span className="text-green-700">{file.auto_verified}</span>
@@ -295,9 +295,9 @@ function AttentionCards({
   const getRationale = (block: TrustReportBlock): string => {
     const bp = blockPlanMap[block.block_id];
     if (bp?.rationale) return bp.rationale;
-    if (block.strategy === "manual") return `A ${block.block_type} block that requires manual implementation.`;
-    if (block.reconciliation_status === "fail") return `A ${block.block_type} block that failed reconciliation.`;
-    return `A ${block.block_type} block that needs review.`;
+    if (block.strategy === "manual") return `A ${block.block_type} step that requires manual implementation.`;
+    if (block.reconciliation_status === "fail") return `A ${block.block_type} step that failed reconciliation.`;
+    return `A ${block.block_type} step that needs review.`;
   };
 
   return (
@@ -306,7 +306,7 @@ function AttentionCards({
         <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
           <AlertTriangle size={14} className="text-amber-600 shrink-0 mt-0.5" />
           <p className="text-xs text-amber-700">
-            Manual blocks require code edits in the ETL tab before this pipeline will run.
+            Manual steps require code edits in the ETL tab before this pipeline will run.
           </p>
         </div>
       )}
@@ -329,7 +329,7 @@ function AttentionCards({
             onClick={onViewBlocks}
             className="text-xs text-primary hover:underline"
           >
-            View in blocks table →
+            View in steps table →
           </button>
         </div>
       ))}
@@ -405,7 +405,7 @@ function AttentionTable({
       <table className="w-full text-sm">
         <thead>
           <tr className="bg-muted/50 text-xs text-muted-foreground">
-            <th className="px-3 py-2 text-left font-medium">Block ID</th>
+            <th className="px-3 py-2 text-left font-medium">Step ID</th>
             <th className="px-3 py-2 text-left font-medium">Source file</th>
             <th className="px-3 py-2 text-left font-medium">Strategy</th>
             <th className="px-3 py-2 text-left font-medium">Self confidence</th>
@@ -763,13 +763,13 @@ export default function PlanTab({
             : [];
           const piiColumnCount = planData.sensitive_data_findings?.length ?? 0;
           return piiSignals.length > 0 && (
-            <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 flex items-start gap-3">
-              <AlertTriangle size={14} className="text-red-600 shrink-0 mt-0.5" />
+            <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 flex items-start gap-3">
+              <AlertTriangle size={14} className="text-amber-500 shrink-0 mt-0.5" />
               <div className="space-y-0.5">
-                <p className="text-sm font-medium text-red-800">
+                <p className="text-sm font-medium text-amber-800">
                   Sensitive data detected ({piiColumnCount} column{piiColumnCount !== 1 ? "s" : ""})
                 </p>
-                <p className="text-xs text-red-700">
+                <p className="text-xs text-amber-700">
                   Signals matched: {piiSignals.join(", ")}. Ensure data handling complies with applicable
                   regulations before accepting.
                 </p>
@@ -1049,7 +1049,7 @@ export default function PlanTab({
                   {isRefiningAll ? (
                     <><Loader2 size={14} className="animate-spin mr-1" />Re-translating…</>
                   ) : (
-                    "Re-translate failed blocks"
+                    "Re-translate failed steps"
                   )}
                 </Button>
               )}
