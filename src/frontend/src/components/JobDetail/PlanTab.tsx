@@ -689,10 +689,14 @@ export default function PlanTab({
     label: planData.overall_risk,
   };
 
+  const stripLibref = (d: string): string => {
+    if (!d.includes(".") || /\.(csv|xlsx|xpt|sas7bdat|parquet|json|txt)$/i.test(d)) return d;
+    return d.substring(d.indexOf(".") + 1);
+  };
   const allInputs = new Set(planData.block_plans.flatMap(b => b.input_datasets));
   const allOutputs = new Set(planData.block_plans.flatMap(b => b.output_datasets));
-  const externalInputs = [...allInputs].filter(d => !allOutputs.has(d)).sort();
-  const finalOutputs = [...allOutputs].filter(d => !allInputs.has(d)).sort();
+  const externalInputs = [...allInputs].filter(d => !allOutputs.has(d)).sort().map(stripLibref);
+  const finalOutputs = [...allOutputs].filter(d => !allInputs.has(d)).sort().map(stripLibref);
 
   // Step type breakdown for the composition line (point 4)
   const compositionCounts = planData.block_plans.reduce(
