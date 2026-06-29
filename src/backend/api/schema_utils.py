@@ -498,6 +498,10 @@ async def build_job_schema(job: "Job", db: AsyncSession) -> "list[TableSchema]":
         else:
             t.schema_status = "not_run"
             t.ddl_source = "source_estimated"
+            for col in t.columns:  # SAS: src/backend/api/schema_utils.py:499
+                col.is_pk = col.name.lower() in pks
+                col.is_fk = col.name.lower() in fks
+                col.fk_ref = fks.get(col.name.lower())
             ddl_columns = [{"name": c.name, "semantic_type": c.semantic_type} for c in t.columns]
             t.ddl = generate_create_table(t.dataset_name, t.target_schema, ddl_columns)
 
