@@ -94,7 +94,7 @@ export function schemaResponseToCanvas(schema: JobSchemaResponse): CanvasData {
       sourceHandle: `col:${fromColumn}:right`,
       targetHandle: `col:${toColumn}:left`,
       data: {
-        description: rel.relationship_type,
+        description: rel.key_column,
         fromColumn,
         toColumn,
         relationType: "relation",
@@ -126,7 +126,7 @@ export function schemaResponseToCanvas(schema: JobSchemaResponse): CanvasData {
         sourceHandle: `col:${col.name}:right`,
         targetHandle: `col:${targetCol}:left`,
         data: {
-          description: "fk",
+          description: col.name,
           fromColumn: col.name,
           toColumn: targetCol,
           relationType: "fk",
