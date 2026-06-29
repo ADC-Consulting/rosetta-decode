@@ -330,6 +330,10 @@ export default function JobDetailPage(): React.ReactElement {
                 restoreKey={reportRestoreKey}
                 isAccepted={isAccepted}
                 acceptedAt={job?.accepted_at ?? null}
+                onSwitchToEtlTab={() => {
+                  setActiveTab("etl");
+                  setSearchParams({ tab: "etl" });
+                }}
               />
             </TabsContent>
 

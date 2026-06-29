@@ -193,14 +193,17 @@ function StatCard({
     <button
       type="button"
       aria-pressed={isActive}
-      onClick={() => onFilterChange(isActive ? null : filterKey)}
+      onClick={() => !isZero && onFilterChange(isActive ? null : filterKey)}
+      disabled={isZero}
       className={[
-        "flex flex-col items-center justify-center gap-0.5 rounded-lg border p-3 min-w-[80px]",
-        "cursor-pointer select-none transition-all",
+        "relative flex flex-col items-center justify-center gap-0.5 rounded-lg border p-3 min-w-[80px]",
+        "select-none transition-all",
         resolvedColorClasses,
-        isActive
-          ? "ring-2 ring-offset-1 ring-current shadow-sm"
-          : "hover:opacity-80",
+        isZero
+          ? "cursor-default opacity-60"
+          : isActive
+            ? "cursor-pointer ring-2 ring-offset-1 ring-current shadow-sm"
+            : "cursor-pointer hover:shadow-md hover:ring-1 hover:ring-border",
       ].join(" ")}
     >
       <span className="text-2xl font-bold tabular-nums leading-none">
@@ -209,6 +212,13 @@ function StatCard({
       <span className={`text-xs font-medium mt-0.5 leading-tight text-center ${isZero ? "text-muted-foreground" : ""}`}>
         {label}
       </span>
+      {!isZero && (
+        <ChevronDown
+          size={12}
+          className="absolute bottom-1.5 right-1.5 text-muted-foreground"
+          aria-hidden
+        />
+      )}
     </button>
   );
 }
@@ -277,6 +287,8 @@ function AttentionCards({
   manualTodo,
   onShowAll,
   onViewBlocks,
+  onViewEtlTab,
+  isAccepted,
 }: {
   queue: TrustReportBlock[];
   blockPlanMap: Record<string, BlockPlan>;
@@ -284,6 +296,8 @@ function AttentionCards({
   manualTodo: number;
   onShowAll: () => void;
   onViewBlocks: () => void;
+  onViewEtlTab?: () => void;
+  isAccepted: boolean;
 }): React.ReactElement {
   const critOrderMap: Record<string, number> = Object.fromEntries(
     CRIT_ORDER.map((k, i) => [k, i])
@@ -322,9 +336,20 @@ function AttentionCards({
       {manualTodo > 0 && (
         <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
           <AlertTriangle size={14} className="text-amber-600 shrink-0 mt-0.5" />
-          <p className="text-xs text-amber-700">
-            Manual steps require code edits in the ETL tab before this pipeline will run.
-          </p>
+          <div className="flex flex-1 items-center justify-between gap-2 flex-wrap">
+            <p className="text-xs text-amber-700">
+              Manual steps require code edits in the ETL tab before this pipeline will run.
+            </p>
+            {onViewEtlTab && (
+              <button
+                type="button"
+                onClick={onViewEtlTab}
+                className="text-xs underline font-medium text-amber-700 hover:text-amber-900 shrink-0"
+              >
+                Go to ETL tab →
+              </button>
+            )}
+          </div>
         </div>
       )}
       {top5.map(block => {
@@ -343,13 +368,25 @@ function AttentionCards({
               </span>
             </div>
             <p className="text-xs text-muted-foreground leading-relaxed">{getRationale(block)}</p>
-            <button
-              type="button"
-              onClick={onViewBlocks}
-              className="text-xs text-primary hover:underline"
-            >
-              View in steps table →
-            </button>
+            {isAccepted ? (
+              onViewEtlTab && (
+                <button
+                  type="button"
+                  onClick={onViewEtlTab}
+                  className="text-xs text-primary hover:underline"
+                >
+                  View in ETL tab →
+                </button>
+              )
+            ) : (
+              <button
+                type="button"
+                onClick={onViewBlocks}
+                className="text-xs text-primary hover:underline"
+              >
+                View in steps table →
+              </button>
+            )}
             {runbookEntry && (
               <InlineRunbook entry={runbookEntry} />
             )}
@@ -518,6 +555,7 @@ export default function PlanTab({
   restoreKey,
   isAccepted = false,
   acceptedAt = null,
+  onSwitchToEtlTab,
 }: {
   jobId: string;
   isReviewable: boolean;
@@ -539,6 +577,7 @@ export default function PlanTab({
   restoreKey?: number;
   isAccepted?: boolean;
   acceptedAt?: string | null;
+  onSwitchToEtlTab?: () => void;
 }): React.ReactElement {
   const trustReportEnabled =
     !!jobId &&
@@ -1118,6 +1157,8 @@ export default function PlanTab({
                     setBlocksCollapsed(false);
                     blocksRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
                   }}
+                  onViewEtlTab={onSwitchToEtlTab}
+                  isAccepted={isAccepted}
                 />
               ) : (
                 <AttentionTable
