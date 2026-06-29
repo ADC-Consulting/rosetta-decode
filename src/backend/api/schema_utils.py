@@ -228,6 +228,100 @@ def map_semantic_to_spark_type(semantic_type: str) -> str:
     return _SEMANTIC_TO_SPARK.get(semantic_type, "StringType()")
 
 
+# SAS: schema_utils.py:derive_table_descriptions
+
+
+def derive_table_descriptions(
+    data_schema: dict[str, dict[str, Any]],
+    plan: dict[str, Any],
+    lineage: dict[str, Any] | None = None,
+) -> dict[str, str]:
+    """Return {path: description} derived from existing migration plan and lineage data.
+
+    Priority for output tables:
+    1. lineage.dataset_summaries — business-facing summaries written by the planner
+    2. lineage.pipeline_steps — description of the step that produces the table
+    3. block_plans rationale — fallback (migration-focused, less user-friendly)
+
+    Source tables use pyreadstat column_labels when available.
+    No LLM calls.
+
+    Args:
+        data_schema: Keyed by file path; each entry has columns/column_types/
+            column_labels/row_count.
+        plan: The migration_plan dict — has "block_plans" list, each with "rationale"
+            and "output_datasets" (libname-prefixed names like "outdir.foo" are handled).
+        lineage: Optional lineage dict — may contain "dataset_summaries" and
+            "pipeline_steps" with richer, business-facing descriptions.
+
+    Returns:
+        Dict keyed by path with a short description string.
+    """
+    import os as _os
+
+    lin: dict[str, Any] = lineage or {}
+
+    # Priority 1: lineage.dataset_summaries — bare name (strip libname prefix) → description
+    dataset_summaries: dict[str, str] = {}
+    for ds_key, summary in lin.get("dataset_summaries", {}).items():
+        bare = ds_key.split(".")[-1].lower()
+        if summary and bare not in dataset_summaries:
+            dataset_summaries[bare] = summary
+
+    # Priority 2: pipeline step description — for each table in step.outputs, use step.description
+    step_descriptions: dict[str, str] = {}
+    for step in lin.get("pipeline_steps", []):
+        step_desc: str = step.get("description", "")
+        if not step_desc:
+            continue
+        for ds in step.get("outputs", []):
+            bare = ds.split(".")[-1].lower()
+            if bare not in step_descriptions:
+                step_descriptions[bare] = step_desc
+
+    # Priority 3: block rationale — skip source-library datasets (rawdir.* etc.)
+    source_libnames: set[str] = {k.lower() for k in plan.get("libname_map", {})}
+    output_to_rationale: dict[str, str] = {}
+    for block in plan.get("block_plans", []):
+        rationale: str = block.get("rationale", "")
+        for ds in block.get("output_datasets", []):
+            parts = ds.lower().split(".", 1)
+            if len(parts) == 2 and parts[0] in source_libnames:
+                continue
+            bare = parts[-1]
+            if rationale and bare not in output_to_rationale:
+                output_to_rationale[bare] = rationale
+
+    result: dict[str, str] = {}
+    for path, schema_info in data_schema.items():
+        ds_name = _os.path.splitext(_os.path.basename(path))[0].lower()
+
+        # Output table: try each priority level
+        if ds_name in dataset_summaries:
+            result[path] = dataset_summaries[ds_name]
+            continue
+        if ds_name in step_descriptions:
+            result[path] = step_descriptions[ds_name]
+            continue
+        if ds_name in output_to_rationale:
+            result[path] = output_to_rationale[ds_name]
+            continue
+
+        # Source table: derive from pyreadstat column_labels
+        col_labels: dict[str, str] = schema_info.get("column_labels", {})
+        row_count: int | None = schema_info.get("row_count")
+        informative = [v for v in col_labels.values() if v and len(v) > 3][:3]
+
+        if informative:
+            suffix = f" ({row_count:,} rows)" if row_count else ""
+            result[path] = f"SAS source dataset. Columns include: {', '.join(informative)}{suffix}."
+        else:
+            row_str = f" — {row_count:,} rows" if row_count else ""
+            result[path] = f"SAS source dataset{row_str}."
+
+    return result
+
+
 # SAS: schema_utils.py:build_job_schema
 
 
@@ -383,9 +477,9 @@ async def build_job_schema(job: "Job", db: AsyncSession) -> "list[TableSchema]":
                     sas_type="",
                     python_type=col_info.get("python_type"),
                     sql_type=map_python_dtype_to_sql(col_info.get("python_type", "object")),
-                    is_pk=col_info["name"] in pks,
-                    is_fk=col_info["name"] in fks,
-                    fk_ref=fks.get(col_info["name"]),
+                    is_pk=col_info["name"].lower() in pks,
+                    is_fk=col_info["name"].lower() in fks,
+                    fk_ref=fks.get(col_info["name"].lower()),
                 )
                 for col_info in raw_target_cols
             ]
@@ -404,7 +498,25 @@ async def build_job_schema(job: "Job", db: AsyncSession) -> "list[TableSchema]":
         else:
             t.schema_status = "not_run"
             t.ddl_source = "source_estimated"
+            for col in t.columns:  # SAS: src/backend/api/schema_utils.py:499
+                col.is_pk = col.name.lower() in pks
+                col.is_fk = col.name.lower() in fks
+                col.fk_ref = fks.get(col.name.lower())
             ddl_columns = [{"name": c.name, "semantic_type": c.semantic_type} for c in t.columns]
             t.ddl = generate_create_table(t.dataset_name, t.target_schema, ddl_columns)
+
+    # Stamp descriptions and regenerate DDL with COMMENT clause
+    descriptions = derive_table_descriptions(data_schema, plan, lineage=lineage_raw)
+    for t in tables:
+        t.description = descriptions.get(t.path, "")
+        if t.ddl:
+            ddl_cols = (
+                [{"name": c.name, "semantic_type": c.sql_type or "TEXT"} for c in t.target_columns]
+                if t.target_columns
+                else [{"name": c.name, "semantic_type": c.semantic_type} for c in t.columns]
+            )
+            t.ddl = generate_create_table(
+                t.dataset_name, t.target_schema, ddl_cols, description=t.description
+            )
 
     return tables

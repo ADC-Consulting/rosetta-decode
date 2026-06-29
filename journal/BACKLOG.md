@@ -518,12 +518,41 @@
 - [x] feat(etl-tab): Target Blocks redesign — compact graph nodes with segmented status bar; new `FileBlockListPanel` side panel with urgency-sorted blocks, rationale as primary label, `[SAS]` chip for traceability
 - [x] docs: updated PR #106 description to cover all work on branch (F67–F73, ETL interaction fixes, Target Blocks redesign, Data/Plan tab fixes)
 
-**Data Storage tab polish (5 gaps, assessed 2026-06-24)**
-- [ ] fitView on Data flow and ERD load — rightmost nodes currently cut off on initial render
-- [ ] Data flow node labels truncated ("Ingest source da…", "Clean and valida…") — widen nodes or wrap text
-- [ ] Data flow nodes non-interactive — no click handler; could link to ETL tab or show tooltip
-- [ ] Sidebar table status dots all gray — should reflect run status for MIGRATION OUTPUT tables (not run / run / error)
-- [ ] "Not run" plain text in output table header — should use a coloured badge (consistent with rest of app)
+**F78 — Data Storage tab polish (`docs/plans/latest/F78-data-tab-polish.md`) — complete**
+- [x] F78 S-A: fitView on DataFlowDiagram initial render → `DataFlowDiagram.tsx`
+- [x] F78 S-B: step node label truncation fix + hover tooltip → `DataFlowDiagram.tsx`
+- [x] F78 S-C: fitView on DataModelERD (SchemaCanvas) initial render → `SchemaCanvas.tsx`
+- [x] F78 S-D: sidebar status dots distinguish migrated vs not-run → `DataStorageTab.tsx`
+- [x] F78 S-E: replace "Not run" plain text with coloured badge → `DataStorageTab.tsx`
+- [x] F78 S-F: `make test` exits 0
+
+**F79 — Data table descriptions (`docs/plans/latest/F79-table-descriptions.md`) — complete**
+- [x] F79 S-A: `derive_table_descriptions()` in schema_utils.py
+- [x] F79 S-B: wire description into `TableSchema` + `build_job_schema()`
+- [x] F79 S-C: DDL `COMMENT` clause in `generate_create_table()`
+- [x] F79 S-D: pass description to DDL generator in `build_job_schema()`
+- [x] F79 S-E: unit tests
+- [x] F79 S-F: frontend — TS type + sidebar subtitle + header subtitle
+- [x] F79 S-G: `make test` exits 0
+
+**Post-F79 fixes (2026-06-25, feat/F67-etl-source-target-toggle)**
+
+- [x] fix(F79): hide "Data model" and "Data flow" toggle buttons for source tables (`libname !== null`) → `DataStorageTab.tsx`
+- [x] fix(backend): `_normalise_pipeline_step_names._resolve()` detect file extensions vs SAS `libname.table` — fixes "csv"/"xlsx" node labels → `src/backend/api/routes/jobs.py`
+- [x] refactor(DataFlowDiagram): add `outputTableNames: string[]` prop; remove step/source nodes; show all ETL-produced tables with intermediate (amber) vs output (green) visual tiers → `DataFlowDiagram.tsx`, `DataStorageTab.tsx`
+**F80 — Data Storage tab Source / Target sidebar toggle → see `docs/plans/latest/F80-intermediate-tables-as-artifacts.md` — complete**
+- [x] F80 S-A: Source / Target toggle + sidebar restructure (label changed "Migration" → "Target" per ETL tab convention) → `DataStorageTab.tsx`
+- [x] F80 S-B: DataFlow node click auto-switches to Target view; intermediate (amber) node clicks silently ignored → `DataStorageTab.tsx`
+- [x] F80 S-C: `make test` exits 0
+
+**Post-F80 (2026-06-29)**
+- [x] feat(DataModelERD): always-visible status bar — output table count + inferred relationship count + legend copy → `DataModelERD.tsx`
+- [x] feat(SchemaCanvas): PK/FK SVG icon prefix on column rows + bordered PK/FK badges (yellow/blue) → `SchemaCanvasNodesLayer.tsx`
+- [x] fix(schema_utils): case-insensitive PK/FK match — `.lower()` on column name at all three comparison sites → `src/backend/api/schema_utils.py`
+- [x] test(reconciliation): 6 new pharma sandbox regression tests — RETAIN+BY accumulator, NODUPKEY, PROC TRANSPOSE, PROC SQL HAVING, MERGE IN=, LENGTH truncation
+- [x] feat(seed): `seed_finrep_job.py` — FINREP demo seed (5-step regulatory exposure pipeline, dec0de00-…-002)
+- [x] feat(seed): `seed_kyc_job.py` — KYC/AML demo seed (6-step client screening pipeline, dec0de00-…-003)
+- [x] feat(seed): `seed_all.py` — orchestrates all three demo seeds in sequence
 
 - [ ] #21: Consolidate lineage into a single primary view — `backlog` label
 - [ ] #20: Rollback / versioning based on lineage — `backlog` label

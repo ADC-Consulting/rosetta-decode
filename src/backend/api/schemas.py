@@ -284,6 +284,7 @@ class TableSchema(BaseModel):
     target_columns: list[ColumnSchema] = []  # from execution output; empty = not run
     schema_status: str = "not_run"  # "migrated" | "changed" | "not_run"
     ddl_source: str = "source_estimated"  # "target" | "source_estimated"
+    description: str = ""  # block rationale or column-label summary
 
 
 class RelationshipSchema(BaseModel):

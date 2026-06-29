@@ -72,11 +72,23 @@ export function SchemaCanvas({
   useEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport) return;
-    const vw = viewport.clientWidth;
-    const vh = viewport.clientHeight;
-    if (vw === 0 || vh === 0) return;
-    const fz = Math.min(vw / stageSize.width, vh / stageSize.height, 1) * 0.9;
-    setZoom(Math.max(fz, MIN_ZOOM));
+
+    function fitToView(): boolean {
+      const vw = viewport!.clientWidth;
+      const vh = viewport!.clientHeight;
+      if (vw === 0 || vh === 0) return false;
+      const fz = Math.min(vw / stageSize.width, vh / stageSize.height, 1) * 0.9;
+      setZoom(Math.max(fz, MIN_ZOOM));
+      return true;
+    }
+
+    if (!fitToView()) {
+      const ro = new ResizeObserver(() => {
+        if (fitToView()) ro.disconnect();
+      });
+      ro.observe(viewport);
+      return () => ro.disconnect();
+    }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {

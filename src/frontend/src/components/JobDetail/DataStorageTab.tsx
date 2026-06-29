@@ -1,6 +1,7 @@
 import { getJobSchema, patchJobSchema } from "@/api/jobs";
 import type { TableSchema } from "@/api/types";
 import MonacoEditor from "@/components/MonacoEditor";
+import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -111,6 +112,14 @@ function sortedGroupKeys(groups: GroupedTables): (string | null)[] {
   return hasOther ? [...named, null] : named;
 }
 
+// ── Schema status badge map ───────────────────────────────────────────────────
+
+const SCHEMA_STATUS_BADGE: Record<string, { label: string; className: string }> = {
+  migrated: { label: "Migrated", className: "bg-green-100 text-green-700 border-green-200" },
+  changed:  { label: "Changed",  className: "bg-amber-100 text-amber-700 border-amber-200" },
+  not_run:  { label: "Not run",  className: "bg-muted text-muted-foreground" },
+};
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 type ProjectView = "data-model" | "data-flow";
@@ -120,6 +129,9 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
   const [projectView, setProjectView] = useState<ProjectView | null>(null);
   const [ddlOpen, setDdlOpen] = useState(false);
   const [editingLibname, setEditingLibname] = useState<string | null>(null);
+  const [sidebarView, setSidebarView] = useState<"source" | "target">("source");
+  const [sourceSelectedPath, setSourceSelectedPath] = useState<string | null>(null);
+  const [targetSelectedPath, setTargetSelectedPath] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const { resolvedTheme } = useTheme();
   const monacoTheme = resolvedTheme === "dark" ? "sas-dark" : "sas-light";
@@ -132,8 +144,10 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
 
   const selectedPath = useMemo(() => {
     if (manualSelectedPath) return manualSelectedPath;
-    return schemaData?.tables[0]?.path ?? null;
-  }, [manualSelectedPath, schemaData]);
+    if (sidebarView === "source")
+      return schemaData?.tables.find((t) => t.libname !== null)?.path ?? null;
+    return schemaData?.tables.find((t) => t.libname === null)?.path ?? null;
+  }, [manualSelectedPath, schemaData, sidebarView]);
 
   useEffect(() => {
     const table = schemaData?.tables.find((t) => t.path === selectedPath);
@@ -145,6 +159,11 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
     if (!newName || newName === libname) return;
     await patchJobSchema(jobId, { libname_overrides: { [libname]: newName } });
     queryClient.invalidateQueries({ queryKey: ["job", jobId, "schema"] });
+  };
+
+  const handleSidebarViewChange = (v: "source" | "target") => {
+    setSidebarView(v);
+    setSelectedPath(v === "source" ? sourceSelectedPath : targetSelectedPath);
   };
 
   // ── Guard states ─────────────────────────────────────────────────────────────
@@ -185,14 +204,34 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
         className="w-72 shrink-0 border-r border-border overflow-y-auto flex flex-col"
         aria-label="Table list"
       >
-        {/* Description blurb */}
-        <p className="text-xs text-muted-foreground px-3 pt-3 pb-1 leading-relaxed">
-          Source SAS datasets and proposed output tables for this migration. Select a table to
-          inspect its schema.
-        </p>
+        {/* Toggle strip */}
+        <div className="px-3 pt-3 pb-2 shrink-0 border-b border-border">
+          <div className="flex items-center gap-1">
+            {(["source", "target"] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => handleSidebarViewChange(v)}
+                className={[
+                  "px-2 py-0.5 rounded text-[11px] font-medium border transition-colors",
+                  sidebarView === v
+                    ? "bg-foreground text-background border-foreground"
+                    : "bg-transparent text-muted-foreground border-border hover:border-foreground/40",
+                ].join(" ")}
+              >
+                {v.charAt(0).toUpperCase() + v.slice(1)}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground/60 mt-1.5">
+            {sidebarView === "source"
+              ? "SAS input datasets · grouped by libname"
+              : "Proposed output tables from migration"}
+          </p>
+        </div>
 
-        {/* Section 1: Source data */}
-        {namedKeys.length > 0 && (
+        {/* Source view */}
+        {sidebarView === "source" && namedKeys.length > 0 && (
           <div>
             <div className="px-3 py-1.5 bg-muted/50 border-b border-border">
               <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
@@ -207,14 +246,14 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                 <div key={libname} className="border-b border-border last:border-0">
                   {/* Sub-group header */}
                   <div className="flex items-center justify-between pl-5 pr-3 py-1.5 bg-muted/20">
-                    <div>
+                    <span className="flex items-center">
                       <span className="text-xs font-semibold text-foreground tracking-wide">
-                        {tables[0]?.target_schema ?? libname}
+                        {libname}
                       </span>
-                      <span className="block text-xs text-muted-foreground/60 font-normal">
-                        SAS: {libname}
+                      <span className="text-xs text-muted-foreground/50 font-normal ml-1">
+                        · {tables.length} {tables.length === 1 ? "table" : "tables"}
                       </span>
-                    </div>
+                    </span>
                     <button
                       type="button"
                       onClick={() => setEditingLibname(editingLibname === libname ? null : libname)}
@@ -243,7 +282,7 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                     <button
                       key={table.path}
                       type="button"
-                      onClick={() => setSelectedPath(table.path)}
+                      onClick={() => { setSelectedPath(table.path); setSourceSelectedPath(table.path); }}
                       aria-pressed={selectedPath === table.path}
                       className={`w-full flex items-center gap-2 pl-7 pr-3 py-2 text-left transition-colors hover:bg-muted/50 ${
                         selectedPath === table.path
@@ -259,6 +298,11 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                             {table.path.split("/").at(-1) ?? table.path}
                           </span>
                         )}
+                        {table.description && (
+                          <span className="block text-xs text-muted-foreground/70 font-sans font-normal truncate">
+                            {table.description}
+                          </span>
+                        )}
                       </span>
                       <span className="text-xs text-muted-foreground shrink-0">
                         {table.columns.length > 0 ? `${table.columns.length} cols` : "—"}
@@ -271,49 +315,78 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
           </div>
         )}
 
-        {/* Section 2: Migration output */}
-        {outputTables.length > 0 && (
+        {/* Migration view */}
+        {sidebarView === "target" && (
           <div>
             <div className="px-3 py-1.5 bg-muted/50 border-b border-border">
               <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                Migration output
+                Output
               </span>
             </div>
-            {(() => {
-              const nameCount = new Map<string, number>();
-              outputTables.forEach((t) => nameCount.set(t.dataset_name, (nameCount.get(t.dataset_name) ?? 0) + 1));
-              return outputTables.map((table) => (
-                <button
-                  key={table.path}
-                  type="button"
-                  onClick={() => setSelectedPath(table.path)}
-                  aria-pressed={selectedPath === table.path}
-                  className={`w-full flex items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-muted/50 ${
-                    selectedPath === table.path
-                      ? "bg-primary/10 border-l-2 border-primary"
-                      : "border-l-2 border-transparent"
-                  }`}
+            {outputTables.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
+                <svg
+                  width={28}
+                  height={28}
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={1.5}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="text-muted-foreground/30"
                 >
-                  <span className={`w-2 h-2 rounded-full shrink-0 ${statusDotClass(table.schema_status)}`} aria-label={table.schema_status} />
-                  <span className="font-mono text-xs truncate text-foreground flex-1 text-left">
-                    {table.dataset_name}
-                    {(nameCount.get(table.dataset_name) ?? 0) > 1 && (
-                      <span className="block text-xs text-muted-foreground/60 font-sans font-normal truncate">
-                        {table.path.split("/").at(-1) ?? table.path}
-                      </span>
-                    )}
-                  </span>
-                  <span className="text-xs text-muted-foreground shrink-0">
-                    {(() => {
-                      const count = table.target_columns.length > 0
-                        ? table.target_columns.length
-                        : table.columns.length;
-                      return count > 0 ? `${count} cols` : "—";
-                    })()}
-                  </span>
-                </button>
-              ));
-            })()}
+                  <rect x={3} y={3} width={18} height={18} rx={2} />
+                  <line x1={3} y1={9} x2={21} y2={9} />
+                  <line x1={3} y1={15} x2={21} y2={15} />
+                  <line x1={9} y1={3} x2={9} y2={21} />
+                  <line x1={15} y1={3} x2={15} y2={21} />
+                </svg>
+                <p className="text-xs text-muted-foreground">No output tables yet.</p>
+                <p className="text-xs text-muted-foreground/60">Run a migration to generate output.</p>
+              </div>
+            ) : (
+              (() => {
+                const nameCount = new Map<string, number>();
+                outputTables.forEach((t) => nameCount.set(t.dataset_name, (nameCount.get(t.dataset_name) ?? 0) + 1));
+                return outputTables.map((table) => (
+                  <button
+                    key={table.path}
+                    type="button"
+                    onClick={() => { setSelectedPath(table.path); setTargetSelectedPath(table.path); }}
+                    aria-pressed={selectedPath === table.path}
+                    className={`w-full flex items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-muted/50 ${
+                      selectedPath === table.path
+                        ? "bg-primary/10 border-l-2 border-primary"
+                        : "border-l-2 border-transparent"
+                    }`}
+                  >
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${statusDotClass(table.schema_status)}`} aria-label={table.schema_status} />
+                    <span className="font-mono text-xs truncate text-foreground flex-1 text-left">
+                      {table.dataset_name}
+                      {(nameCount.get(table.dataset_name) ?? 0) > 1 && (
+                        <span className="block text-xs text-muted-foreground/60 font-sans font-normal truncate">
+                          {table.path.split("/").at(-1) ?? table.path}
+                        </span>
+                      )}
+                      {table.description && (
+                        <span className="block text-xs text-muted-foreground/70 font-sans font-normal truncate">
+                          {table.description}
+                        </span>
+                      )}
+                    </span>
+                    <span className="text-xs text-muted-foreground shrink-0">
+                      {(() => {
+                        const count = table.target_columns.length > 0
+                          ? table.target_columns.length
+                          : table.columns.length;
+                        return count > 0 ? `${count} cols` : "—";
+                      })()}
+                    </span>
+                  </button>
+                ));
+              })()
+            )}
           </div>
         )}
 
@@ -376,7 +449,15 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                   selectedTable={selectedTable?.dataset_name ?? null}
                   onTableSelect={(name) => {
                     const match = schemaData.tables.find((t) => t.dataset_name === name);
-                    if (match) setSelectedPath(match.path);
+                    if (!match) return;
+                    if (match.libname === null) {
+                      setSidebarView("target");
+                      setTargetSelectedPath(match.path);
+                    } else {
+                      setSidebarView("source");
+                      setSourceSelectedPath(match.path);
+                    }
+                    setSelectedPath(match.path);
                   }}
                 />
               ) : (
@@ -385,8 +466,12 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                   selectedTable={selectedTable?.dataset_name ?? null}
                   onTableSelect={(name) => {
                     const match = schemaData.tables.find((t) => t.dataset_name === name);
-                    if (match) setSelectedPath(match.path);
+                    if (!match) return; // intermediate node — no sidebar entry, silently ignore
+                    setSidebarView("target");
+                    setTargetSelectedPath(match.path);
+                    setSelectedPath(match.path);
                   }}
+                  outputTableNames={outputTables.map((t) => t.dataset_name)}
                 />
               )}
             </div>
@@ -406,54 +491,53 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                     <span className="font-mono text-sm font-semibold">
                       {selectedTable.dataset_name}
                     </span>
-                    {selectedTable.libname && (
+                    {selectedTable.description && (
+                      <p className="text-xs text-muted-foreground mt-0.5 max-w-sm">
+                        {selectedTable.description}
+                      </p>
+                    )}
+                    {selectedTable.libname && selectedTable.libname !== selectedTable.target_schema && (
                       <span className="text-xs text-muted-foreground">
                         {selectedTable.libname} &rarr; {selectedTable.target_schema}
                       </span>
                     )}
-                    {selectedTable.row_count != null && (
+                    {selectedTable.row_count != null && !selectedTable.description && (
                       <span className="text-xs text-muted-foreground">
                         {selectedTable.row_count.toLocaleString()} rows
                       </span>
                     )}
                     {selectedTable.libname === null ? (
-                      <span
-                        className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium ${
-                          selectedTable.schema_status === "migrated"
-                            ? "bg-green-100 text-green-800"
-                            : selectedTable.schema_status === "changed"
-                              ? "bg-amber-100 text-amber-800"
-                              : "bg-muted text-muted-foreground"
-                        }`}
-                      >
-                        {selectedTable.schema_status === "migrated"
-                          ? "Migrated"
-                          : selectedTable.schema_status === "changed"
-                            ? "Changed"
-                            : "Not run"}
-                      </span>
+                      (() => {
+                        const b = SCHEMA_STATUS_BADGE[selectedTable.schema_status]
+                          ?? SCHEMA_STATUS_BADGE.not_run;
+                        return (
+                          <Badge variant="outline" className={b.className}>{b.label}</Badge>
+                        );
+                      })()
                     ) : (
                       <span className="text-xs text-muted-foreground">Source SAS data · read only</span>
                     )}
                   </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => setProjectView("data-model")}
-                      className="px-2 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                      title="View all tables as entity diagram"
-                    >
-                      Data model
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setProjectView("data-flow")}
-                      className="px-2 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                      title="View full pipeline data flow"
-                    >
-                      Data flow
-                    </button>
-                  </div>
+                  {selectedTable.libname === null && (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setProjectView("data-model")}
+                        className="px-2 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                        title="View all tables as entity diagram"
+                      >
+                        Data model
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setProjectView("data-flow")}
+                        className="px-2 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                        title="View full pipeline data flow"
+                      >
+                        Data flow
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Column table or no-columns notice */}
@@ -563,7 +647,7 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                               </td>
                               <td className="px-3 py-2 font-mono text-xs whitespace-nowrap">
                                 {row.sql_type ? (
-                                  <span className="text-foreground">{row.sql_type}</span>
+                                  <span className="font-mono text-xs text-muted-foreground bg-muted/60 rounded px-1.5 py-0.5">{row.sql_type}</span>
                                 ) : (
                                   <span className="text-muted-foreground">—</span>
                                 )}
@@ -609,7 +693,7 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                                 </td>
                                 <td className="px-3 py-2 whitespace-nowrap">
                                   {pgType ? (
-                                    <span className="font-mono text-xs text-muted-foreground inline-flex items-center gap-1">
+                                    <span className="font-mono text-xs text-muted-foreground bg-muted/60 rounded px-1.5 py-0.5 inline-flex items-center gap-1">
                                       {pgType}
                                       {isOverridden && (
                                         <Pencil className="w-3 h-3" aria-label="Overridden type" />
@@ -634,8 +718,8 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                   )
                 )}
 
-                {/* DDL collapsible */}
-                <div className="border-t border-border">
+                {/* DDL collapsible — output tables only */}
+                {selectedTable.libname === null && <div className="border-t border-border">
                   <Collapsible open={ddlOpen} onOpenChange={setDdlOpen}>
                     <div className="flex items-center justify-between pr-4">
                       <CollapsibleTrigger
@@ -677,7 +761,7 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                       )}
                     </CollapsibleContent>
                   </Collapsible>
-                </div>
+                </div>}
               </>
             )}
           </div>

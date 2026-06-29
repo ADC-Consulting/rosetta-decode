@@ -11,16 +11,11 @@ interface DataModelERDProps {
   onTableSelect: (datasetName: string) => void;
 }
 
-interface DataModelERDCanvasProps extends DataModelERDProps {
-  hasSourceTables: boolean;
-}
-
 function DataModelERDCanvas({
   schema,
   selectedTable,
   onTableSelect,
-  hasSourceTables,
-}: DataModelERDCanvasProps) {
+}: DataModelERDProps) {
   const canvasData = useMemo(() => schemaResponseToCanvas(schema), [schema]);
   const [nodes, setNodes] = useState<GraphNode<TableNodeData>[]>(canvasData.nodes);
   const [localSelectedNode, setLocalSelectedNode] = useState<string | null>(null);
@@ -38,15 +33,19 @@ function DataModelERDCanvas({
 
   return (
     <div className="w-full h-full min-h-0 flex flex-col">
-      {hasSourceTables && (
-        <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-border text-xs text-muted-foreground bg-muted/10">
-          <span className="font-medium text-foreground">
-            {nodes.length} output {nodes.length === 1 ? "table" : "tables"}
-          </span>
-          <span className="text-muted-foreground/40">·</span>
-          <span>Source SAS tables are not shown here — see the left sidebar</span>
-        </div>
-      )}
+      <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-border text-xs text-muted-foreground bg-muted/10">
+        <span className="font-medium text-foreground">
+          {nodes.length} output {nodes.length === 1 ? "table" : "tables"}
+        </span>
+        {canvasData.edges.length > 0 && (
+          <>
+            <span className="text-muted-foreground/40">·</span>
+            <span>
+              {canvasData.edges.length} inferred {canvasData.edges.length === 1 ? "relationship" : "relationships"} — lines connect tables that share a column name
+            </span>
+          </>
+        )}
+      </div>
       <div className="flex-1 min-h-0 relative">
         <SchemaCanvas
           nodes={nodes}
@@ -66,7 +65,6 @@ function DataModelERDCanvas({
 
 export default function DataModelERD({ schema, selectedTable, onTableSelect }: DataModelERDProps) {
   const outputTables = schema.tables.filter((t) => t.libname === null);
-  const hasSourceTables = schema.tables.some((t) => t.libname !== null);
 
   if (outputTables.length === 0) {
     const message =
@@ -89,7 +87,6 @@ export default function DataModelERD({ schema, selectedTable, onTableSelect }: D
       schema={filteredSchema}
       selectedTable={selectedTable}
       onTableSelect={onTableSelect}
-      hasSourceTables={hasSourceTables}
     />
   );
 }

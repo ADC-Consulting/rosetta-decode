@@ -445,16 +445,25 @@ def _normalise_pipeline_step_names(
     equivalents used as data_schema keys (e.g. 'dm_raw', 'dm') so Data Flow node
     labels match sidebar table names.
     """
+    _file_exts = {"csv", "xlsx", "xpt", "sas7bdat", "tsv", "json", "parquet", "sas7bcat"}
 
     def _resolve(ds: str) -> str:
         ds_lower = ds.lower()
-        ds_stem = ds_lower.split(".")[-1]
+        is_file_ref = False
+        if "." in ds_lower:
+            left, right = ds_lower.rsplit(".", 1)
+            is_file_ref = right in _file_exts
+            # file extension → stem is the part before the dot
+            # SAS libname.table → stem is the part after the dot
+            ds_stem = left if is_file_ref else right
+        else:
+            ds_stem = ds_lower
         for path in data_schema:
             filename_stem = path.rsplit("/", 1)[-1].rsplit(".", 1)[0].lower()
             if ds_stem == filename_stem:
                 return filename_stem
-            if "." in ds_lower:
-                lib, table = ds_lower.split(".", 1)
+            if "." in ds_lower and not is_file_ref:
+                lib, table = ds_lower.rsplit(".", 1)
                 folder = libname_map.get(lib, "")
                 if folder and path.startswith(folder) and table == filename_stem:
                     return filename_stem
