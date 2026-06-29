@@ -540,10 +540,19 @@
 - [x] fix(F79): hide "Data model" and "Data flow" toggle buttons for source tables (`libname !== null`) → `DataStorageTab.tsx`
 - [x] fix(backend): `_normalise_pipeline_step_names._resolve()` detect file extensions vs SAS `libname.table` — fixes "csv"/"xlsx" node labels → `src/backend/api/routes/jobs.py`
 - [x] refactor(DataFlowDiagram): add `outputTableNames: string[]` prop; remove step/source nodes; show all ETL-produced tables with intermediate (amber) vs output (green) visual tiers → `DataFlowDiagram.tsx`, `DataStorageTab.tsx`
-**F80 — Data Storage tab Source / Migration sidebar toggle → see `docs/plans/latest/F80-intermediate-tables-as-artifacts.md`**
-- [ ] F80 S-A: Source / Migration toggle + sidebar restructure → `DataStorageTab.tsx`
-- [ ] F80 S-B: DataFlow node click auto-switches to Migration view → `DataStorageTab.tsx`
-- [ ] F80 S-C: `make test` exits 0
+**F80 — Data Storage tab Source / Target sidebar toggle → see `docs/plans/latest/F80-intermediate-tables-as-artifacts.md` — complete**
+- [x] F80 S-A: Source / Target toggle + sidebar restructure (label changed "Migration" → "Target" per ETL tab convention) → `DataStorageTab.tsx`
+- [x] F80 S-B: DataFlow node click auto-switches to Target view; intermediate (amber) node clicks silently ignored → `DataStorageTab.tsx`
+- [x] F80 S-C: `make test` exits 0
+
+**Post-F80 (2026-06-29)**
+- [x] feat(DataModelERD): always-visible status bar — output table count + inferred relationship count + legend copy → `DataModelERD.tsx`
+- [x] feat(SchemaCanvas): PK/FK SVG icon prefix on column rows + bordered PK/FK badges (yellow/blue) → `SchemaCanvasNodesLayer.tsx`
+- [x] fix(schema_utils): case-insensitive PK/FK match — `.lower()` on column name at all three comparison sites → `src/backend/api/schema_utils.py`
+- [x] test(reconciliation): 6 new pharma sandbox regression tests — RETAIN+BY accumulator, NODUPKEY, PROC TRANSPOSE, PROC SQL HAVING, MERGE IN=, LENGTH truncation
+- [x] feat(seed): `seed_finrep_job.py` — FINREP demo seed (5-step regulatory exposure pipeline, dec0de00-…-002)
+- [x] feat(seed): `seed_kyc_job.py` — KYC/AML demo seed (6-step client screening pipeline, dec0de00-…-003)
+- [x] feat(seed): `seed_all.py` — orchestrates all three demo seeds in sequence
 
 - [ ] #21: Consolidate lineage into a single primary view — `backlog` label
 - [ ] #20: Rollback / versioning based on lineage — `backlog` label

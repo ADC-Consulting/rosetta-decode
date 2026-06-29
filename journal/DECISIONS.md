@@ -6,6 +6,15 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-06-29 — DataStorage Source/Target toggle + PK/FK visualisation
+
+- **DataStorageTab toggle label is "Target" not "Migration":** Aligns terminology with the ETL tab (Source / Target). "Migration" was the original plan label but was renamed during implementation for consistency. · revisit never
+- **DataFlowDiagram intermediate node clicks produce no sidebar navigation:** Intermediate (amber) nodes have no schema entry in the sidebar — `onTableSelect` returns early when no matching table is found. Silently ignored is correct UX here (no toast, no navigation). · revisit never
+- **DataModelERD status bar is always visible (not conditional on edges):** Even with zero inferred relationships, the table count provides value and the absence of a relationship line is itself meaningful — users should know the ERD is intentional, not empty. · revisit never
+- **PK/FK matching in `schema_utils.py` uses `.lower()` on column name:** `infer_pk_fk()` returns lowercased column sets; SAS column names are uppercase. The comparison was always `False` for real SAS data. Fixed at all three lookup sites (`is_pk`, `is_fk`, `fk_ref`). · revisit never
+
+---
+
 ## 2026-06-25 — DataFlowDiagram two-tier ETL view
 
 - **Data flow diagram shows all ETL-produced tables with two visual tiers:** Source nodes and step nodes removed — the diagram is a pure data lineage view. All datasets emitted by any pipeline step are nodes; `outputTableNames` prop (fed from DataStorageTab's registered schema tables where `libname === null`) drives classification: "output" (green) vs "intermediate" (amber). `pureInputs`/`pureOutputs` logic replaced by `producedByAnyStep` set. · revisit never

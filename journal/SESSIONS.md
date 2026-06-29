@@ -6,6 +6,49 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-29 — F80 DataStorage Source/Target toggle + PK/FK visual indicators + FINREP/KYC seed jobs
+
+**Duration:** ~3h | **Focus:** DataStorageTab polish, Data Model PK/FK, pharma sandbox test coverage, demo seed scripts
+
+### Done
+- **6 new reconciliation tests** for pharma sandbox SAS patterns: RETAIN+BY accumulator (`test_retain_by_accumulator.py`), PROC SORT NODUPKEY (`test_nodupkey_dedup.py`), PROC TRANSPOSE (`test_proc_transpose_wide_pivot.py`), PROC SQL HAVING (`test_proc_sql_having.py`), MERGE IN= flags (`test_merge_in_flags.py`), LENGTH truncation (`test_length_truncation.py`)
+- **F80 complete**: Source/Target toggle in DataStorageTab — view-aware `selectedPath` fallback, selection persists per view, context subtitle ("SAS input datasets · grouped by libname" / "Proposed output tables from migration"), target empty state icon, group count badges
+- **DataModelERD status bar**: always-visible strip showing output table count + inferred relationship count with legend copy ("lines connect tables that share a column name")
+- **SchemaCanvas PK/FK icons**: SVG key icon (amber) before PK columns, SVG link icon (blue) before FK columns; bordered PK/FK badges (yellow/blue)
+- **Backend fix**: `schema_utils.py` PK/FK match was case-sensitive — `"USUBJID" in ["usubjid"]` always `False`; fixed with `.lower()` on all three comparison sites
+- **Merged `feat/sas-sandbox-fixtures`**: FINREP (financial regulatory) and KYC/AML sandbox SAS/XPT data files now on branch
+- **seed_finrep_job.py + seed_kyc_job.py**: full demo seed scripts for "Regulatory Exposure Reporting (FINREP)" and "KYC / AML Client Screening" — 5- and 6-step pipelines with inline SAS source, migration plans, lineage, generated artefacts
+- **seed_all.py**: orchestrator that runs all three seed scripts in sequence
+
+### Decisions
+- Source/Target label used in DataStorageTab (not "Migration") — aligns with ETL tab terminology
+- DataFlowDiagram `onTableSelect` callback for intermediate (amber) nodes returns early silently — no sidebar entry exists for intermediates so navigation is suppressed
+- DataModelERD status bar always visible (not conditional on having relationships) — helps users understand what the view shows even for jobs with no inferred FKs
+
+### Open Questions
+- none
+
+### Next Session — Start Here
+1. Open PR for `feat/F79-table-descriptions` — run `/git-pr-summary` to draft the description (covers F79 + F80 + DataFlowDiagram two-tier + pharma tests + PK/FK fixes + FINREP/KYC seed jobs)
+2. After PR merge, pick next item from Phase 3 backlog
+
+### Files Touched
+- `tests/reconciliation/test_retain_by_accumulator.py` (new)
+- `tests/reconciliation/test_nodupkey_dedup.py` (new)
+- `tests/reconciliation/test_proc_transpose_wide_pivot.py` (new)
+- `tests/reconciliation/test_proc_sql_having.py` (new)
+- `tests/reconciliation/test_merge_in_flags.py` (new)
+- `tests/reconciliation/test_length_truncation.py` (new)
+- `src/frontend/src/components/JobDetail/DataStorageTab.tsx`
+- `src/frontend/src/components/JobDetail/DataModelERD.tsx`
+- `src/frontend/src/components/SchemaCanvas/SchemaCanvasNodesLayer.tsx`
+- `src/backend/api/schema_utils.py`
+- `scripts/seed_all.py` (new)
+- `scripts/seed_finrep_job.py` (new)
+- `scripts/seed_kyc_job.py` (new)
+
+---
+
 ## 2026-06-25 — DataFlowDiagram two-tier ETL view + source table UI polish
 
 **Duration:** ~1.5h | **Focus:** DataFlowDiagram refactor, backend normalisation fix, Data tab source table polish
