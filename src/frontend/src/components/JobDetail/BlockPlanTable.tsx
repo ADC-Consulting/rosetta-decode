@@ -589,7 +589,7 @@ export default function BlockPlanTable({
                 Criticality
               </th>
               <th className="px-3 py-2 font-medium text-muted-foreground text-xs w-20">
-                Confidence
+                Conf %
               </th>
               <th className="px-3 py-2 font-medium text-muted-foreground text-xs w-[120px] text-center">
                 Actions

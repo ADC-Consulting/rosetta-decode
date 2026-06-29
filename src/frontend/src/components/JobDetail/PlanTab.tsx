@@ -187,6 +187,10 @@ function StatCard({
 }): React.ReactElement | null {
   if (count === undefined) return null;
   const isActive = activeFilter === filterKey;
+  const isZero = count === 0;
+  const resolvedColorClasses = isZero
+    ? "text-muted-foreground bg-muted/30 border-muted"
+    : colorClasses;
   return (
     <button
       type="button"
@@ -195,7 +199,7 @@ function StatCard({
       className={[
         "flex flex-col items-center justify-center gap-0.5 rounded-lg border p-3 min-w-[80px]",
         "cursor-pointer select-none transition-all",
-        colorClasses,
+        resolvedColorClasses,
         isActive
           ? "ring-2 ring-offset-1 ring-current shadow-sm"
           : "hover:opacity-80",
@@ -204,7 +208,7 @@ function StatCard({
       <span className="text-2xl font-bold tabular-nums leading-none">
         {total !== undefined && total > 0 ? `${count} / ${total}` : count}
       </span>
-      <span className="text-xs font-medium mt-0.5 leading-tight text-center">
+      <span className={`text-xs font-medium mt-0.5 leading-tight text-center ${isZero ? "text-muted-foreground" : ""}`}>
         {label}
       </span>
     </button>
@@ -536,6 +540,7 @@ export default function PlanTab({
     : {};
 
   const isProposed = jobStatus === "proposed";
+  const [showFullDesc, setShowFullDesc] = useState(false);
   const [blocksCollapsed, setBlocksCollapsed] = useState(true);
   const [reportCollapsed, setReportCollapsed] = useState(() => doc == null);
   const [byFileCollapsed, setByFileCollapsed] = useState(true);
@@ -618,34 +623,59 @@ export default function PlanTab({
   const externalInputs = [...allInputs].filter(d => !allOutputs.has(d)).sort();
   const finalOutputs = [...allOutputs].filter(d => !allInputs.has(d)).sort();
 
-  function truncateList(items: string[], max = 4): string {
-    if (items.length <= max) return items.join(", ");
-    return `${items.slice(0, max).join(", ")} +${items.length - max} more`;
-  }
-
   return (
     <TooltipProvider>
       <div className="h-full min-h-0 overflow-y-auto space-y-4 pb-6 [scrollbar-gutter:stable]">
         {/* Pipeline description — above verdict strip */}
         {planData.summary && (
-          <p className="text-sm text-foreground leading-relaxed">
-            {planData.summary}
-          </p>
+          <div>
+            <p className={`text-sm text-foreground leading-relaxed ${!showFullDesc ? "line-clamp-3" : ""}`}>
+              {planData.summary}
+            </p>
+            {planData.summary.length > 200 && (
+              <button
+                type="button"
+                onClick={() => setShowFullDesc((v) => !v)}
+                className="text-xs text-muted-foreground underline cursor-pointer mt-0.5"
+              >
+                {showFullDesc ? "Show less" : "Show more"}
+              </button>
+            )}
+          </div>
         )}
 
         {/* Reads / Produces row */}
         {(externalInputs.length > 0 || finalOutputs.length > 0) && (
-          <p className="text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-y-1 gap-x-2">
             {externalInputs.length > 0 && (
-              <span><span className="font-medium text-foreground">Reads:</span> {truncateList(externalInputs)}</span>
-            )}
-            {externalInputs.length > 0 && finalOutputs.length > 0 && (
-              <span className="mx-2">·</span>
+              <div className="flex flex-wrap items-center gap-1">
+                <span className="text-xs text-muted-foreground shrink-0">Reads:</span>
+                {externalInputs.map((f) => (
+                  <span
+                    key={f}
+                    className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-mono
+                      bg-muted text-muted-foreground border border-border mr-1 mb-1"
+                  >
+                    {f}
+                  </span>
+                ))}
+              </div>
             )}
             {finalOutputs.length > 0 && (
-              <span><span className="font-medium text-foreground">Produces:</span> {truncateList(finalOutputs)}</span>
+              <div className="flex flex-wrap items-center gap-1">
+                <span className="text-xs text-muted-foreground shrink-0">Produces:</span>
+                {finalOutputs.map((f) => (
+                  <span
+                    key={f}
+                    className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-mono
+                      bg-muted text-muted-foreground border border-border mr-1 mb-1"
+                  >
+                    {f}
+                  </span>
+                ))}
+              </div>
             )}
-          </p>
+          </div>
         )}
 
         {/* Missing dependencies callout */}
@@ -676,28 +706,6 @@ export default function PlanTab({
             <p className="text-xs text-amber-600">Re-upload with these files included to improve translation quality.</p>
           </div>
         )}
-
-        {/* Sensitive data warning banner */}
-        {(() => {
-          const piiSignals = planData.sensitive_data_findings
-            ? [...new Set(planData.sensitive_data_findings.map(f => f.matched_signal))].sort()
-            : [];
-          const piiColumnCount = planData.sensitive_data_findings?.length ?? 0;
-          return piiSignals.length > 0 && (
-            <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 flex items-start gap-3">
-              <AlertTriangle size={14} className="text-red-600 shrink-0 mt-0.5" />
-              <div className="space-y-0.5">
-                <p className="text-sm font-medium text-red-800">
-                  Sensitive data detected ({piiColumnCount} column{piiColumnCount !== 1 ? "s" : ""})
-                </p>
-                <p className="text-xs text-red-700">
-                  Signals matched: {piiSignals.join(", ")}. Ensure data handling complies with applicable
-                  regulations before accepting.
-                </p>
-              </div>
-            </div>
-          );
-        })()}
 
         {/* Verdict strip — accepted state overrides the green/amber/red states */}
         {isAccepted ? (
@@ -747,6 +755,28 @@ export default function PlanTab({
             );
           })()
         )}
+
+        {/* Sensitive data warning banner */}
+        {(() => {
+          const piiSignals = planData.sensitive_data_findings
+            ? [...new Set(planData.sensitive_data_findings.map(f => f.matched_signal))].sort()
+            : [];
+          const piiColumnCount = planData.sensitive_data_findings?.length ?? 0;
+          return piiSignals.length > 0 && (
+            <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 flex items-start gap-3">
+              <AlertTriangle size={14} className="text-red-600 shrink-0 mt-0.5" />
+              <div className="space-y-0.5">
+                <p className="text-sm font-medium text-red-800">
+                  Sensitive data detected ({piiColumnCount} column{piiColumnCount !== 1 ? "s" : ""})
+                </p>
+                <p className="text-xs text-red-700">
+                  Signals matched: {piiSignals.join(", ")}. Ensure data handling complies with applicable
+                  regulations before accepting.
+                </p>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Lineage unavailable notice */}
         {trustReport && !trustReport.lineage_available && (
@@ -877,7 +907,7 @@ export default function PlanTab({
                         count={trustReport.manual_todo}
                         total={trustReport.total_blocks}
                         label="Manual TODO"
-                        colorClasses="text-muted-foreground bg-muted border-border"
+                        colorClasses="text-amber-700 bg-amber-50 border-amber-200"
                         activeFilter={activeStatFilter}
                         onFilterChange={(key) => {
                           setActiveStatFilter(key);
@@ -957,6 +987,103 @@ export default function PlanTab({
             </div>
           </CardContent>
         </Card>
+
+        {/* Needs attention section — first collapsible after metrics card */}
+        {trustReport && (
+          <div className="space-y-2">
+            {/* Header row */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setAttentionCollapsed(v => !v)}
+                className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+              >
+                {attentionCollapsed ? (
+                  <ChevronRight size={14} className="text-muted-foreground shrink-0" />
+                ) : (
+                  <ChevronDown size={14} className="text-muted-foreground shrink-0" />
+                )}
+                <h2 className="text-sm font-semibold text-foreground">Needs attention</h2>
+                {trustReport.review_queue.length > 0 && (
+                  <Badge variant="secondary" className="text-xs font-mono">
+                    {trustReport.review_queue.length}
+                  </Badge>
+                )}
+              </button>
+              {/* Cards/Table toggle — only when there are items */}
+              {!attentionCollapsed && trustReport.review_queue.length > 0 && (
+                <div className="flex rounded-md border border-border overflow-hidden text-xs ml-1">
+                  <button
+                    type="button"
+                    onClick={() => setAttentionView("cards")}
+                    className={`px-2 py-1 transition-colors ${
+                      attentionView === "cards"
+                        ? "bg-foreground text-background"
+                        : "bg-background text-muted-foreground hover:bg-muted"
+                    }`}
+                  >
+                    Cards
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAttentionView("table")}
+                    className={`px-2 py-1 transition-colors ${
+                      attentionView === "table"
+                        ? "bg-foreground text-background"
+                        : "bg-background text-muted-foreground hover:bg-muted"
+                    }`}
+                  >
+                    Table
+                  </button>
+                </div>
+              )}
+              {/* Re-translate button (moved from Review queue header) */}
+              {trustReport.failed_reconciliation > 0 && jobStatus !== "accepted" && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleRefineAllFailed}
+                  disabled={isRefiningAll}
+                  className="ml-auto text-xs h-7"
+                >
+                  {isRefiningAll ? (
+                    <><Loader2 size={14} className="animate-spin mr-1" />Re-translating…</>
+                  ) : (
+                    "Re-translate failed blocks"
+                  )}
+                </Button>
+              )}
+            </div>
+
+            {/* Body */}
+            {!attentionCollapsed && (
+              trustReport.review_queue.length === 0 ? (
+                <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3">
+                  <CheckCircle2 size={16} className="text-green-600 shrink-0" />
+                  <p className="text-sm text-green-700">
+                    All {trustReport.total_blocks} steps verified — nothing needs attention.
+                  </p>
+                </div>
+              ) : attentionView === "cards" ? (
+                <AttentionCards
+                  queue={trustReport.review_queue}
+                  blockPlanMap={blockPlanMap}
+                  manualTodo={trustReport.manual_todo}
+                  onShowAll={() => setAttentionView("table")}
+                  onViewBlocks={() => {
+                    setBlocksCollapsed(false);
+                    blocksRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }}
+                />
+              ) : (
+                <AttentionTable
+                  queue={trustReport.review_queue}
+                  lineageAvailable={trustReport.lineage_available}
+                />
+              )
+            )}
+          </div>
+        )}
 
         {/* Steps section (formerly "Blocks") */}
         {planData?.block_plans && planData.block_plans.length > 0 && (
@@ -1079,103 +1206,6 @@ export default function PlanTab({
 
         {/* Remediation runbook section */}
         <RunbookPanel jobId={jobId} />
-
-        {/* Needs attention section */}
-        {trustReport && (
-          <div className="space-y-2">
-            {/* Header row */}
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setAttentionCollapsed(v => !v)}
-                className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
-              >
-                {attentionCollapsed ? (
-                  <ChevronRight size={14} className="text-muted-foreground shrink-0" />
-                ) : (
-                  <ChevronDown size={14} className="text-muted-foreground shrink-0" />
-                )}
-                <h2 className="text-sm font-semibold text-foreground">Needs attention</h2>
-                {trustReport.review_queue.length > 0 && (
-                  <Badge variant="secondary" className="text-xs font-mono">
-                    {trustReport.review_queue.length}
-                  </Badge>
-                )}
-              </button>
-              {/* Cards/Table toggle — only when there are items */}
-              {!attentionCollapsed && trustReport.review_queue.length > 0 && (
-                <div className="flex rounded-md border border-border overflow-hidden text-xs ml-1">
-                  <button
-                    type="button"
-                    onClick={() => setAttentionView("cards")}
-                    className={`px-2 py-1 transition-colors ${
-                      attentionView === "cards"
-                        ? "bg-foreground text-background"
-                        : "bg-background text-muted-foreground hover:bg-muted"
-                    }`}
-                  >
-                    Cards
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAttentionView("table")}
-                    className={`px-2 py-1 transition-colors ${
-                      attentionView === "table"
-                        ? "bg-foreground text-background"
-                        : "bg-background text-muted-foreground hover:bg-muted"
-                    }`}
-                  >
-                    Table
-                  </button>
-                </div>
-              )}
-              {/* Re-translate button (moved from Review queue header) */}
-              {trustReport.failed_reconciliation > 0 && jobStatus !== "accepted" && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={handleRefineAllFailed}
-                  disabled={isRefiningAll}
-                  className="ml-auto text-xs h-7"
-                >
-                  {isRefiningAll ? (
-                    <><Loader2 size={14} className="animate-spin mr-1" />Re-translating…</>
-                  ) : (
-                    "Re-translate failed blocks"
-                  )}
-                </Button>
-              )}
-            </div>
-
-            {/* Body */}
-            {!attentionCollapsed && (
-              trustReport.review_queue.length === 0 ? (
-                <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3">
-                  <CheckCircle2 size={16} className="text-green-600 shrink-0" />
-                  <p className="text-sm text-green-700">
-                    All {trustReport.total_blocks} steps verified — nothing needs attention.
-                  </p>
-                </div>
-              ) : attentionView === "cards" ? (
-                <AttentionCards
-                  queue={trustReport.review_queue}
-                  blockPlanMap={blockPlanMap}
-                  manualTodo={trustReport.manual_todo}
-                  onShowAll={() => setAttentionView("table")}
-                  onViewBlocks={() => {
-                    setBlocksCollapsed(false);
-                    blocksRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-                  }}
-                />
-              ) : (
-                <AttentionTable
-                  queue={trustReport.review_queue}
-                  lineageAvailable={trustReport.lineage_available}
-                />
-              )
-            )}
-          </div>
-        )}
 
 
       </div>
