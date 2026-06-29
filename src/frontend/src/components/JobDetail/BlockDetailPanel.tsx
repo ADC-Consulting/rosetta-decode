@@ -193,14 +193,20 @@ export default function BlockDetailPanel({
           <div className="flex justify-end">
             <Popover>
               <PopoverTrigger asChild>
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                <span
+                  role="button"
+                  tabIndex={0}
+                  className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
                   aria-label="Show rationale"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.currentTarget.click();
+                    }
+                  }}
                 >
                   <Info size={13} />
                   Rationale
-                </button>
+                </span>
               </PopoverTrigger>
               <PopoverContent side="left" className="w-64 text-xs text-foreground">
                 {blockPlan.rationale}

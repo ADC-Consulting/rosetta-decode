@@ -795,8 +795,8 @@ export default function PlanTab({
           </div>
         )}
 
-        {/* Missing dependencies callout */}
-        {planData.missing_dependencies && planData.missing_dependencies.length > 0 && (
+        {/* Missing dependencies callout — non-accepted: shown before verdict strip as a blocking concern */}
+        {!isAccepted && planData.missing_dependencies && planData.missing_dependencies.length > 0 && (
           <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 space-y-1.5">
             <div className="flex items-center gap-2">
               <AlertTriangle size={14} className="text-amber-600 shrink-0" />
@@ -871,6 +871,34 @@ export default function PlanTab({
               </div>
             );
           })()
+        )}
+
+        {/* Missing dependencies callout — accepted: shown after verdict strip in past tense, no action text */}
+        {isAccepted && planData.missing_dependencies && planData.missing_dependencies.length > 0 && (
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 space-y-1.5">
+            <div className="flex items-center gap-2">
+              <AlertTriangle size={14} className="text-amber-600 shrink-0" />
+              <p className="text-sm font-medium text-amber-800">
+                {planData.missing_dependencies.length} dependenc{planData.missing_dependencies.length === 1 ? "y was" : "ies were"} unavailable during translation
+              </p>
+            </div>
+            <ul className="text-xs text-amber-700 space-y-0.5 pl-5 list-disc">
+              {planData.missing_dependencies.slice(0, 3).map(dep => (
+                <li key={`${dep.type}:${dep.name}`}>
+                  <span className="font-mono">{dep.name}</span>
+                  {" "}
+                  <span className="text-amber-600">
+                    ({dep.type}, {dep.reference_count} {dep.reference_count === 1 ? "ref" : "refs"})
+                  </span>
+                </li>
+              ))}
+              {planData.missing_dependencies.length > 3 && (
+                <li className="list-none text-amber-600">
+                  +{planData.missing_dependencies.length - 3} more
+                </li>
+              )}
+            </ul>
+          </div>
         )}
 
         {/* Sensitive data warning banner */}
