@@ -54,12 +54,12 @@ The following has been fully implemented and is in active use:
 
 **Frontend (React + Vite + TypeScript + Tailwind + shadcn/ui)**
 - Jobs page: upload dialog, jobs table, live Activity indicator during execution
-- Job detail: 5-tab view (Plan / Editor / Report / Lineage / History)
-  - **Plan tab:** migration plan summary, per-block table with strategy badges, confidence, reconciliation status, rationale popovers, View Code dialog (SAS + Python side-by-side, Monaco editors)
-  - **Editor tab:** SAS EG–style split layout — file explorer, Monaco code editor, bottom panel (Code / Log / Output / History sub-tabs), block revision history with Monaco DiffEditor
-  - **Report tab:** trust report with confidence bar, version history rail, inline TipTap editor
-  - **Lineage tab:** React Flow graph with multi-level toggle (Blocks / Files / Pipeline), DATA\_FILE nodes for uploaded data files, column-count edge labels
-  - **History tab:** version timeline with agent / human edit icons
+- Job detail: chevron tab bar with 5 tabs (Plan → ETL → Data → BI → AI)
+  - **Plan tab:** migration plan summary, per-block table with strategy badges, confidence, reconciliation status, rationale popovers, View Code dialog (SAS + Python side-by-side, Monaco editors); verdict strip; accept footer; scoping summary; remediation runbook
+  - **ETL tab:** Source / Target toggle — Source view shows SAS file lineage graph (Blocks / Files / Pipeline sub-views) with block inspection panels; Target view shows Python pipeline graph (Steps / Modules / Blocks sub-views) with module and block detail panels; file viewer popup for SAS and Python source
+  - **Data tab:** Source / Target toggle — Source view groups SAS input datasets by libname with column metadata; Target view shows proposed output tables with schema diff, DDL (with `COMMENT` clause), PK/FK indicators, and inferred FK relationship legend; Data Model ERD (SchemaCanvas with PK/FK icons); Data Flow diagram (two-tier: output vs intermediate tables)
+  - **BI tab:** placeholder (coming soon)
+  - **AI tab:** placeholder (coming soon)
 - Full-screen editor at `/jobs/:id/editor` with URL-based tab return
 - Global Lineage page: cross-migration ReactFlow graph (multi-migration merge)
 - Explain page: chat Q&A with two modes (Migration Chat / SAS General), suggestion chips, Monaco code blocks, session restore
@@ -313,10 +313,10 @@ rosetta-decode/
 │           ├── components/
 │           │   ├── ui/              # shadcn/ui primitives
 │           │   ├── JobDetail/       # Per-job detail components (tabs, panels, modals)
-│           │   │   ├── PlanTab.tsx          # Plan tab — migration plan + block table
-│           │   │   ├── EditorTab.tsx        # Editor tab — SAS EG-style split + history
-│           │   │   ├── ReportTab.tsx        # Report tab — trust report + version history
-│           │   │   ├── LineageTab.tsx       # Lineage tab — React Flow graph
+│           │   │   ├── PlanTab.tsx          # Plan tab — migration plan, block table, verdict strip
+│           │   │   ├── ETLTab.tsx           # ETL tab — Source/Target lineage graphs + inspector panels
+│           │   │   ├── DataStorageTab.tsx   # Data tab — Source/Target toggle, schema browser, ERD, data flow
+│           │   │   ├── EditorTab.tsx        # SAS EG-style editor (Plan tab sub-panel)
 │           │   │   ├── BlockPlanTable.tsx   # Block table with groupBy, rationale, recon
 │           │   │   └── ExecutionOutputPanel.tsx # Execution stdout/stderr/recon cards
 │           │   ├── AppSidebar.tsx   # Navigation sidebar
