@@ -1,11 +1,12 @@
-import { getJobPlan, getJobTrustReport, refineBlock } from "@/api/jobs";
+import { getJobPlan, getJobRunbook, getJobTrustReport, refineBlock } from "@/api/jobs";
 import type {
   BlockOverride,
   BlockPlan,
   JobPlanResponse,
   JobStatusValue,
+  RunbookEntry,
+  RunbookResponse,
   TrustReportBlock,
-  TrustReportFile,
   TrustReportResponse,
 } from "@/api/types";
 import { Badge } from "@/components/ui/badge";
@@ -34,10 +35,7 @@ import {
 } from "lucide-react";
 import { useRef, useState } from "react";
 import BlockPlanTable from "./BlockPlanTable";
-import ChangelogFeed from "./ChangelogFeed";
 import ReportTab from "./ReportTab";
-import { RunbookPanel } from "./RunbookPanel";
-import { ScopingSummaryPanel } from "./ScopingSummaryPanel";
 
 // ---------------------------------------------------------------------------
 // Colour maps
@@ -216,35 +214,52 @@ function StatCard({
 }
 
 // ---------------------------------------------------------------------------
-// FileSection
+// InlineRunbook — collapsible "How to fix →" toggle embedded in an attention card
 // ---------------------------------------------------------------------------
 
-function FileSection({ file }: { file: TrustReportFile }): React.ReactElement {
+function InlineRunbook({ entry }: { entry: RunbookEntry }): React.ReactElement {
   const [open, setOpen] = useState(false);
   return (
-    <div className="rounded-lg border border-border">
+    <div className="border-t border-border pt-2 mt-1.5">
       <button
         type="button"
-        className="w-full flex items-center justify-between px-4 py-3 text-left text-sm font-medium
-          hover:bg-muted/40 transition-colors cursor-pointer"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1 text-xs text-primary hover:underline cursor-pointer"
         aria-expanded={open}
       >
-        <span className="font-mono text-xs truncate">{file.source_file}</span>
-        <span className="text-muted-foreground ml-2 shrink-0">{open ? "▲" : "▼"}</span>
+        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        How to fix →
       </button>
       {open && (
-        <div className="border-t border-border px-4 py-3 grid grid-cols-2 gap-x-8 gap-y-1 text-sm">
-          <span className="text-muted-foreground">Total steps</span>
-          <span>{file.total_blocks}</span>
-          <span className="text-muted-foreground">Auto-verified</span>
-          <span className="text-green-700">{file.auto_verified}</span>
-          <span className="text-muted-foreground">Needs review</span>
-          <span className="text-amber-700">{file.needs_review}</span>
-          <span className="text-muted-foreground">Manual TODO</span>
-          <span className="text-muted-foreground">{file.manual_todo}</span>
-          <span className="text-muted-foreground">Failed reconciliation</span>
-          <span className="text-red-700">{file.failed_reconciliation}</span>
+        <div className="mt-2 space-y-2 pl-1">
+          {entry.why_risky.length > 0 && (
+            <div className="space-y-0.5">
+              <p className="text-[11px] font-semibold text-foreground uppercase tracking-wide">
+                Why it&apos;s risky
+              </p>
+              <ul className="list-disc list-inside space-y-0.5">
+                {entry.why_risky.map((reason, i) => (
+                  <li key={i} className="text-xs text-muted-foreground leading-relaxed">
+                    {reason}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {entry.remediation_outline.length > 0 && (
+            <div className="space-y-0.5">
+              <p className="text-[11px] font-semibold text-foreground uppercase tracking-wide">
+                Suggested remediation
+              </p>
+              <ol className="list-decimal list-inside space-y-0.5">
+                {entry.remediation_outline.map((step, i) => (
+                  <li key={i} className="text-xs text-muted-foreground leading-relaxed">
+                    {step}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -258,12 +273,14 @@ function FileSection({ file }: { file: TrustReportFile }): React.ReactElement {
 function AttentionCards({
   queue,
   blockPlanMap,
+  runbookMap,
   manualTodo,
   onShowAll,
   onViewBlocks,
 }: {
   queue: TrustReportBlock[];
   blockPlanMap: Record<string, BlockPlan>;
+  runbookMap: Record<string, RunbookEntry>;
   manualTodo: number;
   onShowAll: () => void;
   onViewBlocks: () => void;
@@ -310,29 +327,35 @@ function AttentionCards({
           </p>
         </div>
       )}
-      {top5.map(block => (
-        <div key={block.block_id} className="rounded-lg border border-border bg-card px-4 py-3 space-y-1.5">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <p className="font-mono text-xs text-foreground truncate">{block.block_id}</p>
-              <p className="font-mono text-xs text-muted-foreground truncate">{block.source_file}</p>
+      {top5.map(block => {
+        const runbookEntry = runbookMap[block.block_id];
+        return (
+          <div key={block.block_id} className="rounded-lg border border-border bg-card px-4 py-3 space-y-1.5">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="font-mono text-xs text-foreground truncate">{block.block_id}</p>
+                <p className="font-mono text-xs text-muted-foreground truncate">{block.source_file}</p>
+              </div>
+              <span
+                className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium shrink-0 ${strategyColor(block.strategy, block.reconciliation_status)}`}
+              >
+                {strategyLabel(block.strategy, block.reconciliation_status)}
+              </span>
             </div>
-            <span
-              className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium shrink-0 ${strategyColor(block.strategy, block.reconciliation_status)}`}
+            <p className="text-xs text-muted-foreground leading-relaxed">{getRationale(block)}</p>
+            <button
+              type="button"
+              onClick={onViewBlocks}
+              className="text-xs text-primary hover:underline"
             >
-              {strategyLabel(block.strategy, block.reconciliation_status)}
-            </span>
+              View in steps table →
+            </button>
+            {runbookEntry && (
+              <InlineRunbook entry={runbookEntry} />
+            )}
           </div>
-          <p className="text-xs text-muted-foreground leading-relaxed">{getRationale(block)}</p>
-          <button
-            type="button"
-            onClick={onViewBlocks}
-            className="text-xs text-primary hover:underline"
-          >
-            View in steps table →
-          </button>
-        </div>
-      ))}
+        );
+      })}
       {remaining > 0 && (
         <button type="button" onClick={onShowAll} className="text-xs text-primary hover:underline px-1">
           + {remaining} more · Show all →
@@ -535,6 +558,18 @@ export default function PlanTab({
     enabled: trustReportEnabled,
   });
 
+  // Runbook data — fetched eagerly (not behind a collapsed toggle) so we can
+  // embed inline "How to fix" toggles in the attention cards.
+  const { data: runbookData } = useQuery<RunbookResponse>({
+    queryKey: ["job", jobId, "runbook"],
+    queryFn: () => getJobRunbook(jobId),
+    enabled: trustReportEnabled,
+  });
+
+  const runbookMap: Record<string, RunbookEntry> = runbookData
+    ? Object.fromEntries(runbookData.entries.map(e => [e.block_id, e]))
+    : {};
+
   const trustBlocks: Record<string, TrustReportBlock> = trustReport
     ? Object.fromEntries(trustReport.blocks.map((b) => [b.block_id, b]))
     : {};
@@ -542,9 +577,6 @@ export default function PlanTab({
   const isProposed = jobStatus === "proposed";
   const [showFullDesc, setShowFullDesc] = useState(false);
   const [blocksCollapsed, setBlocksCollapsed] = useState(true);
-  const [reportCollapsed, setReportCollapsed] = useState(() => doc == null);
-  const [byFileCollapsed, setByFileCollapsed] = useState(true);
-  const [historyCollapsed, setHistoryCollapsed] = useState(true);
   const [attentionView, setAttentionView] = useState<"cards" | "table">("cards");
   const [attentionCollapsed, setAttentionCollapsed] = useState(false);
   const [activeStatFilter, setActiveStatFilter] =
@@ -622,6 +654,52 @@ export default function PlanTab({
   const allOutputs = new Set(planData.block_plans.flatMap(b => b.output_datasets));
   const externalInputs = [...allInputs].filter(d => !allOutputs.has(d)).sort();
   const finalOutputs = [...allOutputs].filter(d => !allInputs.has(d)).sort();
+
+  // Step type breakdown for the composition line (point 4)
+  const compositionCounts = planData.block_plans.reduce(
+    (acc, bp) => {
+      const t = bp.block_type?.toLowerCase() ?? "";
+      if (t === "data" || t === "data_step") acc.data += 1;
+      else if (t.startsWith("proc") || t === "generic_proc") acc.proc += 1;
+      else if (t === "macro") acc.macro += 1;
+      else if (bp.strategy === "manual") acc.manual += 1;
+      return acc;
+    },
+    { data: 0, proc: 0, macro: 0, manual: 0 },
+  );
+
+  const compositionParts: string[] = [];
+  if (compositionCounts.data > 0) compositionParts.push(`${compositionCounts.data} DATA`);
+  if (compositionCounts.proc > 0) compositionParts.push(`${compositionCounts.proc} PROC`);
+  if (compositionCounts.macro > 0) compositionParts.push(`${compositionCounts.macro} Macros`);
+  if (compositionCounts.manual > 0) compositionParts.push(`${compositionCounts.manual} Manual`);
+
+  // Attention queue — only render when non-empty (point 5)
+  const attentionQueueLength = trustReport?.review_queue.length ?? 0;
+
+  // Helper: expand steps and scroll to them
+  const expandAndScrollToSteps = () => {
+    setBlocksCollapsed(false);
+    setTimeout(
+      () =>
+        blocksRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        }),
+      50,
+    );
+  };
+
+  // Shared stat filter change handler
+  const handleStatFilterChange = (key: StatFilterKey | null) => {
+    setActiveStatFilter(key);
+    if (key !== null) {
+      expandAndScrollToSteps();
+    }
+  };
+
+  // Report: only render when doc content exists (point 3)
+  const hasReport = !!doc && doc.trim().length > 0;
 
   return (
     <TooltipProvider>
@@ -778,6 +856,26 @@ export default function PlanTab({
           );
         })()}
 
+        {/* Report — only rendered when doc has content; placed above metrics card */}
+        {hasReport && (
+          <div className="space-y-2">
+            <h2 className="text-sm font-semibold text-foreground">Report</h2>
+            {isDone ? (
+              <ReportTab
+                isDone={isDone ?? false}
+                doc={doc ?? null}
+                nonTechnicalDoc={nonTechnicalDoc ?? null}
+                onDocChange={onDocChange}
+                onSave={onSave}
+                isSaving={isSaving ?? false}
+                restoreKey={restoreKey ?? 0}
+              />
+            ) : (
+              <p className="text-sm text-muted-foreground px-1">No documentation generated yet.</p>
+            )}
+          </div>
+        )}
+
         {/* Lineage unavailable notice */}
         {trustReport && !trustReport.lineage_available && (
           <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
@@ -865,20 +963,7 @@ export default function PlanTab({
                         label="Auto-verified"
                         colorClasses="text-green-700 bg-green-50 border-green-200"
                         activeFilter={activeStatFilter}
-                        onFilterChange={(key) => {
-                          setActiveStatFilter(key);
-                          if (key !== null) {
-                            setBlocksCollapsed(false);
-                            setTimeout(
-                              () =>
-                                blocksRef.current?.scrollIntoView({
-                                  behavior: "smooth",
-                                  block: "start",
-                                }),
-                              50,
-                            );
-                          }
-                        }}
+                        onFilterChange={handleStatFilterChange}
                       />
                       <StatCard
                         filterKey="needs_review"
@@ -887,20 +972,7 @@ export default function PlanTab({
                         label="Needs review"
                         colorClasses="text-amber-700 bg-amber-50 border-amber-200"
                         activeFilter={activeStatFilter}
-                        onFilterChange={(key) => {
-                          setActiveStatFilter(key);
-                          if (key !== null) {
-                            setBlocksCollapsed(false);
-                            setTimeout(
-                              () =>
-                                blocksRef.current?.scrollIntoView({
-                                  behavior: "smooth",
-                                  block: "start",
-                                }),
-                              50,
-                            );
-                          }
-                        }}
+                        onFilterChange={handleStatFilterChange}
                       />
                       <StatCard
                         filterKey="manual_todo"
@@ -909,20 +981,7 @@ export default function PlanTab({
                         label="Manual TODO"
                         colorClasses="text-amber-700 bg-amber-50 border-amber-200"
                         activeFilter={activeStatFilter}
-                        onFilterChange={(key) => {
-                          setActiveStatFilter(key);
-                          if (key !== null) {
-                            setBlocksCollapsed(false);
-                            setTimeout(
-                              () =>
-                                blocksRef.current?.scrollIntoView({
-                                  behavior: "smooth",
-                                  block: "start",
-                                }),
-                              50,
-                            );
-                          }
-                        }}
+                        onFilterChange={handleStatFilterChange}
                       />
                       <StatCard
                         filterKey="failed_reconciliation"
@@ -931,20 +990,7 @@ export default function PlanTab({
                         label="Failed reconciliation"
                         colorClasses="text-red-700 bg-red-50 border-red-200"
                         activeFilter={activeStatFilter}
-                        onFilterChange={(key) => {
-                          setActiveStatFilter(key);
-                          if (key !== null) {
-                            setBlocksCollapsed(false);
-                            setTimeout(
-                              () =>
-                                blocksRef.current?.scrollIntoView({
-                                  behavior: "smooth",
-                                  block: "start",
-                                }),
-                              50,
-                            );
-                          }
-                        }}
+                        onFilterChange={handleStatFilterChange}
                       />
                     </div>
                     {activeStatFilter && (
@@ -981,6 +1027,12 @@ export default function PlanTab({
                         </div>
                       );
                     })()}
+                    {/* Step type composition line */}
+                    {compositionParts.length > 0 && (
+                      <p className="text-xs text-muted-foreground pt-0.5">
+                        {compositionParts.join(" · ")}
+                      </p>
+                    )}
                   </div>
                 </>
               )}
@@ -988,8 +1040,8 @@ export default function PlanTab({
           </CardContent>
         </Card>
 
-        {/* Needs attention section — first collapsible after metrics card */}
-        {trustReport && (
+        {/* Needs attention section — only rendered when there are items (point 5) */}
+        {trustReport && attentionQueueLength > 0 && (
           <div className="space-y-2">
             {/* Header row */}
             <div className="flex items-center gap-2">
@@ -1004,14 +1056,12 @@ export default function PlanTab({
                   <ChevronDown size={14} className="text-muted-foreground shrink-0" />
                 )}
                 <h2 className="text-sm font-semibold text-foreground">Needs attention</h2>
-                {trustReport.review_queue.length > 0 && (
-                  <Badge variant="secondary" className="text-xs font-mono">
-                    {trustReport.review_queue.length}
-                  </Badge>
-                )}
+                <Badge variant="secondary" className="text-xs font-mono">
+                  {attentionQueueLength}
+                </Badge>
               </button>
-              {/* Cards/Table toggle — only when there are items */}
-              {!attentionCollapsed && trustReport.review_queue.length > 0 && (
+              {/* Cards/Table toggle */}
+              {!attentionCollapsed && (
                 <div className="flex rounded-md border border-border overflow-hidden text-xs ml-1">
                   <button
                     type="button"
@@ -1037,7 +1087,7 @@ export default function PlanTab({
                   </button>
                 </div>
               )}
-              {/* Re-translate button (moved from Review queue header) */}
+              {/* Re-translate button */}
               {trustReport.failed_reconciliation > 0 && jobStatus !== "accepted" && (
                 <Button
                   size="sm"
@@ -1057,17 +1107,11 @@ export default function PlanTab({
 
             {/* Body */}
             {!attentionCollapsed && (
-              trustReport.review_queue.length === 0 ? (
-                <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3">
-                  <CheckCircle2 size={16} className="text-green-600 shrink-0" />
-                  <p className="text-sm text-green-700">
-                    All {trustReport.total_blocks} steps verified — nothing needs attention.
-                  </p>
-                </div>
-              ) : attentionView === "cards" ? (
+              attentionView === "cards" ? (
                 <AttentionCards
                   queue={trustReport.review_queue}
                   blockPlanMap={blockPlanMap}
+                  runbookMap={runbookMap}
                   manualTodo={trustReport.manual_todo}
                   onShowAll={() => setAttentionView("table")}
                   onViewBlocks={() => {
@@ -1085,7 +1129,7 @@ export default function PlanTab({
           </div>
         )}
 
-        {/* Steps section (formerly "Blocks") */}
+        {/* Steps section — default collapsed (point 7) */}
         {planData?.block_plans && planData.block_plans.length > 0 && (
           <div ref={blocksRef} className="space-y-2">
             <button
@@ -1126,88 +1170,6 @@ export default function PlanTab({
             )}
           </div>
         )}
-
-        {/* By file section */}
-        {trustReport?.files && trustReport.files.length > 0 && (
-          <div className="space-y-2">
-            <button
-              type="button"
-              onClick={() => setByFileCollapsed((v) => !v)}
-              className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
-            >
-              {byFileCollapsed ? (
-                <ChevronRight size={14} className="text-muted-foreground shrink-0" />
-              ) : (
-                <ChevronDown size={14} className="text-muted-foreground shrink-0" />
-              )}
-              <h2 className="text-sm font-semibold text-foreground">By file</h2>
-              <Badge variant="secondary" className="text-xs font-mono">
-                {trustReport.files.length}
-              </Badge>
-            </button>
-            {!byFileCollapsed && (
-              <div className="space-y-2">
-                {trustReport.files.map((file) => (
-                  <FileSection key={file.source_file} file={file} />
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Report panel */}
-        <div className="space-y-2">
-          <button
-            type="button"
-            onClick={() => setReportCollapsed((v) => !v)}
-            className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
-          >
-            {reportCollapsed
-              ? <ChevronRight size={14} className="text-muted-foreground shrink-0" />
-              : <ChevronDown size={14} className="text-muted-foreground shrink-0" />}
-            <h2 className="text-sm font-semibold text-foreground">Report</h2>
-          </button>
-          {!reportCollapsed && (
-            isDone ? (
-              <ReportTab
-                isDone={isDone ?? false}
-                doc={doc ?? null}
-                nonTechnicalDoc={nonTechnicalDoc ?? null}
-                onDocChange={onDocChange}
-                onSave={onSave}
-                isSaving={isSaving ?? false}
-                restoreKey={restoreKey ?? 0}
-              />
-            ) : (
-              <p className="text-sm text-muted-foreground px-1">No documentation generated yet.</p>
-            )
-          )}
-        </div>
-
-        {/* Migration history section */}
-        <div className="space-y-2">
-          <button
-            type="button"
-            onClick={() => setHistoryCollapsed(v => !v)}
-            className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
-          >
-            {historyCollapsed
-              ? <ChevronRight size={14} className="text-muted-foreground shrink-0" />
-              : <ChevronDown size={14} className="text-muted-foreground shrink-0" />}
-            <h2 className="text-sm font-semibold text-foreground">Migration history</h2>
-          </button>
-          {!historyCollapsed && (
-            <ChangelogFeed jobId={jobId} />
-          )}
-        </div>
-
-        {/* Scoping summary section */}
-        <ScopingSummaryPanel jobId={jobId} />
-
-        {/* Remediation runbook section */}
-        <RunbookPanel jobId={jobId} />
-
-
       </div>
     </TooltipProvider>
   );
