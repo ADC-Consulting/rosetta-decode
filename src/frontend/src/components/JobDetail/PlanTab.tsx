@@ -113,6 +113,21 @@ const VERDICT_STYLES: Record<
 };
 
 // ---------------------------------------------------------------------------
+// Criticality colour map and order (module-level, shared by AttentionTable and
+// the criticality breakdown row in the metrics card)
+// ---------------------------------------------------------------------------
+
+const CRIT_COLOR: Record<string, string> = {
+  critical: "text-red-700 bg-red-50 border border-red-200",
+  high: "text-orange-700 bg-orange-50 border border-orange-200",
+  medium: "text-amber-700 bg-amber-50 border border-amber-200",
+  low: "text-green-700 bg-green-50 border border-green-200",
+  unknown: "text-muted-foreground bg-muted border border-border",
+};
+
+const CRIT_ORDER: string[] = ["critical", "high", "medium", "low", "unknown"];
+
+// ---------------------------------------------------------------------------
 // Confidence help content
 // ---------------------------------------------------------------------------
 
@@ -187,13 +202,8 @@ function StatCard({
       ].join(" ")}
     >
       <span className="text-2xl font-bold tabular-nums leading-none">
-        {count}
+        {total !== undefined && total > 0 ? `${count} / ${total}` : count}
       </span>
-      {total !== undefined && (
-        <span className="text-xs text-muted-foreground leading-none">
-          of {total}
-        </span>
-      )}
       <span className="text-xs font-medium mt-0.5 leading-tight text-center">
         {label}
       </span>
@@ -254,12 +264,14 @@ function AttentionCards({
   onShowAll: () => void;
   onViewBlocks: () => void;
 }): React.ReactElement {
-  const CRIT_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+  const critOrderMap: Record<string, number> = Object.fromEntries(
+    CRIT_ORDER.map((k, i) => [k, i])
+  );
   const top5 = [...queue]
     .sort((a, b) => {
       if (a.strategy === "manual" && b.strategy !== "manual") return -1;
       if (b.strategy === "manual" && a.strategy !== "manual") return 1;
-      return (CRIT_ORDER[a.criticality] ?? 99) - (CRIT_ORDER[b.criticality] ?? 99);
+      return (critOrderMap[a.criticality] ?? 99) - (critOrderMap[b.criticality] ?? 99);
     })
     .slice(0, 5);
   const remaining = queue.length - top5.length;
@@ -337,9 +349,9 @@ function AttentionTable({
   queue: TrustReportBlock[];
   lineageAvailable: boolean;
 }): React.ReactElement {
-  const CRIT_ORDER: Record<string, number> = {
-    critical: 0, high: 1, medium: 2, low: 3,
-  };
+  const critOrderMap: Record<string, number> = Object.fromEntries(
+    CRIT_ORDER.map((k, i) => [k, i])
+  );
   const STRAT_COLOR: Record<string, string> = {
     translated: "bg-green-100 text-green-800",
     translated_with_review: "bg-amber-100 text-amber-800",
@@ -349,12 +361,6 @@ function AttentionTable({
     translated: "Translated",
     translated_with_review: "Review needed",
     manual: "Manual",
-  };
-  const CRIT_COLOR: Record<string, string> = {
-    critical: "text-red-700 bg-red-50 border border-red-200",
-    high: "text-orange-700 bg-orange-50 border border-orange-200",
-    medium: "text-amber-700 bg-amber-50 border border-amber-200",
-    low: "text-green-700 bg-green-50 border border-green-200",
   };
   const CONF_COLOR: Record<string, string> = {
     high: "text-green-700 bg-green-50 border border-green-200",
@@ -383,7 +389,7 @@ function AttentionTable({
 
   const sorted = [...queue].sort((a, b) => {
     const cDiff =
-      (CRIT_ORDER[a.criticality] ?? 99) - (CRIT_ORDER[b.criticality] ?? 99);
+      (critOrderMap[a.criticality] ?? 99) - (critOrderMap[b.criticality] ?? 99);
     if (cDiff !== 0) return cDiff;
     const aBlast = a.blast_radius ?? -1;
     const bBlast = b.blast_radius ?? -1;
@@ -619,7 +625,7 @@ export default function PlanTab({
 
   return (
     <TooltipProvider>
-      <div className="h-full min-h-0 overflow-y-auto space-y-4 pb-6">
+      <div className="h-full min-h-0 overflow-y-auto space-y-4 pb-6 [scrollbar-gutter:stable]">
         {/* Pipeline description — above verdict strip */}
         {planData.summary && (
           <p className="text-sm text-foreground leading-relaxed">
@@ -692,6 +698,62 @@ export default function PlanTab({
             </div>
           );
         })()}
+
+        {/* Verdict strip — accepted state overrides the green/amber/red states */}
+        {isAccepted ? (
+          <div className="rounded-lg border border-l-4 border-l-primary bg-primary/5 px-4 py-3 flex items-start gap-3">
+            <CheckCircle2 size={18} className="text-primary shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-foreground">Delivered — Accepted</p>
+              <p className="text-sm text-muted-foreground">
+                {acceptedAt
+                  ? `Accepted on ${new Date(acceptedAt).toLocaleDateString(undefined, {
+                      month: "long",
+                      day: "numeric",
+                      year: "numeric",
+                    })}.`
+                  : "This migration has been accepted."}
+                {" "}All editors are read-only.
+              </p>
+            </div>
+          </div>
+        ) : (
+          trustReport && (() => {
+            const verdict = getVerdict(trustReport);
+            const style = VERDICT_STYLES[verdict];
+            const { Icon } = style;
+            const attentionCount = trustReport.needs_review + trustReport.failed_reconciliation;
+            const manualCount = trustReport.manual_todo;
+            const consequence =
+              verdict === "green"
+                ? "All steps verified — safe to accept."
+                : verdict === "amber"
+                ? `${attentionCount} step${attentionCount !== 1 ? "s" : ""} need review before accepting.`
+                : `${manualCount} step${manualCount !== 1 ? "s" : ""} cannot be auto-converted — manual implementation required before this pipeline will run.`;
+            const headline =
+              verdict === "green"
+                ? "Ready to accept"
+                : verdict === "amber"
+                ? "Review recommended"
+                : "Not ready to accept";
+            return (
+              <div className={`rounded-lg border ${style.border} px-4 py-3 flex items-start gap-3`}>
+                <Icon size={18} className={`${style.iconColor} shrink-0 mt-0.5`} />
+                <div>
+                  <p className={`text-sm font-semibold ${style.headlineColor}`}>{headline}</p>
+                  <p className={`text-sm ${style.textColor}`}>{consequence}</p>
+                </div>
+              </div>
+            );
+          })()
+        )}
+
+        {/* Lineage unavailable notice */}
+        {trustReport && !trustReport.lineage_available && (
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+            Blast radius unavailable — lineage enrichment did not run for this job.
+          </div>
+        )}
 
         {/* Metrics card — confidence/risk/stat cards only */}
         <Card className="border-border bg-muted/30">
@@ -866,6 +928,29 @@ export default function PlanTab({
                         </button>
                       </div>
                     )}
+                    {/* Criticality breakdown row */}
+                    {(() => {
+                      const critCounts: Record<string, number> = {};
+                      for (const block of trustReport.blocks) {
+                        const key = block.criticality ?? "unknown";
+                        critCounts[key] = (critCounts[key] ?? 0) + 1;
+                      }
+                      const pills = CRIT_ORDER.filter(k => (critCounts[k] ?? 0) > 0);
+                      if (pills.length === 0) return null;
+                      return (
+                        <div className="flex items-center gap-2 flex-wrap pt-1">
+                          <span className="text-xs text-muted-foreground shrink-0">Criticality:</span>
+                          {pills.map(k => (
+                            <span
+                              key={k}
+                              className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${CRIT_COLOR[k]}`}
+                            >
+                              {k} {critCounts[k]}
+                            </span>
+                          ))}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </>
               )}
@@ -873,63 +958,7 @@ export default function PlanTab({
           </CardContent>
         </Card>
 
-        {/* Verdict strip — accepted state overrides the green/amber/red states */}
-        {isAccepted ? (
-          <div className="rounded-lg border border-l-4 border-l-primary bg-primary/5 px-4 py-3 flex items-start gap-3">
-            <CheckCircle2 size={18} className="text-primary shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm font-semibold text-foreground">Delivered — Accepted</p>
-              <p className="text-sm text-muted-foreground">
-                {acceptedAt
-                  ? `Accepted on ${new Date(acceptedAt).toLocaleDateString(undefined, {
-                      month: "long",
-                      day: "numeric",
-                      year: "numeric",
-                    })}.`
-                  : "This migration has been accepted."}
-                {" "}All editors are read-only.
-              </p>
-            </div>
-          </div>
-        ) : (
-          trustReport && (() => {
-            const verdict = getVerdict(trustReport);
-            const style = VERDICT_STYLES[verdict];
-            const { Icon } = style;
-            const attentionCount = trustReport.needs_review + trustReport.failed_reconciliation;
-            const manualCount = trustReport.manual_todo;
-            const consequence =
-              verdict === "green"
-                ? "All blocks verified — safe to accept."
-                : verdict === "amber"
-                ? `${attentionCount} block${attentionCount !== 1 ? "s" : ""} need review before accepting.`
-                : `${manualCount} block${manualCount !== 1 ? "s" : ""} cannot be auto-converted — manual implementation required before this pipeline will run.`;
-            const headline =
-              verdict === "green"
-                ? "Ready to accept"
-                : verdict === "amber"
-                ? "Review recommended"
-                : "Not ready to accept";
-            return (
-              <div className={`rounded-lg border ${style.border} px-4 py-3 flex items-start gap-3`}>
-                <Icon size={18} className={`${style.iconColor} shrink-0 mt-0.5`} />
-                <div>
-                  <p className={`text-sm font-semibold ${style.headlineColor}`}>{headline}</p>
-                  <p className={`text-sm ${style.textColor}`}>{consequence}</p>
-                </div>
-              </div>
-            );
-          })()
-        )}
-
-        {/* Lineage unavailable notice */}
-        {trustReport && !trustReport.lineage_available && (
-          <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-            Blast radius unavailable — lineage enrichment did not run for this job.
-          </div>
-        )}
-
-        {/* Block plan section */}
+        {/* Steps section (formerly "Blocks") */}
         {planData?.block_plans && planData.block_plans.length > 0 && (
           <div ref={blocksRef} className="space-y-2">
             <button
@@ -948,7 +977,7 @@ export default function PlanTab({
                   className="text-muted-foreground shrink-0"
                 />
               )}
-              <h2 className="text-sm font-semibold text-foreground">Blocks</h2>
+              <h2 className="text-sm font-semibold text-foreground">Steps</h2>
               <Badge variant="secondary" className="text-xs font-mono">
                 {planData.block_plans.length}
               </Badge>
@@ -967,6 +996,34 @@ export default function PlanTab({
                 activeStatFilter={activeStatFilter}
                 onClearStatFilter={() => setActiveStatFilter(null)}
               />
+            )}
+          </div>
+        )}
+
+        {/* By file section */}
+        {trustReport?.files && trustReport.files.length > 0 && (
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => setByFileCollapsed((v) => !v)}
+              className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+            >
+              {byFileCollapsed ? (
+                <ChevronRight size={14} className="text-muted-foreground shrink-0" />
+              ) : (
+                <ChevronDown size={14} className="text-muted-foreground shrink-0" />
+              )}
+              <h2 className="text-sm font-semibold text-foreground">By file</h2>
+              <Badge variant="secondary" className="text-xs font-mono">
+                {trustReport.files.length}
+              </Badge>
+            </button>
+            {!byFileCollapsed && (
+              <div className="space-y-2">
+                {trustReport.files.map((file) => (
+                  <FileSection key={file.source_file} file={file} />
+                ))}
+              </div>
             )}
           </div>
         )}
@@ -999,33 +1056,6 @@ export default function PlanTab({
             )
           )}
         </div>
-
-        {trustReport?.files && trustReport.files.length > 0 && (
-          <div className="space-y-2">
-            <button
-              type="button"
-              onClick={() => setByFileCollapsed((v) => !v)}
-              className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
-            >
-              {byFileCollapsed ? (
-                <ChevronRight size={14} className="text-muted-foreground shrink-0" />
-              ) : (
-                <ChevronDown size={14} className="text-muted-foreground shrink-0" />
-              )}
-              <h2 className="text-sm font-semibold text-foreground">By file</h2>
-              <Badge variant="secondary" className="text-xs font-mono">
-                {trustReport.files.length}
-              </Badge>
-            </button>
-            {!byFileCollapsed && (
-              <div className="space-y-2">
-                {trustReport.files.map((file) => (
-                  <FileSection key={file.source_file} file={file} />
-                ))}
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Migration history section */}
         <div className="space-y-2">
@@ -1123,7 +1153,7 @@ export default function PlanTab({
                 <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3">
                   <CheckCircle2 size={16} className="text-green-600 shrink-0" />
                   <p className="text-sm text-green-700">
-                    All {trustReport.total_blocks} blocks verified — nothing needs attention.
+                    All {trustReport.total_blocks} steps verified — nothing needs attention.
                   </p>
                 </div>
               ) : attentionView === "cards" ? (
