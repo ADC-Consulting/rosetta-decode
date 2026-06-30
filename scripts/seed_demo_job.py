@@ -1596,7 +1596,7 @@ async def seed(drop_existing: bool = True) -> None:
         # Insert Job via ORM so JSON columns are handled correctly
         job = Job(
             id=DEMO_JOB_ID,
-            status="accepted",
+            status="proposed",
             input_hash=input_hash,
             name=DEMO_JOB_NAME,
             files=SAS_FILES,
@@ -1609,7 +1609,7 @@ async def seed(drop_existing: bool = True) -> None:
             skip_llm=False,
             cancellation_requested=False,
             trigger="agent",
-            accepted_at=now,
+            accepted_at=None,
             created_at=now,
             updated_at=now,
         )

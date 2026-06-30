@@ -621,6 +621,7 @@ export default function PlanTab({
   const [activeStatFilter, setActiveStatFilter] =
     useState<StatFilterKey | null>(null);
   const blocksRef = useRef<HTMLDivElement>(null);
+  const attentionRef = useRef<HTMLDivElement>(null);
   const [isRefiningAll, setIsRefiningAll] = useState(false);
 
   const blockPlanMap: Record<string, BlockPlan> = planData
@@ -733,10 +734,25 @@ export default function PlanTab({
     );
   };
 
+  // Helper: expand the Needs Attention section and scroll to it
+  const expandAndScrollToAttention = () => {
+    setAttentionCollapsed(false);
+    setTimeout(
+      () =>
+        attentionRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        }),
+      50,
+    );
+  };
+
   // Shared stat filter change handler
   const handleStatFilterChange = (key: StatFilterKey | null) => {
     setActiveStatFilter(key);
-    if (key !== null) {
+    if (key === "needs_review" || key === "manual_todo") {
+      expandAndScrollToAttention();
+    } else if (key !== null) {
       expandAndScrollToSteps();
     }
   };
@@ -1113,7 +1129,7 @@ export default function PlanTab({
 
         {/* Needs attention section — only rendered when there are items (point 5) */}
         {trustReport && attentionQueueLength > 0 && (
-          <div className="space-y-2">
+          <div ref={attentionRef} className="space-y-2">
             {/* Header row */}
             <div className="flex items-center gap-2">
               <button
@@ -1177,10 +1193,19 @@ export default function PlanTab({
             </div>
 
             {/* Body */}
-            {!attentionCollapsed && (
-              attentionView === "cards" ? (
+            {!attentionCollapsed && (() => {
+              const filteredAttentionQueue = (() => {
+                const q = trustReport.review_queue;
+                if (activeStatFilter === "manual_todo") return q.filter(b => b.strategy === "manual");
+                if (activeStatFilter === "needs_review")
+                  return q.filter(b => b.strategy !== "manual" && b.reconciliation_status !== "fail");
+                if (activeStatFilter === "failed_reconciliation")
+                  return q.filter(b => b.reconciliation_status === "fail");
+                return q; // null or "auto_verified" — show all
+              })();
+              return attentionView === "cards" ? (
                 <AttentionCards
-                  queue={trustReport.review_queue}
+                  queue={filteredAttentionQueue}
                   blockPlanMap={blockPlanMap}
                   runbookMap={runbookMap}
                   manualTodo={trustReport.manual_todo}
@@ -1194,11 +1219,11 @@ export default function PlanTab({
                 />
               ) : (
                 <AttentionTable
-                  queue={trustReport.review_queue}
+                  queue={filteredAttentionQueue}
                   lineageAvailable={trustReport.lineage_available}
                 />
-              )
-            )}
+              );
+            })()}
           </div>
         )}
 
