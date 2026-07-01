@@ -6,6 +6,30 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-30 (cont.) — Demo seed cleanup + townhall speaker notes
+
+**Duration:** ~1h | **Focus:** Removing stale "manual" language from demo seed, finalising speaker notes
+
+### Done
+- **Seed cleanup committed** (`da3aeee`): removed all stale "manual-migration" language from PROC IML block in `seed_demo_job.py` — label, status_reason, step name/description, risk_explanation, generated code comment, pipeline.py import comment — now consistently uses amber/review framing
+- **Speaker notes finalised** for ADC Consulting internal townhall demo (~5 min): Plan → ETL → Data → Accept arc; ETL Source→Target toggle beat; Data Flow as visual closer; Accept as earned decision moment
+- **Re-seeded** demo job to reset to `proposed` state after demo acceptance testing
+
+### Decisions
+- Demo structure: Plan tab (summary + verdict + stat card filter) → ETL tab (Source → Target toggle) → Data tab (Data Flow diagram) → Accept — closes the assessment arc live on screen
+- Speaker notes frame the tool as an assessment engine, not a code generator; target audience is the code owner making a go/no-go decision
+
+### Open Questions
+- none
+
+### Next Session — Start Here
+1. Open PR for `feat/F85-plan-tab-ux` — run `/git-pr-summary` then `gh pr create` (Closes #85)
+
+### Files Touched
+- `scripts/seed_demo_job.py`
+
+---
+
 ## 2026-06-30 — F85 Plan tab UX overhaul + demo prep
 
 **Duration:** ~3h | **Focus:** Plan tab improvements (issue #85), KYC demo fixes, demo job rename, libref chip fix

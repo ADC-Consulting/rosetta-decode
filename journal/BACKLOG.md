@@ -562,6 +562,8 @@
 - [x] fix(F85): blank ETL tab — nested button in BlockDetailPanel → span role="button"
 - [x] chore(seed): rename "Customer Revenue Pipeline" → "Monthly Revenue Pipeline"
 - [x] fix(plan-tab): strip SAS libref prefix from Reads/Produces chips
+- [x] feat(plan-tab): stat cards route to Needs Attention section with category filter (manual_todo / needs_review filter attention queue)
+- [x] chore(seed): remove all stale "manual" references from PROC IML block — amber/review framing throughout
 - [ ] Open PR for `feat/F85-plan-tab-ux` → Closes #85
 
 - [ ] #21: Consolidate lineage into a single primary view — `backlog` label
