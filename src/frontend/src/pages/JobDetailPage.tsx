@@ -2,12 +2,10 @@ import {
   acceptJob,
   downloadJob,
   getJob,
-  getJobDoc,
   getJobPlan,
   getJobSources,
   getJobTrustReport,
   refineJob,
-  saveVersion,
 } from "@/api/jobs";
 import type {
   BlockOverride,
@@ -33,7 +31,7 @@ import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CheckCircle2, Download } from "lucide-react";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 export { STATUS_LABEL } from "@/components/JobDetail/constants";
@@ -44,13 +42,7 @@ export default function JobDetailPage(): React.ReactElement {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState(searchParams.get("tab") ?? "plan");
-  const [editorCode, setEditorCode] = useState<string | null>(null);
-  const [overrideGeneratedFiles] = useState<Record<
-    string,
-    string
-  > | null>(null);
-  const [overrideDoc, setOverrideDoc] = useState<string | null>(null);
-  const [reportRestoreKey] = useState(0);
+  const [, setEditorCode] = useState<string | null>(null);
   const [planOverrides, setPlanOverrides] = useState<
     Record<string, BlockOverride>
   >({});
@@ -65,13 +57,6 @@ export default function JobDetailPage(): React.ReactElement {
   });
   const [showRefineDialog, setShowRefineDialog] = useState(false);
   const [refineHint, setRefineHint] = useState("");
-  const lastSavedHashRef = useRef<Record<string, string>>({});
-  const pendingHashRef = useRef("");
-
-  const contentHash = (content: unknown): string => {
-    const str = JSON.stringify(content);
-    return `${str.length}:${str.slice(0, 20)}:${str.slice(-20)}`;
-  };
 
   const queryClient = useQueryClient();
 
@@ -84,63 +69,6 @@ export default function JobDetailPage(): React.ReactElement {
       POLLING_STATUSES.includes(q.state.data.status as JobStatusValue)
         ? 3000
         : false,
-  });
-
-  const displayedEditorCode = editorCode ?? job?.python_code ?? "";
-
-  const { data: docData } = useQuery({
-    queryKey: ["job", id, "doc"],
-    queryFn: () => getJobDoc(id),
-    enabled:
-      !!id &&
-      (job?.status === "proposed" ||
-        job?.status === "accepted" ||
-        job?.status === "under_review"),
-  });
-  const currentDoc = overrideDoc ?? docData?.doc ?? null;
-
-  const saveVersionMutation = useMutation({
-    mutationFn: async () => {
-      const tabContent =
-        activeTab === "plan"
-          ? { block_overrides: Object.values(planOverrides) }
-          : activeTab === "etl"
-            ? {
-                python_code: displayedEditorCode,
-                generated_files:
-                  overrideGeneratedFiles ?? job?.generated_files ?? {},
-              }
-            : null;
-      if (tabContent === null) return;
-      const hash = contentHash(tabContent);
-      if (hash === lastSavedHashRef.current[activeTab]) return;
-      pendingHashRef.current = hash;
-      if (activeTab === "plan") {
-        return saveVersion(id, "plan", {
-          content: { block_overrides: Object.values(planOverrides) },
-        });
-      } else if (activeTab === "etl") {
-        return saveVersion(id, "editor", {
-          content: {
-            python_code: displayedEditorCode,
-            generated_files:
-              overrideGeneratedFiles ?? job?.generated_files ?? {},
-          },
-        });
-      }
-    },
-    onSuccess: async () => {
-      lastSavedHashRef.current[activeTab] = pendingHashRef.current;
-      await queryClient.invalidateQueries({
-        queryKey: ["job", id, "versions", activeTab],
-      });
-      toast.success("Version saved.");
-    },
-    onError: (err) => {
-      toast.error(
-        err instanceof Error ? err.message : "Could not save changes.",
-      );
-    },
   });
 
   const refineMutation = useMutation({
@@ -321,13 +249,6 @@ export default function JobDetailPage(): React.ReactElement {
                 onBlockRefineSuccess={() => setEditorCode(null)}
                 jobPythonCode={job?.python_code ?? undefined}
                 generatedFiles={job?.generated_files ?? undefined}
-                doc={currentDoc}
-                nonTechnicalDoc={docData?.non_technical_doc ?? null}
-                isDone={isReviewable}
-                onDocChange={setOverrideDoc}
-                onSave={() => saveVersionMutation.mutate()}
-                isSaving={saveVersionMutation.isPending}
-                restoreKey={reportRestoreKey}
                 isAccepted={isAccepted}
                 acceptedAt={job?.accepted_at ?? null}
                 onSwitchToEtlTab={() => {

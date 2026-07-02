@@ -35,7 +35,6 @@ import {
 } from "lucide-react";
 import { useRef, useState } from "react";
 import BlockPlanTable from "./BlockPlanTable";
-import ReportTab from "./ReportTab";
 
 // ---------------------------------------------------------------------------
 // Colour maps
@@ -546,13 +545,6 @@ export default function PlanTab({
   onBlockRefineSuccess,
   jobPythonCode,
   generatedFiles,
-  doc,
-  nonTechnicalDoc,
-  isDone,
-  onDocChange,
-  onSave,
-  isSaving,
-  restoreKey,
   isAccepted = false,
   acceptedAt = null,
   onSwitchToEtlTab,
@@ -568,13 +560,6 @@ export default function PlanTab({
   onBlockRefineSuccess?: () => void;
   jobPythonCode?: string;
   generatedFiles?: Record<string, string>;
-  doc?: string | null;
-  nonTechnicalDoc?: string | null;
-  isDone?: boolean;
-  onDocChange?: (doc: string) => void;
-  onSave?: () => void;
-  isSaving?: boolean;
-  restoreKey?: number;
   isAccepted?: boolean;
   acceptedAt?: string | null;
   onSwitchToEtlTab?: () => void;
@@ -756,9 +741,6 @@ export default function PlanTab({
       expandAndScrollToSteps();
     }
   };
-
-  // Report: only render when doc content exists (point 3)
-  const hasReport = !!doc && doc.trim().length > 0;
 
   return (
     <TooltipProvider>
@@ -943,25 +925,7 @@ export default function PlanTab({
           );
         })()}
 
-        {/* Report — only rendered when doc has content; placed above metrics card */}
-        {hasReport && (
-          <div className="space-y-2">
-            <h2 className="text-sm font-semibold text-foreground">Report</h2>
-            {isDone ? (
-              <ReportTab
-                isDone={isDone ?? false}
-                doc={doc ?? null}
-                nonTechnicalDoc={nonTechnicalDoc ?? null}
-                onDocChange={onDocChange}
-                onSave={onSave}
-                isSaving={isSaving ?? false}
-                restoreKey={restoreKey ?? 0}
-              />
-            ) : (
-              <p className="text-sm text-muted-foreground px-1">No documentation generated yet.</p>
-            )}
-          </div>
-        )}
+
 
         {/* Lineage unavailable notice */}
         {trustReport && !trustReport.lineage_available && (

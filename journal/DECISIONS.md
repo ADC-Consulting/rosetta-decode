@@ -6,6 +6,13 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-07-02 — Report section removed from Plan tab
+
+- **Report not surfaced in the job detail UI:** The plain-English report section has been removed from PlanTab. The standalone Report tab in JobDetailPage is also commented out. The feature has no current UX home. · rationale: the Plan tab should focus on the migration assessment (verdict, stat cards, attention queue); a prose report belongs in a dedicated export or document flow that hasn't been designed yet. · revisit when planning a decision-ready report export (issue #32/#24) or a dedicated Report tab
+- **Backend report generation remains intact:** `POST /jobs/{id}/doc`, `PlainEnglishAgent`, and the `report` / `non_technical_doc` fields on the Job model are untouched. The capability can be reactivated without backend changes. · revisit never (backend)
+
+---
+
 ## 2026-06-29 — DataStorage Source/Target toggle + PK/FK visualisation
 
 - **DataStorageTab toggle label is "Target" not "Migration":** Aligns terminology with the ETL tab (Source / Target). "Migration" was the original plan label but was renamed during implementation for consistency. · revisit never
