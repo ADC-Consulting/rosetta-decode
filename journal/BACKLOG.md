@@ -554,6 +554,18 @@
 - [x] feat(seed): `seed_kyc_job.py` — KYC/AML demo seed (6-step client screening pipeline, dec0de00-…-003)
 - [x] feat(seed): `seed_all.py` — orchestrates all three demo seeds in sequence
 
+**F85 — Plan tab UX overhaul (issue #85) — branch: `feat/F85-plan-tab-ux`**
+- [x] feat(F85): verdict strip above metrics, attention-first collapsible, N/total stat cards, criticality row, scrollbar-gutter
+- [x] fix(frontend): "Blocks"→"Steps" terminology across PlanTab, BlockPlanTable, TargetGraph, JobDetailPage, DocsPage
+- [x] refactor(plan-tab): remove redundant sections; merge runbook inline into attention cards; 7 collapsibles → 2
+- [x] feat(plan-tab): stat card affordance (hover ring, ChevronDown), ETL tab nav CTAs, accepted-job missing-deps callout past-tense
+- [x] fix(F85): blank ETL tab — nested button in BlockDetailPanel → span role="button"
+- [x] chore(seed): rename "Customer Revenue Pipeline" → "Monthly Revenue Pipeline"
+- [x] fix(plan-tab): strip SAS libref prefix from Reads/Produces chips
+- [x] feat(plan-tab): stat cards route to Needs Attention section with category filter (manual_todo / needs_review filter attention queue)
+- [x] chore(seed): remove all stale "manual" references from PROC IML block — amber/review framing throughout
+- [ ] Open PR for `feat/F85-plan-tab-ux` → Closes #85
+
 - [ ] #21: Consolidate lineage into a single primary view — `backlog` label
 - [ ] #20: Rollback / versioning based on lineage — `backlog` label
 - [ ] #32: Specify decision-ready reports (technical + PO) — `backlog` label, deferred

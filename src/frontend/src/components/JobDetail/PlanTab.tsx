@@ -1,11 +1,12 @@
-import { getJobPlan, getJobTrustReport, refineBlock } from "@/api/jobs";
+import { getJobPlan, getJobRunbook, getJobTrustReport, refineBlock } from "@/api/jobs";
 import type {
   BlockOverride,
   BlockPlan,
   JobPlanResponse,
   JobStatusValue,
+  RunbookEntry,
+  RunbookResponse,
   TrustReportBlock,
-  TrustReportFile,
   TrustReportResponse,
 } from "@/api/types";
 import { Badge } from "@/components/ui/badge";
@@ -34,10 +35,6 @@ import {
 } from "lucide-react";
 import { useRef, useState } from "react";
 import BlockPlanTable from "./BlockPlanTable";
-import ChangelogFeed from "./ChangelogFeed";
-import ReportTab from "./ReportTab";
-import { RunbookPanel } from "./RunbookPanel";
-import { ScopingSummaryPanel } from "./ScopingSummaryPanel";
 
 // ---------------------------------------------------------------------------
 // Colour maps
@@ -113,6 +110,21 @@ const VERDICT_STYLES: Record<
 };
 
 // ---------------------------------------------------------------------------
+// Criticality colour map and order (module-level, shared by AttentionTable and
+// the criticality breakdown row in the metrics card)
+// ---------------------------------------------------------------------------
+
+const CRIT_COLOR: Record<string, string> = {
+  critical: "text-red-700 bg-red-50 border border-red-200",
+  high: "text-orange-700 bg-orange-50 border border-orange-200",
+  medium: "text-amber-700 bg-amber-50 border border-amber-200",
+  low: "text-green-700 bg-green-50 border border-green-200",
+  unknown: "text-muted-foreground bg-muted border border-border",
+};
+
+const CRIT_ORDER: string[] = ["critical", "high", "medium", "low", "unknown"];
+
+// ---------------------------------------------------------------------------
 // Confidence help content
 // ---------------------------------------------------------------------------
 
@@ -122,24 +134,24 @@ const CONFIDENCE_HELP = `What the confidence score tells you:
 
 • Medium (65–84%) — The translation is likely correct but has not been fully verified, or the agent had some uncertainty. Worth a quick review.
 
-• Low (40–64%) — The agent flagged uncertainty, or the output did not match the reference. Requires human review before the block can be trusted.
+• Low (40–64%) — The agent flagged uncertainty, or the output did not match the reference. Requires human review before the step can be trusted.
 
-• Very Low (< 40%) — The agent had very low confidence, or the block failed reconciliation and was already low confidence. Likely needs manual rewrite.
+• Very Low (< 40%) — The agent had very low confidence, or the step failed reconciliation and was already low confidence. Likely needs manual rewrite.
 
 What it does not guarantee:
 
-A High confidence score does not mean the output is semantically correct in all edge cases — it means the automated checks passed and the LLM was confident. A human reviewer should still check any block that is business-critical.
+A High confidence score does not mean the output is semantically correct in all edge cases — it means the automated checks passed and the LLM was confident. A human reviewer should still check any step that is business-critical.
 
-Confidence is computed per block (DATA step, PROC, etc.), not per column or per row.
+Confidence is computed per step (DATA step, PROC, etc.), not per column or per row.
 
 If no reference CSV was uploaded, there is no reconciliation to validate against — the score reflects LLM self-assessment only.
 
 What criticality means:
 
-Criticality is a post-translation signal that combines strategy, confidence, reconciliation outcome, and blast radius (how many downstream files depend on this block). It differs from Risk, which is a static pre-translation assessment of SAS construct complexity.
+Criticality is a post-translation signal that combines strategy, confidence, reconciliation outcome, and blast radius (how many downstream files depend on this step). It differs from Risk, which is a static pre-translation assessment of SAS construct complexity.
 
-• Critical — Strategy is manual, or confidence was very low. Block needs human authoring or rewrite.
-• High — Confidence was low, reconciliation failed, or this block feeds 3+ downstream files.
+• Critical — Strategy is manual, or confidence was very low. Step needs human authoring or rewrite.
+• High — Confidence was low, reconciliation failed, or this step feeds 3+ downstream files.
 • Medium — Translation ran with medium confidence. Worth a spot check before accepting.
 • Low — High confidence, reconciliation passed, minimal downstream impact.`;
 
@@ -172,65 +184,91 @@ function StatCard({
 }): React.ReactElement | null {
   if (count === undefined) return null;
   const isActive = activeFilter === filterKey;
+  const isZero = count === 0;
+  const resolvedColorClasses = isZero
+    ? "text-muted-foreground bg-muted/30 border-muted"
+    : colorClasses;
   return (
     <button
       type="button"
       aria-pressed={isActive}
-      onClick={() => onFilterChange(isActive ? null : filterKey)}
+      onClick={() => !isZero && onFilterChange(isActive ? null : filterKey)}
+      disabled={isZero}
       className={[
-        "flex flex-col items-center justify-center gap-0.5 rounded-lg border p-3 min-w-[80px]",
-        "cursor-pointer select-none transition-all",
-        colorClasses,
-        isActive
-          ? "ring-2 ring-offset-1 ring-current shadow-sm"
-          : "hover:opacity-80",
+        "relative flex flex-col items-center justify-center gap-0.5 rounded-lg border p-3 min-w-[80px]",
+        "select-none transition-all",
+        resolvedColorClasses,
+        isZero
+          ? "cursor-default opacity-60"
+          : isActive
+            ? "cursor-pointer ring-2 ring-offset-1 ring-current shadow-sm"
+            : "cursor-pointer hover:shadow-md hover:ring-1 hover:ring-border",
       ].join(" ")}
     >
       <span className="text-2xl font-bold tabular-nums leading-none">
-        {count}
+        {total !== undefined && total > 0 ? `${count} / ${total}` : count}
       </span>
-      {total !== undefined && (
-        <span className="text-xs text-muted-foreground leading-none">
-          of {total}
-        </span>
-      )}
-      <span className="text-xs font-medium mt-0.5 leading-tight text-center">
+      <span className={`text-xs font-medium mt-0.5 leading-tight text-center ${isZero ? "text-muted-foreground" : ""}`}>
         {label}
       </span>
+      {!isZero && (
+        <ChevronDown
+          size={12}
+          className="absolute bottom-1.5 right-1.5 text-muted-foreground"
+          aria-hidden
+        />
+      )}
     </button>
   );
 }
 
 // ---------------------------------------------------------------------------
-// FileSection
+// InlineRunbook — collapsible "How to fix →" toggle embedded in an attention card
 // ---------------------------------------------------------------------------
 
-function FileSection({ file }: { file: TrustReportFile }): React.ReactElement {
+function InlineRunbook({ entry }: { entry: RunbookEntry }): React.ReactElement {
   const [open, setOpen] = useState(false);
   return (
-    <div className="rounded-lg border border-border">
+    <div className="border-t border-border pt-2 mt-1.5">
       <button
         type="button"
-        className="w-full flex items-center justify-between px-4 py-3 text-left text-sm font-medium
-          hover:bg-muted/40 transition-colors cursor-pointer"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1 text-xs text-primary hover:underline cursor-pointer"
         aria-expanded={open}
       >
-        <span className="font-mono text-xs truncate">{file.source_file}</span>
-        <span className="text-muted-foreground ml-2 shrink-0">{open ? "▲" : "▼"}</span>
+        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        How to fix →
       </button>
       {open && (
-        <div className="border-t border-border px-4 py-3 grid grid-cols-2 gap-x-8 gap-y-1 text-sm">
-          <span className="text-muted-foreground">Total blocks</span>
-          <span>{file.total_blocks}</span>
-          <span className="text-muted-foreground">Auto-verified</span>
-          <span className="text-green-700">{file.auto_verified}</span>
-          <span className="text-muted-foreground">Needs review</span>
-          <span className="text-amber-700">{file.needs_review}</span>
-          <span className="text-muted-foreground">Manual TODO</span>
-          <span className="text-muted-foreground">{file.manual_todo}</span>
-          <span className="text-muted-foreground">Failed reconciliation</span>
-          <span className="text-red-700">{file.failed_reconciliation}</span>
+        <div className="mt-2 space-y-2 pl-1">
+          {entry.why_risky.length > 0 && (
+            <div className="space-y-0.5">
+              <p className="text-[11px] font-semibold text-foreground uppercase tracking-wide">
+                Why it&apos;s risky
+              </p>
+              <ul className="list-disc list-inside space-y-0.5">
+                {entry.why_risky.map((reason, i) => (
+                  <li key={i} className="text-xs text-muted-foreground leading-relaxed">
+                    {reason}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {entry.remediation_outline.length > 0 && (
+            <div className="space-y-0.5">
+              <p className="text-[11px] font-semibold text-foreground uppercase tracking-wide">
+                Suggested remediation
+              </p>
+              <ol className="list-decimal list-inside space-y-0.5">
+                {entry.remediation_outline.map((step, i) => (
+                  <li key={i} className="text-xs text-muted-foreground leading-relaxed">
+                    {step}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -244,22 +282,30 @@ function FileSection({ file }: { file: TrustReportFile }): React.ReactElement {
 function AttentionCards({
   queue,
   blockPlanMap,
+  runbookMap,
   manualTodo,
   onShowAll,
   onViewBlocks,
+  onViewEtlTab,
+  isAccepted,
 }: {
   queue: TrustReportBlock[];
   blockPlanMap: Record<string, BlockPlan>;
+  runbookMap: Record<string, RunbookEntry>;
   manualTodo: number;
   onShowAll: () => void;
   onViewBlocks: () => void;
+  onViewEtlTab?: () => void;
+  isAccepted: boolean;
 }): React.ReactElement {
-  const CRIT_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+  const critOrderMap: Record<string, number> = Object.fromEntries(
+    CRIT_ORDER.map((k, i) => [k, i])
+  );
   const top5 = [...queue]
     .sort((a, b) => {
       if (a.strategy === "manual" && b.strategy !== "manual") return -1;
       if (b.strategy === "manual" && a.strategy !== "manual") return 1;
-      return (CRIT_ORDER[a.criticality] ?? 99) - (CRIT_ORDER[b.criticality] ?? 99);
+      return (critOrderMap[a.criticality] ?? 99) - (critOrderMap[b.criticality] ?? 99);
     })
     .slice(0, 5);
   const remaining = queue.length - top5.length;
@@ -279,9 +325,9 @@ function AttentionCards({
   const getRationale = (block: TrustReportBlock): string => {
     const bp = blockPlanMap[block.block_id];
     if (bp?.rationale) return bp.rationale;
-    if (block.strategy === "manual") return `A ${block.block_type} block that requires manual implementation.`;
-    if (block.reconciliation_status === "fail") return `A ${block.block_type} block that failed reconciliation.`;
-    return `A ${block.block_type} block that needs review.`;
+    if (block.strategy === "manual") return `A ${block.block_type} step that requires manual implementation.`;
+    if (block.reconciliation_status === "fail") return `A ${block.block_type} step that failed reconciliation.`;
+    return `A ${block.block_type} step that needs review.`;
   };
 
   return (
@@ -289,34 +335,63 @@ function AttentionCards({
       {manualTodo > 0 && (
         <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
           <AlertTriangle size={14} className="text-amber-600 shrink-0 mt-0.5" />
-          <p className="text-xs text-amber-700">
-            Manual blocks require code edits in the ETL tab before this pipeline will run.
-          </p>
+          <div className="flex flex-1 items-center justify-between gap-2 flex-wrap">
+            <p className="text-xs text-amber-700">
+              Manual steps require code edits in the ETL tab before this pipeline will run.
+            </p>
+            {onViewEtlTab && (
+              <button
+                type="button"
+                onClick={onViewEtlTab}
+                className="text-xs underline font-medium text-amber-700 hover:text-amber-900 shrink-0"
+              >
+                Go to ETL tab →
+              </button>
+            )}
+          </div>
         </div>
       )}
-      {top5.map(block => (
-        <div key={block.block_id} className="rounded-lg border border-border bg-card px-4 py-3 space-y-1.5">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <p className="font-mono text-xs text-foreground truncate">{block.block_id}</p>
-              <p className="font-mono text-xs text-muted-foreground truncate">{block.source_file}</p>
+      {top5.map(block => {
+        const runbookEntry = runbookMap[block.block_id];
+        return (
+          <div key={block.block_id} className="rounded-lg border border-border bg-card px-4 py-3 space-y-1.5">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="font-mono text-xs text-foreground truncate">{block.block_id}</p>
+                <p className="font-mono text-xs text-muted-foreground truncate">{block.source_file}</p>
+              </div>
+              <span
+                className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium shrink-0 ${strategyColor(block.strategy, block.reconciliation_status)}`}
+              >
+                {strategyLabel(block.strategy, block.reconciliation_status)}
+              </span>
             </div>
-            <span
-              className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium shrink-0 ${strategyColor(block.strategy, block.reconciliation_status)}`}
-            >
-              {strategyLabel(block.strategy, block.reconciliation_status)}
-            </span>
+            <p className="text-xs text-muted-foreground leading-relaxed">{getRationale(block)}</p>
+            {isAccepted ? (
+              onViewEtlTab && (
+                <button
+                  type="button"
+                  onClick={onViewEtlTab}
+                  className="text-xs text-primary hover:underline"
+                >
+                  View in ETL tab →
+                </button>
+              )
+            ) : (
+              <button
+                type="button"
+                onClick={onViewBlocks}
+                className="text-xs text-primary hover:underline"
+              >
+                View in steps table →
+              </button>
+            )}
+            {runbookEntry && (
+              <InlineRunbook entry={runbookEntry} />
+            )}
           </div>
-          <p className="text-xs text-muted-foreground leading-relaxed">{getRationale(block)}</p>
-          <button
-            type="button"
-            onClick={onViewBlocks}
-            className="text-xs text-primary hover:underline"
-          >
-            View in blocks table →
-          </button>
-        </div>
-      ))}
+        );
+      })}
       {remaining > 0 && (
         <button type="button" onClick={onShowAll} className="text-xs text-primary hover:underline px-1">
           + {remaining} more · Show all →
@@ -337,9 +412,9 @@ function AttentionTable({
   queue: TrustReportBlock[];
   lineageAvailable: boolean;
 }): React.ReactElement {
-  const CRIT_ORDER: Record<string, number> = {
-    critical: 0, high: 1, medium: 2, low: 3,
-  };
+  const critOrderMap: Record<string, number> = Object.fromEntries(
+    CRIT_ORDER.map((k, i) => [k, i])
+  );
   const STRAT_COLOR: Record<string, string> = {
     translated: "bg-green-100 text-green-800",
     translated_with_review: "bg-amber-100 text-amber-800",
@@ -349,12 +424,6 @@ function AttentionTable({
     translated: "Translated",
     translated_with_review: "Review needed",
     manual: "Manual",
-  };
-  const CRIT_COLOR: Record<string, string> = {
-    critical: "text-red-700 bg-red-50 border border-red-200",
-    high: "text-orange-700 bg-orange-50 border border-orange-200",
-    medium: "text-amber-700 bg-amber-50 border border-amber-200",
-    low: "text-green-700 bg-green-50 border border-green-200",
   };
   const CONF_COLOR: Record<string, string> = {
     high: "text-green-700 bg-green-50 border border-green-200",
@@ -383,7 +452,7 @@ function AttentionTable({
 
   const sorted = [...queue].sort((a, b) => {
     const cDiff =
-      (CRIT_ORDER[a.criticality] ?? 99) - (CRIT_ORDER[b.criticality] ?? 99);
+      (critOrderMap[a.criticality] ?? 99) - (critOrderMap[b.criticality] ?? 99);
     if (cDiff !== 0) return cDiff;
     const aBlast = a.blast_radius ?? -1;
     const bBlast = b.blast_radius ?? -1;
@@ -395,7 +464,7 @@ function AttentionTable({
       <table className="w-full text-sm">
         <thead>
           <tr className="bg-muted/50 text-xs text-muted-foreground">
-            <th className="px-3 py-2 text-left font-medium">Block ID</th>
+            <th className="px-3 py-2 text-left font-medium">Step ID</th>
             <th className="px-3 py-2 text-left font-medium">Source file</th>
             <th className="px-3 py-2 text-left font-medium">Strategy</th>
             <th className="px-3 py-2 text-left font-medium">Self confidence</th>
@@ -476,15 +545,9 @@ export default function PlanTab({
   onBlockRefineSuccess,
   jobPythonCode,
   generatedFiles,
-  doc,
-  nonTechnicalDoc,
-  isDone,
-  onDocChange,
-  onSave,
-  isSaving,
-  restoreKey,
   isAccepted = false,
   acceptedAt = null,
+  onSwitchToEtlTab,
 }: {
   jobId: string;
   isReviewable: boolean;
@@ -497,15 +560,9 @@ export default function PlanTab({
   onBlockRefineSuccess?: () => void;
   jobPythonCode?: string;
   generatedFiles?: Record<string, string>;
-  doc?: string | null;
-  nonTechnicalDoc?: string | null;
-  isDone?: boolean;
-  onDocChange?: (doc: string) => void;
-  onSave?: () => void;
-  isSaving?: boolean;
-  restoreKey?: number;
   isAccepted?: boolean;
   acceptedAt?: string | null;
+  onSwitchToEtlTab?: () => void;
 }): React.ReactElement {
   const trustReportEnabled =
     !!jobId &&
@@ -525,20 +582,31 @@ export default function PlanTab({
     enabled: trustReportEnabled,
   });
 
+  // Runbook data — fetched eagerly (not behind a collapsed toggle) so we can
+  // embed inline "How to fix" toggles in the attention cards.
+  const { data: runbookData } = useQuery<RunbookResponse>({
+    queryKey: ["job", jobId, "runbook"],
+    queryFn: () => getJobRunbook(jobId),
+    enabled: trustReportEnabled,
+  });
+
+  const runbookMap: Record<string, RunbookEntry> = runbookData
+    ? Object.fromEntries(runbookData.entries.map(e => [e.block_id, e]))
+    : {};
+
   const trustBlocks: Record<string, TrustReportBlock> = trustReport
     ? Object.fromEntries(trustReport.blocks.map((b) => [b.block_id, b]))
     : {};
 
   const isProposed = jobStatus === "proposed";
+  const [showFullDesc, setShowFullDesc] = useState(false);
   const [blocksCollapsed, setBlocksCollapsed] = useState(true);
-  const [reportCollapsed, setReportCollapsed] = useState(() => doc == null);
-  const [byFileCollapsed, setByFileCollapsed] = useState(true);
-  const [historyCollapsed, setHistoryCollapsed] = useState(true);
   const [attentionView, setAttentionView] = useState<"cards" | "table">("cards");
   const [attentionCollapsed, setAttentionCollapsed] = useState(false);
   const [activeStatFilter, setActiveStatFilter] =
     useState<StatFilterKey | null>(null);
   const blocksRef = useRef<HTMLDivElement>(null);
+  const attentionRef = useRef<HTMLDivElement>(null);
   const [isRefiningAll, setIsRefiningAll] = useState(false);
 
   const blockPlanMap: Record<string, BlockPlan> = planData
@@ -607,43 +675,130 @@ export default function PlanTab({
     label: planData.overall_risk,
   };
 
+  const stripLibref = (d: string): string => {
+    if (!d.includes(".") || /\.(csv|xlsx|xpt|sas7bdat|parquet|json|txt)$/i.test(d)) return d;
+    return d.substring(d.indexOf(".") + 1);
+  };
   const allInputs = new Set(planData.block_plans.flatMap(b => b.input_datasets));
   const allOutputs = new Set(planData.block_plans.flatMap(b => b.output_datasets));
-  const externalInputs = [...allInputs].filter(d => !allOutputs.has(d)).sort();
-  const finalOutputs = [...allOutputs].filter(d => !allInputs.has(d)).sort();
+  const externalInputs = [...allInputs].filter(d => !allOutputs.has(d)).sort().map(stripLibref);
+  const finalOutputs = [...allOutputs].filter(d => !allInputs.has(d)).sort().map(stripLibref);
 
-  function truncateList(items: string[], max = 4): string {
-    if (items.length <= max) return items.join(", ");
-    return `${items.slice(0, max).join(", ")} +${items.length - max} more`;
-  }
+  // Step type breakdown for the composition line (point 4)
+  const compositionCounts = planData.block_plans.reduce(
+    (acc, bp) => {
+      const t = bp.block_type?.toLowerCase() ?? "";
+      if (t === "data" || t === "data_step") acc.data += 1;
+      else if (t.startsWith("proc") || t === "generic_proc") acc.proc += 1;
+      else if (t === "macro") acc.macro += 1;
+      else if (bp.strategy === "manual") acc.manual += 1;
+      return acc;
+    },
+    { data: 0, proc: 0, macro: 0, manual: 0 },
+  );
+
+  const compositionParts: string[] = [];
+  if (compositionCounts.data > 0) compositionParts.push(`${compositionCounts.data} DATA`);
+  if (compositionCounts.proc > 0) compositionParts.push(`${compositionCounts.proc} PROC`);
+  if (compositionCounts.macro > 0) compositionParts.push(`${compositionCounts.macro} Macros`);
+  if (compositionCounts.manual > 0) compositionParts.push(`${compositionCounts.manual} Manual`);
+
+  // Attention queue — only render when non-empty (point 5)
+  const attentionQueueLength = trustReport?.review_queue.length ?? 0;
+
+  // Helper: expand steps and scroll to them
+  const expandAndScrollToSteps = () => {
+    setBlocksCollapsed(false);
+    setTimeout(
+      () =>
+        blocksRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        }),
+      50,
+    );
+  };
+
+  // Helper: expand the Needs Attention section and scroll to it
+  const expandAndScrollToAttention = () => {
+    setAttentionCollapsed(false);
+    setTimeout(
+      () =>
+        attentionRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        }),
+      50,
+    );
+  };
+
+  // Shared stat filter change handler
+  const handleStatFilterChange = (key: StatFilterKey | null) => {
+    setActiveStatFilter(key);
+    if (key === "needs_review" || key === "manual_todo") {
+      expandAndScrollToAttention();
+    } else if (key !== null) {
+      expandAndScrollToSteps();
+    }
+  };
 
   return (
     <TooltipProvider>
-      <div className="h-full min-h-0 overflow-y-auto space-y-4 pb-6">
+      <div className="h-full min-h-0 overflow-y-auto space-y-4 pb-6 [scrollbar-gutter:stable]">
         {/* Pipeline description — above verdict strip */}
         {planData.summary && (
-          <p className="text-sm text-foreground leading-relaxed">
-            {planData.summary}
-          </p>
+          <div>
+            <p className={`text-sm text-foreground leading-relaxed ${!showFullDesc ? "line-clamp-3" : ""}`}>
+              {planData.summary}
+            </p>
+            {planData.summary.length > 200 && (
+              <button
+                type="button"
+                onClick={() => setShowFullDesc((v) => !v)}
+                className="text-xs text-muted-foreground underline cursor-pointer mt-0.5"
+              >
+                {showFullDesc ? "Show less" : "Show more"}
+              </button>
+            )}
+          </div>
         )}
 
         {/* Reads / Produces row */}
         {(externalInputs.length > 0 || finalOutputs.length > 0) && (
-          <p className="text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-y-1 gap-x-2">
             {externalInputs.length > 0 && (
-              <span><span className="font-medium text-foreground">Reads:</span> {truncateList(externalInputs)}</span>
-            )}
-            {externalInputs.length > 0 && finalOutputs.length > 0 && (
-              <span className="mx-2">·</span>
+              <div className="flex flex-wrap items-center gap-1">
+                <span className="text-xs text-muted-foreground shrink-0">Reads:</span>
+                {externalInputs.map((f) => (
+                  <span
+                    key={f}
+                    className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-mono
+                      bg-muted text-muted-foreground border border-border mr-1 mb-1"
+                  >
+                    {f}
+                  </span>
+                ))}
+              </div>
             )}
             {finalOutputs.length > 0 && (
-              <span><span className="font-medium text-foreground">Produces:</span> {truncateList(finalOutputs)}</span>
+              <div className="flex flex-wrap items-center gap-1">
+                <span className="text-xs text-muted-foreground shrink-0">Produces:</span>
+                {finalOutputs.map((f) => (
+                  <span
+                    key={f}
+                    className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-mono
+                      bg-muted text-muted-foreground border border-border mr-1 mb-1"
+                  >
+                    {f}
+                  </span>
+                ))}
+              </div>
             )}
-          </p>
+          </div>
         )}
 
-        {/* Missing dependencies callout */}
-        {planData.missing_dependencies && planData.missing_dependencies.length > 0 && (
+        {/* Missing dependencies callout — non-accepted: shown before verdict strip as a blocking concern */}
+        {!isAccepted && planData.missing_dependencies && planData.missing_dependencies.length > 0 && (
           <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 space-y-1.5">
             <div className="flex items-center gap-2">
               <AlertTriangle size={14} className="text-amber-600 shrink-0" />
@@ -671,6 +826,83 @@ export default function PlanTab({
           </div>
         )}
 
+        {/* Verdict strip — accepted state overrides the green/amber/red states */}
+        {isAccepted ? (
+          <div className="rounded-lg border border-l-4 border-l-primary bg-primary/5 px-4 py-3 flex items-start gap-3">
+            <CheckCircle2 size={18} className="text-primary shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-foreground">Delivered — Accepted</p>
+              <p className="text-sm text-muted-foreground">
+                {acceptedAt
+                  ? `Accepted on ${new Date(acceptedAt).toLocaleDateString(undefined, {
+                      month: "long",
+                      day: "numeric",
+                      year: "numeric",
+                    })}.`
+                  : "This migration has been accepted."}
+                {" "}All editors are read-only.
+              </p>
+            </div>
+          </div>
+        ) : (
+          trustReport && (() => {
+            const verdict = getVerdict(trustReport);
+            const style = VERDICT_STYLES[verdict];
+            const { Icon } = style;
+            const attentionCount = trustReport.needs_review + trustReport.failed_reconciliation;
+            const manualCount = trustReport.manual_todo;
+            const consequence =
+              verdict === "green"
+                ? "All steps verified — safe to accept."
+                : verdict === "amber"
+                ? `${attentionCount} step${attentionCount !== 1 ? "s" : ""} need review before accepting.`
+                : `${manualCount} step${manualCount !== 1 ? "s" : ""} cannot be auto-converted — manual implementation required before this pipeline will run.`;
+            const headline =
+              verdict === "green"
+                ? "Ready to accept"
+                : verdict === "amber"
+                ? "Review recommended"
+                : "Not ready to accept";
+            return (
+              <div className={`rounded-lg border ${style.border} px-4 py-3 flex items-start gap-3`}>
+                <Icon size={18} className={`${style.iconColor} shrink-0 mt-0.5`} />
+                <div>
+                  <p className={`text-sm font-semibold ${style.headlineColor}`}>{headline}</p>
+                  <p className={`text-sm ${style.textColor}`}>{consequence}</p>
+                </div>
+              </div>
+            );
+          })()
+        )}
+
+        {/* Missing dependencies callout — accepted: shown after verdict strip in past tense, no action text */}
+        {isAccepted && planData.missing_dependencies && planData.missing_dependencies.length > 0 && (
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 space-y-1.5">
+            <div className="flex items-center gap-2">
+              <AlertTriangle size={14} className="text-amber-600 shrink-0" />
+              <p className="text-sm font-medium text-amber-800">
+                {planData.missing_dependencies.length} dependenc{planData.missing_dependencies.length === 1 ? "y was" : "ies were"} unavailable during translation
+              </p>
+            </div>
+            <ul className="text-xs text-amber-700 space-y-0.5 pl-5 list-disc">
+              {planData.missing_dependencies.slice(0, 3).map(dep => (
+                <li key={`${dep.type}:${dep.name}`}>
+                  <span className="font-mono">{dep.name}</span>
+                  {" "}
+                  <span className="text-amber-600">
+                    ({dep.type}, {dep.reference_count} {dep.reference_count === 1 ? "ref" : "refs"})
+                  </span>
+                </li>
+              ))}
+              {planData.missing_dependencies.length > 3 && (
+                <li className="list-none text-amber-600">
+                  +{planData.missing_dependencies.length - 3} more
+                </li>
+              )}
+            </ul>
+          </div>
+        )}
+
         {/* Sensitive data warning banner */}
         {(() => {
           const piiSignals = planData.sensitive_data_findings
@@ -678,13 +910,13 @@ export default function PlanTab({
             : [];
           const piiColumnCount = planData.sensitive_data_findings?.length ?? 0;
           return piiSignals.length > 0 && (
-            <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 flex items-start gap-3">
-              <AlertTriangle size={14} className="text-red-600 shrink-0 mt-0.5" />
+            <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 flex items-start gap-3">
+              <AlertTriangle size={14} className="text-amber-500 shrink-0 mt-0.5" />
               <div className="space-y-0.5">
-                <p className="text-sm font-medium text-red-800">
+                <p className="text-sm font-medium text-amber-800">
                   Sensitive data detected ({piiColumnCount} column{piiColumnCount !== 1 ? "s" : ""})
                 </p>
-                <p className="text-xs text-red-700">
+                <p className="text-xs text-amber-700">
                   Signals matched: {piiSignals.join(", ")}. Ensure data handling complies with applicable
                   regulations before accepting.
                 </p>
@@ -692,6 +924,15 @@ export default function PlanTab({
             </div>
           );
         })()}
+
+
+
+        {/* Lineage unavailable notice */}
+        {trustReport && !trustReport.lineage_available && (
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+            Blast radius unavailable — lineage enrichment did not run for this job.
+          </div>
+        )}
 
         {/* Metrics card — confidence/risk/stat cards only */}
         <Card className="border-border bg-muted/30">
@@ -773,20 +1014,7 @@ export default function PlanTab({
                         label="Auto-verified"
                         colorClasses="text-green-700 bg-green-50 border-green-200"
                         activeFilter={activeStatFilter}
-                        onFilterChange={(key) => {
-                          setActiveStatFilter(key);
-                          if (key !== null) {
-                            setBlocksCollapsed(false);
-                            setTimeout(
-                              () =>
-                                blocksRef.current?.scrollIntoView({
-                                  behavior: "smooth",
-                                  block: "start",
-                                }),
-                              50,
-                            );
-                          }
-                        }}
+                        onFilterChange={handleStatFilterChange}
                       />
                       <StatCard
                         filterKey="needs_review"
@@ -795,42 +1023,16 @@ export default function PlanTab({
                         label="Needs review"
                         colorClasses="text-amber-700 bg-amber-50 border-amber-200"
                         activeFilter={activeStatFilter}
-                        onFilterChange={(key) => {
-                          setActiveStatFilter(key);
-                          if (key !== null) {
-                            setBlocksCollapsed(false);
-                            setTimeout(
-                              () =>
-                                blocksRef.current?.scrollIntoView({
-                                  behavior: "smooth",
-                                  block: "start",
-                                }),
-                              50,
-                            );
-                          }
-                        }}
+                        onFilterChange={handleStatFilterChange}
                       />
                       <StatCard
                         filterKey="manual_todo"
                         count={trustReport.manual_todo}
                         total={trustReport.total_blocks}
                         label="Manual TODO"
-                        colorClasses="text-muted-foreground bg-muted border-border"
+                        colorClasses="text-amber-700 bg-amber-50 border-amber-200"
                         activeFilter={activeStatFilter}
-                        onFilterChange={(key) => {
-                          setActiveStatFilter(key);
-                          if (key !== null) {
-                            setBlocksCollapsed(false);
-                            setTimeout(
-                              () =>
-                                blocksRef.current?.scrollIntoView({
-                                  behavior: "smooth",
-                                  block: "start",
-                                }),
-                              50,
-                            );
-                          }
-                        }}
+                        onFilterChange={handleStatFilterChange}
                       />
                       <StatCard
                         filterKey="failed_reconciliation"
@@ -839,20 +1041,7 @@ export default function PlanTab({
                         label="Failed reconciliation"
                         colorClasses="text-red-700 bg-red-50 border-red-200"
                         activeFilter={activeStatFilter}
-                        onFilterChange={(key) => {
-                          setActiveStatFilter(key);
-                          if (key !== null) {
-                            setBlocksCollapsed(false);
-                            setTimeout(
-                              () =>
-                                blocksRef.current?.scrollIntoView({
-                                  behavior: "smooth",
-                                  block: "start",
-                                }),
-                              50,
-                            );
-                          }
-                        }}
+                        onFilterChange={handleStatFilterChange}
                       />
                     </div>
                     {activeStatFilter && (
@@ -866,6 +1055,35 @@ export default function PlanTab({
                         </button>
                       </div>
                     )}
+                    {/* Criticality breakdown row */}
+                    {(() => {
+                      const critCounts: Record<string, number> = {};
+                      for (const block of trustReport.blocks) {
+                        const key = block.criticality ?? "unknown";
+                        critCounts[key] = (critCounts[key] ?? 0) + 1;
+                      }
+                      const pills = CRIT_ORDER.filter(k => (critCounts[k] ?? 0) > 0);
+                      if (pills.length === 0) return null;
+                      return (
+                        <div className="flex items-center gap-2 flex-wrap pt-1">
+                          <span className="text-xs text-muted-foreground shrink-0">Criticality:</span>
+                          {pills.map(k => (
+                            <span
+                              key={k}
+                              className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${CRIT_COLOR[k]}`}
+                            >
+                              {k} {critCounts[k]}
+                            </span>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                    {/* Step type composition line */}
+                    {compositionParts.length > 0 && (
+                      <p className="text-xs text-muted-foreground pt-0.5">
+                        {compositionParts.join(" · ")}
+                      </p>
+                    )}
                   </div>
                 </>
               )}
@@ -873,186 +1091,9 @@ export default function PlanTab({
           </CardContent>
         </Card>
 
-        {/* Verdict strip — accepted state overrides the green/amber/red states */}
-        {isAccepted ? (
-          <div className="rounded-lg border border-l-4 border-l-primary bg-primary/5 px-4 py-3 flex items-start gap-3">
-            <CheckCircle2 size={18} className="text-primary shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm font-semibold text-foreground">Delivered — Accepted</p>
-              <p className="text-sm text-muted-foreground">
-                {acceptedAt
-                  ? `Accepted on ${new Date(acceptedAt).toLocaleDateString(undefined, {
-                      month: "long",
-                      day: "numeric",
-                      year: "numeric",
-                    })}.`
-                  : "This migration has been accepted."}
-                {" "}All editors are read-only.
-              </p>
-            </div>
-          </div>
-        ) : (
-          trustReport && (() => {
-            const verdict = getVerdict(trustReport);
-            const style = VERDICT_STYLES[verdict];
-            const { Icon } = style;
-            const attentionCount = trustReport.needs_review + trustReport.failed_reconciliation;
-            const manualCount = trustReport.manual_todo;
-            const consequence =
-              verdict === "green"
-                ? "All blocks verified — safe to accept."
-                : verdict === "amber"
-                ? `${attentionCount} block${attentionCount !== 1 ? "s" : ""} need review before accepting.`
-                : `${manualCount} block${manualCount !== 1 ? "s" : ""} cannot be auto-converted — manual implementation required before this pipeline will run.`;
-            const headline =
-              verdict === "green"
-                ? "Ready to accept"
-                : verdict === "amber"
-                ? "Review recommended"
-                : "Not ready to accept";
-            return (
-              <div className={`rounded-lg border ${style.border} px-4 py-3 flex items-start gap-3`}>
-                <Icon size={18} className={`${style.iconColor} shrink-0 mt-0.5`} />
-                <div>
-                  <p className={`text-sm font-semibold ${style.headlineColor}`}>{headline}</p>
-                  <p className={`text-sm ${style.textColor}`}>{consequence}</p>
-                </div>
-              </div>
-            );
-          })()
-        )}
-
-        {/* Lineage unavailable notice */}
-        {trustReport && !trustReport.lineage_available && (
-          <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-            Blast radius unavailable — lineage enrichment did not run for this job.
-          </div>
-        )}
-
-        {/* Block plan section */}
-        {planData?.block_plans && planData.block_plans.length > 0 && (
-          <div ref={blocksRef} className="space-y-2">
-            <button
-              type="button"
-              onClick={() => setBlocksCollapsed((v) => !v)}
-              className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
-            >
-              {blocksCollapsed ? (
-                <ChevronRight
-                  size={14}
-                  className="text-muted-foreground shrink-0"
-                />
-              ) : (
-                <ChevronDown
-                  size={14}
-                  className="text-muted-foreground shrink-0"
-                />
-              )}
-              <h2 className="text-sm font-semibold text-foreground">Blocks</h2>
-              <Badge variant="secondary" className="text-xs font-mono">
-                {planData.block_plans.length}
-              </Badge>
-            </button>
-            {!blocksCollapsed && (
-              <BlockPlanTable
-                blockPlans={planData.block_plans}
-                isProposed={isProposed}
-                trustBlocks={trustBlocks}
-                jobId={jobId}
-                jobStatus={jobStatus}
-                isAccepted={jobStatus === "accepted"}
-                onBlockRefineSuccess={onBlockRefineSuccess}
-                jobPythonCode={jobPythonCode}
-                generatedFiles={generatedFiles}
-                activeStatFilter={activeStatFilter}
-                onClearStatFilter={() => setActiveStatFilter(null)}
-              />
-            )}
-          </div>
-        )}
-
-        {/* Report panel */}
-        <div className="space-y-2">
-          <button
-            type="button"
-            onClick={() => setReportCollapsed((v) => !v)}
-            className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
-          >
-            {reportCollapsed
-              ? <ChevronRight size={14} className="text-muted-foreground shrink-0" />
-              : <ChevronDown size={14} className="text-muted-foreground shrink-0" />}
-            <h2 className="text-sm font-semibold text-foreground">Report</h2>
-          </button>
-          {!reportCollapsed && (
-            isDone ? (
-              <ReportTab
-                isDone={isDone ?? false}
-                doc={doc ?? null}
-                nonTechnicalDoc={nonTechnicalDoc ?? null}
-                onDocChange={onDocChange}
-                onSave={onSave}
-                isSaving={isSaving ?? false}
-                restoreKey={restoreKey ?? 0}
-              />
-            ) : (
-              <p className="text-sm text-muted-foreground px-1">No documentation generated yet.</p>
-            )
-          )}
-        </div>
-
-        {trustReport?.files && trustReport.files.length > 0 && (
-          <div className="space-y-2">
-            <button
-              type="button"
-              onClick={() => setByFileCollapsed((v) => !v)}
-              className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
-            >
-              {byFileCollapsed ? (
-                <ChevronRight size={14} className="text-muted-foreground shrink-0" />
-              ) : (
-                <ChevronDown size={14} className="text-muted-foreground shrink-0" />
-              )}
-              <h2 className="text-sm font-semibold text-foreground">By file</h2>
-              <Badge variant="secondary" className="text-xs font-mono">
-                {trustReport.files.length}
-              </Badge>
-            </button>
-            {!byFileCollapsed && (
-              <div className="space-y-2">
-                {trustReport.files.map((file) => (
-                  <FileSection key={file.source_file} file={file} />
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Migration history section */}
-        <div className="space-y-2">
-          <button
-            type="button"
-            onClick={() => setHistoryCollapsed(v => !v)}
-            className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
-          >
-            {historyCollapsed
-              ? <ChevronRight size={14} className="text-muted-foreground shrink-0" />
-              : <ChevronDown size={14} className="text-muted-foreground shrink-0" />}
-            <h2 className="text-sm font-semibold text-foreground">Migration history</h2>
-          </button>
-          {!historyCollapsed && (
-            <ChangelogFeed jobId={jobId} />
-          )}
-        </div>
-
-        {/* Scoping summary section */}
-        <ScopingSummaryPanel jobId={jobId} />
-
-        {/* Remediation runbook section */}
-        <RunbookPanel jobId={jobId} />
-
-        {/* Needs attention section */}
-        {trustReport && (
-          <div className="space-y-2">
+        {/* Needs attention section — only rendered when there are items (point 5) */}
+        {trustReport && attentionQueueLength > 0 && (
+          <div ref={attentionRef} className="space-y-2">
             {/* Header row */}
             <div className="flex items-center gap-2">
               <button
@@ -1066,14 +1107,12 @@ export default function PlanTab({
                   <ChevronDown size={14} className="text-muted-foreground shrink-0" />
                 )}
                 <h2 className="text-sm font-semibold text-foreground">Needs attention</h2>
-                {trustReport.review_queue.length > 0 && (
-                  <Badge variant="secondary" className="text-xs font-mono">
-                    {trustReport.review_queue.length}
-                  </Badge>
-                )}
+                <Badge variant="secondary" className="text-xs font-mono">
+                  {attentionQueueLength}
+                </Badge>
               </button>
-              {/* Cards/Table toggle — only when there are items */}
-              {!attentionCollapsed && trustReport.review_queue.length > 0 && (
+              {/* Cards/Table toggle */}
+              {!attentionCollapsed && (
                 <div className="flex rounded-md border border-border overflow-hidden text-xs ml-1">
                   <button
                     type="button"
@@ -1099,7 +1138,7 @@ export default function PlanTab({
                   </button>
                 </div>
               )}
-              {/* Re-translate button (moved from Review queue header) */}
+              {/* Re-translate button */}
               {trustReport.failed_reconciliation > 0 && jobStatus !== "accepted" && (
                 <Button
                   size="sm"
@@ -1111,43 +1150,88 @@ export default function PlanTab({
                   {isRefiningAll ? (
                     <><Loader2 size={14} className="animate-spin mr-1" />Re-translating…</>
                   ) : (
-                    "Re-translate failed blocks"
+                    "Re-translate failed steps"
                   )}
                 </Button>
               )}
             </div>
 
             {/* Body */}
-            {!attentionCollapsed && (
-              trustReport.review_queue.length === 0 ? (
-                <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3">
-                  <CheckCircle2 size={16} className="text-green-600 shrink-0" />
-                  <p className="text-sm text-green-700">
-                    All {trustReport.total_blocks} blocks verified — nothing needs attention.
-                  </p>
-                </div>
-              ) : attentionView === "cards" ? (
+            {!attentionCollapsed && (() => {
+              const filteredAttentionQueue = (() => {
+                const q = trustReport.review_queue;
+                if (activeStatFilter === "manual_todo") return q.filter(b => b.strategy === "manual");
+                if (activeStatFilter === "needs_review")
+                  return q.filter(b => b.strategy !== "manual" && b.reconciliation_status !== "fail");
+                if (activeStatFilter === "failed_reconciliation")
+                  return q.filter(b => b.reconciliation_status === "fail");
+                return q; // null or "auto_verified" — show all
+              })();
+              return attentionView === "cards" ? (
                 <AttentionCards
-                  queue={trustReport.review_queue}
+                  queue={filteredAttentionQueue}
                   blockPlanMap={blockPlanMap}
+                  runbookMap={runbookMap}
                   manualTodo={trustReport.manual_todo}
                   onShowAll={() => setAttentionView("table")}
                   onViewBlocks={() => {
                     setBlocksCollapsed(false);
                     blocksRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
                   }}
+                  onViewEtlTab={onSwitchToEtlTab}
+                  isAccepted={isAccepted}
                 />
               ) : (
                 <AttentionTable
-                  queue={trustReport.review_queue}
+                  queue={filteredAttentionQueue}
                   lineageAvailable={trustReport.lineage_available}
                 />
-              )
-            )}
+              );
+            })()}
           </div>
         )}
 
-
+        {/* Steps section — default collapsed (point 7) */}
+        {planData?.block_plans && planData.block_plans.length > 0 && (
+          <div ref={blocksRef} className="space-y-2">
+            <button
+              type="button"
+              onClick={() => setBlocksCollapsed((v) => !v)}
+              className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+            >
+              {blocksCollapsed ? (
+                <ChevronRight
+                  size={14}
+                  className="text-muted-foreground shrink-0"
+                />
+              ) : (
+                <ChevronDown
+                  size={14}
+                  className="text-muted-foreground shrink-0"
+                />
+              )}
+              <h2 className="text-sm font-semibold text-foreground">Steps</h2>
+              <Badge variant="secondary" className="text-xs font-mono">
+                {planData.block_plans.length}
+              </Badge>
+            </button>
+            {!blocksCollapsed && (
+              <BlockPlanTable
+                blockPlans={planData.block_plans}
+                isProposed={isProposed}
+                trustBlocks={trustBlocks}
+                jobId={jobId}
+                jobStatus={jobStatus}
+                isAccepted={jobStatus === "accepted"}
+                onBlockRefineSuccess={onBlockRefineSuccess}
+                jobPythonCode={jobPythonCode}
+                generatedFiles={generatedFiles}
+                activeStatFilter={activeStatFilter}
+                onClearStatFilter={() => setActiveStatFilter(null)}
+              />
+            )}
+          </div>
+        )}
       </div>
     </TooltipProvider>
   );

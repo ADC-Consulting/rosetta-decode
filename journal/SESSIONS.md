@@ -6,6 +6,70 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-06-30 (cont.) — Demo seed cleanup + townhall speaker notes
+
+**Duration:** ~1h | **Focus:** Removing stale "manual" language from demo seed, finalising speaker notes
+
+### Done
+- **Seed cleanup committed** (`da3aeee`): removed all stale "manual-migration" language from PROC IML block in `seed_demo_job.py` — label, status_reason, step name/description, risk_explanation, generated code comment, pipeline.py import comment — now consistently uses amber/review framing
+- **Speaker notes finalised** for ADC Consulting internal townhall demo (~5 min): Plan → ETL → Data → Accept arc; ETL Source→Target toggle beat; Data Flow as visual closer; Accept as earned decision moment
+- **Re-seeded** demo job to reset to `proposed` state after demo acceptance testing
+
+### Decisions
+- Demo structure: Plan tab (summary + verdict + stat card filter) → ETL tab (Source → Target toggle) → Data tab (Data Flow diagram) → Accept — closes the assessment arc live on screen
+- Speaker notes frame the tool as an assessment engine, not a code generator; target audience is the code owner making a go/no-go decision
+
+### Open Questions
+- none
+
+### Next Session — Start Here
+1. Open PR for `feat/F85-plan-tab-ux` — run `/git-pr-summary` then `gh pr create` (Closes #85)
+
+### Files Touched
+- `scripts/seed_demo_job.py`
+
+---
+
+## 2026-06-30 — F85 Plan tab UX overhaul + demo prep
+
+**Duration:** ~3h | **Focus:** Plan tab improvements (issue #85), KYC demo fixes, demo job rename, libref chip fix
+
+### Done
+- **F85 branch created** (`feat/F85-plan-tab-ux`) — cherry-picked 5 plan tab commits off F79, reset F79, rebased F85 onto updated main (PR #114 merged)
+- **Issue #85 — Plan tab UX improvements**: verdict strip above metrics card, "Blocks"→"Steps" everywhere, N/total stat cards, criticality row, scrollbar-gutter stable layout, attention-first collapsible
+- **PII warning softened** from red to amber styling
+- **Terminology audit** — all "blocks" string leaks replaced with "steps" across `PlanTab.tsx`, `BlockPlanTable.tsx`, `TargetGraph.tsx`, `JobDetailPage.tsx`, `DocsPage.tsx`
+- **Information architecture overhaul** — removed Migration history, By file, Scoping summary, standalone Remediation runbook; merged runbook as inline "How to fix →" toggle in attention cards; reduced from 7 collapsibles to 2
+- **Stat card affordance** — cursor-pointer, hover ring/shadow, ChevronDown indicator, zero-count cards disabled
+- **ETL tab navigation** — `onSwitchToEtlTab` prop wired through; attention cards show "View in ETL tab →" / "Go to ETL tab →" CTAs
+- **Missing deps callout** — context-sensitive: before verdict (instructional) for pending jobs; after verdict (past-tense, no action text) for accepted jobs
+- **Fixed blank ETL tab** — `BlockDetailPanel` had nested `<button>` inside `PopoverTrigger asChild`; changed to `<span role="button">` with keyboard handler
+- **KYC seed fixed** — `missing_dependencies` corrected from plain strings to `{name, type, reference_count}` objects; `cross_file_edges` reason types fixed (`FORMAT_CALL`→`INCLUDE`, `MACRO_VAR`→`MACRO_CALL`)
+- **Demo job renamed** — "Customer Revenue Pipeline" → "Monthly Revenue Pipeline" in `seed_demo_job.py`
+- **Libref prefix stripped** from Reads/Produces chips — `outdir.revenue_summary` now shows as `revenue_summary`
+
+### Decisions
+- Strip SAS libref prefix (`libname.table` → `table`) in Reads/Produces chips for all jobs — file extensions (.csv, .xlsx, .xpt) preserved as-is
+- Use KYC demo for financial/compliance audiences; Monthly Revenue Pipeline for general audiences; FINREP for banking/regulatory niche
+
+### Open Questions
+- none
+
+### Next Session — Start Here
+1. Open PR for `feat/F85-plan-tab-ux` — run `/git-pr-summary` to draft description (covers issue #85 + ETL blank fix + demo polish)
+2. After merge, pick next item from Phase 3 backlog
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/PlanTab.tsx`
+- `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
+- `src/frontend/src/components/JobDetail/BlockDetailPanel.tsx`
+- `src/frontend/src/components/JobDetail/TargetGraph.tsx`
+- `src/frontend/src/pages/JobDetailPage.tsx`
+- `src/frontend/src/pages/DocsPage.tsx`
+- `scripts/seed_demo_job.py`
+
+---
+
 ## 2026-06-29 — F80 DataStorage Source/Target toggle + PK/FK visual indicators + FINREP/KYC seed jobs
 
 **Duration:** ~3h | **Focus:** DataStorageTab polish, Data Model PK/FK, pharma sandbox test coverage, demo seed scripts

@@ -574,7 +574,7 @@ export default function BlockPlanTable({
           <thead className="sticky top-0 z-10">
             <tr className="bg-muted/80 backdrop-blur-sm text-left border-b border-border">
               <th className="px-3 py-2 font-medium text-muted-foreground text-xs">
-                Block
+                Step
               </th>
               <th className="px-3 py-2 font-medium text-muted-foreground text-xs w-20">
                 Type
@@ -589,7 +589,7 @@ export default function BlockPlanTable({
                 Criticality
               </th>
               <th className="px-3 py-2 font-medium text-muted-foreground text-xs w-20">
-                Confidence
+                Conf %
               </th>
               <th className="px-3 py-2 font-medium text-muted-foreground text-xs w-[120px] text-center">
                 Actions
@@ -913,7 +913,7 @@ export default function BlockPlanTable({
                     const slash = raw.lastIndexOf("/");
                     return slash >= 0 ? raw.slice(slash + 1) : raw;
                   })()
-                : "Block Code"}
+                : "Step Code"}
             </span>
 
             <div className="ml-auto flex items-center gap-1.5">

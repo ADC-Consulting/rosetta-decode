@@ -492,7 +492,7 @@ function DocPopup({
         <DialogFooter showCloseButton className="mx-0 mb-0 rounded-b-xl">
           {trustReport && (
             <span className="text-xs text-muted-foreground self-center mr-auto">
-              {totalBlocks} total blocks · {autoVerified} auto-verified ·{" "}
+              {totalBlocks} total steps · {autoVerified} auto-verified ·{" "}
               {needsReview} needs review
             </span>
           )}
