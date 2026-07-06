@@ -6,6 +6,34 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-07-02 — F85 PR opened + Report section removed
+
+**Duration:** ~1h | **Focus:** Verifying issue #85 checklist, removing Report from Plan tab, opening PR
+
+### Done
+- **Issue #85 audit** — all six items verified; five confirmed green, Report positioning identified as gap
+- **Report section removed** from `PlanTab.tsx` and `JobDetailPage.tsx` — props, imports, state, and doc query all cleaned up; decision logged in `DECISIONS.md`
+- **PR #115 opened** — `feat/F85-plan-tab-ux` → main, Closes #85
+- **Branch pushed** to remote; PR up to date after Report removal commit (`8f96221`)
+
+### Decisions
+- Report section deferred: no UX home in current five-tab layout; backend (`PlainEnglishAgent`, `POST /jobs/{id}/doc`) remains intact — revisit when planning decision-ready report export (issues #32/#24)
+
+### Open Questions
+- none
+
+### Next Session — Start Here
+1. Merge PR #115 (or chase review)
+2. Pick next Phase 3 backlog item
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/PlanTab.tsx`
+- `src/frontend/src/pages/JobDetailPage.tsx`
+- `journal/DECISIONS.md`
+- `journal/BACKLOG.md`
+
+---
+
 ## 2026-06-30 (cont.) — Demo seed cleanup + townhall speaker notes
 
 **Duration:** ~1h | **Focus:** Removing stale "manual" language from demo seed, finalising speaker notes
