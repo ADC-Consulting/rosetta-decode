@@ -6,6 +6,60 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-07-07 — Summer planning: backlog audit + go-to-market gap analysis
+
+**Duration:** ~1h | **Focus:** Azure infra investigation, GitHub backlog vs local backlog gap analysis, go-to-market planning
+
+### Done
+- **Azure AI Foundry investigated** — primary model is `gpt-5.4` (version `2026-03-05`, DataZoneStandard SKU, West Europe, 900K TPM); Claude (`claude-opus-4-1`) configured but `deploy_claude = false`; defined in `infra/env/common.tfvars` and `infra/modules/ai_foundry/`
+- **Local vs Azure LLM clarified** — locally the tool uses `anthropic:claude-sonnet-4-6` (default in `config.py`), overridden by `LLM_MODEL` in `.env`; Azure only used when `AZURE_OPENAI_ENDPOINT` is set
+- **Service built and started locally** — `make docker-build` + `docker compose up -d` + demo job seeded
+- **GitHub backlog audited** — 20+ open issues not tracked in local `BACKLOG.md`; all added
+- **9 go-to-market issues created** (#116–#124) and added to GitHub project Staging pane: data handling one-pager, ICP, pricing model, ROI benchmark, competitive positioning, legal templates, pilot design, sales playbook, awareness content
+
+### Decisions
+- none
+
+### Open Questions
+- What is `LLM_MODEL` set to in `.env`? (sandbox blocked reading it — user to check with `grep LLM_MODEL .env`)
+
+### Next Session — Start Here
+1. Merge PR #115 (`feat/F85-plan-tab-ux`) or chase review
+2. Pick summer priority: go-to-market docs (#116–#124) or next engineering feature
+
+### Files Touched
+- `journal/BACKLOG.md`
+
+---
+
+## 2026-07-02 — F85 PR opened + Report section removed
+
+**Duration:** ~1h | **Focus:** Verifying issue #85 checklist, removing Report from Plan tab, opening PR
+
+### Done
+- **Issue #85 audit** — all six items verified; five confirmed green, Report positioning identified as gap
+- **Report section removed** from `PlanTab.tsx` and `JobDetailPage.tsx` — props, imports, state, and doc query all cleaned up; decision logged in `DECISIONS.md`
+- **PR #115 opened** — `feat/F85-plan-tab-ux` → main, Closes #85
+- **Branch pushed** to remote; PR up to date after Report removal commit (`8f96221`)
+
+### Decisions
+- Report section deferred: no UX home in current five-tab layout; backend (`PlainEnglishAgent`, `POST /jobs/{id}/doc`) remains intact — revisit when planning decision-ready report export (issues #32/#24)
+
+### Open Questions
+- none
+
+### Next Session — Start Here
+1. Merge PR #115 (or chase review)
+2. Pick next Phase 3 backlog item
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/PlanTab.tsx`
+- `src/frontend/src/pages/JobDetailPage.tsx`
+- `journal/DECISIONS.md`
+- `journal/BACKLOG.md`
+
+---
+
 ## 2026-06-30 (cont.) — Demo seed cleanup + townhall speaker notes
 
 **Duration:** ~1h | **Focus:** Removing stale "manual" language from demo seed, finalising speaker notes
