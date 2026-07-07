@@ -394,7 +394,7 @@
 
 **GitHub issue priority queue (unblocked — source of truth is GitHub)**
 - [x] #19: Runbook for high-risk / non-convertible blocks → delivered by F35
-- [ ] #25: Token usage + bill-of-materials / scoping summary
+- [x] #25: Token usage + bill-of-materials / scoping summary → delivered by F34
 **F30 — Reads/Produces row (#60) → see `docs/plans/latest/F30-reads-produces-row.md`**
 - [x] F30 S-A: Add input/output_datasets to BlockPlan model
 - [x] F30 S-B: Populate in _build_migration_plan()
@@ -570,6 +570,48 @@
 - [ ] #20: Rollback / versioning based on lineage — `backlog` label
 - [ ] #32: Specify decision-ready reports (technical + PO) — `backlog` label, deferred
 - [ ] #24: Implement decision-ready reports — `backlog` label, deferred
+
+**Bug**
+- [ ] #100: Plan tab — strategy column label disagrees with attention flag for `translated_with_review` blocks
+
+**Cleanup / tech debt**
+- [ ] #47: Remove legacy standalone pages and routes
+- [ ] #46: Remove legacy tab components from JobDetailPage
+- [ ] #52: UX — revisit sidebar navigation (align with confirmed user personas)
+- [ ] #45: AI tab placeholder for AI side-effect data capture
+- [ ] #44: BI tab placeholder for BI side-effect data capture
+
+**Core product features**
+- [ ] #69: Databricks / cloud deployment — DatabricksBackend, PySpark codegen, Workflow YAML export
+- [ ] #79: Manual intervention workflow — track, assign, and reintegrate blocks requiring human coding
+- [ ] #78: Client UAT view — simplified stakeholder view of migration evidence per engagement
+- [ ] #77: Engagement workspace — tag jobs by client, cross-job progress view
+- [ ] #59: Artefact versioning — group jobs by input hash, expose version history
+
+**Go-to-market (added 2026-07-07, GitHub issues in Staging)**
+- [ ] #116: Define data handling & security one-pager
+- [ ] #117: Define ideal customer profile (ICP)
+- [ ] #118: Define pricing model for migration engagements
+- [ ] #119: Build ROI benchmark — manual migration vs. Rosetta
+- [ ] #120: Define competitive positioning vs. SAS migration alternatives
+- [ ] #121: Prepare standard legal templates (NDA + DPA)
+- [ ] #122: Design pilot engagement — scope, deliverables, timeline
+- [ ] #123: Write internal sales playbook for ADC consultants
+- [ ] #124: Produce awareness content — why migrate from SAS in 2026
+
+**Service delivery documentation (existing GitHub issues)**
+- [ ] #109: Define ADC SAS migration delivery kit
+- [ ] #75: Define knowledge transfer guide
+- [ ] #73: Define acceptance criteria spec
+- [ ] #72: Define statement of work template
+- [ ] #71: Define estimation model — scoping report → consultant effort
+- [ ] #70: Define discovery questionnaire — pre-engagement client intake
+
+**Business development (existing GitHub issues)**
+- [ ] #54: Create a representative SAS project for end-to-end testing (assigned: felix-adc)
+- [ ] #83: Presentation at private AI/BI network in FS
+- [ ] #82: Find a real life client
+- [ ] #80: Vision deck — lead presentation for SAS-to-Python migration service
 
 - [ ] F2: Code Explanation Assistant page (chat UI — explain SAS/Python snippets)
 - [ ] F7: Side-by-side SAS vs Python diff view
