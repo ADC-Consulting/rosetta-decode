@@ -6,6 +6,30 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-07-07 (cont.) — Backlog reconciliation + PR #125 merged
+
+**Duration:** ~30m | **Focus:** Verify BACKLOG.md additions against actual GitHub project state; open and merge PR
+
+### Done
+- **BACKLOG.md reconciled** — queried full GitHub project state; removed #76 (Abandoned); fixed stale `[ ]` on #25 (Done, delivered by F34); confirmed all other additions map to real issues in the project
+- **PR #125 opened and merged** — `feat/F85-plan-tab-ux` → main; covers F78/F79/F80 Data tab, F85 Plan tab overhaul, FINREP/KYC demo seeds, 6 reconciliation tests, and journal/backlog updates
+
+### Decisions
+- none
+
+### Open Questions
+- none
+
+### Next Session — Start Here
+1. Pull main (`git checkout main && git pull`)
+2. Pick summer priority: go-to-market docs (#116–#124), bug #100 (strategy label vs attention flag), or next engineering feature (#77 engagement workspace or #69 Databricks)
+
+### Files Touched
+- `journal/SESSIONS.md`
+- `journal/BACKLOG.md`
+
+---
+
 ## 2026-07-07 — Summer planning: backlog audit + go-to-market gap analysis
 
 **Duration:** ~1h | **Focus:** Azure infra investigation, GitHub backlog vs local backlog gap analysis, go-to-market planning
