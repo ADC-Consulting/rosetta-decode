@@ -77,9 +77,9 @@ export default function BeforeYouAcceptPanel({
   }
 
   return (
-    <div className="border border-border rounded-lg px-4 py-3 space-y-2">
+    <div className="space-y-2">
       {/* Header row */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2">
         <button
           type="button"
           onClick={() => setPanelOpen((v) => !v)}
@@ -93,7 +93,7 @@ export default function BeforeYouAcceptPanel({
           )}
           <h2 className="text-sm font-semibold text-foreground">Before you accept</h2>
         </button>
-        <Button size="sm" variant="outline" onClick={handleCopy}>
+        <Button size="sm" variant="outline" onClick={handleCopy} className="ml-auto">
           Copy summary
         </Button>
       </div>
@@ -113,7 +113,7 @@ export default function BeforeYouAcceptPanel({
               <p className="text-sm text-foreground">
                 {reviewCount} step{reviewCount === 1 ? "" : "s"} require manual review before you
                 can accept with confidence. Estimated effort: ~{estimatedHours}h. See Needs
-                attention ↑ for the full list.
+                attention ↓ for the full list.
               </p>
 
               {/* Risk warning */}
