@@ -34,6 +34,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useRef, useState } from "react";
+import BeforeYouAcceptPanel from "./BeforeYouAcceptPanel";
 import BlockPlanTable from "./BlockPlanTable";
 
 // ---------------------------------------------------------------------------
@@ -1090,6 +1091,15 @@ export default function PlanTab({
             </div>
           </CardContent>
         </Card>
+
+        {/* Before you accept — effort estimate panel */}
+        {!isAccepted && trustReport && planData && (
+          <BeforeYouAcceptPanel
+            trustReport={trustReport}
+            planData={planData}
+            jobName="This migration"
+          />
+        )}
 
         {/* Needs attention section — only rendered when there are items (point 5) */}
         {trustReport && attentionQueueLength > 0 && (
