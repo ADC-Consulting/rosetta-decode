@@ -34,6 +34,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useRef, useState } from "react";
+import BeforeYouAcceptPanel from "./BeforeYouAcceptPanel";
 import BlockPlanTable from "./BlockPlanTable";
 
 // ---------------------------------------------------------------------------
@@ -1088,6 +1089,15 @@ export default function PlanTab({
                 </>
               )}
             </div>
+            {!isAccepted && trustReport && planData && (
+              <div className="border-t border-border mt-3 pt-3">
+                <BeforeYouAcceptPanel
+                  trustReport={trustReport}
+                  planData={planData}
+                  jobName="This migration"
+                />
+              </div>
+            )}
           </CardContent>
         </Card>
 

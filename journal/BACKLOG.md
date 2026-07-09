@@ -599,12 +599,17 @@
 - [ ] #123: Write internal sales playbook for ADC consultants
 - [ ] #124: Produce awareness content — why migrate from SAS in 2026
 
+**F86 — "Before you accept" effort panel (#71) — PR #129 opened**
+- [x] F86 S-A: `BeforeYouAcceptPanel` component → `src/frontend/src/components/JobDetail/BeforeYouAcceptPanel.tsx`
+- [x] F86 S-B: Wire into PlanTab → `src/frontend/src/components/JobDetail/PlanTab.tsx`
+- [x] F86 S-C: `make test` exits 0
+
 **Service delivery documentation (existing GitHub issues)**
 - [ ] #109: Define ADC SAS migration delivery kit
 - [ ] #75: Define knowledge transfer guide
 - [ ] #73: Define acceptance criteria spec
 - [ ] #72: Define statement of work template
-- [ ] #71: Define estimation model — scoping report → consultant effort
+- [x] #71: Define estimation model — scoping report → consultant effort → delivered as F86 (PR #129)
 - [ ] #70: Define discovery questionnaire — pre-engagement client intake
 
 **Business development (existing GitHub issues)**
