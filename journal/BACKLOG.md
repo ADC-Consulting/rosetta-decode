@@ -572,7 +572,7 @@
 - [ ] #24: Implement decision-ready reports — `backlog` label, deferred
 
 **Bug**
-- [ ] #100: Plan tab — strategy column label disagrees with attention flag for `translated_with_review` blocks
+- [x] #100: Plan tab — strategy column label disagrees with attention flag for `translated_with_review` blocks → PR #128
 
 **Cleanup / tech debt**
 - [ ] #47: Remove legacy standalone pages and routes

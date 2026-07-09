@@ -6,6 +6,32 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-07-09 — Fix #100: strategy label / attention flag inconsistency
+
+**Duration:** ~30m | **Focus:** Frontend bug fix in BlockPlanTable strategy label
+
+### Done
+- **Bug #100 fixed** — `translated_with_review` blocks now always render amber "Review needed" in the Strategy column, regardless of reconciliation outcome; previously a recon-pass would relabel them "Translated" (blue) while the ⚠ flag still fired
+- **Verified in browser** — "Needs attention" table shows 5 amber "Review needed" rows, all consistent with the attention flag
+- **PR #128 opened** — `fix/F100-strategy-label` → main, Closes #100
+
+### Decisions
+- none
+
+### Open Questions
+- Summer direction: go-to-market docs (#116–#124) vs service delivery docs (#70–#75) vs engineering (#77 engagement workspace)?
+
+### Next Session — Start Here
+1. Merge PR #128 (`fix/F100-strategy-label`)
+2. Pick summer priority: GTM docs (#116–#124), service delivery docs (#70–#75, #109), or next feature (#77 engagement workspace)
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
+- `journal/BACKLOG.md`
+- `journal/SESSIONS.md`
+
+---
+
 ## 2026-07-07 (cont.) — Backlog reconciliation + PR #125 merged
 
 **Duration:** ~30m | **Focus:** Verify BACKLOG.md additions against actual GitHub project state; open and merge PR
