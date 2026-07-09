@@ -6,6 +6,36 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-07-09 (cont.) — F86 "Before you accept" panel: test, verify, PR #129
+
+**Duration:** ~30m | **Focus:** Complete and ship F86 — run tests, browser-verify, commit, push, PR
+
+### Done
+- **`make test` green** — all 7 gates passed after F86 implementation (S-C done)
+- **Browser verified** — panel renders between metrics card and Needs attention; headline, review line, amber warning, "How is this estimated?" disclosure (with correct rate table), "Copy summary" toast, and collapse/expand all confirmed working
+- **PR #128 merged** — `fix/F100-strategy-label` was already merged into main (from prior session)
+- **F86 committed** — `feat(F86): add "Before you accept" effort panel to Plan tab`
+- **PR #129 opened** — `feat/F86-before-you-accept-panel` → main, Closes #71 and #100
+
+### Decisions
+- Risk warning tied to `reviewCount > 0` (not to `overall_risk` label) — aligns with the final design iteration; updated AC in plan file accordingly
+
+### Open Questions
+- Summer direction: go-to-market docs (#116–#124), service delivery docs (#70–#75, #109), or next feature (#77 engagement workspace)?
+
+### Next Session — Start Here
+1. Merge PR #129 (`feat/F86-before-you-accept-panel`)
+2. Pick summer priority: GTM docs (#116–#124), service delivery docs (#70–#75, #109), or next feature
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/BeforeYouAcceptPanel.tsx` (new)
+- `src/frontend/src/components/JobDetail/PlanTab.tsx`
+- `docs/plans/latest/F86-before-you-accept-panel.md`
+- `journal/BACKLOG.md`
+- `journal/SESSIONS.md`
+
+---
+
 ## 2026-07-09 — Fix #100: strategy label / attention flag inconsistency
 
 **Duration:** ~30m | **Focus:** Frontend bug fix in BlockPlanTable strategy label
