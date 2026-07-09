@@ -1089,17 +1089,17 @@ export default function PlanTab({
                 </>
               )}
             </div>
+            {!isAccepted && trustReport && planData && (
+              <div className="border-t border-border mt-3 pt-3">
+                <BeforeYouAcceptPanel
+                  trustReport={trustReport}
+                  planData={planData}
+                  jobName="This migration"
+                />
+              </div>
+            )}
           </CardContent>
         </Card>
-
-        {/* Before you accept — effort estimate panel */}
-        {!isAccepted && trustReport && planData && (
-          <BeforeYouAcceptPanel
-            trustReport={trustReport}
-            planData={planData}
-            jobName="This migration"
-          />
-        )}
 
         {/* Needs attention section — only rendered when there are items (point 5) */}
         {trustReport && attentionQueueLength > 0 && (
