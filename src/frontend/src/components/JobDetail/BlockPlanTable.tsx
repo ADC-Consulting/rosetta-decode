@@ -696,16 +696,15 @@ export default function BlockPlanTable({
                           {(() => {
                             const recon = trust?.reconciliation_status;
                             const isManual = bp.strategy === "manual";
+                            const isReviewStrategy = bp.strategy === "translated_with_review";
                             const label = isManual
                               ? "Manual"
-                              : recon === "pass"
-                                ? "Translated"
-                                : recon === "fail"
-                                  ? "Review Needed"
-                                  : "Translated";
+                              : recon === "fail" || isReviewStrategy
+                                ? "Review needed"
+                                : "Translated";
                             const colorCls = isManual
                               ? "text-red-700 bg-red-50 border border-red-200"
-                              : recon === "fail"
+                              : recon === "fail" || isReviewStrategy
                                 ? "text-amber-700 bg-amber-50 border border-amber-200"
                                 : "text-blue-700 bg-blue-50 border border-blue-200";
                             return (
