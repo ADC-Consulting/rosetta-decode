@@ -6,6 +6,37 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-07-10 — Plan tab polish: layout, amber banner, copy button
+
+**Duration:** ~1h | **Focus:** Post-F86 Plan tab polish — three UX fixes after PR #129 merged
+
+### Done
+- **Fixed arrow direction and style mismatch** — "See Needs attention ↑" corrected to ↓; removed bordered card wrapper from "Before you accept" to match Needs attention/Steps plain section style
+- **Moved "Before you accept" inside metrics card** — panel is now a card footer with `border-t` separator, co-locating interpretation with the stat counts it derives from
+- **PR #129 merged** — F86 feature (+ fix #100) landed on main
+- **Suppressed amber verdict banner** — "Review recommended" removed; redundant with 5/15 Needs review stat and "Before you accept" panel; green and red verdicts preserved
+- **Hid Copy summary when panel collapsed** — button only renders when panel is open; offering a copy action for hidden content was semantically odd
+- **PR #131 opened** — `fix/plan-tab-polish` → main, 2 commits (amber banner + copy button)
+
+### Decisions
+- "Before you accept" belongs inside the metrics card, not as a peer section — evidence and interpretation should be co-located
+- Amber verdict banner suppressed (not green/red) — only amber was fully duplicated by existing signals; others carry distinct value
+- Copy summary hidden on collapse — copy implies the user has read the content
+
+### Open Questions
+- Summer direction: GTM docs (#116–#124), service delivery docs (#70–#75, #109), or next feature?
+
+### Next Session — Start Here
+1. Merge PR #131 (`fix/plan-tab-polish`)
+2. Pick summer priority
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/BeforeYouAcceptPanel.tsx`
+- `src/frontend/src/components/JobDetail/PlanTab.tsx`
+- `journal/SESSIONS.md`
+
+---
+
 ## 2026-07-09 (cont.) — F86 "Before you accept" panel: test, verify, PR #129
 
 **Duration:** ~30m | **Focus:** Complete and ship F86 — run tests, browser-verify, commit, push, PR
