@@ -864,6 +864,7 @@ export default function PlanTab({
                 : verdict === "amber"
                 ? "Review recommended"
                 : "Not ready to accept";
+            if (verdict === "amber") return null;
             return (
               <div className={`rounded-lg border ${style.border} px-4 py-3 flex items-start gap-3`}>
                 <Icon size={18} className={`${style.iconColor} shrink-0 mt-0.5`} />
