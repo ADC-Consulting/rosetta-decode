@@ -93,9 +93,11 @@ export default function BeforeYouAcceptPanel({
           )}
           <h2 className="text-sm font-semibold text-foreground">Before you accept</h2>
         </button>
-        <Button size="sm" variant="outline" onClick={handleCopy} className="ml-auto">
-          Copy summary
-        </Button>
+        {panelOpen && (
+          <Button size="sm" variant="outline" onClick={handleCopy} className="ml-auto">
+            Copy summary
+          </Button>
+        )}
       </div>
 
       {/* Collapsible body */}
