@@ -13,6 +13,12 @@ export default defineConfig({
     host: "0.0.0.0",
     port: 5173,
     allowedHosts: ["rosetta.dokploy-1.adc-it.com"],
+    proxy: {
+      "/migrate": { target: "http://backend:8000", changeOrigin: true },
+      "/jobs": { target: "http://backend:8000", changeOrigin: true },
+      "/explain": { target: "http://backend:8000", changeOrigin: true },
+      "/health": { target: "http://backend:8000", changeOrigin: true },
+    },
   },
   build: {
     chunkSizeWarningLimit: 1000,
