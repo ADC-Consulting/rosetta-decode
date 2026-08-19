@@ -12,6 +12,7 @@ export default defineConfig({
   server: {
     host: "0.0.0.0",
     port: 5173,
+    allowedHosts: ["rosetta.dokploy-1.adc-it.com"],
   },
   build: {
     chunkSizeWarningLimit: 1000,
