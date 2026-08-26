@@ -1,5 +1,10 @@
 import type { JobStatusValue } from "@/api/types";
 
+// RISK_BADGE/RISK_CELL/RISK_LABELS moved to ./status-colors.ts (F87 S-G) — the single source of
+// truth for risk color/label maps, shared with PlanTab and BlockPlanTable. Re-exported here,
+// values unchanged, for backward compatibility.
+export { RISK_BADGE, RISK_CELL, RISK_LABELS } from "./status-colors";
+
 export const STATUS_LABEL: Record<JobStatusValue, string> = {
   queued: "Queued",
   running: "Processing",
@@ -36,24 +41,6 @@ export const STRATEGY_LABELS: Record<string, string> = {
   translated: "Translated",
   translated_with_review: "Review needed",
   manual: "Manual",
-};
-
-export const RISK_BADGE: Record<"low" | "medium" | "high", string> = {
-  low: "text-green-700 bg-green-50 border border-green-200",
-  medium: "text-amber-700 bg-amber-50 border border-amber-200",
-  high: "text-red-700 bg-red-50 border border-red-200",
-};
-
-export const RISK_CELL: Record<"low" | "medium" | "high", string> = {
-  low: "text-green-700",
-  medium: "text-amber-700",
-  high: "text-red-700",
-};
-
-export const RISK_LABELS: Record<"low" | "medium" | "high", string> = {
-  low: "Low",
-  medium: "Mid",
-  high: "High",
 };
 
 export const TAB_CONTENT_HEIGHT = "calc(100vh - 140px)";

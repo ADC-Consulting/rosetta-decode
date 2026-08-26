@@ -36,34 +36,23 @@ import {
 import { useRef, useState } from "react";
 import BeforeYouAcceptPanel from "./BeforeYouAcceptPanel";
 import BlockPlanTable from "./BlockPlanTable";
-
-// ---------------------------------------------------------------------------
-// Colour maps
-// ---------------------------------------------------------------------------
-
-const CONFIDENCE_COLOR: Record<string, string> = {
-  high: "#22c55e",
-  medium: "#f59e0b",
-  low: "#ef4444",
-  very_low: "#dc2626",
-  unknown: "#9ca3af",
-};
-
-const CONFIDENCE_PCT: Record<string, number> = {
-  high: 90,
-  medium: 65,
-  low: 40,
-  very_low: 20,
-  unknown: 0,
-};
-
-const riskPctMap: Record<string, number> = { low: 33, medium: 66, high: 100 };
-
-const RISK_BAR: Record<string, { color: string; label: string }> = {
-  low: { color: "#22c55e", label: "Low" },
-  medium: { color: "#f59e0b", label: "Medium" },
-  high: { color: "#ef4444", label: "High" },
-};
+import StatusChip from "./StatusChip";
+import {
+  CONFIDENCE_PCT,
+  CONFIDENCE_TONE,
+  CRITICALITY_TONE,
+  RISK_LABEL,
+  RISK_PCT,
+  RISK_TONE,
+  STRATEGY_LABEL,
+  STRATEGY_TONE,
+  TONE_HEX,
+  type ConfidenceBand,
+  type Criticality,
+  type RiskLevel,
+  type Strategy,
+  type Tone,
+} from "./status-colors";
 
 // ---------------------------------------------------------------------------
 // Verdict strip
@@ -111,19 +100,16 @@ const VERDICT_STYLES: Record<
 };
 
 // ---------------------------------------------------------------------------
-// Criticality colour map and order (module-level, shared by AttentionTable and
-// the criticality breakdown row in the metrics card)
+// Criticality order (module-level, shared by AttentionTable and the
+// criticality breakdown row in the metrics card). Color/tone comes from
+// CRITICALITY_TONE in ./status-colors.ts.
 // ---------------------------------------------------------------------------
 
-const CRIT_COLOR: Record<string, string> = {
-  critical: "text-red-700 bg-red-50 border border-red-200",
-  high: "text-orange-700 bg-orange-50 border border-orange-200",
-  medium: "text-amber-700 bg-amber-50 border border-amber-200",
-  low: "text-green-700 bg-green-50 border border-green-200",
-  unknown: "text-muted-foreground bg-muted border border-border",
-};
-
 const CRIT_ORDER: string[] = ["critical", "high", "medium", "low", "unknown"];
+
+function criticalityTone(criticality: string): Tone {
+  return CRITICALITY_TONE[criticality as Criticality] ?? "neutral";
+}
 
 // ---------------------------------------------------------------------------
 // Confidence help content
@@ -317,10 +303,10 @@ function AttentionCards({
     return "Needs review";
   };
 
-  const strategyColor = (strategy: string, reconciliation: string | null): string => {
-    if (strategy === "manual") return "text-red-700 bg-red-50 border border-red-200";
-    if (reconciliation === "fail") return "text-orange-700 bg-orange-50 border border-orange-200";
-    return "text-amber-700 bg-amber-50 border border-amber-200";
+  const strategyTone = (strategy: string, reconciliation: string | null): Tone => {
+    if (strategy === "manual") return "danger";
+    if (reconciliation === "fail") return "caution";
+    return "warning";
   };
 
   const getRationale = (block: TrustReportBlock): string => {
@@ -334,7 +320,7 @@ function AttentionCards({
   return (
     <div className="space-y-2">
       {manualTodo > 0 && (
-        <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+        <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-4 py-3">
           <AlertTriangle size={14} className="text-amber-600 shrink-0 mt-0.5" />
           <div className="flex flex-1 items-center justify-between gap-2 flex-wrap">
             <p className="text-xs text-amber-700">
@@ -355,42 +341,45 @@ function AttentionCards({
       {top5.map(block => {
         const runbookEntry = runbookMap[block.block_id];
         return (
-          <div key={block.block_id} className="rounded-lg border border-border bg-card px-4 py-3 space-y-1.5">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <p className="font-mono text-xs text-foreground truncate">{block.block_id}</p>
-                <p className="font-mono text-xs text-muted-foreground truncate">{block.source_file}</p>
+          <Card key={block.block_id} className="rounded-lg border border-border bg-card gap-0 py-0 ring-0">
+            <CardContent className="px-4 py-3 space-y-1.5">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-mono text-xs text-foreground truncate">{block.block_id}</p>
+                  <p className="font-mono text-xs text-muted-foreground truncate">{block.source_file}</p>
+                </div>
+                <StatusChip
+                  tone={strategyTone(block.strategy, block.reconciliation_status)}
+                  className="shrink-0"
+                >
+                  {strategyLabel(block.strategy, block.reconciliation_status)}
+                </StatusChip>
               </div>
-              <span
-                className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium shrink-0 ${strategyColor(block.strategy, block.reconciliation_status)}`}
-              >
-                {strategyLabel(block.strategy, block.reconciliation_status)}
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground leading-relaxed">{getRationale(block)}</p>
-            {isAccepted ? (
-              onViewEtlTab && (
+              <p className="text-xs text-muted-foreground leading-relaxed">{getRationale(block)}</p>
+              {isAccepted ? (
+                onViewEtlTab && (
+                  <button
+                    type="button"
+                    onClick={onViewEtlTab}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    View in ETL tab →
+                  </button>
+                )
+              ) : (
                 <button
                   type="button"
-                  onClick={onViewEtlTab}
+                  onClick={onViewBlocks}
                   className="text-xs text-primary hover:underline"
                 >
-                  View in ETL tab →
+                  View in steps table →
                 </button>
-              )
-            ) : (
-              <button
-                type="button"
-                onClick={onViewBlocks}
-                className="text-xs text-primary hover:underline"
-              >
-                View in steps table →
-              </button>
-            )}
-            {runbookEntry && (
-              <InlineRunbook entry={runbookEntry} />
-            )}
-          </div>
+              )}
+              {runbookEntry && (
+                <InlineRunbook entry={runbookEntry} />
+              )}
+            </CardContent>
+          </Card>
         );
       })}
       {remaining > 0 && (
@@ -416,31 +405,11 @@ function AttentionTable({
   const critOrderMap: Record<string, number> = Object.fromEntries(
     CRIT_ORDER.map((k, i) => [k, i])
   );
-  const STRAT_COLOR: Record<string, string> = {
-    translated: "bg-green-100 text-green-800",
-    translated_with_review: "bg-amber-100 text-amber-800",
-    manual: "bg-red-100 text-red-800",
-  };
-  const STRAT_LABEL: Record<string, string> = {
-    translated: "Translated",
-    translated_with_review: "Review needed",
-    manual: "Manual",
-  };
-  const CONF_COLOR: Record<string, string> = {
-    high: "text-green-700 bg-green-50 border border-green-200",
-    medium: "text-amber-700 bg-amber-50 border border-amber-200",
-    low: "text-red-700 bg-red-50 border border-red-200",
-    very_low: "text-red-700 bg-red-50 border border-red-200",
-  };
 
   function ConfBadge({ value }: { value: string | null }): React.ReactElement {
     if (!value) return <span className="text-muted-foreground text-xs">—</span>;
-    const cls = CONF_COLOR[value] ?? "text-muted-foreground bg-muted border border-border";
-    return (
-      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${cls}`}>
-        {value}
-      </span>
-    );
+    const tone = CONFIDENCE_TONE[value as ConfidenceBand] ?? "neutral";
+    return <StatusChip tone={tone}>{value}</StatusChip>;
   }
 
   function ReconIcon({ value }: { value: "pass" | "fail" | null }): React.ReactElement {
@@ -488,13 +457,9 @@ function AttentionTable({
                 {block.source_file}
               </td>
               <td className="px-3 py-2">
-                <span
-                  className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
-                    STRAT_COLOR[block.strategy] ?? "bg-muted text-muted-foreground"
-                  }`}
-                >
-                  {STRAT_LABEL[block.strategy] ?? block.strategy}
-                </span>
+                <StatusChip tone={STRATEGY_TONE[block.strategy as Strategy] ?? "neutral"}>
+                  {STRATEGY_LABEL[block.strategy as Strategy] ?? block.strategy}
+                </StatusChip>
               </td>
               <td className="px-3 py-2">
                 <ConfBadge value={block.self_confidence} />
@@ -506,14 +471,9 @@ function AttentionTable({
                 <ReconIcon value={block.reconciliation_status} />
               </td>
               <td className="px-3 py-2">
-                <span
-                  className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
-                    CRIT_COLOR[block.criticality] ??
-                    "text-muted-foreground bg-muted border border-border"
-                  }`}
-                >
+                <StatusChip tone={criticalityTone(block.criticality)}>
                   {block.criticality}
-                </span>
+                </StatusChip>
               </td>
               <td className="px-3 py-2">
                 {block.human_review_required ? (
@@ -661,9 +621,11 @@ export default function PlanTab({
     );
   }
 
-  const overallConfidence = trustReport?.overall_confidence ?? "unknown";
-  const confidenceColor =
-    CONFIDENCE_COLOR[overallConfidence] ?? CONFIDENCE_COLOR["unknown"];
+  const overallConfidence: ConfidenceBand = trustReport?.overall_confidence ?? "unknown";
+  // Bar-fill color needs a computed inline style (the <Progress> fill is driven by a CSS
+  // variable), so this is the one place that reads the hex bridge instead of a Tailwind class —
+  // see the TONE_HEX comment in status-colors.ts.
+  const confidenceColor = TONE_HEX[CONFIDENCE_TONE[overallConfidence]];
   const confidencePct = trustReport
     ? Math.round(
         (trustReport.overall_confidence_score ??
@@ -671,9 +633,10 @@ export default function PlanTab({
       )
     : CONFIDENCE_PCT[overallConfidence];
 
-  const riskBar = RISK_BAR[planData.overall_risk] ?? {
-    color: "#9ca3af",
-    label: planData.overall_risk,
+  const riskLevel = planData.overall_risk as RiskLevel;
+  const riskBar = {
+    color: TONE_HEX[RISK_TONE[riskLevel]] ?? TONE_HEX.neutral,
+    label: RISK_LABEL[riskLevel] ?? planData.overall_risk,
   };
 
   const stripLibref = (d: string): string => {
@@ -988,7 +951,7 @@ export default function PlanTab({
                   Risk
                 </span>
                 <Progress
-                  value={riskPctMap[planData.overall_risk] ?? 0}
+                  value={RISK_PCT[riskLevel] ?? 0}
                   className="h-1.5 w-20 **:data-[slot=progress-indicator]:bg-(--bar-fill)"
                   style={{ "--bar-fill": riskBar.color } as React.CSSProperties}
                 />
@@ -1070,12 +1033,9 @@ export default function PlanTab({
                         <div className="flex items-center gap-2 flex-wrap pt-1">
                           <span className="text-xs text-muted-foreground shrink-0">Criticality:</span>
                           {pills.map(k => (
-                            <span
-                              key={k}
-                              className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${CRIT_COLOR[k]}`}
-                            >
+                            <StatusChip key={k} tone={criticalityTone(k)}>
                               {k} {critCounts[k]}
-                            </span>
+                            </StatusChip>
                           ))}
                         </div>
                       );
