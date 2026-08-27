@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
 import React, { useState } from "react";
 import { toast } from "sonner";
+import { TONE_TEXT_CLASS } from "./status-colors";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -128,8 +129,8 @@ export default function BeforeYouAcceptPanel({
               </div>
             </>
           ) : (
-            /* Green confirmation */
-            <p className="text-sm text-emerald-700">
+            /* Green confirmation — shared `success` tone, single source of truth (F89) */
+            <p className={`text-sm ${TONE_TEXT_CLASS.success}`}>
               All steps translated automatically. No manual work required before accepting.
             </p>
           )}

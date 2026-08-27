@@ -46,7 +46,9 @@ import {
   RISK_TONE,
   STRATEGY_LABEL,
   STRATEGY_TONE,
+  TONE_CHIP_CLASS,
   TONE_HEX,
+  TONE_TEXT_CLASS,
   type ConfidenceBand,
   type Criticality,
   type RiskLevel,
@@ -306,9 +308,10 @@ function AttentionCards({
     return "Needs review";
   };
 
-  const strategyTone = (strategy: string, reconciliation: string | null): Tone => {
+  // reconciliation === "fail" previously mapped to the now-removed "caution" tone (F89 — merged
+  // into "warning", visually redundant next to it).
+  const strategyTone = (strategy: string): Tone => {
     if (strategy === "manual") return "danger";
-    if (reconciliation === "fail") return "caution";
     return "warning";
   };
 
@@ -352,7 +355,7 @@ function AttentionCards({
                   <p className="font-mono text-xs text-muted-foreground truncate">{block.source_file}</p>
                 </div>
                 <StatusChip
-                  tone={strategyTone(block.strategy, block.reconciliation_status)}
+                  tone={strategyTone(block.strategy)}
                   className="shrink-0"
                 >
                   {strategyLabel(block.strategy, block.reconciliation_status)}
@@ -717,7 +720,7 @@ export default function PlanTab({
         per the 2026-08-26 decision to roll the new visual language out to the Plan tab +
         BlockPlanTable first, not the whole app.
       */}
-      <div className="brand-manifest h-full min-h-0 overflow-y-auto space-y-4 pb-6 [scrollbar-gutter:stable]">
+      <div className="brand-manifest bg-[var(--brand-paper)] h-full min-h-0 overflow-y-auto space-y-4 pb-6 [scrollbar-gutter:stable]">
         {/* Pipeline description — above verdict strip */}
         {planData.summary && (
           <div>
@@ -772,30 +775,30 @@ export default function PlanTab({
 
         {/* Missing dependencies callout — non-accepted: shown before verdict strip as a blocking concern */}
         {!isAccepted && planData.missing_dependencies && planData.missing_dependencies.length > 0 && (
-          <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 space-y-1.5">
+          <div className="rounded-md border border-[var(--tone-warning)]/20 bg-[var(--tone-warning-bg)] px-4 py-3 space-y-1.5">
             <div className="flex items-center gap-2">
-              <AlertTriangle size={14} className="text-amber-600 shrink-0" />
-              <p className="text-sm font-medium text-amber-800">
+              <AlertTriangle size={14} className={cn(TONE_TEXT_CLASS.warning, "shrink-0")} />
+              <p className={cn("text-sm font-medium", TONE_TEXT_CLASS.warning)}>
                 {planData.missing_dependencies.length} missing dependenc{planData.missing_dependencies.length === 1 ? "y" : "ies"} detected
               </p>
             </div>
-            <ul className="text-xs text-amber-700 space-y-0.5 pl-5 list-disc">
+            <ul className={cn("text-xs space-y-0.5 pl-5 list-disc", TONE_TEXT_CLASS.warning)}>
               {planData.missing_dependencies.slice(0, 3).map(dep => (
                 <li key={`${dep.type}:${dep.name}`}>
                   <span className="font-mono">{dep.name}</span>
                   {" "}
-                  <span className="text-amber-600">
+                  <span className={TONE_TEXT_CLASS.warning}>
                     ({dep.type}, {dep.reference_count} {dep.reference_count === 1 ? "ref" : "refs"})
                   </span>
                 </li>
               ))}
               {planData.missing_dependencies.length > 3 && (
-                <li className="list-none text-amber-600">
+                <li className={cn("list-none", TONE_TEXT_CLASS.warning)}>
                   +{planData.missing_dependencies.length - 3} more
                 </li>
               )}
             </ul>
-            <p className="text-xs text-amber-600">Re-upload with these files included to improve translation quality.</p>
+            <p className={cn("text-xs", TONE_TEXT_CLASS.warning)}>Re-upload with these files included to improve translation quality.</p>
           </div>
         )}
 
@@ -851,25 +854,25 @@ export default function PlanTab({
 
         {/* Missing dependencies callout — accepted: shown after verdict strip in past tense, no action text */}
         {isAccepted && planData.missing_dependencies && planData.missing_dependencies.length > 0 && (
-          <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 space-y-1.5">
+          <div className="rounded-md border border-[var(--tone-warning)]/20 bg-[var(--tone-warning-bg)] px-4 py-3 space-y-1.5">
             <div className="flex items-center gap-2">
-              <AlertTriangle size={14} className="text-amber-600 shrink-0" />
-              <p className="text-sm font-medium text-amber-800">
+              <AlertTriangle size={14} className={cn(TONE_TEXT_CLASS.warning, "shrink-0")} />
+              <p className={cn("text-sm font-medium", TONE_TEXT_CLASS.warning)}>
                 {planData.missing_dependencies.length} dependenc{planData.missing_dependencies.length === 1 ? "y was" : "ies were"} unavailable during translation
               </p>
             </div>
-            <ul className="text-xs text-amber-700 space-y-0.5 pl-5 list-disc">
+            <ul className={cn("text-xs space-y-0.5 pl-5 list-disc", TONE_TEXT_CLASS.warning)}>
               {planData.missing_dependencies.slice(0, 3).map(dep => (
                 <li key={`${dep.type}:${dep.name}`}>
                   <span className="font-mono">{dep.name}</span>
                   {" "}
-                  <span className="text-amber-600">
+                  <span className={TONE_TEXT_CLASS.warning}>
                     ({dep.type}, {dep.reference_count} {dep.reference_count === 1 ? "ref" : "refs"})
                   </span>
                 </li>
               ))}
               {planData.missing_dependencies.length > 3 && (
-                <li className="list-none text-amber-600">
+                <li className={cn("list-none", TONE_TEXT_CLASS.warning)}>
                   +{planData.missing_dependencies.length - 3} more
                 </li>
               )}
@@ -910,7 +913,7 @@ export default function PlanTab({
                 <div className="flex items-start gap-2.5 border-b border-border px-6 py-3.5">
                   <AlertTriangle size={15} className="text-red-600 shrink-0 mt-0.5" />
                   <p className="text-sm leading-relaxed text-muted-foreground">
-                    <span className="font-semibold text-red-600">
+                    <span className={cn("font-semibold", TONE_TEXT_CLASS.danger)}>
                       Sensitive data detected — {piiColumnCount} column{piiColumnCount !== 1 ? "s" : ""}.
                     </span>{" "}
                     Signals matched: <span className="font-mono">{piiSignals.join(", ")}</span>. Ensure
@@ -983,7 +986,7 @@ export default function PlanTab({
                         count={trustReport.auto_verified}
                         total={trustReport.total_blocks}
                         label="Auto-verified"
-                        colorClasses="text-green-700 bg-green-50 border-green-200"
+                        colorClasses={TONE_CHIP_CLASS.success}
                         activeFilter={activeStatFilter}
                         onFilterChange={handleStatFilterChange}
                       />
@@ -992,7 +995,7 @@ export default function PlanTab({
                         count={trustReport.needs_review}
                         total={trustReport.total_blocks}
                         label="Needs review"
-                        colorClasses="text-amber-700 bg-amber-50 border-amber-200"
+                        colorClasses={TONE_CHIP_CLASS.warning}
                         activeFilter={activeStatFilter}
                         onFilterChange={handleStatFilterChange}
                       />
@@ -1001,7 +1004,7 @@ export default function PlanTab({
                         count={trustReport.manual_todo}
                         total={trustReport.total_blocks}
                         label="Manual TODO"
-                        colorClasses="text-amber-700 bg-amber-50 border-amber-200"
+                        colorClasses={TONE_CHIP_CLASS.warning}
                         activeFilter={activeStatFilter}
                         onFilterChange={handleStatFilterChange}
                       />
@@ -1010,7 +1013,7 @@ export default function PlanTab({
                         count={trustReport.failed_reconciliation}
                         total={trustReport.total_blocks}
                         label="Failed reconciliation"
-                        colorClasses="text-red-700 bg-red-50 border-red-200"
+                        colorClasses={TONE_CHIP_CLASS.danger}
                         activeFilter={activeStatFilter}
                         onFilterChange={handleStatFilterChange}
                       />

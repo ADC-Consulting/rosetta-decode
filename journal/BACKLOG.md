@@ -629,6 +629,15 @@
 - [x] F88 S-I: manual smoke test (light + dark, zero bleed into other tabs)
 - [x] F88 S-J: `make tsc-check && make frontend-lint && make frontend-build && make test` exit 0
 
+**F89 — Manifest color fidelity: muted palette + page background + tone cleanup → see `docs/plans/F89-manifest-color-fidelity.md`**
+- [x] F89 S-A: scoped tone CSS custom properties (--tone-success/warning/danger/danger-strong + --brand-paper) → `src/frontend/src/index.css`
+- [x] F89 S-B: apply `--brand-paper` as Plan tab page background → `PlanTab.tsx`
+- [x] F89 S-C: `status-colors.ts` → reference new tone CSS variables
+- [x] F89 S-D: merge `caution` tone into `warning` (drop orange, 5 tones total)
+- [x] F89 S-E: fix `BeforeYouAcceptPanel.tsx` emerald/green inconsistency
+- [x] F89 S-F: manual smoke test (light + dark, zero bleed outside Plan tab)
+- [x] F89 S-G: `make tsc-check && make frontend-lint && make frontend-build && make test` exit 0
+
 **Service delivery documentation (existing GitHub issues)**
 - [ ] #109: Define ADC SAS migration delivery kit
 - [ ] #75: Define knowledge transfer guide

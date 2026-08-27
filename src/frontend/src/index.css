@@ -106,6 +106,23 @@ body {
     --sidebar-accent-foreground: oklch(0.205 0 0);
     --sidebar-border: oklch(0.922 0 0);
     --sidebar-ring: oklch(0.708 0 0);
+
+    /* Tone tokens (F89) — raw custom properties consumed via arbitrary-value classes
+       (e.g. bg-[var(--tone-success-bg)]), never through a derived @theme --color-* token. See
+       the .brand-manifest comment below for why: @theme's --color-primary: var(--primary)
+       resolves once at :root and does not re-resolve for a nested override (F88 finding), so
+       every new tone color must be referenced as a raw var() to correctly pick up the
+       .brand-manifest override further down this file. Values here are the stock Tailwind
+       hex equivalents (green-700/50, amber-700/50, red-700/50, red-800/100) so every consumer
+       outside .brand-manifest (LiveTraceDialog, DocsPage) is pixel-unchanged by this feature. */
+    --tone-success: #15803d;
+    --tone-success-bg: #f0fdf4;
+    --tone-warning: #b45309;
+    --tone-warning-bg: #fffbeb;
+    --tone-danger: #b91c1c;
+    --tone-danger-bg: #fef2f2;
+    --tone-danger-strong: #991b1b;
+    --tone-danger-strong-bg: #fee2e2;
   }
   .dark {
     --background: oklch(0.145 0 0);
@@ -139,6 +156,17 @@ body {
     --sidebar-accent-foreground: oklch(0.985 0 0);
     --sidebar-border: oklch(1 0 0 / 10%);
     --sidebar-ring: oklch(0.556 0 0);
+
+    /* Tone tokens (F89) — same stock Tailwind hex equivalents as :root, so non-.brand-manifest
+       consumers are pixel-unchanged in dark mode too. */
+    --tone-success: #15803d;
+    --tone-success-bg: #f0fdf4;
+    --tone-warning: #b45309;
+    --tone-warning-bg: #fffbeb;
+    --tone-danger: #b91c1c;
+    --tone-danger-bg: #fef2f2;
+    --tone-danger-strong: #991b1b;
+    --tone-danger-strong-bg: #fee2e2;
   }
   * {
     @apply border-border outline-ring/50;
@@ -172,10 +200,53 @@ body {
   --primary: #0f7d72;
   --primary-foreground: #ffffff;
   --radius: 6px;
+  /* Derived radius tokens (F89 fidelity fix) — @theme's --radius-lg/md/sm formulas resolve once
+     at :root and do not re-resolve through this scope's --radius override (same indirection bug
+     class as --color-primary, fixed in F88). Redeclared here with the same formulas so
+     rounded-lg/md/sm utilities actually pick up 6px inside .brand-manifest. --radius itself is
+     never overridden per-theme (only the tone tokens and --brand-paper below are), so these three
+     don't need a .dark .brand-manifest counterpart — this single declaration resolves correctly
+     in both themes. */
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
   --font-sans: "Archivo", system-ui, sans-serif;
   --font-mono: "Space Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --brand-teal: #0f7d72;
   font-family: var(--font-sans);
+
+  /* Tone tokens (F89) — muted "Manifest" palette, overriding the stock :root values above for
+     this subtree only. Referenced exclusively via raw var() arbitrary-value classes (see
+     status-colors.ts), never via a derived --color-* token, per the F88 indirection bug. */
+  --tone-success: #137a52;
+  --tone-success-bg: #e3f3ec;
+  --tone-warning: #a15c00;
+  --tone-warning-bg: #fbedd8;
+  --tone-danger: #b3261e;
+  --tone-danger-bg: #fbe4e1;
+  --tone-danger-strong: #8f1c15;
+  --tone-danger-strong-bg: #f6d4d0;
+
+  /* Page-background layer (F89) — subtly distinct from the white card background so the
+     unified summary Card reads as sitting on a page, matching the Manifest mockup. */
+  --brand-paper: #f6f8f8;
+}
+
+/* Dark-mode-aware Manifest tone overrides (F89). Matches this file's existing `.dark` (not
+   `:is(.dark)`) convention. Foregrounds are lightened for legible contrast on a dark card while
+   keeping the same muted/desaturated character as the light values above — not stock Tailwind
+   brightness. Backgrounds are low-lightness/low-alpha tints appropriate for a dark card. */
+.dark .brand-manifest {
+  --tone-success: #4ade9a;
+  --tone-success-bg: rgba(74, 222, 154, 0.12);
+  --tone-warning: #e0a94a;
+  --tone-warning-bg: rgba(224, 169, 74, 0.12);
+  --tone-danger: #e2867f;
+  --tone-danger-bg: rgba(226, 134, 127, 0.12);
+  --tone-danger-strong: #f0a099;
+  --tone-danger-strong-bg: rgba(240, 160, 153, 0.16);
+
+  --brand-paper: #1c2321;
 }
 
 .monaco-block-highlight {

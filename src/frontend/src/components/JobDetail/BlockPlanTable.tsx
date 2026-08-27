@@ -55,6 +55,7 @@ import {
   CONFIDENCE_TONE,
   CRITICALITY_TONE,
   RISK_TONE,
+  TONE_TEXT_CLASS,
   type ConfidenceBand,
   type Criticality,
 } from "./status-colors";
@@ -282,22 +283,30 @@ function GlossaryDialog({
             </p>
             <ul className="space-y-1 text-muted-foreground text-xs">
               <li>
-                <span className="font-medium text-red-700">Critical</span> —
-                Strategy is manual, or LLM confidence was very low. Requires
+                <span className={`font-medium ${TONE_TEXT_CLASS[CRITICALITY_TONE.critical]}`}>
+                  Critical
+                </span>{" "}
+                — Strategy is manual, or LLM confidence was very low. Requires
                 human authoring or rewrite.
               </li>
               <li>
-                <span className="font-medium text-orange-700">High</span> —
-                Confidence was low, reconciliation failed, or this block feeds
+                <span className={`font-medium ${TONE_TEXT_CLASS[CRITICALITY_TONE.high]}`}>
+                  High
+                </span>{" "}
+                — Confidence was low, reconciliation failed, or this block feeds
                 three or more downstream files. Human review required.
               </li>
               <li>
-                <span className="font-medium text-amber-700">Medium</span> —
-                Translation ran with medium confidence. Worth a spot check.
+                <span className={`font-medium ${TONE_TEXT_CLASS[CRITICALITY_TONE.medium]}`}>
+                  Medium
+                </span>{" "}
+                — Translation ran with medium confidence. Worth a spot check.
               </li>
               <li>
-                <span className="font-medium text-green-700">Low</span> —
-                High confidence, reconciliation passed, minimal downstream
+                <span className={`font-medium ${TONE_TEXT_CLASS[CRITICALITY_TONE.low]}`}>
+                  Low
+                </span>{" "}
+                — High confidence, reconciliation passed, minimal downstream
                 impact. Safe to accept.
               </li>
             </ul>
