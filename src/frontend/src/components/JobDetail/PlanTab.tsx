@@ -720,7 +720,7 @@ export default function PlanTab({
         per the 2026-08-26 decision to roll the new visual language out to the Plan tab +
         BlockPlanTable first, not the whole app.
       */}
-      <div className="brand-manifest bg-[var(--brand-paper)] h-full min-h-0 overflow-y-auto space-y-4 pb-6 [scrollbar-gutter:stable]">
+      <div className="brand-manifest bg-[var(--brand-paper)] h-full min-h-0 overflow-y-auto space-y-4 px-8 md:px-11 pt-6 pb-6 [scrollbar-gutter:stable]">
         {/* Pipeline description — above verdict strip */}
         {planData.summary && (
           <div>

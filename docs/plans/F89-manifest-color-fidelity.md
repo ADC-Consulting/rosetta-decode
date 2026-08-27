@@ -194,6 +194,32 @@ instructions — awaiting orchestrator review alongside the rest of F89.
    tsc-check`, `make frontend-lint`, `make frontend-build` all exit 0 after this fix. Not
    committed per instructions.
 
+## Post-commit follow-up fixes (2026-08-27, after F89 landed)
+
+User review of the merged F89 work found two more gaps, fixed in a follow-up commit on this branch:
+
+1. **Plan tab content padding was near-zero.** The `.brand-manifest` root in `PlanTab.tsx` had
+   `padding: 0 0 24px 0` — no left/right/top padding of its own, relying entirely on an outer
+   generic scroll container (`px-6 py-2`) tuned for the old tighter layout. Result: description
+   text and other top-level content rendered almost touching the left and top edges. Fixed by
+   adding explicit `px-8 md:px-11 pt-6` to the `.brand-manifest` root, giving comfortable spacing
+   consistent with the header above it.
+2. **`StatusBadge`'s job-status pill colors didn't match the muted palette.** The "Needs Review"
+   badge (and other job-status states) used `STATUS_PILL_CLASS` in `constants.ts` — hardcoded
+   stock Tailwind (`bg-amber-500`, `bg-emerald-600`, `bg-red-600`), a deliberately separate color
+   domain from `status-colors.ts` per F88's design (job status vs. block-level tone). Visually,
+   though, a bright stock amber badge sitting next to muted `--tone-warning` chips on the same
+   page read as a clash, not a deliberate distinction. Fixed by pointing the amber/green/red
+   entries at the same `--tone-warning`/`--tone-success`/`--tone-danger` CSS variables (via raw
+   `var()` arbitrary-value classes) already used by `status-colors.ts` — these resolve to the
+   stock defaults outside `.brand-manifest` (zero bleed to the jobs list, other tabs) and to the
+   muted values inside it. `queued` (slate) and `running` (blue) were left untouched — not part of
+   the red/amber/green semantic family.
+
+Verified via `getComputedStyle` and screenshots in both themes on two jobs (Needs Review and
+Accepted states); confirmed zero bleed on the jobs list page. `make tsc-check`/`frontend-lint`/
+`frontend-build` all exit 0.
+
 ## Dependencies on other features
 
 - F87 (design-consistency-shared-primitives) — builds on its `status-colors.ts`/`StatusChip`
