@@ -637,6 +637,22 @@
 - [x] F89 S-E: fix `BeforeYouAcceptPanel.tsx` emerald/green inconsistency
 - [x] F89 S-F: manual smoke test (light + dark, zero bleed outside Plan tab)
 - [x] F89 S-G: `make tsc-check && make frontend-lint && make frontend-build && make test` exit 0
+- [x] F89 post-commit: restore Plan tab content margin (25px → 40px, header+body stay aligned) + match `StatusBadge` job-status pills to the muted tone palette
+- [x] F89 post-commit: fine-toothed-comb polish — header/body alignment bug, Table-view identifier truncation, Strategy filter-pill/chip shape parity, off-grid icon size, banner heading weight
+- [x] F89 post-commit: widen content margin to 40px (final value) + "Needs attention" Cards view → 2-column grid matching the Manifest mockup
+
+**Manifest design system — follow-up (not yet scheduled)**
+- [ ] Roll the Manifest design tokens (fonts, teal accent, 6px radius, muted tone palette) out to
+  the remaining tabs/pages — Data Storage, ETL graph (`TargetGraph`/`FileNodeCard`), Lineage,
+  Docs, Explain, jobs list, sidebar — explicitly deferred this session, scoped to Plan tab +
+  `BlockPlanTable` only for now
+- [ ] Unify `BlockPlanTable.tsx`'s own Strategy column chip (`translated` blue / `translated_with_review`
+  amber, hand-rolled) with the shared `StatusChip` pill shape/system — tracked since F87, still
+  a small, deliberate gap (matches the approved mockup, not a bug, but worth revisiting for full
+  consistency)
+- [ ] Dark-mode unified summary card border is faint on 3 of 4 edges (shadcn's default ~10%-opacity
+  white border) — only clearly visible where the colored top-edge accent bar sits. Flagged during
+  the fine-toothed-comb audit; user has not yet decided whether to strengthen it or leave as-is
 
 **Service delivery documentation (existing GitHub issues)**
 - [ ] #109: Define ADC SAS migration delivery kit
