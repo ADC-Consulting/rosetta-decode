@@ -344,50 +344,52 @@ function AttentionCards({
           </div>
         </div>
       )}
-      {top5.map(block => {
-        const runbookEntry = runbookMap[block.block_id];
-        return (
-          <Card key={block.block_id} className="rounded-lg border border-border bg-card gap-0 py-0 ring-0">
-            <CardContent className="px-4 py-3 space-y-1.5">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="font-mono text-xs text-foreground truncate">{block.block_id}</p>
-                  <p className="font-mono text-xs text-muted-foreground truncate">{block.source_file}</p>
+      <div className="grid grid-cols-2 gap-3">
+        {top5.map(block => {
+          const runbookEntry = runbookMap[block.block_id];
+          return (
+            <Card key={block.block_id} className="rounded-lg border border-border bg-card gap-0 py-0 ring-0">
+              <CardContent className="px-4 py-3 space-y-1.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-mono text-xs text-foreground truncate">{block.block_id}</p>
+                    <p className="font-mono text-xs text-muted-foreground truncate">{block.source_file}</p>
+                  </div>
+                  <StatusChip
+                    tone={strategyTone(block.strategy)}
+                    className="shrink-0"
+                  >
+                    {strategyLabel(block.strategy, block.reconciliation_status)}
+                  </StatusChip>
                 </div>
-                <StatusChip
-                  tone={strategyTone(block.strategy)}
-                  className="shrink-0"
-                >
-                  {strategyLabel(block.strategy, block.reconciliation_status)}
-                </StatusChip>
-              </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">{getRationale(block)}</p>
-              {isAccepted ? (
-                onViewEtlTab && (
+                <p className="text-xs text-muted-foreground leading-relaxed">{getRationale(block)}</p>
+                {isAccepted ? (
+                  onViewEtlTab && (
+                    <button
+                      type="button"
+                      onClick={onViewEtlTab}
+                      className="text-xs text-[var(--primary)] hover:underline"
+                    >
+                      View in ETL tab →
+                    </button>
+                  )
+                ) : (
                   <button
                     type="button"
-                    onClick={onViewEtlTab}
+                    onClick={onViewBlocks}
                     className="text-xs text-[var(--primary)] hover:underline"
                   >
-                    View in ETL tab →
+                    View in steps table →
                   </button>
-                )
-              ) : (
-                <button
-                  type="button"
-                  onClick={onViewBlocks}
-                  className="text-xs text-[var(--primary)] hover:underline"
-                >
-                  View in steps table →
-                </button>
-              )}
-              {runbookEntry && (
-                <InlineRunbook entry={runbookEntry} />
-              )}
-            </CardContent>
-          </Card>
-        );
-      })}
+                )}
+                {runbookEntry && (
+                  <InlineRunbook entry={runbookEntry} />
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
       {remaining > 0 && (
         <button type="button" onClick={onShowAll} className="text-xs text-[var(--primary)] hover:underline px-1">
           + {remaining} more · Show all →
@@ -721,14 +723,13 @@ export default function PlanTab({
         BlockPlanTable first, not the whole app.
       */}
       {/*
-        Horizontal padding intentionally omitted here (F89 fine-toothed-comb fix): the outer
-        JobDetailPage scroll container already applies `px-6` (24px), which is exactly what the
-        sticky header row above (back arrow / ChevronTabBar) relies on for its own left inset — it
-        adds none of its own. Adding px-8/md:px-11 here on top of that shared 24px produced a 44px
-        left-edge misalignment against the header at the md breakpoint (verified via
-        getBoundingClientRect). Only vertical padding is added locally.
+        F89 margin fix: the outer JobDetailPage scroll container already applies `px-6` (24px).
+        The 24px-only inset read as too tight against the sidebar (~25px gap), so this root adds
+        `px-4` (16px) on top of that shared 24px to reach a clean ~40px total. The sticky header
+        row in JobDetailPage.tsx adds the same `px-4` (scoped to `activeTab === "plan"`) so both
+        stay pixel-aligned — verified via getBoundingClientRect.
       */}
-      <div className="brand-manifest bg-[var(--brand-paper)] h-full min-h-0 overflow-y-auto space-y-4 pt-6 pb-6 [scrollbar-gutter:stable]">
+      <div className="brand-manifest bg-[var(--brand-paper)] h-full min-h-0 overflow-y-auto space-y-4 px-4 pt-6 pb-6 [scrollbar-gutter:stable]">
         {/* Pipeline description — above verdict strip */}
         {planData.summary && (
           <div>

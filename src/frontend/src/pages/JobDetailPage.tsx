@@ -148,7 +148,10 @@ export default function JobDetailPage(): React.ReactElement {
         <div
           className={cn(
             "sticky top-0 z-20 bg-background border-border border-b pb-2",
-            activeTab === "plan" && "brand-manifest",
+            // F89 margin fix: the outer JobDetailPage scroll container already applies `px-6`
+            // (24px). Plan tab needs a ~40px total inset to match PlanTab.tsx's content root, so
+            // add 16px more here, scoped to the Plan tab only — ETL/Data/BI/AI keep the shared 24px.
+            activeTab === "plan" && "brand-manifest px-4",
           )}
         >
           {/* Row 1: back button left, name + status centered */}

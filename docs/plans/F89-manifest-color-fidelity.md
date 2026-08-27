@@ -286,3 +286,37 @@ Verified end-to-end on both `dec0de00-0000-4000-8000-000000000001` (Needs Review
   feature
 - The `blue` "Translated" strategy pill color in `BlockPlanTable.tsx` — intentionally left outside
   the shared tone system per the approved mockup, not a bug
+
+## Content margin + attention-cards grid fixes (2026-08-27, later same day)
+
+Two more gaps found against the approved Manifest mockup, fixed on this branch:
+
+1. **Content margin too tight (25px from sidebar).** The fine-toothed-comb fix above (item 1)
+   correctly resolved a header/body *misalignment* bug by removing `PlanTab.tsx`'s horizontal
+   padding entirely, but that incidentally reverted the margin to the outer scroll container's bare
+   `px-6` (24px) — both header and body now aligned, but both tight (`getBoundingClientRect`
+   confirmed sidebar `right: 220`, content `left: 244`, a 24-25px gap). Fixed by adding a matching
+   `px-4` (16px) on top of the shared `px-6`, in both places, so the delta stays identical and both
+   stay aligned: `JobDetailPage.tsx`'s sticky header row gets `px-4` appended to its existing
+   `activeTab === "plan" && "brand-manifest"` conditional (now `"brand-manifest px-4"`, still scoped
+   to the Plan tab only — ETL/Data/BI/AI keep the unmodified 24px), and `PlanTab.tsx`'s
+   `.brand-manifest` root gets an unconditional `px-4` (it only renders for the Plan tab). Verified
+   via `getBoundingClientRect` on both `dec0de00-0000-4000-8000-000000000001` and
+   `...0003`, both themes: back button and description paragraph both measure `left: 260` (sidebar
+   `right: 220` + 40px), and the ETL tab (no `brand-manifest`/`px-4`) still measures `left: 244`,
+   confirming zero bleed to the other 4 tabs.
+2. **"Needs attention" Cards view was single-column.** The approved mockup renders the individual
+   attention cards in a 2-column grid (`grid-template-columns:repeat(2,minmax(0,1fr));gap:12px`);
+   the live `AttentionCards` component in `PlanTab.tsx` stacked them full-width, one per row. Fixed
+   by wrapping the `top5.map(...)` card list in a `grid grid-cols-2 gap-3` container (12px gap,
+   matching the mockup; the "N manual steps" warning banner above and the "+N more · Show all"
+   link below stay outside the grid, full-width). Verified on the Needs Review job (5 attention
+   items, no "+more" link since `top5` already includes all 5): cards render 2+2+1 via
+   `getBoundingClientRect` (rows at consistent `x: 260`/`828.5`, last card alone at `x: 260`); card
+   text (step id, rationale, "View in steps table →") still reads fine at half-width in both light
+   and dark theme on both jobs, including the KYC/AML job's longer rationale text (wraps to more
+   lines, not truncated).
+
+Verified via `getBoundingClientRect`/screenshots on `dec0de00-0000-4000-8000-000000000001` (Needs
+Review) and `...0003` (Accepted), both light and dark theme. `make tsc-check`, `make frontend-lint`,
+`make frontend-build`, and `make test` (all 7 gates) all exit 0.
