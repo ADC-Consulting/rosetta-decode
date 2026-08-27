@@ -172,8 +172,11 @@ function StatCard({
   if (count === undefined) return null;
   const isActive = activeFilter === filterKey;
   const isZero = count === 0;
+  // Zero-count tiles still get a solid muted/gray tinted background box (matching the
+  // Manifest mockup's neutral fill for these tiles) — not a double-faded bg-muted/30 +
+  // opacity-60 combination, which visually washed out to "no tile" against the card background.
   const resolvedColorClasses = isZero
-    ? "text-muted-foreground bg-muted/30 border-muted"
+    ? "text-muted-foreground bg-muted border-transparent"
     : colorClasses;
   return (
     <button
@@ -186,7 +189,7 @@ function StatCard({
         "select-none transition-all",
         resolvedColorClasses,
         isZero
-          ? "cursor-default opacity-60"
+          ? "cursor-default"
           : isActive
             ? "cursor-pointer ring-2 ring-offset-1 ring-current shadow-sm"
             : "cursor-pointer hover:shadow-md hover:ring-1 hover:ring-border",
@@ -743,7 +746,7 @@ export default function PlanTab({
                   <span
                     key={f}
                     className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-mono
-                      bg-muted text-muted-foreground border border-border mr-1 mb-1"
+                      bg-muted text-muted-foreground mr-1 mb-1"
                   >
                     {f}
                   </span>
@@ -757,7 +760,7 @@ export default function PlanTab({
                   <span
                     key={f}
                     className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-mono
-                      bg-muted text-muted-foreground border border-border mr-1 mb-1"
+                      bg-muted text-muted-foreground mr-1 mb-1"
                   >
                     {f}
                   </span>
@@ -897,7 +900,7 @@ export default function PlanTab({
           const hasPii = piiSignals.length > 0;
 
           return (
-            <Card className="gap-0 py-0">
+            <Card className="gap-0 py-0 border border-border">
               <div
                 className={cn("h-[3px] shrink-0", hasPii ? "bg-red-500" : "bg-[var(--primary)]")}
                 aria-hidden="true"

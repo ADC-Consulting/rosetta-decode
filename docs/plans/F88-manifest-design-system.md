@@ -194,6 +194,41 @@ exit 0.
 - [x] done — `make test` (all 7 gates: ruff-check, ruff-format, mypy, pytest+coverage, tsc,
   frontend-lint, frontend-build) exits 0
 
+## Post-completion fidelity fixes (2026-08-27)
+
+The user did a direct side-by-side comparison of the live Plan tab against the approved
+`Manifest.dc.html` mockup artboard and found 4 concrete gaps that had slipped through the S-I
+manual smoke test. All 4 fixed in `PlanTab.tsx` (frontend-only, no backend changes):
+
+1. **Unified summary card had no visible boundary.** The mockup's card
+   (`border:1px solid var(--line);border-radius:10px`) reads as a distinct card against the page
+   background. The live `Card` component only had a faint `ring-1 ring-foreground/10` (no real
+   border), so the card blended into the white page. Fixed by adding `border border-border` to the
+   `Card` className.
+2. **Reads/Produces tags were bordered boxes; mockup uses plain filled tags.** Removed the
+   `border border-border` classes from the reads/produces `<span>` tags, keeping `bg-muted
+   text-muted-foreground rounded` — matches the mockup's light-gray-fill/no-border/small-radius
+   tag style.
+3. **"Accept migration" button row position — verified already correct.** The task brief described
+   this as a gap (button in the title row instead of alongside `ChevronTabBar`), but on inspection
+   `JobDetailPage.tsx`'s sticky header already places the button in the same flex row as
+   `ChevronTabBar` (right-aligned via `ml-auto`), separate from the centered title row above it —
+   confirmed both by code read and a live browser screenshot. No code change was needed;
+   `ChevronTabBar.tsx`'s chevron tab shape was untouched either way.
+4. **Only 2 of 4 KPI stat tiles had a visible tinted background.** The zero-count tiles
+   ("Manual TODO", "Failed reconciliation") used `bg-muted/30` *plus* a wrapping `opacity-60` on
+   the whole button — the two alpha reductions compounded to make the tile background nearly
+   invisible against the white card (confirmed via zoomed screenshot: tiles looked like plain text
+   with only a hairline border). Fixed in `StatCard` by switching the zero-state to a solid
+   `bg-muted border-transparent` fill and dropping the extra `opacity-60`, so all 4 tiles now read
+   as consistently tinted boxes (green/amber for the two non-zero counts, muted gray for the two
+   zero counts), matching the mockup's neutral `#eceff0` fill for zero-count tiles.
+
+Verified via live browser screenshots (zoomed in on both the card border and the stat-tile row) in
+both light and dark theme on the "Monthly Revenue Pipeline" job. `make tsc-check`, `make
+frontend-lint`, `make frontend-build` all exit 0. Not committed — implementation only, per session
+instruction.
+
 ## Dependencies on other features
 
 - F87 (design-consistency-shared-primitives) — this feature builds directly on its

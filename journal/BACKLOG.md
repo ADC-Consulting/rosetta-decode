@@ -627,7 +627,7 @@
 - [x] F88 S-G: `PlanTab.tsx` — unified summary card restructure (top-edge color bar, one card)
 - [x] F88 S-H: `BlockPlanTable.tsx` → Manifest conventions (Space Mono step ids, 6px radius)
 - [x] F88 S-I: manual smoke test (light + dark, zero bleed into other tabs)
-- [ ] F88 S-J: `make tsc-check && make frontend-lint && make frontend-build && make test` exit 0
+- [x] F88 S-J: `make tsc-check && make frontend-lint && make frontend-build && make test` exit 0
 
 **Service delivery documentation (existing GitHub issues)**
 - [ ] #109: Define ADC SAS migration delivery kit
