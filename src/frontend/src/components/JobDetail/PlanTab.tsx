@@ -456,10 +456,10 @@ function AttentionTable({
         <tbody>
           {sorted.map((block) => (
             <tr key={block.block_id} className="border-t border-border">
-              <td className="px-3 py-2 font-mono text-xs text-muted-foreground max-w-[160px] truncate">
+              <td className="px-3 py-2 font-mono text-xs text-muted-foreground whitespace-nowrap">
                 {block.block_id}
               </td>
-              <td className="px-3 py-2 font-mono text-xs text-muted-foreground max-w-[160px] truncate">
+              <td className="px-3 py-2 font-mono text-xs text-muted-foreground whitespace-nowrap">
                 {block.source_file}
               </td>
               <td className="px-3 py-2">
@@ -720,7 +720,15 @@ export default function PlanTab({
         per the 2026-08-26 decision to roll the new visual language out to the Plan tab +
         BlockPlanTable first, not the whole app.
       */}
-      <div className="brand-manifest bg-[var(--brand-paper)] h-full min-h-0 overflow-y-auto space-y-4 px-8 md:px-11 pt-6 pb-6 [scrollbar-gutter:stable]">
+      {/*
+        Horizontal padding intentionally omitted here (F89 fine-toothed-comb fix): the outer
+        JobDetailPage scroll container already applies `px-6` (24px), which is exactly what the
+        sticky header row above (back arrow / ChevronTabBar) relies on for its own left inset — it
+        adds none of its own. Adding px-8/md:px-11 here on top of that shared 24px produced a 44px
+        left-edge misalignment against the header at the md breakpoint (verified via
+        getBoundingClientRect). Only vertical padding is added locally.
+      */}
+      <div className="brand-manifest bg-[var(--brand-paper)] h-full min-h-0 overflow-y-auto space-y-4 pt-6 pb-6 [scrollbar-gutter:stable]">
         {/* Pipeline description — above verdict strip */}
         {planData.summary && (
           <div>
@@ -778,7 +786,7 @@ export default function PlanTab({
           <div className="rounded-md border border-[var(--tone-warning)]/20 bg-[var(--tone-warning-bg)] px-4 py-3 space-y-1.5">
             <div className="flex items-center gap-2">
               <AlertTriangle size={14} className={cn(TONE_TEXT_CLASS.warning, "shrink-0")} />
-              <p className={cn("text-sm font-medium", TONE_TEXT_CLASS.warning)}>
+              <p className={cn("text-sm font-semibold", TONE_TEXT_CLASS.warning)}>
                 {planData.missing_dependencies.length} missing dependenc{planData.missing_dependencies.length === 1 ? "y" : "ies"} detected
               </p>
             </div>
@@ -857,7 +865,7 @@ export default function PlanTab({
           <div className="rounded-md border border-[var(--tone-warning)]/20 bg-[var(--tone-warning-bg)] px-4 py-3 space-y-1.5">
             <div className="flex items-center gap-2">
               <AlertTriangle size={14} className={cn(TONE_TEXT_CLASS.warning, "shrink-0")} />
-              <p className={cn("text-sm font-medium", TONE_TEXT_CLASS.warning)}>
+              <p className={cn("text-sm font-semibold", TONE_TEXT_CLASS.warning)}>
                 {planData.missing_dependencies.length} dependenc{planData.missing_dependencies.length === 1 ? "y was" : "ies were"} unavailable during translation
               </p>
             </div>
@@ -911,7 +919,7 @@ export default function PlanTab({
 
               {hasPii && (
                 <div className="flex items-start gap-2.5 border-b border-border px-6 py-3.5">
-                  <AlertTriangle size={15} className="text-red-600 shrink-0 mt-0.5" />
+                  <AlertTriangle size={14} className="text-red-600 shrink-0 mt-0.5" />
                   <p className="text-sm leading-relaxed text-muted-foreground">
                     <span className={cn("font-semibold", TONE_TEXT_CLASS.danger)}>
                       Sensitive data detected — {piiColumnCount} column{piiColumnCount !== 1 ? "s" : ""}.

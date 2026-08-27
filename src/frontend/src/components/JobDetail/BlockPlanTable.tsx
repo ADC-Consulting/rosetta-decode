@@ -124,6 +124,15 @@ const RISK_LABELS: Record<string, string> = {
   high: "high",
 };
 
+// Tone-colored fill for the "Filter by Strategy" pills when selected — matches the Strategy
+// column's own chip colors exactly (see the inline `colorCls` in the Strategy cell below), so the
+// filter control reads as the same chip system instead of a separate plain pill treatment.
+const STRATEGY_PILL_SELECTED_CLASS: Record<string, string> = {
+  manual: "bg-red-50 text-red-700 border-red-300",
+  translated_with_review: "bg-amber-50 text-amber-700 border-amber-300",
+  translated: "bg-blue-50 text-blue-700 border-blue-300",
+};
+
 // Confidence-band and criticality color come from ./status-colors.ts (CONFIDENCE_TONE /
 // CRITICALITY_TONE) — see confidenceBandTone() / the criticality cell below.
 
@@ -515,9 +524,12 @@ export default function BlockPlanTable({
               onClick={() => toggleStrategy(s)}
               aria-pressed={activeStrategies.has(s)}
               className={cn(
-                "h-6 px-2 rounded-full text-[11px] font-medium border transition-colors cursor-pointer",
+                // rounded-lg (6px, scoped to .brand-manifest) matches the Strategy column's own
+                // chip radius — was rounded-full, a mismatched shape (F89 fine-toothed-comb fix).
+                "h-6 px-2 rounded-lg text-[11px] font-medium border transition-colors cursor-pointer",
                 activeStrategies.has(s)
-                  ? "bg-[var(--primary)] text-[var(--primary-foreground)] border-[var(--primary)]"
+                  ? (STRATEGY_PILL_SELECTED_CLASS[s] ??
+                      "bg-[var(--primary)] text-[var(--primary-foreground)] border-[var(--primary)]")
                   : "bg-background text-muted-foreground border-border hover:border-foreground/50",
               )}
             >

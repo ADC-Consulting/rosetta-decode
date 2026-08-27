@@ -220,6 +220,57 @@ Verified via `getComputedStyle` and screenshots in both themes on two jobs (Need
 Accepted states); confirmed zero bleed on the jobs list page. `make tsc-check`/`frontend-lint`/
 `frontend-build` all exit 0.
 
+## Fine-toothed-comb polish fixes (2026-08-27)
+
+A follow-up design audit (browser-verified with `getBoundingClientRect`/`getComputedStyle`) found
+5 more concrete Plan tab issues, all fixed on this branch:
+
+1. **Header/body 44px left-edge misalignment (HIGH).** The previous "near-zero padding" fix
+   (above) added `px-8 md:px-11 pt-6` to `PlanTab.tsx`'s `.brand-manifest` root without checking it
+   against the sticky header row's own padding in `JobDetailPage.tsx`. Both the header and
+   `PlanTab.tsx`'s content root sit inside the same outer scroll container
+   (`px-6 py-2` in `JobDetailPage.tsx`), and the header adds **zero** padding of its own beyond
+   that — confirmed via `getBoundingClientRect` (`left: 244` for both the sticky header row and the
+   `.brand-manifest` box, `paddingLeft: "0px"` on the header). `PlanTab.tsx`'s extra `md:px-11`
+   (44px) was therefore pure double-padding, pushing content to `left: 288`, a 44px zig-zag against
+   the header. Fixed by removing the horizontal padding classes from `PlanTab.tsx`'s root
+   (`px-8 md:px-11` → none — vertical `pt-6 pb-6` kept), letting it rely on the same outer `px-6`
+   the header uses. Verified both rows now measure `left: 244` in both jobs and both themes (0px
+   delta, not just within tolerance).
+2. **"Needs attention" → Table view truncated Step ID/Source file (MEDIUM-HIGH).** The
+   `AttentionTable` component in `PlanTab.tsx` had `max-w-[160px] truncate` on the Step ID and
+   Source file `<td>`s, cutting off identifiers despite visible unused width to the right of the
+   Blast radius column — Cards view showed the same identifiers in full. Root cause was the fixed
+   `max-w-[160px]` cap itself (the table has no `table-layout: fixed`, so this wasn't a
+   layout-algorithm issue). Fixed by removing `max-w-[160px] truncate` and using
+   `whitespace-nowrap` instead, so the columns grow to fit their content like the others. Verified
+   on both jobs (both themes) — full step IDs/file paths render, table still fits within its
+   `overflow-x-auto` wrapper.
+3. **"Filter by Strategy" pills didn't match the Strategy column's chip style (MEDIUM).** In
+   `BlockPlanTable.tsx`, the filter pills were plain `rounded-full` outline buttons with no color
+   coding, while the Strategy column's data cells render the same three labels as filled
+   `rounded-lg` (6px) tone-colored chips (blue/amber/red). Fixed by adding a
+   `STRATEGY_PILL_SELECTED_CLASS` map (`manual`→red, `translated_with_review`→amber,
+   `translated`→blue — the exact same Tailwind classes the Strategy cell already hardcodes) and
+   switching the pill shape from `rounded-full` to `rounded-lg`; unselected stays the existing
+   neutral outline. Verified via `getComputedStyle` that a selected pill's background/text/radius
+   are byte-identical (`oklch(...)` values match exactly) to the corresponding Strategy column
+   chip, for all three strategies (Translated, Review needed, Manual), in both themes.
+4. **Off-grid icon size (LOW-MEDIUM).** The "Sensitive data detected" warning triangle in
+   `PlanTab.tsx` rendered at `size={15}`, off the page's established 12/14/18px cluster. Changed to
+   `size={14}`. Verified via the rendered `<svg>`'s `width`/`height` attributes (`14`).
+5. **Inconsistent banner heading weight (LOW).** The "N dependencies were unavailable"/"N missing
+   dependencies detected" banner headings in `PlanTab.tsx` (both the non-accepted and accepted-state
+   variants) used `font-medium` (500) while "Delivered — Accepted"/"Needs attention"/"Steps" use
+   `font-semibold` (600) for the same "bold statement in a colored callout" role. Changed both
+   banner headings' `font-medium` → `font-semibold`. Verified via `getComputedStyle` —
+   `fontWeight: "600"` on the accepted-state banner ("2 dependencies were unavailable during
+   translation") on the KYC/AML job.
+
+Verified end-to-end on both `dec0de00-0000-4000-8000-000000000001` (Needs Review) and
+`dec0de00-0000-4000-8000-000000000003` (Accepted) in both light and dark theme. `make tsc-check`,
+`make frontend-lint`, `make frontend-build`, and `make test` (all 7 gates) all exit 0.
+
 ## Dependencies on other features
 
 - F87 (design-consistency-shared-primitives) — builds on its `status-colors.ts`/`StatusChip`
