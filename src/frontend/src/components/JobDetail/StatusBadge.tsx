@@ -15,10 +15,11 @@ export function StatusBadge({
   return (
     <span
       className={cn(
-        // Shape/sizing matches StatusChip's pill convention (h-5 w-fit, rounded-4xl, px-2 py-0.5).
+        // Shape/sizing matches StatusChip's "Manifest" pill convention (F88): h-5 w-fit,
+        // rounded-lg (6px inside .brand-manifest scope), px-2 py-0.5, no border.
         // STATUS_PILL_CLASS stays its own map (job status, not block-level strategy/risk) — the
         // shimmer animation below is a distinct effect, not a StatusChip duplicate.
-        "inline-flex h-5 w-fit shrink-0 items-center justify-center overflow-hidden rounded-4xl px-2 py-0.5",
+        "inline-flex h-5 w-fit shrink-0 items-center justify-center overflow-hidden rounded-lg px-2 py-0.5",
         STATUS_PILL_CLASS[status],
       )}
     >

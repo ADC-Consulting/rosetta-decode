@@ -29,6 +29,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CheckCircle2, Download } from "lucide-react";
 import { useState } from "react";
@@ -144,7 +145,12 @@ export default function JobDetailPage(): React.ReactElement {
           setSearchParams({ tab: v });
         }}
       >
-        <div className="sticky top-0 z-20 bg-background border-border border-b pb-2">
+        <div
+          className={cn(
+            "sticky top-0 z-20 bg-background border-border border-b pb-2",
+            activeTab === "plan" && "brand-manifest",
+          )}
+        >
           {/* Row 1: back button left, name + status centered */}
           <div className="relative flex items-center justify-center py-3">
             <button
@@ -199,7 +205,7 @@ export default function JobDetailPage(): React.ReactElement {
                   <Button
                     size="sm"
                     onClick={() => { void handleDownload(); }}
-                    className="cursor-pointer flex items-center gap-1.5"
+                    className="cursor-pointer flex items-center gap-1.5 bg-[var(--primary)] text-[var(--primary-foreground)]"
                     aria-label="Download migration package"
                   >
                     <Download size={14} />
@@ -219,7 +225,7 @@ export default function JobDetailPage(): React.ReactElement {
                         size="sm"
                         onClick={() => setShowAcceptConfirm(true)}
                         disabled={acceptMutation.isPending}
-                        className="cursor-pointer"
+                        className="cursor-pointer bg-[var(--primary)] text-[var(--primary-foreground)]"
                       >
                         Accept migration
                       </Button>

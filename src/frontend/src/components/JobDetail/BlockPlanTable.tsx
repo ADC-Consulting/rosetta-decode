@@ -508,7 +508,7 @@ export default function BlockPlanTable({
               className={cn(
                 "h-6 px-2 rounded-full text-[11px] font-medium border transition-colors cursor-pointer",
                 activeStrategies.has(s)
-                  ? "bg-primary text-primary-foreground border-primary"
+                  ? "bg-[var(--primary)] text-[var(--primary-foreground)] border-[var(--primary)]"
                   : "bg-background text-muted-foreground border-border hover:border-foreground/50",
               )}
             >
@@ -703,14 +703,18 @@ export default function BlockPlanTable({
                               : recon === "fail" || isReviewStrategy
                                 ? "Review needed"
                                 : "Translated";
+                            // Filled/borderless/6px-radius "Manifest" pill convention (F88).
+                            // Blue for "Translated" intentionally does not go through
+                            // StatusChip/STRATEGY_TONE (which uses green) — it matches the
+                            // Manifest mockup's Steps table, which uses blue specifically here.
                             const colorCls = isManual
-                              ? "text-red-700 bg-red-50 border border-red-200"
+                              ? "text-red-700 bg-red-50"
                               : recon === "fail" || isReviewStrategy
-                                ? "text-amber-700 bg-amber-50 border border-amber-200"
-                                : "text-blue-700 bg-blue-50 border border-blue-200";
+                                ? "text-amber-700 bg-amber-50"
+                                : "text-blue-700 bg-blue-50";
                             return (
                               <span
-                                className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${colorCls}`}
+                                className={`inline-block px-1.5 py-0.5 rounded-lg text-xs font-medium ${colorCls}`}
                               >
                                 {label}
                               </span>
@@ -809,7 +813,7 @@ export default function BlockPlanTable({
                                 className={cn(
                                   "inline-flex items-center justify-center h-6 w-6 rounded-lg hover:bg-muted hover:text-foreground text-muted-foreground transition-colors cursor-pointer",
                                   humanEditedBlocks.has(bp.block_id) &&
-                                    "border border-primary/40 text-primary bg-primary/5 hover:bg-primary/10",
+                                    "border border-[var(--primary)]/40 text-[var(--primary)] bg-[var(--primary)]/5 hover:bg-[var(--primary)]/10",
                                 )}
                                 onClick={() => setHistoryBlockId(bp.block_id)}
                                 aria-label={`History for ${bp.block_id}`}

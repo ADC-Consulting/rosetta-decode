@@ -20,9 +20,9 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -220,7 +220,7 @@ function InlineRunbook({ entry }: { entry: RunbookEntry }): React.ReactElement {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1 text-xs text-primary hover:underline cursor-pointer"
+        className="flex items-center gap-1 text-xs text-[var(--primary)] hover:underline cursor-pointer"
         aria-expanded={open}
       >
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
@@ -361,7 +361,7 @@ function AttentionCards({
                   <button
                     type="button"
                     onClick={onViewEtlTab}
-                    className="text-xs text-primary hover:underline"
+                    className="text-xs text-[var(--primary)] hover:underline"
                   >
                     View in ETL tab →
                   </button>
@@ -370,7 +370,7 @@ function AttentionCards({
                 <button
                   type="button"
                   onClick={onViewBlocks}
-                  className="text-xs text-primary hover:underline"
+                  className="text-xs text-[var(--primary)] hover:underline"
                 >
                   View in steps table →
                 </button>
@@ -383,7 +383,7 @@ function AttentionCards({
         );
       })}
       {remaining > 0 && (
-        <button type="button" onClick={onShowAll} className="text-xs text-primary hover:underline px-1">
+        <button type="button" onClick={onShowAll} className="text-xs text-[var(--primary)] hover:underline px-1">
           + {remaining} more · Show all →
         </button>
       )}
@@ -708,7 +708,13 @@ export default function PlanTab({
 
   return (
     <TooltipProvider>
-      <div className="h-full min-h-0 overflow-y-auto space-y-4 pb-6 [scrollbar-gutter:stable]">
+      {/*
+        "Manifest" brand scope (F88) — locally overrides --primary/--radius/--font-sans/--font-mono
+        for this subtree only (see .brand-manifest in index.css). Scoped here rather than globally
+        per the 2026-08-26 decision to roll the new visual language out to the Plan tab +
+        BlockPlanTable first, not the whole app.
+      */}
+      <div className="brand-manifest h-full min-h-0 overflow-y-auto space-y-4 pb-6 [scrollbar-gutter:stable]">
         {/* Pipeline description — above verdict strip */}
         {planData.summary && (
           <div>
@@ -792,8 +798,8 @@ export default function PlanTab({
 
         {/* Verdict strip — accepted state overrides the green/amber/red states */}
         {isAccepted ? (
-          <div className="rounded-lg border border-l-4 border-l-primary bg-primary/5 px-4 py-3 flex items-start gap-3">
-            <CheckCircle2 size={18} className="text-primary shrink-0 mt-0.5" />
+          <div className="rounded-lg border border-l-4 border-l-[var(--primary)] bg-[var(--primary)]/5 px-4 py-3 flex items-start gap-3">
+            <CheckCircle2 size={18} className="text-[var(--primary)] shrink-0 mt-0.5" />
             <div>
               <p className="text-sm font-semibold text-foreground">Delivered — Accepted</p>
               <p className="text-sm text-muted-foreground">
@@ -868,30 +874,6 @@ export default function PlanTab({
           </div>
         )}
 
-        {/* Sensitive data warning banner */}
-        {(() => {
-          const piiSignals = planData.sensitive_data_findings
-            ? [...new Set(planData.sensitive_data_findings.map(f => f.matched_signal))].sort()
-            : [];
-          const piiColumnCount = planData.sensitive_data_findings?.length ?? 0;
-          return piiSignals.length > 0 && (
-            <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 flex items-start gap-3">
-              <AlertTriangle size={14} className="text-amber-500 shrink-0 mt-0.5" />
-              <div className="space-y-0.5">
-                <p className="text-sm font-medium text-amber-800">
-                  Sensitive data detected ({piiColumnCount} column{piiColumnCount !== 1 ? "s" : ""})
-                </p>
-                <p className="text-xs text-amber-700">
-                  Signals matched: {piiSignals.join(", ")}. Ensure data handling complies with applicable
-                  regulations before accepting.
-                </p>
-              </div>
-            </div>
-          );
-        })()}
-
-
-
         {/* Lineage unavailable notice */}
         {trustReport && !trustReport.lineage_available && (
           <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
@@ -899,79 +881,100 @@ export default function PlanTab({
           </div>
         )}
 
-        {/* Metrics card — confidence/risk/stat cards only */}
-        <Card className="border-border bg-muted/30">
-          <CardContent className="p-0">
-            {/* Stats centered */}
-            <div className="flex items-center justify-center gap-4 px-5 py-2 flex-wrap">
-              {/* Confidence bar */}
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground shrink-0">
-                  LLM confidence
-                </span>
-                <Progress
-                  value={confidencePct}
-                  className="h-1.5 w-20 **:data-[slot=progress-indicator]:bg-(--bar-fill)"
-                  style={
-                    { "--bar-fill": confidenceColor } as React.CSSProperties
-                  }
-                />
-                <span
-                  className="text-xs font-semibold tabular-nums"
-                  style={{ color: confidenceColor }}
-                >
-                  {confidencePct}%
-                </span>
-                <Dialog>
-                  <DialogTrigger
-                    className="text-muted-foreground hover:text-foreground transition-colors ml-1"
-                    aria-label="What does confidence mean?"
-                  >
-                    <Info size={14} />
-                  </DialogTrigger>
-                  <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
-                    <DialogHeader>
-                      <DialogTitle>Confidence &amp; criticality</DialogTitle>
-                    </DialogHeader>
-                    <pre className="text-sm text-foreground whitespace-pre-wrap font-sans leading-relaxed">
-                      {CONFIDENCE_HELP}
-                    </pre>
-                  </DialogContent>
-                </Dialog>
-              </div>
+        {/*
+          Unified summary card (F88 / "Manifest" mockup structure) — a single Card containing, top
+          to bottom: a 3px top-edge status bar (red when sensitive data is detected, brand teal
+          otherwise), the PII/sensitive-data warning (when present), the confidence/risk bars, the
+          4 stat tiles, the criticality row, and the "Before you accept" footer. Replaces the
+          previously separate bordered PII banner + standalone metrics card. Data bindings below
+          are unchanged from before this restructure — only the layout/markup changed.
+        */}
+        {(() => {
+          const piiSignals = planData.sensitive_data_findings
+            ? [...new Set(planData.sensitive_data_findings.map(f => f.matched_signal))].sort()
+            : [];
+          const piiColumnCount = planData.sensitive_data_findings?.length ?? 0;
+          const hasPii = piiSignals.length > 0;
 
-              <Separator
-                orientation="vertical"
-                className="h-4 hidden sm:block"
+          return (
+            <Card className="gap-0 py-0">
+              <div
+                className={cn("h-[3px] shrink-0", hasPii ? "bg-red-500" : "bg-[var(--primary)]")}
+                aria-hidden="true"
               />
 
-              {/* Risk bar */}
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground shrink-0">
-                  Risk
-                </span>
-                <Progress
-                  value={RISK_PCT[riskLevel] ?? 0}
-                  className="h-1.5 w-20 **:data-[slot=progress-indicator]:bg-(--bar-fill)"
-                  style={{ "--bar-fill": riskBar.color } as React.CSSProperties}
-                />
-                <span
-                  className="text-xs font-semibold capitalize"
-                  style={{ color: riskBar.color }}
-                >
-                  {riskBar.label}
-                </span>
-              </div>
+              {hasPii && (
+                <div className="flex items-start gap-2.5 border-b border-border px-6 py-3.5">
+                  <AlertTriangle size={15} className="text-red-600 shrink-0 mt-0.5" />
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    <span className="font-semibold text-red-600">
+                      Sensitive data detected — {piiColumnCount} column{piiColumnCount !== 1 ? "s" : ""}.
+                    </span>{" "}
+                    Signals matched: <span className="font-mono">{piiSignals.join(", ")}</span>. Ensure
+                    data handling complies with applicable regulations before accepting.
+                  </p>
+                </div>
+              )}
 
-              {/* Stat cards */}
-              {trustReport && (
-                <>
-                  <Separator
-                    orientation="vertical"
-                    className="h-4 hidden sm:block"
-                  />
-                  <div className="flex flex-col gap-2 w-full">
-                    <div className="grid grid-cols-4 gap-3">
+              <CardContent className="px-6 py-5">
+                {/* Confidence / risk bars */}
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 mb-6">
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+                        LLM confidence
+                        <Dialog>
+                          <DialogTrigger
+                            className="text-muted-foreground hover:text-foreground transition-colors"
+                            aria-label="What does confidence mean?"
+                          >
+                            <Info size={12} />
+                          </DialogTrigger>
+                          <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+                            <DialogHeader>
+                              <DialogTitle>Confidence &amp; criticality</DialogTitle>
+                            </DialogHeader>
+                            <pre className="text-sm text-foreground whitespace-pre-wrap font-sans leading-relaxed">
+                              {CONFIDENCE_HELP}
+                            </pre>
+                          </DialogContent>
+                        </Dialog>
+                      </span>
+                      <span
+                        className="text-[15px] font-bold tabular-nums"
+                        style={{ color: confidenceColor }}
+                      >
+                        {confidencePct}%
+                      </span>
+                    </div>
+                    <Progress
+                      value={confidencePct}
+                      className="h-1.5 **:data-[slot=progress-indicator]:bg-(--bar-fill)"
+                      style={{ "--bar-fill": confidenceColor } as React.CSSProperties}
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+                        Risk
+                      </span>
+                      <span className="text-[15px] font-bold capitalize" style={{ color: riskBar.color }}>
+                        {riskBar.label}
+                      </span>
+                    </div>
+                    <Progress
+                      value={RISK_PCT[riskLevel] ?? 0}
+                      className="h-1.5 **:data-[slot=progress-indicator]:bg-(--bar-fill)"
+                      style={{ "--bar-fill": riskBar.color } as React.CSSProperties}
+                    />
+                  </div>
+                </div>
+
+                {/* Stat tiles + criticality + composition line */}
+                {trustReport && (
+                  <div className="space-y-2 mb-6">
+                    <div className="grid grid-cols-4 gap-3.5">
                       <StatCard
                         filterKey="auto_verified"
                         count={trustReport.auto_verified}
@@ -1047,20 +1050,21 @@ export default function PlanTab({
                       </p>
                     )}
                   </div>
-                </>
-              )}
-            </div>
-            {!isAccepted && trustReport && planData && (
-              <div className="border-t border-border mt-3 pt-3">
-                <BeforeYouAcceptPanel
-                  trustReport={trustReport}
-                  planData={planData}
-                  jobName="This migration"
-                />
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                )}
+
+                {!isAccepted && trustReport && planData && (
+                  <div className="border-t border-border pt-5">
+                    <BeforeYouAcceptPanel
+                      trustReport={trustReport}
+                      planData={planData}
+                      jobName="This migration"
+                    />
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })()}
 
         {/* Needs attention section — only rendered when there are items (point 5) */}
         {trustReport && attentionQueueLength > 0 && (

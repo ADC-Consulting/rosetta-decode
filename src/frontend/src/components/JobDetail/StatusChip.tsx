@@ -21,6 +21,10 @@ interface StatusChipProps {
  * (see ./status-colors.ts) so every confidence/strategy/risk/criticality indicator in the Plan
  * and ETL tabs shares the same shape, size, and color convention instead of each call site
  * hand-rolling its own `inline-flex items-center rounded ... text-xs font-medium` markup.
+ *
+ * Renders the "Manifest" filled/borderless/6px-radius pill (F88): uses Badge's default variant
+ * (not "outline") as the base so nothing pre-applies a visible border — `TONE_CHIP_CLASS`
+ * supplies the fill, text color, and radius for every tone.
  */
 export default function StatusChip({
   tone,
@@ -36,7 +40,7 @@ export default function StatusChip({
     );
   }
   return (
-    <Badge variant="outline" className={cn(TONE_CHIP_CLASS[tone], className)}>
+    <Badge className={cn(TONE_CHIP_CLASS[tone], className)}>
       {children}
     </Badge>
   );
