@@ -337,3 +337,33 @@ applies uniformly across all 5 tabs rather than being conditionally scoped to Pl
 screenshot that the ETL tab's header still reads sensibly with the new row grouping (in its normal
 unstyled colors, as expected). Verified in light + dark theme on both the Needs Review and Accepted
 jobs. `make test` (all 7 gates) exits 0.
+
+## Post-commit fix: `warning` tone read as brown, not amber
+
+Live review of the "Manifest" palette flagged that `warning` (used for "Needs Review"
+badges/chips, medium/high risk and criticality tags, and the dependencies-unavailable banners)
+read as **brown**, not amber, despite the hue angle being technically in the amber range. Root
+cause: `--tone-warning: #a15c00` is `hsl(35, 100%, 32%)` — fully saturated but very
+low-lightness, and a dark+saturated warm hue perceptually reads as brown regardless of hue.
+
+**Fix** (`src/frontend/src/index.css`, `.brand-manifest` scope only):
+
+| Token | Old | New | Reasoning |
+|---|---|---|---|
+| `--tone-warning` (light) | `#a15c00` — `hsl(35, 100%, 32%)` | `#b5680d` — `hsl(33, 87%, 38%)` | Lightness raised 32% → 38%, saturation eased 100% → 87%, landing near Tailwind `amber-700` (`#b45309`) rather than the loud stock `amber-500` (`#f59e0b`) this effort deliberately moved away from. |
+| `--tone-warning` (dark, `.dark .brand-manifest`) | `#e0a94a` — `hsl(38, 71%, 58%)` | `#e6ab4c` — `hsl(36, 80%, 60%)` | Already reasonably light but read slightly muddy against the dark card; nudged hue/saturation for a cleaner, more legible gold-amber while staying muted. |
+
+`--tone-warning-bg` (`#fbedd8` light / `rgba(224, 169, 74, 0.12)` dark) was checked against the
+new, lighter foreground and left unchanged — contrast against the light pale-amber background is
+~3.7:1 (down from ~4.5:1 with the old darker foreground, since a lighter foreground closes the gap
+against an already-light background), which is above the 3:1 WCAG threshold for bold/large UI text
+and chip labels (this token's only usage), and screenshots confirm it's clearly legible in both
+themes. Widening the gap further would require lightening the background toward near-white,
+diluting the pale-amber tint that gives the chips their identity, so it was left as-is.
+
+Verified via `getComputedStyle` and screenshots in both themes on "Monthly Revenue Pipeline"
+(Needs Review badge, Needs review stat tile, medium risk/criticality chips) and "KYC / AML Client
+Screening" (Steps table `warning`-tone chips, dependencies-unavailable banner): the amber now
+reads as a clear, warm, unambiguous warning signal in both light and dark theme, distinct from
+brown. `success`/`danger`/`danger-strong`/`--brand-paper` were not touched. `make tsc-check`,
+`make frontend-lint`, `make frontend-build`, and `make test` (all 7 gates) all exit 0.

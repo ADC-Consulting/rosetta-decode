@@ -220,7 +220,13 @@ body {
      status-colors.ts), never via a derived --color-* token, per the F88 indirection bug. */
   --tone-success: #137a52;
   --tone-success-bg: #e3f3ec;
-  --tone-warning: #a15c00;
+  /* --tone-warning (F89 follow-up, amber legibility fix): the original #a15c00 is hsl(35, 100%,
+     32%) — fully saturated but very dark/low-lightness, which perceptually reads as brown rather
+     than amber regardless of hue angle. Raised lightness to ~38% (hsl(33, 87%, 38%)) while pulling
+     saturation in slightly (100% → 87%) to stay in the same muted/restrained family this palette
+     established — landing near Tailwind's amber-700 (#b45309) rather than reverting to the loud
+     stock amber-500 (#f59e0b) this effort moved away from. */
+  --tone-warning: #b5680d;
   --tone-warning-bg: #fbedd8;
   --tone-danger: #b3261e;
   --tone-danger-bg: #fbe4e1;
@@ -239,7 +245,11 @@ body {
 .dark .brand-manifest {
   --tone-success: #4ade9a;
   --tone-success-bg: rgba(74, 222, 154, 0.12);
-  --tone-warning: #e0a94a;
+  /* --tone-warning dark (F89 follow-up): companion fix to the light-mode amber above. #e0a94a was
+     already reasonably light (hsl(38, 71%, 58%)) but read slightly muddy/dim against a dark card;
+     nudged hue toward true amber and boosted saturation a touch (hsl(36, 80%, 60%)) for a cleaner,
+     more legible warning signal while keeping the muted family. */
+  --tone-warning: #e6ab4c;
   --tone-warning-bg: rgba(224, 169, 74, 0.12);
   --tone-danger: #e2867f;
   --tone-danger-bg: rgba(226, 134, 127, 0.12);
