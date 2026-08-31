@@ -164,28 +164,27 @@ export default function JobDetailPage(): React.ReactElement {
             >
               <ArrowLeft size={18} />
             </button>
-            <div className="flex flex-col items-center gap-0.5">
-              <div className="flex items-center gap-3">
-                <span className="text-xl font-semibold text-foreground truncate">
-                  {job?.name ?? shortId}
-                </span>
-                {job && <StatusBadge status={job.status} />}
-              </div>
-              {planData && (
-                <span className="text-xs text-muted-foreground">
-                  {new Set(planData.block_plans.map((b) => b.source_file)).size} files
-                  {" · "}
-                  {planData.block_plans.length} steps
-                </span>
-              )}
+            <div className="flex items-center gap-3">
+              <span className="text-xl font-semibold text-foreground truncate">
+                {job?.name ?? shortId}
+              </span>
+              {job && <StatusBadge status={job.status} />}
             </div>
           </div>
 
-          {/* Row 2: tabs bar + right-aligned action cluster */}
-          <div className="flex items-center">
-            <ChevronTabBar activeTab={activeTab} />
+          {/* Row 2: files/steps subtitle left, action cluster right */}
+          <div className="flex items-center justify-between pb-2">
+            <span className="text-xs text-muted-foreground">
+              {planData && (
+                <>
+                  {new Set(planData.block_plans.map((b) => b.source_file)).size} files
+                  {" · "}
+                  {planData.block_plans.length} steps
+                </>
+              )}
+            </span>
 
-            <div className="ml-auto flex items-center gap-2">
+            <div className="flex items-center gap-2">
               {isAccepted ? (
                 <>
                   <Badge
@@ -237,6 +236,11 @@ export default function JobDetailPage(): React.ReactElement {
                 </>
               )}
             </div>
+          </div>
+
+          {/* Row 3: tab bar alone */}
+          <div className="flex items-center">
+            <ChevronTabBar activeTab={activeTab} />
           </div>
         </div>
 

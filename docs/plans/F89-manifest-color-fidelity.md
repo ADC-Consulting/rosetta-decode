@@ -320,3 +320,20 @@ Two more gaps found against the approved Manifest mockup, fixed on this branch:
 Verified via `getBoundingClientRect`/screenshots on `dec0de00-0000-4000-8000-000000000001` (Needs
 Review) and `...0003` (Accepted), both light and dark theme. `make tsc-check`, `make frontend-lint`,
 `make frontend-build`, and `make test` (all 7 gates) all exit 0.
+
+## Post-commit fix: header row grouping didn't match the mockup
+
+A closer re-read of the mockup source (`Manifest.dc.html`, not just a description of it — a prior
+fidelity check relied on a mis-description and wrongly concluded no fix was needed) found the
+mockup's header is 3 rows: (1) back arrow + title + status badge, (2) files/steps subtitle **with
+the Accept/Download button on the same row**, (3) tab bar alone. The live app had the button
+sharing a row with the tab bar instead (row 3), not the subtitle (row 2).
+
+**Fix** (`src/frontend/src/pages/JobDetailPage.tsx`): restructured the header into the same 3 rows
+— subtitle and the action-button cluster (Accept migration / Accepted badge + Download migration
+package) now share one `justify-between` row; `ChevronTabBar` sits alone on the row below. This is
+a structural change to shared header chrome (not a `.brand-manifest` color/font change), so it
+applies uniformly across all 5 tabs rather than being conditionally scoped to Plan — confirmed via
+screenshot that the ETL tab's header still reads sensibly with the new row grouping (in its normal
+unstyled colors, as expected). Verified in light + dark theme on both the Needs Review and Accepted
+jobs. `make test` (all 7 gates) exits 0.
