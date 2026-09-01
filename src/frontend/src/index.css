@@ -200,13 +200,15 @@ body {
   --primary: #0f7d72;
   --primary-foreground: #ffffff;
   --radius: 6px;
-  /* Derived radius tokens (F89 fidelity fix) — @theme's --radius-lg/md/sm formulas resolve once
+  /* Derived radius tokens (F89 fidelity fix) — @theme's --radius-xl/lg/md/sm formulas resolve once
      at :root and do not re-resolve through this scope's --radius override (same indirection bug
      class as --color-primary, fixed in F88). Redeclared here with the same formulas so
-     rounded-lg/md/sm utilities actually pick up 6px inside .brand-manifest. --radius itself is
-     never overridden per-theme (only the tone tokens and --brand-paper below are), so these three
-     don't need a .dark .brand-manifest counterpart — this single declaration resolves correctly
-     in both themes. */
+     rounded-xl/lg/md/sm utilities actually pick up 6px inside .brand-manifest (--radius-xl added
+     for the shared Card primitive's rounded-xl base class — see PlanTab's unified summary card).
+     --radius itself is never overridden per-theme (only the tone tokens and --brand-paper below
+     are), so these four don't need a .dark .brand-manifest counterpart — this single declaration
+     resolves correctly in both themes. */
+  --radius-xl: var(--radius);
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);

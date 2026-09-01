@@ -914,7 +914,10 @@ export default function PlanTab({
           return (
             <Card className="gap-0 py-0 border border-border">
               <div
-                className={cn("h-[3px] shrink-0", hasPii ? "bg-red-500" : "bg-[var(--primary)]")}
+                className={cn(
+                  "h-[3px] shrink-0",
+                  hasPii ? "bg-[var(--tone-danger-strong)]" : "bg-[var(--primary)]"
+                )}
                 aria-hidden="true"
               />
 
