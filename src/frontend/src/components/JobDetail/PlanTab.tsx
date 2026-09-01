@@ -293,14 +293,14 @@ function AttentionCards({
   const critOrderMap: Record<string, number> = Object.fromEntries(
     CRIT_ORDER.map((k, i) => [k, i])
   );
-  const top5 = [...queue]
+  const top3 = [...queue]
     .sort((a, b) => {
       if (a.strategy === "manual" && b.strategy !== "manual") return -1;
       if (b.strategy === "manual" && a.strategy !== "manual") return 1;
       return (critOrderMap[a.criticality] ?? 99) - (critOrderMap[b.criticality] ?? 99);
     })
-    .slice(0, 5);
-  const remaining = queue.length - top5.length;
+    .slice(0, 3);
+  const remaining = queue.length - top3.length;
 
   const strategyLabel = (strategy: string, reconciliation: string | null): string => {
     if (strategy === "manual") return "Manual — cannot auto-convert";
@@ -345,7 +345,7 @@ function AttentionCards({
         </div>
       )}
       <div className="grid grid-cols-2 gap-3">
-        {top5.map(block => {
+        {top3.map(block => {
           const runbookEntry = runbookMap[block.block_id];
           return (
             <Card key={block.block_id} className="rounded-lg border border-border bg-card gap-0 py-0 ring-0">
