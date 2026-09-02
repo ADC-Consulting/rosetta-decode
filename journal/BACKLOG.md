@@ -645,6 +645,19 @@
 - [x] F89 post-commit: cap "Needs attention" cards at 3 (was 5 — matches the mockup's "+N more · Show all" grid slot)
 - [x] Push `feat/F87-...`/`feat/F88-...`/`feat/F89-...` to origin and open stacked PRs #136 → #137 → #138
 
+**F90 — Roll the Manifest design system out to the rest of the frontend → see `docs/plans/F90-manifest-rollout.md`**
+- [ ] F90 S-0: re-extract and commit the mockup source → `docs/design/Manifest.dc.html`
+- [ ] F90 S-A: global sidebar scoping → `src/frontend/src/components/AppSidebar.tsx`
+- [ ] F90 S-B: jobs list ("Migrations") scoping + status pill migration → `src/frontend/src/pages/JobsPage.tsx`
+- [ ] F90 S-C: ETL tab scoping (`ETLTab.tsx`, `TargetGraph.tsx`, `FileNodeCard.tsx`, nested popups/panels)
+- [ ] F90 S-D: Data tab scoping → `DataStorageTab.tsx`, `DataStorageERD.tsx`, `DataModelERD.tsx`
+- [ ] F90 S-E: Lineage scoping → `GlobalLineagePage.tsx`, `LineageGraph.tsx` (note: `LineageTab.tsx` is dead code, not wired into any route — flagged for future cleanup, not deleted here)
+- [ ] F90 S-F: Docs page scoping → `DocsPage.tsx`
+- [ ] F90 S-G: Explain page scoping → `ExplainPage.tsx`, `components/Explain/*`
+- [ ] F90 S-H: remove the `activeTab === "plan"` conditional in `JobDetailPage.tsx`, scope the shell unconditionally
+- [ ] F90 S-I: full manual smoke test, light + dark, all surfaces
+- [ ] F90 S-J: `make tsc-check && make frontend-lint && make frontend-build && make test` exit 0
+
 **Manifest design system — follow-up (not yet scheduled)**
 - [ ] Unify `BlockPlanTable.tsx`'s own Strategy column chip (`translated` blue / `translated_with_review`
   amber, hand-rolled) with the shared `StatusChip` pill shape/system — tracked since F87, still
