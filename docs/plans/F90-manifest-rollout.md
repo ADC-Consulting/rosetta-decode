@@ -2,7 +2,7 @@
 
 **Phase:** 3
 **Area:** Frontend
-**Status:** in-progress
+**Status:** complete
 
 ## Goal
 
@@ -171,13 +171,20 @@ applies unconditionally to the shared header/shell.
 **Depends on:** S-A, S-B, S-C, S-D, S-E, S-F, S-G, S-H
 **Done when:** every surface verified in light + dark theme, single consistent design language
 app-wide, no remaining stock-shadcn islands, no regressions in Plan tab/`BlockPlanTable`.
-- [ ] done
+- [x] done — verified sidebar, Migrations list, Plan/ETL/Data/BI/AI tabs, standalone Lineage page,
+  Docs page, and Explain page in both themes. Plan tab re-checked for regression after all
+  shared-file changes (`JobDetailPage.tsx`, `status-colors.ts` imports) — unchanged, still correct.
+  No remaining unthemed surfaces found beyond the explicitly out-of-scope `bi`/`ai` placeholders
+  (which do inherit the scope harmlessly, per design) and the known follow-ups logged in
+  `journal/BACKLOG.md` (Dialog portal-escape, `blockStatusHelpers.ts`, `LineageGraph.tsx`'s
+  `STATUS_STYLE`/`STATUS_SYMBOL`).
 
 ### S-J: Gate
 **Depends on:** S-I
 **Done when:** `make tsc-check && make frontend-lint && make frontend-build && make test` all exit
 0.
-- [ ] done
+- [x] done — full `make test` (all 7 gates: ruff-check, ruff-format, mypy, pytest+coverage, tsc,
+  frontend-lint, frontend-build) green on the final state.
 
 ## Dependencies on other features
 

@@ -655,8 +655,8 @@
 - [x] F90 S-F: Docs page scoping → `DocsPage.tsx`
 - [x] F90 S-G: Explain page scoping → `ExplainPage.tsx`, `components/Explain/*`
 - [x] F90 S-H: remove the `activeTab === "plan"` conditional in `JobDetailPage.tsx`, scope the shell unconditionally
-- [ ] F90 S-I: full manual smoke test, light + dark, all surfaces
-- [ ] F90 S-J: `make tsc-check && make frontend-lint && make frontend-build && make test` exit 0
+- [x] F90 S-I: full manual smoke test, light + dark, all surfaces
+- [x] F90 S-J: `make tsc-check && make frontend-lint && make frontend-build && make test` exit 0
 
 **Manifest design system — follow-up (not yet scheduled)**
 - [ ] Unify `BlockPlanTable.tsx`'s own Strategy column chip (`translated` blue / `translated_with_review`
