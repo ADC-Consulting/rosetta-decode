@@ -120,13 +120,26 @@ confirmed to still render correctly inside the now-scoped container.
 **Done when:** scope applied to both call sites (standalone Lineage page + embedded ETL-tab view);
 hardcoded colors/radii audited and fixed. `LineageTab.tsx`'s dead-code status noted in
 `journal/BACKLOG.md` as a future cleanup item, not deleted here.
-- [ ] done
+- [x] done — scoped `GlobalLineagePage.tsx`'s root; `LineageGraph.tsx` left untouched (confirmed no
+  `createPortal` usage, inherits scope via cascade from either ancestor). No Tailwind-class-level
+  hardcoded colors found. **New finding, not fixed here:** `LineageGraph.tsx`'s `STATUS_STYLE`/
+  `STATUS_SYMBOL` maps drive node border/glyph color via literal inline-style hex (`#22c55e`/
+  `#f59e0b`/`#ef4444` — the exact success/warning/danger triad) with no existing dark-mode
+  handling at all. This is a bigger, self-contained fix (a 1294-line shared component) than a
+  drive-by swap warrants — logged as a follow-up rather than expanding this subtask. Verified
+  in-browser: standalone Lineage page renders Archivo/scoped correctly; embedded ETL-tab lineage
+  view unaffected (file untouched).
 
 ### S-F: Docs page
 **File:** `src/frontend/src/pages/DocsPage.tsx`
 **Depends on:** none
 **Done when:** scope applied + hardcoded colors/radii audited and fixed.
-- [ ] done
+- [x] done — scoped the root; fixed `ConfidenceBadge`/`RiskBadge`'s hand-rolled maps (via
+  `CONFIDENCE_TONE`/`RISK_TONE` + a new bordered chip variant preserving the existing pill's
+  visible border), the `text-emerald-500` "Accepted" label (same F87/F89 emerald-vs-green bug
+  pattern), and `DocCard`'s auto-verified/needs-review/failed count colors (found during the
+  audit, same duplication). Verified in-browser: badges and counts render the muted tone palette
+  correctly in both themes.
 
 ### S-G: Explain page
 **File:** `src/frontend/src/pages/ExplainPage.tsx` + `src/frontend/src/components/Explain/MessageList.tsx`,
@@ -135,14 +148,24 @@ hardcoded colors/radii audited and fixed. `LineageTab.tsx`'s dead-code status no
 **Done when:** scope applied + hardcoded colors/radii audited and fixed (existing `rounded-xl`
 usages already covered by the `.brand-manifest` `--radius-xl` fix from F89, no separate radius
 work needed here).
-- [ ] done
+- [x] done — scoped the root (single one-line change, no early-return states in this file). Zero
+  hardcoded status colors found in `ExplainPage.tsx` or the three `components/Explain/*` files;
+  confirmed no portal usage in any of them. **New finding, not fixed here:** `ExplainPage.tsx`
+  itself renders a shadcn `Dialog` (mode-switch confirmation) that portals to `document.body` —
+  same already-tracked gap as `BlockCodePopup.tsx`/`FileViewPopup.tsx`/`PlanTab.tsx`'s dialogs, not
+  a new backlog item. Verified in-browser: page renders Archivo/scoped correctly, both themes.
 
 ### S-H: Unconditional shell scoping
 **File:** `src/frontend/src/pages/JobDetailPage.tsx`
 **Depends on:** S-C, S-D
 **Done when:** the `activeTab === "plan"` conditional on `.brand-manifest` is removed and the scope
 applies unconditionally to the shared header/shell.
-- [ ] done
+- [x] done — split the previously-bundled conditional: `brand-manifest` now always applied; `px-4`
+  (Plan-tab-specific spacing to match `PlanTab.tsx`'s own padding, a 40px-total-inset decision
+  unrelated to theming) stays gated on `activeTab === "plan"` so ETL/Data/BI/AI keep their shared
+  24px unchanged. Verified via `getBoundingClientRect`: Plan tab still has `px-4` present, BI tab
+  correctly does not, both have `brand-manifest`. Confirmed no other `activeTab === "plan"` gate
+  on theming exists elsewhere in the file. `make test` green.
 
 ### S-I: Full manual smoke test
 **Depends on:** S-A, S-B, S-C, S-D, S-E, S-F, S-G, S-H

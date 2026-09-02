@@ -651,10 +651,10 @@
 - [x] F90 S-B: jobs list ("Migrations") scoping + status pill migration → `src/frontend/src/pages/JobsPage.tsx`
 - [x] F90 S-C: ETL tab scoping (`ETLTab.tsx`, `TargetGraph.tsx`, `FileNodeCard.tsx`, nested popups/panels)
 - [x] F90 S-D: Data tab scoping → `DataStorageTab.tsx`, `DataStorageERD.tsx`, `DataModelERD.tsx` (note: `DataStorageERD.tsx` is dead code, not imported anywhere — actual ERD is `DataModelERD.tsx`)
-- [ ] F90 S-E: Lineage scoping → `GlobalLineagePage.tsx`, `LineageGraph.tsx` (note: `LineageTab.tsx` is dead code, not wired into any route — flagged for future cleanup, not deleted here)
-- [ ] F90 S-F: Docs page scoping → `DocsPage.tsx`
-- [ ] F90 S-G: Explain page scoping → `ExplainPage.tsx`, `components/Explain/*`
-- [ ] F90 S-H: remove the `activeTab === "plan"` conditional in `JobDetailPage.tsx`, scope the shell unconditionally
+- [x] F90 S-E: Lineage scoping → `GlobalLineagePage.tsx`, `LineageGraph.tsx` (note: `LineageTab.tsx` is dead code, not wired into any route — flagged for future cleanup, not deleted here)
+- [x] F90 S-F: Docs page scoping → `DocsPage.tsx`
+- [x] F90 S-G: Explain page scoping → `ExplainPage.tsx`, `components/Explain/*`
+- [x] F90 S-H: remove the `activeTab === "plan"` conditional in `JobDetailPage.tsx`, scope the shell unconditionally
 - [ ] F90 S-I: full manual smoke test, light + dark, all surfaces
 - [ ] F90 S-J: `make tsc-check && make frontend-lint && make frontend-build && make test` exit 0
 
@@ -668,14 +668,21 @@
   the fine-toothed-comb audit; user has not yet decided whether to strengthen it or leave as-is
 - [ ] shadcn `Dialog` portals to `document.body`, escaping any `.brand-manifest` scope — dialogs
   render stock/unthemed when opened, even inside an already-scoped surface. Found in F90 S-C
-  (`BlockCodePopup.tsx`, `FileViewPopup.tsx`); `PlanTab.tsx`'s own `Dialog` (shipped in F88) has
-  the identical gap. Needs a decision: wire a `container` prop to the nearest `.brand-manifest`
-  ancestor, or move the scope higher up the tree (relevant once F90 S-H removes the Plan-tab-only
-  conditional)
+  (`BlockCodePopup.tsx`, `FileViewPopup.tsx`) and S-G (`ExplainPage.tsx`'s mode-switch confirmation
+  dialog); `PlanTab.tsx`'s own `Dialog` (shipped in F88) has the identical gap. Now that F90 S-H
+  applies `.brand-manifest` unconditionally to the `JobDetailPage` shell, wiring a `container` prop
+  on each `Dialog` to its nearest `.brand-manifest` ancestor (or `document.body` once/if the scope
+  ever moves to the app root) is the fix — needs a decision on which
 - [ ] `blockStatusHelpers.ts`'s `STATUS_CONFIG` (consumed by `BlockDetailPanel.tsx`,
   `FileBlockListPanel.tsx`, and the shared `BlockRow` in `blockRowHelpers.tsx`) still hand-rolls
   `bg-green/amber/red/teal-100` status colors one level removed via import — found in F90 S-C but
   out of that subtask's file-list scope; needs its own pass
+- [ ] `LineageGraph.tsx`'s `STATUS_STYLE`/`STATUS_SYMBOL` maps (node border/glyph color) use
+  literal inline-style hex (`#22c55e`/`#f59e0b`/`#ef4444` — success/warning/danger) with no
+  existing dark-mode handling at all — found in F90 S-E, deliberately not fixed as a drive-by
+  change to this 1294-line shared component (used by both the standalone Lineage page and the
+  ETL tab's embedded view); needs its own reviewed subtask, ideally paired with adding proper
+  dark-mode support to the graph if it doesn't have any
 
 **Compute backend correctness (existing GitHub issues)**
 - [ ] #139: README misstates both compute backends — `CLOUD=true` claims Databricks/PySpark but
