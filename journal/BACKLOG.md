@@ -647,7 +647,7 @@
 
 **F90 — Roll the Manifest design system out to the rest of the frontend → see `docs/plans/F90-manifest-rollout.md`**
 - [x] F90 S-0: re-extract and commit the mockup source → `docs/design/Manifest.dc.html`
-- [ ] F90 S-A: global sidebar scoping → `src/frontend/src/components/AppSidebar.tsx`
+- [x] F90 S-A: global sidebar scoping → `src/frontend/src/components/AppSidebar.tsx`
 - [ ] F90 S-B: jobs list ("Migrations") scoping + status pill migration → `src/frontend/src/pages/JobsPage.tsx`
 - [ ] F90 S-C: ETL tab scoping (`ETLTab.tsx`, `TargetGraph.tsx`, `FileNodeCard.tsx`, nested popups/panels)
 - [ ] F90 S-D: Data tab scoping → `DataStorageTab.tsx`, `DataStorageERD.tsx`, `DataModelERD.tsx`

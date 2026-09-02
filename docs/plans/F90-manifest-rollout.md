@@ -52,7 +52,12 @@ version-controlled reference independent of the artifact link staying reachable.
 **Depends on:** none
 **Done when:** `.brand-manifest` applied unconditionally (global chrome, every route); hardcoded
 colors/radii audited and fixed.
-- [ ] done
+- [x] done — `.brand-manifest` added to the root `<aside>`; the logo square's bare `rounded`
+  (Tailwind's own static 0.25rem default, confirmed via compiled CSS to never resolve through
+  `var(--radius)`) changed to `rounded-md` so it participates in the token system going forward
+  (resolves to 4px inside the scope — visually unchanged). No hardcoded colors found; the file
+  already used semantic shadcn classes throughout. Verified in-browser: sidebar renders Archivo,
+  main content area (Migrations list) unaffected, both themes, `make test` green.
 
 ### S-B: Jobs list ("Migrations")
 **File:** `src/frontend/src/pages/JobsPage.tsx`
