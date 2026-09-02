@@ -604,7 +604,7 @@
 - [x] F86 S-B: Wire into PlanTab → `src/frontend/src/components/JobDetail/PlanTab.tsx`
 - [x] F86 S-C: `make test` exits 0
 
-**F87 — Design consistency pass: shared status/badge/card primitives → see `docs/plans/F87-design-consistency-shared-primitives.md`**
+**F87 — Design consistency pass: shared status/badge/card primitives → see `docs/plans/F87-design-consistency-shared-primitives.md` — PR #136 opened**
 - [x] F87 S-A: shared status-color token module → `src/frontend/src/components/JobDetail/status-colors.ts`
 - [x] F87 S-B: `StatusChip` shared component → `src/frontend/src/components/JobDetail/StatusChip.tsx`
 - [x] F87 S-C: wire `StatusChip` into PlanTab AttentionCards + AttentionTable → `src/frontend/src/components/JobDetail/PlanTab.tsx`
@@ -617,7 +617,7 @@
 - [x] F87 S-J: manual smoke test (light + dark theme)
 - [x] F87 S-K: `make tsc-check && make frontend-lint && make frontend-build && make test` exit 0
 
-**F88 — "Manifest" design system: Plan tab + ETL block table → see `docs/plans/F88-manifest-design-system.md`**
+**F88 — "Manifest" design system: Plan tab + ETL block table → see `docs/plans/F88-manifest-design-system.md` — PR #137 opened (stacked on F87)**
 - [x] F88 S-A: add `@fontsource/archivo` + `@fontsource/space-mono` → `src/frontend/package.json`
 - [x] F88 S-B: scoped `.brand-manifest` theme tokens (fonts, teal accent, 6px radius) → `src/frontend/src/index.css`
 - [x] F88 S-C: `status-colors.ts` → Manifest pill styling
@@ -629,7 +629,7 @@
 - [x] F88 S-I: manual smoke test (light + dark, zero bleed into other tabs)
 - [x] F88 S-J: `make tsc-check && make frontend-lint && make frontend-build && make test` exit 0
 
-**F89 — Manifest color fidelity: muted palette + page background + tone cleanup → see `docs/plans/F89-manifest-color-fidelity.md`**
+**F89 — Manifest color fidelity: muted palette + page background + tone cleanup → see `docs/plans/F89-manifest-color-fidelity.md` — PR #138 opened (stacked on F88)**
 - [x] F89 S-A: scoped tone CSS custom properties (--tone-success/warning/danger/danger-strong + --brand-paper) → `src/frontend/src/index.css`
 - [x] F89 S-B: apply `--brand-paper` as Plan tab page background → `PlanTab.tsx`
 - [x] F89 S-C: `status-colors.ts` → reference new tone CSS variables
@@ -640,6 +640,10 @@
 - [x] F89 post-commit: restore Plan tab content margin (25px → 40px, header+body stay aligned) + match `StatusBadge` job-status pills to the muted tone palette
 - [x] F89 post-commit: fine-toothed-comb polish — header/body alignment bug, Table-view identifier truncation, Strategy filter-pill/chip shape parity, off-grid icon size, banner heading weight
 - [x] F89 post-commit: widen content margin to 40px (final value) + "Needs attention" Cards view → 2-column grid matching the Manifest mockup
+- [x] F89 post-commit: move Accept/Download button to the subtitle row (`JobDetailPage.tsx`, all 5 tabs) + lighten `--tone-warning` so "Needs Review" reads amber, not brown
+- [x] F89 post-commit: add `--radius-xl` to `.brand-manifest` (unified card was missed by the earlier `--radius-lg/-md/-sm` fix) + route the PII accent strip through `--tone-danger-strong` instead of hardcoded `bg-red-500`
+- [x] F89 post-commit: cap "Needs attention" cards at 3 (was 5 — matches the mockup's "+N more · Show all" grid slot)
+- [x] Push `feat/F87-...`/`feat/F88-...`/`feat/F89-...` to origin and open stacked PRs #136 → #137 → #138
 
 **Manifest design system — follow-up (not yet scheduled)**
 - [ ] Roll the Manifest design tokens (fonts, teal accent, 6px radius, muted tone palette) out to

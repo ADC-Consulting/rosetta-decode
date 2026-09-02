@@ -6,6 +6,55 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-08-31/09-02 — F89 final fidelity fixes, PRs #136/#137/#138 opened
+
+**Duration:** ~2h across a couple of check-ins | **Focus:** Closing out the remaining F89
+mockup-fidelity gaps and shipping the whole F87→F88→F89 "vibe coded" arc as stacked PRs
+
+### Done
+- Verified the two fixes committed just before this session's start (`f5aa665` button-row
+  position, `d65c081` amber-not-brown) directly in the browser, light + dark theme — both correct
+- Fresh comparison against the published Manifest mockup artboard (computed styles, not just
+  visual) found two more real gaps: the unified summary card's `rounded-xl` (from the shared
+  `Card` primitive) was never covered by the earlier `--radius-lg/-md/-sm` fix and still rendered
+  at stock 12px instead of scoped 6px; its PII accent strip was hardcoded to `bg-red-500` instead
+  of routing through `--tone-danger-strong`. Fixed both, delegated to `frontend-builder`, verified
+  via `getComputedStyle` in both themes, committed as `6302f2a`
+- Another comparison pass found "Needs attention" always showed all cards instead of the mockup's
+  3-card cap + "+N more · Show all" link. Turned out the expand/collapse mechanism already existed
+  in `AttentionCards` — it was just capped at 5, and the test job used throughout verification
+  happened to have exactly 5 items, hiding the gap entirely. One-line fix (`slice(0, 5)` →
+  `slice(0, 3)`), delegated, verified the "show all" link switches to the table view correctly,
+  committed as `b23224d`
+- Pushed all three branches (`feat/F87-design-consistency-shared-primitives`,
+  `feat/F88-manifest-design-system`, `feat/F89-manifest-color-fidelity`) to origin for the first
+  time and opened three stacked PRs: **#136** (F87 → main), **#137** (F88 → F87), **#138**
+  (F89 → F88). No GitHub issue existed for this work (started from a direct chat complaint, not a
+  filed issue) — user confirmed skipping the "Closes #N" line rather than fabricating one
+- `docs/plans/F89-manifest-color-fidelity.md` updated with both post-commit fix write-ups;
+  `journal/BACKLOG.md` updated with PR numbers and the two new completed post-commit items
+
+### Decisions
+- None new — the radius-xl/tone-strip fixes are additional instances of the already-locked
+  Tailwind v4 derived-token pattern (`DECISIONS.md` 2026-08-27), not a new pattern
+
+### Open Questions
+- Same three carried over, unchanged: dark-mode unified card border faintness, when to roll
+  Manifest out to other tabs, `BlockPlanTable`'s own Strategy chip shape
+
+### Next Session — Start Here
+1. PRs #136 → #137 → #138 must merge in that order (each targets the previous branch, not
+   `main`). Check review status / merge them if approved
+2. Decide on the dark-mode card border question, and whether/when to roll Manifest out further
+
+### Files Touched
+- `src/frontend/src/index.css`
+- `src/frontend/src/components/JobDetail/PlanTab.tsx`
+- `docs/plans/F89-manifest-color-fidelity.md`
+- `journal/BACKLOG.md`
+
+---
+
 ## 2026-08-26/27 — "Vibe coded" fix: F87 consolidation → F88 Manifest design system → F89 color fidelity
 
 **Duration:** long session, spanned midnight 2026-08-26 → 2026-08-27 | **Focus:** Team feedback that

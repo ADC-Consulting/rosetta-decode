@@ -367,3 +367,44 @@ Screening" (Steps table `warning`-tone chips, dependencies-unavailable banner): 
 reads as a clear, warm, unambiguous warning signal in both light and dark theme, distinct from
 brown. `success`/`danger`/`danger-strong`/`--brand-paper` were not touched. `make tsc-check`,
 `make frontend-lint`, `make frontend-build`, and `make test` (all 7 gates) all exit 0.
+
+## Post-commit fix: `--radius-xl` missed by the earlier radius-indirection fix
+
+A fresh comparison against the published mockup artboard (not just eyeballing — computed styles
+on the live app) found the Plan tab's main unified summary card (PII warning + confidence/risk
+bars + stat tiles + criticality + "Before you accept") still rendering at a 12px corner radius
+instead of the scoped 6px. Root cause: this card uses the shared shadcn `Card` primitive
+(`src/frontend/src/components/ui/card.tsx`), whose base classes include `rounded-xl` — and the
+earlier fix for this exact class of bug (see "Post-commit fix" further up, and the locked pattern
+in `DECISIONS.md`) only redeclared `--radius-lg`/`-md`/`-sm` inside `.brand-manifest`, never
+`--radius-xl`. Confirmed via `getComputedStyle`: `--radius` correctly resolved to `6px` inside the
+scope, but `--radius-xl` still resolved to the stock `0.75rem` (12px).
+
+Same card also had its 3px top accent strip hardcoded to `bg-red-500` (stock Tailwind red,
+`oklch(0.637 0.237 25.331)`) instead of routing through `--tone-danger-strong` like every other
+tone-driven color on the page — so it never picked up the muted Manifest red in light mode or the
+correct dark-mode value.
+
+**Fix:** added `--radius-xl: var(--radius);` alongside the existing `--radius-lg/-md/-sm`
+declarations in `.brand-manifest` (`src/frontend/src/index.css`); changed the accent strip's class
+from `bg-red-500` to `bg-[var(--tone-danger-strong)]` (`src/frontend/src/components/JobDetail/PlanTab.tsx`).
+Did not touch `card.tsx` — kept the fix scoped via the CSS variable since `Card` is a shared
+primitive used outside the Plan tab. Verified via `getComputedStyle` in both themes: radius now
+6px, strip color `#8f1c15` light / `#f0a099` dark (matching the existing `.brand-manifest`
+`--tone-danger-strong` values). `make test` (all 7 gates) exits 0.
+
+## Post-commit fix: "Needs attention" card cap was 5, not 3
+
+Direct comparison against the mockup artboard found it caps the "Needs attention" card grid at 3
+visible cards (2+1 in the 2-column grid) with a "+N more · Show all →" link taking the 4th grid
+slot. The live `AttentionCards` component already had this exact mechanism (`top5`/`.slice(0, 5)`
++ a conditional "+N more" link) — it just wasn't missing, only miscalibrated to a cap of 5. The
+test job used throughout this session's verification happened to have exactly 5 needs-attention
+items, so `remaining` was always 0 and the "show all" link never rendered, making the feature look
+entirely absent.
+
+**Fix:** changed `.slice(0, 5)` to `.slice(0, 3)` in `AttentionCards`
+(`src/frontend/src/components/JobDetail/PlanTab.tsx`), renaming `top5` → `top3` throughout the
+function. Verified in-browser: the Needs Review job now shows exactly 3 cards + "+ 2 more · Show
+all →", and clicking it correctly switches to the Table view showing all 5 rows. `make test` (all
+7 gates) exits 0.
