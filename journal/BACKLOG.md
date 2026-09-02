@@ -646,7 +646,7 @@
 - [x] Push `feat/F87-...`/`feat/F88-...`/`feat/F89-...` to origin and open stacked PRs #136 → #137 → #138
 
 **F90 — Roll the Manifest design system out to the rest of the frontend → see `docs/plans/F90-manifest-rollout.md`**
-- [ ] F90 S-0: re-extract and commit the mockup source → `docs/design/Manifest.dc.html`
+- [x] F90 S-0: re-extract and commit the mockup source → `docs/design/Manifest.dc.html`
 - [ ] F90 S-A: global sidebar scoping → `src/frontend/src/components/AppSidebar.tsx`
 - [ ] F90 S-B: jobs list ("Migrations") scoping + status pill migration → `src/frontend/src/pages/JobsPage.tsx`
 - [ ] F90 S-C: ETL tab scoping (`ETLTab.tsx`, `TargetGraph.tsx`, `FileNodeCard.tsx`, nested popups/panels)

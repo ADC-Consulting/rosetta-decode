@@ -44,7 +44,8 @@ choice — F87/F88/F89 remain unmerged, PRs #136/#137/#138 open; F90's own PR wi
 (`https://claude.ai/code/artifact/f6b16ae8-8302-4011-b57c-13ddff839450`) via the design skill's
 `seed-canvas.mjs --extract` flow and committed under `docs/design/`, so the mockup has a durable,
 version-controlled reference independent of the artifact link staying reachable.
-- [ ] done
+- [x] done — extracted and verified (`--ink:#101314`, `--paper:#f6f8f8`, `--green:#137a52`,
+  `--amber:#a15c00`, `--sans:'Archivo'`, `--r:6px` all present) before committing
 
 ### S-A: Global sidebar
 **File:** `src/frontend/src/components/AppSidebar.tsx`
