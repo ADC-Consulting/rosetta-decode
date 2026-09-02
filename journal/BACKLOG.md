@@ -646,10 +646,6 @@
 - [x] Push `feat/F87-...`/`feat/F88-...`/`feat/F89-...` to origin and open stacked PRs #136 → #137 → #138
 
 **Manifest design system — follow-up (not yet scheduled)**
-- [ ] Roll the Manifest design tokens (fonts, teal accent, 6px radius, muted tone palette) out to
-  the remaining tabs/pages — Data Storage, ETL graph (`TargetGraph`/`FileNodeCard`), Lineage,
-  Docs, Explain, jobs list, sidebar — explicitly deferred this session, scoped to Plan tab +
-  `BlockPlanTable` only for now
 - [ ] Unify `BlockPlanTable.tsx`'s own Strategy column chip (`translated` blue / `translated_with_review`
   amber, hand-rolled) with the shared `StatusChip` pill shape/system — tracked since F87, still
   a small, deliberate gap (matches the approved mockup, not a bug, but worth revisiting for full
@@ -657,6 +653,13 @@
 - [ ] Dark-mode unified summary card border is faint on 3 of 4 edges (shadcn's default ~10%-opacity
   white border) — only clearly visible where the colored top-edge accent bar sits. Flagged during
   the fine-toothed-comb audit; user has not yet decided whether to strengthen it or leave as-is
+
+**Compute backend correctness (existing GitHub issues)**
+- [ ] #139: README misstates both compute backends — `CLOUD=true` claims Databricks/PySpark but
+  `factory.py` raises `NotImplementedError` (no `databricks.py`); `CLOUD=false` claims
+  pandas/PostgreSQL but `local.py` uses in-memory `sqlite3`
+- [ ] #140: `CLOUD=true` accepted at worker startup, only fails after a job is marked running
+  (`main.py:369` → `main.py:1253`) — should be rejected in `worker_settings` validation instead
 
 **Service delivery documentation (existing GitHub issues)**
 - [ ] #109: Define ADC SAS migration delivery kit
