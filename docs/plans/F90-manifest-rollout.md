@@ -64,7 +64,14 @@ colors/radii audited and fixed.
 **Depends on:** S-A
 **Done when:** scope applied; job-status pills migrated to `StatusChip`/`status-colors.ts`;
 remaining hardcoded colors audited and fixed.
-- [ ] done
+- [x] done — found three separate hand-rolled status-color systems in this file (`TableStatus`'s
+  shimmer gradient + solid text, `UploadStatusBadge`'s pill, plus a file-type badge helper that
+  was correctly left alone as out-of-scope — file-type/target-marker chips aren't status tones).
+  Warning/success/danger routed through `TONE_HEX`/`TONE_TEXT_CLASS`/raw `--tone-*` vars; the
+  shimmer `@keyframes` animation and blue/slate non-tone gradient stops (queued/running) preserved
+  untouched. Verified in-browser: shimmer still animates, colors read as the muted Manifest
+  palette in both themes (`#b5680d` warning / `#137a52` success / `#b3261e` danger light,
+  `#4ade9a` success / muted red danger dark), `make test` green.
 
 ### S-C: ETL tab
 **File:** `src/frontend/src/components/JobDetail/ETLTab.tsx` + `TargetGraph.tsx` +

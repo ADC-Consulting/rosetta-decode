@@ -3,6 +3,7 @@ import { submitMigration } from "@/api/migrate";
 import LiveTraceDialog from "@/components/LiveTraceDialog";
 import type { JobStatusValue, JobSummary } from "@/api/types";
 import { Button } from "@/components/ui/button";
+import { TONE_HEX, TONE_TEXT_CLASS } from "@/components/JobDetail/status-colors";
 import {
   Dialog,
   DialogContent,
@@ -110,10 +111,10 @@ function UploadStatusBadge({ status }: { status: string }) {
   const colorClass: Record<string, string> = {
     queued:       "bg-muted text-muted-foreground",
     running:      "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400",
-    proposed:     "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400",
-    under_review: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400",
-    accepted:     "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400",
-    done:         "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400",
+    proposed:     "bg-[var(--tone-warning-bg)] text-[var(--tone-warning)]",
+    under_review: "bg-[var(--tone-warning-bg)] text-[var(--tone-warning)]",
+    accepted:     "bg-[var(--tone-success-bg)] text-[var(--tone-success)]",
+    done:         "bg-[var(--tone-success-bg)] text-[var(--tone-success)]",
     failed:       "bg-destructive/10 text-destructive",
   };
   const label: Record<string, string> = {
@@ -473,13 +474,13 @@ function TableStatus({ status }: { status: JobStatusValue }): React.ReactElement
   const GRADIENT: Partial<Record<JobStatusValue, string>> = {
     queued:       "linear-gradient(90deg, #94a3b8 20%, #e2e8f0 50%, #94a3b8 80%)",
     running:      "linear-gradient(90deg, #93c5fd 20%, #eff6ff 50%, #93c5fd 80%)",
-    proposed:     "linear-gradient(90deg, #f59e0b 20%, #fef3c7 50%, #f59e0b 80%)",
-    under_review: "linear-gradient(90deg, #f59e0b 20%, #fef3c7 50%, #f59e0b 80%)",
+    proposed:     `linear-gradient(90deg, ${TONE_HEX.warning} 20%, var(--tone-warning-bg) 50%, ${TONE_HEX.warning} 80%)`,
+    under_review: `linear-gradient(90deg, ${TONE_HEX.warning} 20%, var(--tone-warning-bg) 50%, ${TONE_HEX.warning} 80%)`,
   };
   const SOLID: Partial<Record<JobStatusValue, string>> = {
-    accepted: "text-emerald-500",
-    done:     "text-emerald-500",
-    failed:   "text-red-500",
+    accepted: TONE_TEXT_CLASS.success,
+    done:     TONE_TEXT_CLASS.success,
+    failed:   TONE_TEXT_CLASS.danger,
   };
 
   if (SOLID[status]) {
@@ -751,7 +752,7 @@ export default function JobsPage(): React.ReactElement {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="px-6 py-2 overflow-y-auto flex-1 h-full">
+    <div className="brand-manifest px-6 py-2 overflow-y-auto flex-1 h-full">
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold text-foreground">Migrations</h1>

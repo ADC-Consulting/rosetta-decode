@@ -648,7 +648,7 @@
 **F90 — Roll the Manifest design system out to the rest of the frontend → see `docs/plans/F90-manifest-rollout.md`**
 - [x] F90 S-0: re-extract and commit the mockup source → `docs/design/Manifest.dc.html`
 - [x] F90 S-A: global sidebar scoping → `src/frontend/src/components/AppSidebar.tsx`
-- [ ] F90 S-B: jobs list ("Migrations") scoping + status pill migration → `src/frontend/src/pages/JobsPage.tsx`
+- [x] F90 S-B: jobs list ("Migrations") scoping + status pill migration → `src/frontend/src/pages/JobsPage.tsx`
 - [ ] F90 S-C: ETL tab scoping (`ETLTab.tsx`, `TargetGraph.tsx`, `FileNodeCard.tsx`, nested popups/panels)
 - [ ] F90 S-D: Data tab scoping → `DataStorageTab.tsx`, `DataStorageERD.tsx`, `DataModelERD.tsx`
 - [ ] F90 S-E: Lineage scoping → `GlobalLineagePage.tsx`, `LineageGraph.tsx` (note: `LineageTab.tsx` is dead code, not wired into any route — flagged for future cleanup, not deleted here)
