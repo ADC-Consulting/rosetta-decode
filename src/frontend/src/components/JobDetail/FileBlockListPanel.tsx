@@ -2,6 +2,7 @@ import type { BlockPlan, TrustReportBlock } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { X } from "lucide-react";
 import { getBlockStatus, STATUS_CONFIG } from "./blockStatusHelpers";
+import { TONE_TEXT_CLASS } from "./status-colors";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -105,7 +106,7 @@ export default function FileBlockListPanel({
         <div className="mt-1 text-xs text-muted-foreground">
           {totalCount} {totalCount === 1 ? "block" : "blocks"}
           {nonPassCount > 0 && (
-            <span className="text-amber-600 font-medium">
+            <span className={`${TONE_TEXT_CLASS.warning} font-medium`}>
               {" "}· ⚠ {nonPassCount} {nonPassCount === 1 ? "needs" : "need"} attention
             </span>
           )}
@@ -120,13 +121,13 @@ export default function FileBlockListPanel({
           </div>
         ) : (
           annotated.map(({ bp, label }) => {
-            let dotColor = "text-amber-500";
+            let dotColor = TONE_TEXT_CLASS.warning;
             let dotChar = "⚠";
             if (label === "Pass" || label === "Verified") {
-              dotColor = "text-green-600";
+              dotColor = TONE_TEXT_CLASS.success;
               dotChar = "●";
             } else if (label === "Manual" || label === "Failed") {
-              dotColor = "text-red-600";
+              dotColor = TONE_TEXT_CLASS.danger;
               dotChar = "✗";
             }
 

@@ -81,7 +81,24 @@ remaining hardcoded colors audited and fixed.
 **Done when:** scope applied; hardcoded `text-green-700`/`text-amber-700`/`text-red-700` changelog
 counts routed through the tone system; nested panels audited; `BlockPlanTable` (already themed)
 confirmed to still render correctly inside the now-scoped container.
-- [ ] done
+- [x] done — scoped `ETLTab.tsx`'s root; `TargetGraph.tsx`/`FileNodeCard.tsx` inherit via cascade
+  (confirmed no portals). Fixed genuine status-tone duplicates in `ETLTab.tsx` (changelog counts),
+  `BlockCodePopup.tsx` (`STATUS_CONFIG` map + 3 status banners), `BlockDetailPanel.tsx`
+  (`ReconStatus`), `FileBlockListPanel.tsx` (summary + per-row dots), `PipelineStepPanel.tsx`
+  (migration-status badges + "Feeds into" arrow/chip) — all routed through `TONE_CHIP_CLASS`/
+  `TONE_TEXT_CLASS`. Left every blue interactive-link color untouched (different convention from
+  the tone system, same rationale as the existing Strategy-chip decision), and left
+  `human-verified`'s hardcoded teal alone (not a `Tone` member). Verified in-browser (graph summary
+  bar, side-panel colors), `make test` green.
+  - **New finding, not fixed here (needs a decision):** `BlockCodePopup.tsx`/`FileViewPopup.tsx`
+    use shadcn `Dialog`, which portals to `document.body` — outside any `.brand-manifest` DOM
+    subtree, so these dialogs render stock (unthemed) when opened regardless of scoping their
+    trigger's container. `PlanTab.tsx`'s own `Dialog` (already shipped in F88) has the identical
+    gap. Logged as a new backlog follow-up rather than expanding this subtask's scope.
+  - **New finding, not fixed here:** `blockStatusHelpers.ts`'s `STATUS_CONFIG` (consumed by
+    `BlockDetailPanel.tsx`, `FileBlockListPanel.tsx`, and `blockRowHelpers.tsx`'s shared `BlockRow`)
+    has the same hand-rolled `bg-green/amber/red/teal-100` pattern one level removed via import —
+    a per-file grep on this subtask's file list didn't surface it. Logged as a follow-up.
 
 ### S-D: Data tab
 **File:** `src/frontend/src/components/JobDetail/DataStorageTab.tsx` + `DataStorageERD.tsx` +

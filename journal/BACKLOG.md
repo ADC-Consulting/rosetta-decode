@@ -649,7 +649,7 @@
 - [x] F90 S-0: re-extract and commit the mockup source → `docs/design/Manifest.dc.html`
 - [x] F90 S-A: global sidebar scoping → `src/frontend/src/components/AppSidebar.tsx`
 - [x] F90 S-B: jobs list ("Migrations") scoping + status pill migration → `src/frontend/src/pages/JobsPage.tsx`
-- [ ] F90 S-C: ETL tab scoping (`ETLTab.tsx`, `TargetGraph.tsx`, `FileNodeCard.tsx`, nested popups/panels)
+- [x] F90 S-C: ETL tab scoping (`ETLTab.tsx`, `TargetGraph.tsx`, `FileNodeCard.tsx`, nested popups/panels)
 - [x] F90 S-D: Data tab scoping → `DataStorageTab.tsx`, `DataStorageERD.tsx`, `DataModelERD.tsx` (note: `DataStorageERD.tsx` is dead code, not imported anywhere — actual ERD is `DataModelERD.tsx`)
 - [ ] F90 S-E: Lineage scoping → `GlobalLineagePage.tsx`, `LineageGraph.tsx` (note: `LineageTab.tsx` is dead code, not wired into any route — flagged for future cleanup, not deleted here)
 - [ ] F90 S-F: Docs page scoping → `DocsPage.tsx`
@@ -666,6 +666,16 @@
 - [ ] Dark-mode unified summary card border is faint on 3 of 4 edges (shadcn's default ~10%-opacity
   white border) — only clearly visible where the colored top-edge accent bar sits. Flagged during
   the fine-toothed-comb audit; user has not yet decided whether to strengthen it or leave as-is
+- [ ] shadcn `Dialog` portals to `document.body`, escaping any `.brand-manifest` scope — dialogs
+  render stock/unthemed when opened, even inside an already-scoped surface. Found in F90 S-C
+  (`BlockCodePopup.tsx`, `FileViewPopup.tsx`); `PlanTab.tsx`'s own `Dialog` (shipped in F88) has
+  the identical gap. Needs a decision: wire a `container` prop to the nearest `.brand-manifest`
+  ancestor, or move the scope higher up the tree (relevant once F90 S-H removes the Plan-tab-only
+  conditional)
+- [ ] `blockStatusHelpers.ts`'s `STATUS_CONFIG` (consumed by `BlockDetailPanel.tsx`,
+  `FileBlockListPanel.tsx`, and the shared `BlockRow` in `blockRowHelpers.tsx`) still hand-rolls
+  `bg-green/amber/red/teal-100` status colors one level removed via import — found in F90 S-C but
+  out of that subtask's file-list scope; needs its own pass
 
 **Compute backend correctness (existing GitHub issues)**
 - [ ] #139: README misstates both compute backends — `CLOUD=true` claims Databricks/PySpark but

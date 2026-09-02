@@ -23,6 +23,7 @@ import FileBlockListPanel from "./FileBlockListPanel";
 import FileViewPopup from "./FileViewPopup";
 import PipelineStepPanel from "./PipelineStepPanel";
 import PythonModulePanel from "./PythonModulePanel";
+import { TONE_TEXT_CLASS } from "./status-colors";
 import TargetGraph from "./TargetGraph";
 
 // ---------------------------------------------------------------------------
@@ -288,7 +289,7 @@ export default function ETLTab({
     showFileBlockListPanel;
 
   return (
-    <div className="flex flex-col h-full min-h-0 overflow-hidden">
+    <div className="brand-manifest flex flex-col h-full min-h-0 overflow-hidden">
       {/* ── Summary bar ─────────────────────────────────────────────────── */}
       <div
         className={[
@@ -300,15 +301,15 @@ export default function ETLTab({
         {trustReport && (
           <>
             <span className="text-muted-foreground/40">·</span>
-            <span className="text-green-700">
+            <span className={TONE_TEXT_CLASS.success}>
               ✓ {trustReport.auto_verified + humanVerifiedBlocks.size} migrated
             </span>
             <span className="text-muted-foreground/40">·</span>
-            <span className="text-amber-700">
+            <span className={TONE_TEXT_CLASS.warning}>
               ⚠ {trustReport.needs_review} need review
             </span>
             <span className="text-muted-foreground/40">·</span>
-            <span className="text-red-700">
+            <span className={TONE_TEXT_CLASS.danger}>
               ✗ {trustReport.manual_todo} manual
             </span>
           </>
