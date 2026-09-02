@@ -6,6 +6,26 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-09-02 — F90 Manifest rollout: branch stacking, mockup durability, audit heuristic
+
+- **New feature branches may stack on an unmerged branch rather than wait for merge:** F90 branched
+  off `feat/F89-manifest-color-fidelity` (itself stacked on F88 on F87, none merged, PRs #136-#138
+  open) instead of waiting · user's explicit choice when asked — unblocks work immediately at the
+  cost of a deeper stack that must merge in order · revisit if the stack depth becomes unwieldy
+- **Design mockups approved via a Claude Artifact must be preserved in-repo:** the "Manifest"
+  mockup existed only as a published Artifact link with no local source; re-extracted the
+  `.dc.html` via the design skill's `--extract` flow and committed it to `docs/design/` · an
+  external link is not a durable reference for a design system the team keeps fidelity-checking
+  against · revisit: apply the same treatment to any future approved design-canvas mockup
+- **Status-color audit heuristic, locked in for future Manifest-rollout work:** when auditing a
+  surface for hand-rolled color duplication, route a color through the shared tone system only if
+  it represents a health/confidence/outcome signal (migrated/changed/added/dropped/estimated,
+  success/warning/danger) — leave alone anything representing a structural/categorical role (PK/FK
+  badges, file-type badges, schema-kind labels) even if the hue happens to overlap · misusing the
+  tone system for non-status meaning would be a regression, not a fix · revisit never
+
+---
+
 ## 2026-08-27 — F89 color-fidelity fixes: tone cleanup + a locked Tailwind v4 scoping pattern
 
 - **`caution` tone (orange) merged into `warning` (amber):** criticality tier "high" previously
