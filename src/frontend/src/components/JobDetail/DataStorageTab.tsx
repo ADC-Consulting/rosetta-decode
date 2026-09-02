@@ -10,6 +10,7 @@ import { useTheme } from "next-themes";
 import React, { useEffect, useMemo, useState } from "react";
 import DataModelERD from "./DataModelERD";
 import DataFlowDiagram from "./DataFlowDiagram";
+import { TONE_CHIP_CLASS, TONE_TEXT_CLASS } from "./status-colors";
 
 interface DataStorageTabProps {
   jobId: string;
@@ -28,8 +29,8 @@ const SEMANTIC_TO_PG: Record<string, string> = {
 };
 
 function statusDotClass(status: string): string {
-  if (status === "migrated") return "bg-green-500";
-  if (status === "changed") return "bg-amber-400";
+  if (status === "migrated") return "bg-[var(--tone-success)]";
+  if (status === "changed") return "bg-[var(--tone-warning)]";
   return "bg-muted-foreground/30";
 }
 
@@ -115,8 +116,8 @@ function sortedGroupKeys(groups: GroupedTables): (string | null)[] {
 // ── Schema status badge map ───────────────────────────────────────────────────
 
 const SCHEMA_STATUS_BADGE: Record<string, { label: string; className: string }> = {
-  migrated: { label: "Migrated", className: "bg-green-100 text-green-700 border-green-200" },
-  changed:  { label: "Changed",  className: "bg-amber-100 text-amber-700 border-amber-200" },
+  migrated: { label: "Migrated", className: "bg-[var(--tone-success-bg)] text-[var(--tone-success)]" },
+  changed:  { label: "Changed",  className: "bg-[var(--tone-warning-bg)] text-[var(--tone-warning)]" },
   not_run:  { label: "Not run",  className: "bg-muted text-muted-foreground" },
 };
 
@@ -170,19 +171,19 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
 
   if (!isReviewable) {
     return (
-      <p className="text-sm text-muted-foreground p-4">
+      <p className="brand-manifest text-sm text-muted-foreground p-4">
         Schema available once migration completes.
       </p>
     );
   }
 
   if (!schemaData) {
-    return <Skeleton className="h-full w-full rounded" />;
+    return <Skeleton className="brand-manifest h-full w-full rounded" />;
   }
 
   if (schemaData.tables.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground p-4">
+      <p className="brand-manifest text-sm text-muted-foreground p-4">
         No schema data available. Run a migration to extract table metadata.
       </p>
     );
@@ -198,7 +199,7 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
   const outputTables = groups.get(null) ?? [];
 
   return (
-    <div className="h-full min-h-0 flex overflow-hidden">
+    <div className="brand-manifest h-full min-h-0 flex overflow-hidden">
       {/* Left: LIBNAME tree */}
       <div
         className="w-72 shrink-0 border-r border-border overflow-y-auto flex flex-col"
@@ -397,8 +398,8 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
           return (
             <div className="mt-auto border-t border-border px-3 py-2 flex flex-col gap-1">
               {[
-                { cls: "bg-green-500", label: "Migrated" },
-                { cls: "bg-amber-400", label: "Changed" },
+                { cls: "bg-[var(--tone-success)]", label: "Migrated" },
+                { cls: "bg-[var(--tone-warning)]", label: "Changed" },
                 { cls: "bg-muted-foreground/30", label: "Not run" },
               ].map(({ cls, label }) => (
                 <div key={label} className="flex items-center gap-1.5">
@@ -597,10 +598,10 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                         <span>SAS source schema vs migration output</span>
                         <span className="flex items-center gap-3">
                           <span className="flex items-center gap-1">
-                            <span className="font-bold text-green-600">+</span> Added
+                            <span className={`font-bold ${TONE_TEXT_CLASS.success}`}>+</span> Added
                           </span>
                           <span className="flex items-center gap-1">
-                            <span className="font-bold text-red-500">✗</span> Dropped
+                            <span className={`font-bold ${TONE_TEXT_CLASS.danger}`}>✗</span> Dropped
                           </span>
                           <span className="flex items-center gap-1">
                             <span className="text-muted-foreground/40">✓</span> Unchanged
@@ -622,15 +623,15 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                             <tr
                               key={row.name}
                               className={`border-b border-border last:border-0 ${
-                                row.status === "added" ? "bg-green-50 dark:bg-green-950/20" :
-                                row.status === "dropped" ? "bg-red-50 dark:bg-red-950/20" : ""
+                                row.status === "added" ? "bg-[var(--tone-success-bg)]" :
+                                row.status === "dropped" ? "bg-[var(--tone-danger-bg)]" : ""
                               }`}
                             >
                               <td className="px-3 py-2 whitespace-nowrap">
                                 {row.status === "added" ? (
-                                  <span className="text-xs font-bold text-green-600" title="Added in output">+</span>
+                                  <span className={`text-xs font-bold ${TONE_TEXT_CLASS.success}`} title="Added in output">+</span>
                                 ) : row.status === "dropped" ? (
-                                  <span className="text-xs font-bold text-red-500" title="Dropped in output">✗</span>
+                                  <span className={`text-xs font-bold ${TONE_TEXT_CLASS.danger}`} title="Dropped in output">✗</span>
                                 ) : (
                                   <span className="text-xs text-muted-foreground/50" title="Unchanged">✓</span>
                                 )}
@@ -736,7 +737,7 @@ export default function DataStorageTab({ jobId, isReviewable }: DataStorageTabPr
                         <span className="flex items-center gap-2">
                           Table definition
                           {selectedTable.ddl_source === "source_estimated" && (
-                            <span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-800">
+                            <span className={`inline-flex items-center px-1.5 py-0.5 text-xs font-medium ${TONE_CHIP_CLASS.warning}`}>
                               estimated from SAS
                             </span>
                           )}

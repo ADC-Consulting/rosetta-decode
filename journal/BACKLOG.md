@@ -650,7 +650,7 @@
 - [x] F90 S-A: global sidebar scoping → `src/frontend/src/components/AppSidebar.tsx`
 - [x] F90 S-B: jobs list ("Migrations") scoping + status pill migration → `src/frontend/src/pages/JobsPage.tsx`
 - [ ] F90 S-C: ETL tab scoping (`ETLTab.tsx`, `TargetGraph.tsx`, `FileNodeCard.tsx`, nested popups/panels)
-- [ ] F90 S-D: Data tab scoping → `DataStorageTab.tsx`, `DataStorageERD.tsx`, `DataModelERD.tsx`
+- [x] F90 S-D: Data tab scoping → `DataStorageTab.tsx`, `DataStorageERD.tsx`, `DataModelERD.tsx` (note: `DataStorageERD.tsx` is dead code, not imported anywhere — actual ERD is `DataModelERD.tsx`)
 - [ ] F90 S-E: Lineage scoping → `GlobalLineagePage.tsx`, `LineageGraph.tsx` (note: `LineageTab.tsx` is dead code, not wired into any route — flagged for future cleanup, not deleted here)
 - [ ] F90 S-F: Docs page scoping → `DocsPage.tsx`
 - [ ] F90 S-G: Explain page scoping → `ExplainPage.tsx`, `components/Explain/*`

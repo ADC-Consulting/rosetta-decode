@@ -88,7 +88,14 @@ confirmed to still render correctly inside the now-scoped container.
 `DataModelERD.tsx`
 **Depends on:** none
 **Done when:** scope applied + hardcoded colors/radii audited and fixed.
-- [ ] done
+- [x] done — scoped the root plus all three early-return guard states (loading/empty), since
+  `JobDetailPage.tsx`'s shell scoping isn't unconditional yet (S-H). `DataStorageERD.tsx` turned
+  out to be dead code (not imported anywhere) — the tab actually renders `DataModelERD.tsx` +
+  `DataFlowDiagram.tsx`, both confirmed clean of hardcoded colors and no portal usage. Fixed 7
+  genuine status-tone duplicates (migrated/changed dots + badges, added/dropped diff markers,
+  "estimated from SAS" warning chip); left PK/FK/schema-kind badges alone (structural, not status
+  tones — same rationale as file-type badges in S-B). Verified in-browser both themes, `make test`
+  green.
 
 ### S-E: Lineage
 **File:** `src/frontend/src/pages/GlobalLineagePage.tsx` + `src/frontend/src/components/LineageGraph.tsx`
