@@ -50,6 +50,14 @@ import { toast } from "sonner";
 import BlockRefineDialog from "./BlockRefineDialog";
 import { BlockRevisionModal } from "./BlockRevisionDrawer";
 import { registerSasLanguage } from "./registerSasLanguage";
+import StatusChip from "./StatusChip";
+import {
+  CONFIDENCE_TONE,
+  CRITICALITY_TONE,
+  RISK_TONE,
+  type ConfidenceBand,
+  type Criticality,
+} from "./status-colors";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -115,20 +123,17 @@ const RISK_LABELS: Record<string, string> = {
   high: "high",
 };
 
-const CONFIDENCE_BAND_TEXT_COLOR: Record<string, string> = {
-  high: "text-green-700",
-  medium: "text-amber-700",
-  low: "text-red-600",
-  "very low": "text-red-800",
-  unknown: "text-muted-foreground",
-};
+// Confidence-band and criticality color come from ./status-colors.ts (CONFIDENCE_TONE /
+// CRITICALITY_TONE) — see confidenceBandTone() / the criticality cell below.
 
-const CRITICALITY_CLASSES: Record<string, string> = {
-  critical: "text-red-700 bg-red-50 border border-red-200",
-  high: "text-orange-700 bg-orange-50 border border-orange-200",
-  medium: "text-amber-700 bg-amber-50 border border-amber-200",
-  low: "text-green-700 bg-green-50 border border-green-200",
-};
+/**
+ * `bp.confidence_band` is a free-text label from the backend (e.g. "Very Low"); normalize to the
+ * snake_case convention CONFIDENCE_TONE is keyed on before resolving a tone.
+ */
+function confidenceBandTone(band: string | null | undefined) {
+  const key = (band?.toLowerCase().replace(/\s+/g, "_") ?? "unknown") as ConfidenceBand;
+  return CONFIDENCE_TONE[key] ?? CONFIDENCE_TONE.unknown;
+}
 
 // ---------------------------------------------------------------------------
 // Glossary dialog content
@@ -561,7 +566,7 @@ export default function BlockPlanTable({
           className="ml-auto h-7 gap-1.5 text-xs text-muted-foreground cursor-pointer"
           onClick={() => setGlossaryOpen(true)}
         >
-          <Info size={13} />
+          <Info size={12} />
           Glossary
         </Button>
       </div>
@@ -645,11 +650,7 @@ export default function BlockPlanTable({
                       typeof bp.confidence_score === "number"
                         ? `${(bp.confidence_score * 100).toFixed(0)}%`
                         : "—";
-                    const bandKey =
-                      bp.confidence_band?.toLowerCase() ?? "unknown";
-                    const bandTextCls =
-                      CONFIDENCE_BAND_TEXT_COLOR[bandKey] ??
-                      CONFIDENCE_BAND_TEXT_COLOR["unknown"];
+                    const confidenceTone = confidenceBandTone(bp.confidence_band);
 
                     const shortBlockId = (() => {
                       const raw = bp.block_id.replace(/:\d+$/, "");
@@ -719,26 +720,19 @@ export default function BlockPlanTable({
 
                         {/* Risk */}
                         <td className="px-3 py-2 text-xs">
-                          {(() => {
-                            const riskCls: Record<string, string> = {
-                              low: "text-green-700 bg-green-50 border border-green-200",
-                              medium: "text-amber-700 bg-amber-50 border border-amber-200",
-                              high: "text-red-700 bg-red-50 border border-red-200",
-                            };
-                            return (
-                              <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${riskCls[bp.risk] ?? "text-muted-foreground bg-muted border border-border"}`}>
-                                {RISK_LABELS[bp.risk] ?? bp.risk}
-                              </span>
-                            );
-                          })()}
+                          <StatusChip tone={RISK_TONE[bp.risk] ?? "neutral"}>
+                            {RISK_LABELS[bp.risk] ?? bp.risk}
+                          </StatusChip>
                         </td>
 
                         {/* Criticality */}
                         <td className="px-3 py-2 text-xs">
                           {trust?.criticality ? (
-                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${CRITICALITY_CLASSES[trust.criticality] ?? "text-muted-foreground bg-muted border border-border"}`}>
+                            <StatusChip
+                              tone={CRITICALITY_TONE[trust.criticality as Criticality] ?? "neutral"}
+                            >
                               {trust.criticality}
-                            </span>
+                            </StatusChip>
                           ) : (
                             <span className="text-muted-foreground">—</span>
                           )}
@@ -746,14 +740,9 @@ export default function BlockPlanTable({
 
                         {/* Confidence */}
                         <td className="px-3 py-2 text-xs w-16">
-                          <span
-                            className={cn(
-                              "tabular-nums font-medium",
-                              bandTextCls,
-                            )}
-                          >
+                          <StatusChip tone={confidenceTone} variant="text" className="tabular-nums">
                             {confPct}
-                          </span>
+                          </StatusChip>
                         </td>
 
                         {/* Actions (includes rationale) */}
@@ -770,7 +759,7 @@ export default function BlockPlanTable({
                                       />
                                     }
                                   >
-                                    <Info size={13} />
+                                    <Info size={14} />
                                   </TooltipTrigger>
                                   <TooltipContent>
                                     View rationale
@@ -800,7 +789,7 @@ export default function BlockPlanTable({
                                 }}
                                 aria-label="View code"
                               >
-                                <Code2 size={13} />
+                                <Code2 size={14} />
                               </TooltipTrigger>
                               <TooltipContent>View code</TooltipContent>
                             </Tooltip>
@@ -811,7 +800,7 @@ export default function BlockPlanTable({
                                 disabled={isAccepted}
                                 aria-label={`Refine ${bp.block_id}`}
                               >
-                                <Wrench size={13} />
+                                <Wrench size={14} />
                               </TooltipTrigger>
                               <TooltipContent>Refine with hint</TooltipContent>
                             </Tooltip>
@@ -825,7 +814,7 @@ export default function BlockPlanTable({
                                 onClick={() => setHistoryBlockId(bp.block_id)}
                                 aria-label={`History for ${bp.block_id}`}
                               >
-                                <History size={13} />
+                                <History size={14} />
                               </TooltipTrigger>
                               <TooltipContent>Revision history</TooltipContent>
                             </Tooltip>
@@ -926,7 +915,7 @@ export default function BlockPlanTable({
                 }
                 className="inline-flex items-center justify-center rounded p-1.5 text-muted-foreground border border-border hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
               >
-                {codeEditorDark ? <Sun size={13} /> : <Moon size={13} />}
+                {codeEditorDark ? <Sun size={14} /> : <Moon size={14} />}
               </button>
 
               {/* Edit / Lock — hidden when job is accepted */}

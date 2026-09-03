@@ -604,6 +604,19 @@
 - [x] F86 S-B: Wire into PlanTab → `src/frontend/src/components/JobDetail/PlanTab.tsx`
 - [x] F86 S-C: `make test` exits 0
 
+**F87 — Design consistency pass: shared status/badge/card primitives → see `docs/plans/F87-design-consistency-shared-primitives.md`**
+- [x] F87 S-A: shared status-color token module → `src/frontend/src/components/JobDetail/status-colors.ts`
+- [x] F87 S-B: `StatusChip` shared component → `src/frontend/src/components/JobDetail/StatusChip.tsx`
+- [x] F87 S-C: wire `StatusChip` into PlanTab AttentionCards + AttentionTable → `src/frontend/src/components/JobDetail/PlanTab.tsx`
+- [x] F87 S-D: replace header confidence/risk bar hex colors → `src/frontend/src/components/JobDetail/PlanTab.tsx`
+- [x] F87 S-E: wire `StatusChip` into BlockPlanTable risk/criticality/confidence chips → `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
+- [x] F87 S-F: align StatusBadge job-status pill to shared chip convention → `src/frontend/src/components/JobDetail/StatusBadge.tsx`
+- [x] F87 S-G: consolidate constants.ts risk/criticality maps → `src/frontend/src/components/JobDetail/constants.ts`
+- [x] F87 S-H: normalize off-grid icon sizes (`size={13}`) → `PlanTab.tsx`, `BlockPlanTable.tsx`, `JobDetailPage.tsx`
+- [x] F87 S-I: card primitive pass on Plan tab bordered containers → `src/frontend/src/components/JobDetail/PlanTab.tsx`
+- [x] F87 S-J: manual smoke test (light + dark theme)
+- [x] F87 S-K: `make tsc-check && make frontend-lint && make frontend-build && make test` exit 0
+
 **Service delivery documentation (existing GitHub issues)**
 - [ ] #109: Define ADC SAS migration delivery kit
 - [ ] #75: Define knowledge transfer guide

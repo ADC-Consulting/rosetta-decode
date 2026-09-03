@@ -184,7 +184,7 @@ export default function JobDetailPage(): React.ReactElement {
                     className="flex items-center gap-1.5 border-emerald-300 bg-emerald-50 text-emerald-700 px-2.5 py-1 text-xs font-medium"
                     aria-label="Migration accepted"
                   >
-                    <CheckCircle2 size={13} className="shrink-0" />
+                    <CheckCircle2 size={12} className="shrink-0" />
                     Accepted
                     {job?.accepted_at && (
                       <span className="ml-1 text-emerald-600 font-normal">
