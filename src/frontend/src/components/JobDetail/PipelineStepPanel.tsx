@@ -204,17 +204,17 @@ export default function PipelineStepPanel({
               ) : (
                 <>
                   {nVerified > 0 && (
-                    <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium bg-green-100 text-green-800 border border-green-200">
+                    <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium bg-[var(--tone-success-bg)] text-[var(--tone-success)] border border-[var(--tone-success)]/20">
                       ✓ {nVerified}
                     </span>
                   )}
                   {nReview > 0 && (
-                    <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium bg-amber-100 text-amber-800 border border-amber-200">
+                    <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium bg-[var(--tone-warning-bg)] text-[var(--tone-warning)] border border-[var(--tone-warning)]/20">
                       ⚠ {nReview}
                     </span>
                   )}
                   {nManual > 0 && (
-                    <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium bg-red-100 text-red-800 border border-red-200">
+                    <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium bg-[var(--tone-danger-bg)] text-[var(--tone-danger)] border border-[var(--tone-danger)]/20">
                       ✗ {nManual}
                     </span>
                   )}
@@ -290,7 +290,7 @@ export default function PipelineStepPanel({
                 <div key={dataset} className="flex flex-col gap-0.5">
                   {consumer ? (
                     <div className="flex items-center gap-1.5">
-                      <span className="text-green-600 font-bold text-xs shrink-0">→</span>
+                      <span className="text-[var(--tone-success)] font-bold text-xs shrink-0">→</span>
                       <span className="text-xs font-medium text-foreground">
                         Step {stepNum(consumer.step_id)}
                       </span>
@@ -303,13 +303,13 @@ export default function PipelineStepPanel({
                     </div>
                   ) : (
                     <div className="flex items-center gap-1.5">
-                      <span className="text-green-600 font-bold text-xs shrink-0">→</span>
+                      <span className="text-[var(--tone-success)] font-bold text-xs shrink-0">→</span>
                       <span className="text-xs text-muted-foreground italic">final output</span>
                     </div>
                   )}
                   {/* Dataset chip */}
                   <div className="ml-4">
-                    <span className="inline-block rounded bg-green-50 border border-green-100 px-1.5 py-0.5 text-[11px] font-mono text-green-800 max-w-full break-all">
+                    <span className="inline-block rounded bg-[var(--tone-success-bg)] border border-[var(--tone-success)]/20 px-1.5 py-0.5 text-[11px] font-mono text-[var(--tone-success)] max-w-full break-all">
                       {dataset}
                     </span>
                   </div>
@@ -368,17 +368,17 @@ export default function PipelineStepPanel({
               ) : (
                 <>
                   {nVerified > 0 && (
-                    <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium bg-green-100 text-green-800 border border-green-200">
+                    <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium bg-[var(--tone-success-bg)] text-[var(--tone-success)] border border-[var(--tone-success)]/20">
                       ✓ {nVerified}
                     </span>
                   )}
                   {nReview > 0 && (
-                    <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium bg-amber-100 text-amber-800 border border-amber-200">
+                    <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium bg-[var(--tone-warning-bg)] text-[var(--tone-warning)] border border-[var(--tone-warning)]/20">
                       ⚠ {nReview}
                     </span>
                   )}
                   {nManual > 0 && (
-                    <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium bg-red-100 text-red-800 border border-red-200">
+                    <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium bg-[var(--tone-danger-bg)] text-[var(--tone-danger)] border border-[var(--tone-danger)]/20">
                       ✗ {nManual}
                     </span>
                   )}

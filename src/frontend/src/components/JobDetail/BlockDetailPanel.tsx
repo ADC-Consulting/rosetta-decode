@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CheckCircle2, ChevronLeft, Info, X, XCircle } from "lucide-react";
 import { getBlockStatus, STATUS_CONFIG } from "./blockStatusHelpers";
+import { TONE_TEXT_CLASS } from "./status-colors";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -49,7 +50,7 @@ function ReconStatus({
 }): React.ReactElement {
   if (status === "pass") {
     return (
-      <span className="inline-flex items-center gap-1 text-xs text-green-700">
+      <span className={`inline-flex items-center gap-1 text-xs ${TONE_TEXT_CLASS.success}`}>
         <CheckCircle2 size={12} />
         Pass
       </span>
@@ -57,7 +58,7 @@ function ReconStatus({
   }
   if (status === "fail") {
     return (
-      <span className="inline-flex items-center gap-1 text-xs text-red-700">
+      <span className={`inline-flex items-center gap-1 text-xs ${TONE_TEXT_CLASS.danger}`}>
         <XCircle size={12} />
         Fail
       </span>

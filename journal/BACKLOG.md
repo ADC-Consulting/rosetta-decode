@@ -645,18 +645,52 @@
 - [x] F89 post-commit: cap "Needs attention" cards at 3 (was 5 — matches the mockup's "+N more · Show all" grid slot)
 - [x] Push `feat/F87-...`/`feat/F88-...`/`feat/F89-...` to origin and open stacked PRs #136 → #137 → #138
 
+**F90 — Roll the Manifest design system out to the rest of the frontend → see `docs/plans/F90-manifest-rollout.md`**
+- [x] F90 S-0: re-extract and commit the mockup source → `docs/design/Manifest.dc.html`
+- [x] F90 S-A: global sidebar scoping → `src/frontend/src/components/AppSidebar.tsx`
+- [x] F90 S-B: jobs list ("Migrations") scoping + status pill migration → `src/frontend/src/pages/JobsPage.tsx`
+- [x] F90 S-C: ETL tab scoping (`ETLTab.tsx`, `TargetGraph.tsx`, `FileNodeCard.tsx`, nested popups/panels)
+- [x] F90 S-D: Data tab scoping → `DataStorageTab.tsx`, `DataStorageERD.tsx`, `DataModelERD.tsx` (note: `DataStorageERD.tsx` is dead code, not imported anywhere — actual ERD is `DataModelERD.tsx`)
+- [x] F90 S-E: Lineage scoping → `GlobalLineagePage.tsx`, `LineageGraph.tsx` (note: `LineageTab.tsx` is dead code, not wired into any route — flagged for future cleanup, not deleted here)
+- [x] F90 S-F: Docs page scoping → `DocsPage.tsx`
+- [x] F90 S-G: Explain page scoping → `ExplainPage.tsx`, `components/Explain/*`
+- [x] F90 S-H: remove the `activeTab === "plan"` conditional in `JobDetailPage.tsx`, scope the shell unconditionally
+- [x] F90 S-I: full manual smoke test, light + dark, all surfaces
+- [x] F90 S-J: `make tsc-check && make frontend-lint && make frontend-build && make test` exit 0
+
 **Manifest design system — follow-up (not yet scheduled)**
-- [ ] Roll the Manifest design tokens (fonts, teal accent, 6px radius, muted tone palette) out to
-  the remaining tabs/pages — Data Storage, ETL graph (`TargetGraph`/`FileNodeCard`), Lineage,
-  Docs, Explain, jobs list, sidebar — explicitly deferred this session, scoped to Plan tab +
-  `BlockPlanTable` only for now
-- [ ] Unify `BlockPlanTable.tsx`'s own Strategy column chip (`translated` blue / `translated_with_review`
-  amber, hand-rolled) with the shared `StatusChip` pill shape/system — tracked since F87, still
-  a small, deliberate gap (matches the approved mockup, not a bug, but worth revisiting for full
-  consistency)
+- [x] `BlockPlanTable.tsx`'s Strategy column chip colors unified with the tone system — the pill
+  *shape* was already fixed in F89; this pass fixed the remaining hardcoded `manual`/
+  `translated_with_review` colors (now `--tone-danger`/`--tone-warning`) plus the same duplication
+  in the "Active stat filter chip." The `translated` branch's blue is a confirmed-deliberate
+  exception (matches the approved mockup's Steps table) and was left untouched
 - [ ] Dark-mode unified summary card border is faint on 3 of 4 edges (shadcn's default ~10%-opacity
   white border) — only clearly visible where the colored top-edge accent bar sits. Flagged during
   the fine-toothed-comb audit; user has not yet decided whether to strengthen it or leave as-is
+- [x] Deleted `components/JobDetail/LineageTab.tsx` — confirmed dead code (no imports anywhere),
+  the real Lineage surface is `GlobalLineagePage.tsx` → `LineageGraph.tsx`
+- [ ] shadcn `Dialog` portals to `document.body`, escaping any `.brand-manifest` scope — dialogs
+  render stock/unthemed when opened, even inside an already-scoped surface. Found in F90 S-C
+  (`BlockCodePopup.tsx`, `FileViewPopup.tsx`) and S-G (`ExplainPage.tsx`'s mode-switch confirmation
+  dialog); `PlanTab.tsx`'s own `Dialog` (shipped in F88) has the identical gap. Now that F90 S-H
+  applies `.brand-manifest` unconditionally to the `JobDetailPage` shell, wiring a `container` prop
+  on each `Dialog` to its nearest `.brand-manifest` ancestor (or `document.body` once/if the scope
+  ever moves to the app root) is the fix — needs a decision on which
+- [x] `blockStatusHelpers.ts`'s `STATUS_CONFIG` hand-rolled colors — fixed as a follow-up to F90
+  (see below)
+- [ ] `LineageGraph.tsx`'s `STATUS_STYLE`/`STATUS_SYMBOL` maps (node border/glyph color) use
+  literal inline-style hex (`#22c55e`/`#f59e0b`/`#ef4444` — success/warning/danger) with no
+  existing dark-mode handling at all — found in F90 S-E, deliberately not fixed as a drive-by
+  change to this 1294-line shared component (used by both the standalone Lineage page and the
+  ETL tab's embedded view); needs its own reviewed subtask, ideally paired with adding proper
+  dark-mode support to the graph if it doesn't have any
+
+**Compute backend correctness (existing GitHub issues)**
+- [ ] #139: README misstates both compute backends — `CLOUD=true` claims Databricks/PySpark but
+  `factory.py` raises `NotImplementedError` (no `databricks.py`); `CLOUD=false` claims
+  pandas/PostgreSQL but `local.py` uses in-memory `sqlite3`
+- [ ] #140: `CLOUD=true` accepted at worker startup, only fails after a job is marked running
+  (`main.py:369` → `main.py:1253`) — should be rejected in `worker_settings` validation instead
 
 **Service delivery documentation (existing GitHub issues)**
 - [ ] #109: Define ADC SAS migration delivery kit

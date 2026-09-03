@@ -57,7 +57,7 @@ export default function AppSidebar(): React.ReactElement {
     <aside
       aria-label="Main navigation"
       style={{ width: collapsed ? ICON_COL : 220 }}
-      className="relative flex flex-col h-screen shrink-0 bg-background border-r border-border transition-[width] duration-200 ease-in-out"
+      className="brand-manifest relative flex flex-col h-screen shrink-0 bg-background border-r border-border transition-[width] duration-200 ease-in-out"
     >
       {/* Logo */}
       <div
@@ -65,7 +65,7 @@ export default function AppSidebar(): React.ReactElement {
         style={{ paddingLeft: (ICON_COL - 20) / 2 }}
       >
         <span
-          className="size-5 rounded bg-foreground shrink-0"
+          className="size-5 rounded-md bg-foreground shrink-0"
           aria-hidden="true"
         />
         <span

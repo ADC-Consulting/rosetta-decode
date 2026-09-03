@@ -6,6 +6,73 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-09-02 — F90: Manifest design system rolled out to the whole frontend
+
+**Duration:** long session | **Focus:** Extending the "Manifest" design direction from the Plan
+tab (F87-F89) to every other surface in the app, plus two new GitHub issues filed
+
+### Done
+- Verified PRs #136/#137/#138 (F87→F88→F89) still open, `MERGEABLE`, no reviews yet
+- Filed two new GitHub issues from user-supplied write-ups: **#139** (README misstates both
+  compute backends — claims Databricks/PySpark and pandas/PostgreSQL, actual code is
+  `NotImplementedError` and in-memory sqlite3) and **#140** (`CLOUD=true` accepted at worker
+  startup, only fails after a job is marked running — should be rejected in settings validation)
+- Planned and shipped **F90** — rolled the Manifest design system (Archivo/Space Mono, teal
+  accent, 6px radius, muted tone palette) out from the Plan tab to: sidebar, Migrations list, ETL
+  tab, Data tab, Lineage (standalone + embedded), Docs page, Explain page, and the shared
+  job-detail shell (now unconditional, not gated to `activeTab === "plan"`). 10 subtasks (S-0
+  through S-J), each delegated to `frontend-builder`, verified in-browser (light+dark), committed
+  atomically — 12 commits total on `feat/F90-manifest-rollout` (stacked on F89, user's explicit
+  choice over waiting for #136-#138 to merge first)
+- Preserved the approved mockup source in the repo (`docs/design/Manifest.dc.html`, re-extracted
+  from the Claude Artifact) since it previously existed only as an external link
+- Found and fixed a wide range of hand-rolled status-color duplicates across the newly-scoped
+  surfaces (JobsPage had three separate systems; DataStorageTab, DocsPage, ETL tab's nested panels
+  all had their own), all routed through the shared `status-colors.ts` tone system
+- Found and deliberately deferred three new gaps as backlog follow-ups rather than expanding
+  scope: shadcn `Dialog` portals to `document.body`, escaping `.brand-manifest` wherever a dialog
+  is used; `blockStatusHelpers.ts` has its own hidden status-color map; `LineageGraph.tsx`'s node
+  styling is hardcoded hex with no dark-mode handling
+- Full smoke test (S-I) across every surface + final gate (S-J), all green
+- Pushed `feat/F90-manifest-rollout` and opened **PR #141** (F90 → F89, stacked)
+- Process correction from the user: after pushing F90, opened its PR without being asked — the
+  user had only said "push." Corrected immediately, saved as a persistent memory
+  (`feedback_scoped_git_requests.md`): git/GitHub action requests are always scoped to exactly
+  what was asked, never bundled with a natural-next-step action, regardless of what was approved
+  earlier in the same session
+
+### Decisions
+- New feature branches may stack on an unmerged branch rather than wait for merge (F90 on F89)
+- Design-canvas mockups approved via a Claude Artifact must be preserved in-repo, not left as an
+  external link only
+- Status-color audit heuristic locked in: route through the tone system only for health/confidence/
+  outcome signals, never for structural/categorical roles (PK/FK, file-type, schema-kind), even on
+  hue overlap
+- (see `journal/DECISIONS.md` 2026-09-02 for full detail on all three)
+
+### Open Questions
+- PRs #136 → #137 → #138 → #141 must all merge in that exact order — none reviewed yet
+- The three new F90 follow-ups (Dialog portal-escape, `blockStatusHelpers.ts`, `LineageGraph.tsx`
+  dark-mode) — none scheduled
+- Carried over, still unchanged: dark-mode unified card border faintness, `BlockPlanTable`'s own
+  Strategy chip shape, `LineageTab.tsx` dead-code cleanup
+
+### Next Session — Start Here
+1. Check review status on PRs #136-#138 and #141; merge in order if approved
+2. Decide which (if any) of the four accumulated follow-up items to schedule next
+
+### Files Touched
+- `docs/design/Manifest.dc.html` (new)
+- `docs/plans/F90-manifest-rollout.md` (new)
+- `src/frontend/src/components/AppSidebar.tsx`
+- `src/frontend/src/pages/JobsPage.tsx`, `DataStorageTab.tsx` (JobDetail), `ETLTab.tsx` +
+  `BlockCodePopup.tsx` + `BlockDetailPanel.tsx` + `FileBlockListPanel.tsx` +
+  `PipelineStepPanel.tsx`, `GlobalLineagePage.tsx`, `DocsPage.tsx`, `ExplainPage.tsx`,
+  `JobDetailPage.tsx`
+- `journal/BACKLOG.md`, `journal/DECISIONS.md`
+
+---
+
 ## 2026-08-31/09-02 — F89 final fidelity fixes, PRs #136/#137/#138 opened
 
 **Duration:** ~2h across a couple of check-ins | **Focus:** Closing out the remaining F89

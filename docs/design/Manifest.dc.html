@@ -1,0 +1,257 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Space+Mono&display=swap">
+  <style>
+    :root{
+      --ink:#101314; --ink-dim:#5c6567; --ink-faint:#94999b;
+      --paper:#f6f8f8; --card:#ffffff; --line:#dde2e2;
+      --green:#137a52; --green-bg:#e3f3ec;
+      --amber:#a15c00; --amber-bg:#fbedd8;
+      --red:#b3261e; --red-bg:#fbe4e1;
+      --sans:'Archivo', system-ui, sans-serif;
+      --mono:'Space Mono', ui-monospace, monospace;
+      --r:6px;
+    }
+    body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);}
+    a{color:var(--accent-color, #0f7d72);text-decoration:none;font-weight:600;}
+    a:hover{text-decoration:underline;}
+    .eyebrow{font:700 11px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint);}
+    .pill{display:inline-flex;align-items:center;padding:3px 9px;border-radius:5px;font:600 12px var(--sans);}
+  </style>
+</helmet>
+
+<div style="width:1040px;background:var(--paper);padding:0 0 90px 0;box-sizing:border-box;--accent-color:{{accentColor}};">
+
+  <!-- Header -->
+  <div style="padding:40px 44px 0 44px;">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--ink-dim)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <h1 style="margin:0;font:800 26px/1.1 var(--sans);letter-spacing:-0.015em;">Monthly Revenue Pipeline</h1>
+        <span class="pill" style="background:var(--amber-bg);color:var(--amber);">Needs Review</span>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <span style="font:500 13px var(--sans);color:var(--ink-faint);">6 files · 15 steps</span>
+      <button style="background:var(--accent-color, #0f7d72);color:#fff;border:0;border-radius:var(--r);padding:11px 20px;font:700 13px var(--sans);cursor:pointer;">Accept migration</button>
+    </div>
+
+    <div style="display:flex;gap:0;margin-top:24px;">
+      <span style="padding:9px 18px;font:700 13px var(--sans);background:var(--ink);color:#fff;border-radius:var(--r) 0 0 var(--r);">Plan</span>
+      <span style="padding:9px 18px;font:600 13px var(--sans);color:var(--ink-dim);background:#eceff0;">ETL</span>
+      <span style="padding:9px 18px;font:600 13px var(--sans);color:var(--ink-dim);background:#eceff0;">Data</span>
+      <span style="padding:9px 18px;font:600 13px var(--sans);color:var(--ink-dim);background:#eceff0;">BI</span>
+      <span style="padding:9px 18px;font:600 13px var(--sans);color:var(--ink-dim);background:#eceff0;border-radius:0 var(--r) var(--r) 0;">AI</span>
+    </div>
+  </div>
+
+  <!-- Description -->
+  <div style="padding:26px 44px 0 44px;max-width:800px;">
+    <p style="margin:0;font:400 14px/1.6 var(--sans);color:var(--ink-dim);">Monthly Revenue Pipeline migrates a 6-script SAS ETL into Python/pandas. The pipeline ingests four source files (CSV + XLSX), cleans and validates customer and transaction records, joins reference rates and product data, then scores and aggregates revenue by category and customer. <a href="#">Show more</a></p>
+  </div>
+
+  <!-- Reads / Produces -->
+  <div style="padding:20px 44px 0 44px;display:flex;gap:40px;">
+    <div>
+      <div class="eyebrow" style="margin-bottom:9px;">Reads</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        <span style="font:500 12.5px var(--mono);background:#eceff0;border-radius:4px;padding:4px 8px;color:var(--ink-dim);">customers.csv</span>
+        <span style="font:500 12.5px var(--mono);background:#eceff0;border-radius:4px;padding:4px 8px;color:var(--ink-dim);">exchange_rates.csv</span>
+        <span style="font:500 12.5px var(--mono);background:#eceff0;border-radius:4px;padding:4px 8px;color:var(--ink-dim);">products.xlsx</span>
+        <span style="font:500 12.5px var(--mono);background:#eceff0;border-radius:4px;padding:4px 8px;color:var(--ink-dim);">transactions.csv</span>
+      </div>
+    </div>
+    <div>
+      <div class="eyebrow" style="margin-bottom:9px;">Produces</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        <span style="font:500 12.5px var(--mono);background:#eceff0;border-radius:4px;padding:4px 8px;color:var(--ink-dim);">category_revenue</span>
+        <span style="font:500 12.5px var(--mono);background:#eceff0;border-radius:4px;padding:4px 8px;color:var(--ink-dim);">customer_revenue_zscore</span>
+        <span style="font:500 12.5px var(--mono);background:#eceff0;border-radius:4px;padding:4px 8px;color:var(--ink-dim);">revenue_summary</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Summary card: warning + metrics + before-you-accept, ONE unified card -->
+  <div style="margin:30px 44px 0 44px;background:var(--card);border-radius:10px;border:1px solid var(--line);overflow:hidden;">
+    <div style="height:3px;background:var(--red);"></div>
+    <div style="padding:18px 28px;display:flex;gap:10px;align-items:flex-start;border-bottom:1px solid var(--line);">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-top:2px;flex-shrink:0;"><path d="M12 3l10 18H2L12 3z"/><path d="M12 10v4"/><circle cx="12" cy="17" r="0.6" fill="var(--red)" stroke="none"/></svg>
+      <div style="font:400 13px/1.55 var(--sans);color:var(--ink-dim);">
+        <strong style="color:var(--red);font-weight:700;">Sensitive data detected — 2 columns.</strong> Signals matched: <span class="mono" style="font-family:var(--mono);">email, name</span>. Ensure data handling complies with applicable regulations before accepting.
+      </div>
+    </div>
+
+    <div style="padding:28px 28px 24px 28px;">
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:36px;margin-bottom:28px;">
+        <div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+            <span class="eyebrow">LLM confidence</span>
+            <span style="font:700 15px var(--sans);color:var(--green);">85%</span>
+          </div>
+          <div style="height:6px;background:#eceff0;border-radius:3px;overflow:hidden;">
+            <div style="width:85%;height:100%;background:var(--green);"></div>
+          </div>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+            <span class="eyebrow">Risk</span>
+            <span style="font:700 15px var(--sans);color:var(--amber);">Medium</span>
+          </div>
+          <div style="height:6px;background:#eceff0;border-radius:3px;overflow:hidden;">
+            <div style="width:66%;height:100%;background:var(--amber);"></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:24px;">
+        <div style="background:var(--green-bg);border-radius:var(--r);padding:14px 16px;">
+          <div style="font:800 22px var(--sans);color:var(--green);">10/15</div>
+          <div style="font:600 11.5px var(--sans);color:var(--ink-dim);margin-top:4px;">Auto-verified</div>
+        </div>
+        <div style="background:var(--amber-bg);border-radius:var(--r);padding:14px 16px;">
+          <div style="font:800 22px var(--sans);color:var(--amber);">5/15</div>
+          <div style="font:600 11.5px var(--sans);color:var(--ink-dim);margin-top:4px;">Needs review</div>
+        </div>
+        <div style="background:#eceff0;border-radius:var(--r);padding:14px 16px;">
+          <div style="font:800 22px var(--sans);color:var(--ink-faint);">0/15</div>
+          <div style="font:600 11.5px var(--sans);color:var(--ink-faint);margin-top:4px;">Manual TODO</div>
+        </div>
+        <div style="background:#eceff0;border-radius:var(--r);padding:14px 16px;">
+          <div style="font:800 22px var(--sans);color:var(--ink-faint);">0/15</div>
+          <div style="font:600 11.5px var(--sans);color:var(--ink-faint);margin-top:4px;">Failed recon.</div>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:24px;">
+        <span class="eyebrow">Criticality</span>
+        <span class="pill" style="background:var(--amber-bg);color:var(--amber);">medium 5</span>
+        <span class="pill" style="background:var(--green-bg);color:var(--green);">low 10</span>
+      </div>
+
+      <div style="border-top:1px solid var(--line);padding-top:22px;">
+        <div style="font:700 14px var(--sans);margin-bottom:8px;">Before you accept</div>
+        <p style="margin:0 0 6px 0;font:400 13px/1.6 var(--sans);color:var(--ink-dim);">10 of 15 steps translated automatically — no action needed. 5 steps require manual review before you can accept with confidence. Estimated effort: <strong style="color:var(--ink);">~5h</strong>.</p>
+        <p style="margin:8px 0 14px 0;font:500 12.5px/1.5 var(--sans);color:var(--amber);">Accepting without reviewing these steps means relying on automated translation for logic the tool flagged as uncertain.</p>
+        <div style="display:flex;gap:20px;font:700 12.5px var(--sans);">
+          <a href="#">Copy summary</a>
+          <a href="#">How is this estimated?</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Needs attention -->
+  <div style="padding:36px 44px 0 44px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <h2 style="margin:0;font:800 17px var(--sans);">Needs attention <span style="color:var(--ink-faint);font-weight:600;">5</span></h2>
+      <div style="display:flex;background:#eceff0;border-radius:var(--r);padding:3px;">
+        <span style="padding:6px 14px;font:700 12px var(--sans);background:var(--card);border-radius:4px;box-shadow:0 1px 1px rgba(0,0,0,0.06);">Cards</span>
+        <span style="padding:6px 14px;font:700 12px var(--sans);color:var(--ink-dim);">Table</span>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+      <div style="background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;gap:8px;">
+          <span class="mono" style="font:500 12.5px var(--mono);">05_risk_scoring_iml.sas:3</span>
+          <span class="pill" style="background:var(--amber-bg);color:var(--amber);white-space:nowrap;">Review</span>
+        </div>
+        <p style="margin:0 0 8px 0;font:400 12.5px/1.55 var(--sans);color:var(--ink-dim);">PROC IML matrix op translated to NumPy. Validate sample-std (ddof=1) and zero-guard behaviour before accepting.</p>
+        <a href="#" style="font:700 12px var(--sans);">View in steps table →</a>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;gap:8px;">
+          <span class="mono" style="font:500 12.5px var(--mono);">01_load_sources.sas:16</span>
+          <span class="pill" style="background:var(--amber-bg);color:var(--amber);white-space:nowrap;">Review</span>
+        </div>
+        <p style="margin:0 0 8px 0;font:400 12.5px/1.55 var(--sans);color:var(--ink-dim);">PROC IMPORT from XLSX requires openpyxl. Confirm sheet name and column layout before deployment.</p>
+        <a href="#" style="font:700 12px var(--sans);">View in steps table →</a>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;gap:8px;">
+          <span class="mono" style="font:500 12.5px var(--mono);">04_join_and_aggregate.sas:37</span>
+          <span class="pill" style="background:var(--amber-bg);color:var(--amber);white-space:nowrap;">Review</span>
+        </div>
+        <p style="margin:0 0 8px 0;font:400 12.5px/1.55 var(--sans);color:var(--ink-dim);">Currency join uses nearest-date match. Confirm rate lag tolerance matches SAS MERGE behaviour.</p>
+        <a href="#" style="font:700 12px var(--sans);">View in steps table →</a>
+      </div>
+      <div style="background:var(--card);border:1px dashed var(--line);border-radius:var(--r);padding:16px 18px;display:flex;align-items:center;justify-content:center;">
+        <a href="#" style="font:700 12.5px var(--sans);">+2 more · Show all →</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Steps table -->
+  <div style="padding:40px 44px 0 44px;">
+    <h2 style="margin:0 0 16px 0;font:800 17px var(--sans);">Steps <span style="color:var(--ink-faint);font-weight:600;">15</span></h2>
+    <div style="border:1px solid var(--line);border-radius:10px;overflow:hidden;">
+      <table style="width:100%;border-collapse:collapse;">
+        <thead>
+          <tr style="background:#eceff0;">
+            <th style="text-align:left;font:700 11px var(--sans);letter-spacing:.05em;text-transform:uppercase;color:var(--ink-faint);padding:11px 14px;">Step</th>
+            <th style="text-align:left;font:700 11px var(--sans);letter-spacing:.05em;text-transform:uppercase;color:var(--ink-faint);padding:11px 14px;">Strategy</th>
+            <th style="text-align:left;font:700 11px var(--sans);letter-spacing:.05em;text-transform:uppercase;color:var(--ink-faint);padding:11px 14px;">Risk</th>
+            <th style="text-align:left;font:700 11px var(--sans);letter-spacing:.05em;text-transform:uppercase;color:var(--ink-faint);padding:11px 14px;">Criticality</th>
+            <th style="text-align:right;font:700 11px var(--sans);letter-spacing:.05em;text-transform:uppercase;color:var(--ink-faint);padding:11px 14px;">Conf.</th>
+            <th style="text-align:center;font:700 11px var(--sans);letter-spacing:.05em;text-transform:uppercase;color:var(--ink-faint);padding:11px 14px;">Recon</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="background:#fbfcfc;">
+            <td colspan="6" style="padding:9px 14px;font:700 11.5px var(--sans);color:var(--ink-dim);border-top:1px solid var(--line);">01_load_sources.sas</td>
+          </tr>
+          <tr>
+            <td class="mono" style="padding:11px 14px;font:400 12px var(--mono);color:var(--ink-dim);">01_load_sources.sas:8</td>
+            <td style="padding:11px 14px;"><span class="pill" style="background:#dbe9ff;color:#1d4ed8;">Translated</span></td>
+            <td style="padding:11px 14px;"><span class="pill" style="background:var(--green-bg);color:var(--green);">low</span></td>
+            <td style="padding:11px 14px;"><span class="pill" style="background:var(--green-bg);color:var(--green);">low</span></td>
+            <td style="padding:11px 14px;text-align:right;font:700 12px var(--sans);color:var(--green);">92%</td>
+            <td style="padding:11px 14px;text-align:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg></td>
+          </tr>
+          <tr style="background:#fbfcfc;">
+            <td colspan="6" style="padding:9px 14px;font:700 11.5px var(--sans);color:var(--ink-dim);border-top:1px solid var(--line);">03_screen_watchlist.sas</td>
+          </tr>
+          <tr>
+            <td class="mono" style="padding:11px 14px;font:400 12px var(--mono);color:var(--ink-dim);">03_screen_watchlist.sas:31</td>
+            <td style="padding:11px 14px;"><span class="pill" style="background:var(--amber-bg);color:var(--amber);">Review needed</span></td>
+            <td style="padding:11px 14px;"><span class="pill" style="background:var(--amber-bg);color:var(--amber);">medium</span></td>
+            <td style="padding:11px 14px;"><span class="pill" style="background:var(--amber-bg);color:var(--amber);">medium</span></td>
+            <td style="padding:11px 14px;text-align:right;font:700 12px var(--sans);color:var(--amber);">65%</td>
+            <td style="padding:11px 14px;text-align:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg></td>
+          </tr>
+          <tr style="background:#fbfcfc;">
+            <td colspan="6" style="padding:9px 14px;font:700 11.5px var(--sans);color:var(--ink-dim);border-top:1px solid var(--line);">06_build_edd_queue.sas</td>
+          </tr>
+          <tr>
+            <td class="mono" style="padding:11px 14px 13px 14px;font:400 12px var(--mono);color:var(--ink-dim);">06_build_edd_queue.sas:9</td>
+            <td style="padding:11px 14px 13px 14px;"><span class="pill" style="background:var(--red-bg);color:var(--red);">Manual</span></td>
+            <td style="padding:11px 14px 13px 14px;"><span class="pill" style="background:var(--red-bg);color:var(--red);">high</span></td>
+            <td style="padding:11px 14px 13px 14px;"><span class="pill" style="background:var(--red-bg);color:var(--red);">critical</span></td>
+            <td style="padding:11px 14px 13px 14px;text-align:right;font:700 12px var(--sans);color:var(--red);">40%</td>
+            <td style="padding:11px 14px 13px 14px;text-align:center;color:var(--ink-faint);">—</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <a href="#" style="display:inline-block;margin-top:14px;font:700 12.5px var(--sans);">+11 more rows</a>
+  </div>
+
+</div>
+
+</x-dc>
+<script data-dc-script data-props='{"accentColor":{"editor":"color","default":"#0f7d72","options":["#0f7d72","#0e7490","#4338ca","#166534"]}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accentColor: this.props.accentColor ?? '#0f7d72' };
+  }
+}
+</script>
+</body>
+</html>

@@ -558,13 +558,13 @@ export default function BlockPlanTable({
                 className={cn(
                   "h-6 px-2 inline-flex items-center gap-1 rounded-full text-[11px] font-medium border",
                   activeStatFilter === "auto_verified" &&
-                    "text-green-700 bg-green-50 border-green-200",
+                    "text-[var(--tone-success)] bg-[var(--tone-success-bg)] border-[var(--tone-success)]/30",
                   activeStatFilter === "needs_review" &&
-                    "text-amber-700 bg-amber-50 border-amber-200",
+                    "text-[var(--tone-warning)] bg-[var(--tone-warning-bg)] border-[var(--tone-warning)]/30",
                   activeStatFilter === "manual_todo" &&
                     "text-muted-foreground bg-muted border-border",
                   activeStatFilter === "failed_reconciliation" &&
-                    "text-red-700 bg-red-50 border-red-200",
+                    "text-[var(--tone-danger)] bg-[var(--tone-danger-bg)] border-[var(--tone-danger)]/30",
                 )}
               >
                 {STAT_FILTER_LABELS[activeStatFilter]}
@@ -725,13 +725,15 @@ export default function BlockPlanTable({
                                 ? "Review needed"
                                 : "Translated";
                             // Filled/borderless/6px-radius "Manifest" pill convention (F88).
-                            // Blue for "Translated" intentionally does not go through
-                            // StatusChip/STRATEGY_TONE (which uses green) — it matches the
-                            // Manifest mockup's Steps table, which uses blue specifically here.
+                            // Blue for "Translated" is the only deliberate exception here —
+                            // it intentionally does not go through StatusChip/STRATEGY_TONE
+                            // (which uses green), matching the Manifest mockup's Steps table,
+                            // which uses blue specifically here. The other two branches are
+                            // correctly tone-sourced from --tone-danger/--tone-warning.
                             const colorCls = isManual
-                              ? "text-red-700 bg-red-50"
+                              ? "text-[var(--tone-danger)] bg-[var(--tone-danger-bg)]"
                               : recon === "fail" || isReviewStrategy
-                                ? "text-amber-700 bg-amber-50"
+                                ? "text-[var(--tone-warning)] bg-[var(--tone-warning-bg)]"
                                 : "text-blue-700 bg-blue-50";
                             return (
                               <span

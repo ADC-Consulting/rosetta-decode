@@ -10,6 +10,14 @@ import type {
   JobSummary,
   TrustReportResponse,
 } from "@/api/types";
+import {
+  CONFIDENCE_TONE,
+  RISK_TONE,
+  TONE_TEXT_CLASS,
+  type ConfidenceBand,
+  type RiskLevel,
+  type Tone,
+} from "@/components/JobDetail/status-colors";
 import { extractMarkdown } from "@/components/JobDetail/utils";
 import TiptapEditor from "@/components/TiptapEditor";
 import { Button } from "@/components/ui/button";
@@ -57,23 +65,32 @@ function SkeletonBar({
 
 // ── Badges ────────────────────────────────────────────────────────────────────
 
+// Bordered variant of the shared TONE_CHIP_CLASS (status-colors.ts) — that map is the
+// borderless "Manifest" pill used elsewhere; these badges keep their pre-existing visible
+// border, so tone/color still come from the shared --tone-X custom properties (see the
+// `.brand-manifest` comment in index.css) rather than a hand-rolled hex-adjacent Tailwind shade.
+const TONE_BORDERED_CHIP_CLASS: Record<Tone, string> = {
+  success:
+    "text-[var(--tone-success)] bg-[var(--tone-success-bg)] border border-[var(--tone-success)]/30",
+  warning:
+    "text-[var(--tone-warning)] bg-[var(--tone-warning-bg)] border border-[var(--tone-warning)]/30",
+  danger:
+    "text-[var(--tone-danger)] bg-[var(--tone-danger-bg)] border border-[var(--tone-danger)]/30",
+  "danger-strong":
+    "text-[var(--tone-danger-strong)] bg-[var(--tone-danger-strong-bg)] border border-[var(--tone-danger-strong)]/30",
+  neutral: "text-muted-foreground bg-muted border border-border",
+};
+
 function ConfidenceBadge({
   value,
 }: {
   value: string | null;
 }): React.ReactElement {
   if (!value) return <span className="text-muted-foreground">—</span>;
-  const classes: Record<string, string> = {
-    high: "text-green-700 bg-green-50 border border-green-200",
-    medium: "text-amber-700 bg-amber-50 border border-amber-200",
-    low: "text-red-700 bg-red-50 border border-red-200",
-    very_low: "text-red-700 bg-red-50 border border-red-200",
-  };
-  const cls =
-    classes[value] ?? "text-muted-foreground bg-muted border border-border";
+  const tone = CONFIDENCE_TONE[value as ConfidenceBand] ?? "neutral";
   return (
     <span
-      className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium uppercase ${cls}`}
+      className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium uppercase ${TONE_BORDERED_CHIP_CLASS[tone]}`}
     >
       {value.replace("_", " ")}
     </span>
@@ -82,16 +99,10 @@ function ConfidenceBadge({
 
 function RiskBadge({ value }: { value: string | null }): React.ReactElement {
   if (!value) return <span className="text-muted-foreground">—</span>;
-  const classes: Record<string, string> = {
-    low: "text-green-700 bg-green-50 border border-green-200",
-    medium: "text-amber-700 bg-amber-50 border border-amber-200",
-    high: "text-red-700 bg-red-50 border border-red-200",
-  };
-  const cls =
-    classes[value] ?? "text-muted-foreground bg-muted border border-border";
+  const tone = RISK_TONE[value as RiskLevel] ?? "neutral";
   return (
     <span
-      className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium uppercase ${cls}`}
+      className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium uppercase ${TONE_BORDERED_CHIP_CLASS[tone]}`}
     >
       {value} risk
     </span>
@@ -105,7 +116,9 @@ function StatusChip({
 }): React.ReactElement {
   if (status === "accepted") {
     return (
-      <span className="text-xs font-medium text-emerald-500">Accepted</span>
+      <span className={`text-xs font-medium ${TONE_TEXT_CLASS.success}`}>
+        Accepted
+      </span>
     );
   }
   return (
@@ -332,15 +345,15 @@ function DocCard({
           </div>
           {trustReport ? (
             <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
-              <span className="text-green-700">
+              <span className={TONE_TEXT_CLASS.success}>
                 ✓ {trustReport.auto_verified}/{trustReport.total_blocks}{" "}
                 auto-verified
               </span>
-              <span className="text-amber-700">
+              <span className={TONE_TEXT_CLASS.warning}>
                 ⚠ {trustReport.needs_review} needs review
               </span>
               {trustReport.failed_reconciliation > 0 && (
-                <span className="text-red-700">
+                <span className={TONE_TEXT_CLASS.danger}>
                   ✗ {trustReport.failed_reconciliation} failed
                 </span>
               )}
@@ -538,7 +551,7 @@ export default function DocsPage(): React.ReactElement {
   });
 
   return (
-    <div className="px-6 py-2 overflow-y-auto flex-1 h-full">
+    <div className="brand-manifest px-6 py-2 overflow-y-auto flex-1 h-full">
       <div className="space-y-6">
         <style>{`@keyframes shimmer{from{background-position:200% center}to{background-position:-200% center}}`}</style>
 

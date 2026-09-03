@@ -64,7 +64,7 @@ export default function GlobalLineagePage(): React.ReactElement {
   }
 
   return (
-    <div className="px-6 py-2 overflow-y-auto flex-1 h-full">
+    <div className="brand-manifest px-6 py-2 overflow-y-auto flex-1 h-full">
       <div
         className="flex -mx-4 -mb-8"
         style={{ height: "calc(100vh - 64px)" }}

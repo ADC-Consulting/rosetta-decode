@@ -438,7 +438,7 @@ export default function ExplainPage(): React.ReactElement {
   }));
 
   return (
-    <div className="flex flex-1 min-h-0">
+    <div className="brand-manifest flex flex-1 min-h-0">
       {/* Main chat area — centered column */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden items-center px-4">
         {/* Mobile header */}

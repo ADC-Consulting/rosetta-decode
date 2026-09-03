@@ -12,6 +12,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { Suspense, useMemo, useState } from "react";
 import { registerSasLanguage } from "./registerSasLanguage";
+import { TONE_CHIP_CLASS } from "./status-colors";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -61,19 +62,21 @@ interface StatusConfig {
 const STATUS_CONFIG: Record<BlockStatus, StatusConfig> = {
   "auto-verified": {
     label: "Auto-verified",
-    className: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
+    className: TONE_CHIP_CLASS.success,
   },
+  // "human-verified" stays teal, deliberately distinct from the amber/green/red status tones —
+  // not part of the Tone system (out of scope for this cleanup, same as blue interactive links).
   "human-verified": {
     label: "Human-verified",
     className: "bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-300",
   },
   "needs-review": {
     label: "Needs review",
-    className: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
+    className: TONE_CHIP_CLASS.warning,
   },
   manual: {
     label: "Manual",
-    className: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
+    className: TONE_CHIP_CLASS.danger,
   },
   pending: {
     label: "Pending",
@@ -177,11 +180,11 @@ export default function BlockCodePopup({
         {status === "needs-review" && (
           <div
             role="status"
-            className="flex items-start gap-2 px-4 py-2 text-xs bg-amber-50 border-b border-amber-200
-              dark:bg-amber-950/30 dark:border-amber-800 text-amber-800 dark:text-amber-300 shrink-0"
+            className="flex items-start gap-2 px-4 py-2 text-xs bg-[var(--tone-warning-bg)]
+              border-b border-[var(--tone-warning)]/20 text-[var(--tone-warning)] shrink-0"
           >
             <span className="font-medium">Reconciliation flagged differences</span>
-            <span className="text-amber-700 dark:text-amber-400">
+            <span className="text-[var(--tone-warning)]/80">
               — review the proposed Python before verifying.
             </span>
           </div>
@@ -189,8 +192,8 @@ export default function BlockCodePopup({
         {status === "manual" && (
           <div
             role="status"
-            className="flex items-start gap-2 px-4 py-2 text-xs bg-red-50 border-b border-red-200
-              dark:bg-red-950/30 dark:border-red-800 text-red-800 dark:text-red-300 shrink-0"
+            className="flex items-start gap-2 px-4 py-2 text-xs bg-[var(--tone-danger-bg)]
+              border-b border-[var(--tone-danger)]/20 text-[var(--tone-danger)] shrink-0"
           >
             <span className="font-medium">This block requires manual Python implementation.</span>
           </div>
@@ -198,11 +201,11 @@ export default function BlockCodePopup({
         {isVerified && !isReadOnly && (
           <div
             role="status"
-            className="flex items-center gap-2 px-4 py-2 text-xs bg-green-50 border-b border-green-200
-              dark:bg-green-950/30 dark:border-green-800 text-green-800 dark:text-green-300 shrink-0"
+            className="flex items-center gap-2 px-4 py-2 text-xs bg-[var(--tone-success-bg)]
+              border-b border-[var(--tone-success)]/20 text-[var(--tone-success)] shrink-0"
           >
             <span className="font-medium">Block marked as verified.</span>
-            <span className="text-green-700 dark:text-green-400">You can close this panel.</span>
+            <span className="text-[var(--tone-success)]/80">You can close this panel.</span>
           </div>
         )}
 
