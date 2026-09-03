@@ -6,6 +6,78 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-09-03 — F87-F90 merged; #140/#139 fixed; TensorZero found archived (#143)
+
+**Duration:** long session | **Focus:** Landing the whole Manifest PR stack, then two GitHub-issue
+fixes on `fix/140-cloud-validation-startup`, then an unplanned but consequential discovery about a
+project dependency
+
+### Done
+- **Reviewed and merged the entire F87→F90 stack**: verified CI (`gh pr checks`) on each PR,
+  discovered and fixed a GitHub quirk where only the bottom-most PR of a stack gets CI (workflow
+  triggers on `pull_request: branches: [main]` only; GitHub auto-retargets a PR to `main` when its
+  base branch is deleted, but that retarget event type doesn't trigger the workflow) — worked
+  around it each time via close/reopen (`reopened` is a triggering event type). All four PRs
+  (#136-#141) merged; local `main` synced, all four feature branches deleted (locally + remote)
+- **Audited and corrected all four PRs' "Not in this PR" sections** — found real staleness,
+  including one self-contradiction in #138 (claimed a fix wasn't done that was actually one of its
+  own commits) and two "not scheduled" claims that were later falsified by #141 shipping
+- **Quick-win follow-ups from the F90 rollout** (on `feat/F90-manifest-rollout` before it merged):
+  fixed `blockStatusHelpers.ts`'s hidden status-color map, deleted dead `LineageTab.tsx`, fixed
+  `BlockPlanTable.tsx`'s remaining hardcoded Strategy-chip/stat-filter-chip colors
+- **Fixed #140** (`CLOUD=true` accepted at startup, only failed after a job was marked running) —
+  added a pydantic validator on `WorkerSettings.cloud` so an unsupported config crashes the worker
+  at boot instead of failing every job after a full paid LLM pipeline run. New
+  `tests/test_worker_config.py`. Demonstrated the fix live (`CLOUD=true uv run python -c ...`)
+- **Fixed #139** (README/architecture docs misstated both compute backends) — corrected
+  `README.md` and `docs/architecture.md` to reflect that generated code is always PySpark and
+  `CLOUD` only controls the app's own internal reconciliation backend (pandas + in-memory SQLite
+  today, Databricks not yet implemented) — not what the user's deliverable code looks like.
+  Verified the "reconciliation only" framing by tracing all 6 `BackendFactory.create()` call sites
+  in `main.py` before asserting it
+- **Found and documented TensorZero**, an optional LLM gateway with zero prior documentation
+  anywhere in the repo — traced its exact mechanism (per-agent priority check, Azure-only model
+  routing via `config/tensorzero.toml`), then found and fixed a real bug: `.env.example` told users
+  to set `AZURE_OPENAI_ENDPOINT`/`AZURE_OPENAI_API_KEY` for it, but the gateway actually reads
+  `AZURE_AI_FOUNDRY_ENDPOINT`/`AZURE_AI_FOUNDRY_API_KEY`/`AZURE_ANTHROPIC_ENDPOINT` — following the
+  template as written left TensorZero on but non-functional
+- **User pasted a live Azure API key into chat** while sharing their real `.env` — flagged
+  immediately as compromised, advised rotation, explained exactly what "the chat" means
+  (local session transcript + sent to Anthropic's API) without overstating specifics
+- **Discovered TensorZero itself is archived** — the whole company wound down 2026-06-12 (confirmed
+  via GitHub API: every repo under the `tensorzero` org is archived; corroborated by public
+  reporting: $7.3M seed, spent less than half, no product-market fit, capital returned to
+  investors). Filed as **#143**. Recommendation given and discussed: keep the pinned dependency
+  as-is for now (optional, narrowly scoped, nothing broken), but stop `.env.example` from enabling
+  it by default for new setups — proposed, not yet actioned
+
+### Decisions
+- See `journal/DECISIONS.md` 2026-09-03 — TensorZero: keep as-is for now, don't rip out of the ~15
+  agent files, do stop defaulting new setups into it (not yet actioned)
+
+### Open Questions
+- Whether/when to change `.env.example` to not set `TENSORZERO_GATEWAY_URL` by default — user
+  hasn't confirmed yet
+- The three design follow-ups from F90 (Dialog portal-escape, `LineageGraph.tsx` dark-mode,
+  dark-mode card border) — still unscheduled, unchanged from last session
+- PR #142 (#140 + #139 fixes, 4 commits) — open, unreviewed as of session end
+
+### Next Session — Start Here
+1. Check review status on PR #142; merge if approved
+2. Decide on the `.env.example` TensorZero-default question
+3. Rotate the Azure API key the user pasted into this session, if not already done
+
+### Files Touched
+- `README.md`, `docs/architecture.md` (#139 + TensorZero documentation)
+- `src/worker/core/config.py`, `tests/test_worker_config.py` (new) (#140)
+- `.env.example` (boot-behavior note + TensorZero credential relabeling — both applied by the user
+  manually, Claude is blocked from editing `.env*` paths directly)
+- `src/frontend/src/components/JobDetail/blockStatusHelpers.ts`, `BlockPlanTable.tsx`
+- `src/frontend/src/components/JobDetail/LineageTab.tsx` (deleted)
+- `journal/BACKLOG.md`, `journal/DECISIONS.md`
+
+---
+
 ## 2026-09-02 — F90: Manifest design system rolled out to the whole frontend
 
 **Duration:** long session | **Focus:** Extending the "Manifest" design direction from the Plan

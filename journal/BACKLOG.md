@@ -701,8 +701,24 @@
 - [x] #140: `CLOUD=true` accepted at worker startup, only fails after a job is marked running
   (`main.py:369` → `main.py:1253`) — fixed via a pydantic validator on `WorkerSettings.cloud`
   (`src/worker/core/config.py`), crashing the process at boot instead of failing every job after a
-  full paid LLM pipeline run. `.env.example` note still pending (blocked by sandbox permissions on
-  `.env*` paths — user to add manually), tracked as its own follow-up commit
+  full paid LLM pipeline run. `.env.example` note added (user applied it manually — sandbox
+  permissions block Claude from editing `.env*` paths directly)
+- [x] `.env.example`'s TensorZero section mislabeled its own Azure credentials — told users to set
+  `AZURE_OPENAI_ENDPOINT`/`AZURE_OPENAI_API_KEY` as "used by TensorZero gateway," but the gateway
+  itself (`config/tensorzero.toml` via `docker-compose.yml`) actually reads
+  `AZURE_AI_FOUNDRY_ENDPOINT`/`AZURE_AI_FOUNDRY_API_KEY`/`AZURE_ANTHROPIC_ENDPOINT`. Following the
+  old template exactly left TensorZero enabled but non-functional for Azure routing. Fixed by
+  splitting into two correctly-labeled sections (user applied manually, same permission block)
+- [ ] **#143 (new, filed this session): TensorZero itself is archived** — the company shut down
+  2026-06-12 (confirmed: every repo under the `tensorzero` GitHub org is archived, founder
+  confirmed winding down after failing to find product-market fit). Pinned Docker image keeps
+  working as-is; no security patches/bug fixes/compatibility updates ever again upstream. Used as
+  first-priority routing in ~15 worker agent files, optional (off by default in code, but
+  `.env.example` currently sets a real gateway URL so fresh setups inherit it). Recommended:
+  change `.env.example` to not enable it by default (low-cost, stops new setups silently
+  depending on a dead project) — **not yet done, awaiting user go-ahead**. Bigger question (rip
+  out of the ~15 files vs. leave as a working-but-frozen option) deliberately deferred — no
+  urgency, nothing broken today
 
 **Service delivery documentation (existing GitHub issues)**
 - [ ] #109: Define ADC SAS migration delivery kit
