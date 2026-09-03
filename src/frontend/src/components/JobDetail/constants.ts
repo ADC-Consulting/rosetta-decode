@@ -15,14 +15,21 @@ export const STATUS_LABEL: Record<JobStatusValue, string> = {
   done: "Done",
 };
 
+// Amber/green/red tones reference the shared --tone-* CSS custom properties (F89,
+// src/frontend/src/index.css) via raw var() arbitrary-value classes, same pattern as
+// TONE_CHIP_CLASS in status-colors.ts. These resolve to stock Tailwind hex equivalents at
+// :root/.dark (unchanged everywhere outside .brand-manifest, e.g. the jobs list page) and to
+// the muted "Manifest" palette inside .brand-manifest (Plan tab only) — see F89 plan doc.
+// queued/running (slate/blue) are intentionally left as stock Tailwind classes — they're not
+// part of the red/amber/green semantic tone family.
 export const STATUS_PILL_CLASS: Record<JobStatusValue, string> = {
   queued: "bg-slate-600",
   running: "bg-blue-600",
-  proposed: "bg-amber-500",
-  under_review: "bg-amber-500",
-  accepted: "bg-emerald-600",
-  failed: "bg-red-600",
-  done: "bg-emerald-600",
+  proposed: "bg-[var(--tone-warning)]",
+  under_review: "bg-[var(--tone-warning)]",
+  accepted: "bg-[var(--tone-success)]",
+  failed: "bg-[var(--tone-danger)]",
+  done: "bg-[var(--tone-success)]",
 };
 
 export const STATUS_SHIMMER: Record<JobStatusValue, boolean> = {

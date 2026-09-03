@@ -55,6 +55,7 @@ import {
   CONFIDENCE_TONE,
   CRITICALITY_TONE,
   RISK_TONE,
+  TONE_TEXT_CLASS,
   type ConfidenceBand,
   type Criticality,
 } from "./status-colors";
@@ -121,6 +122,15 @@ const RISK_LABELS: Record<string, string> = {
   low: "low",
   medium: "medium",
   high: "high",
+};
+
+// Tone-colored fill for the "Filter by Strategy" pills when selected — matches the Strategy
+// column's own chip colors exactly (see the inline `colorCls` in the Strategy cell below), so the
+// filter control reads as the same chip system instead of a separate plain pill treatment.
+const STRATEGY_PILL_SELECTED_CLASS: Record<string, string> = {
+  manual: "bg-red-50 text-red-700 border-red-300",
+  translated_with_review: "bg-amber-50 text-amber-700 border-amber-300",
+  translated: "bg-blue-50 text-blue-700 border-blue-300",
 };
 
 // Confidence-band and criticality color come from ./status-colors.ts (CONFIDENCE_TONE /
@@ -282,22 +292,30 @@ function GlossaryDialog({
             </p>
             <ul className="space-y-1 text-muted-foreground text-xs">
               <li>
-                <span className="font-medium text-red-700">Critical</span> —
-                Strategy is manual, or LLM confidence was very low. Requires
+                <span className={`font-medium ${TONE_TEXT_CLASS[CRITICALITY_TONE.critical]}`}>
+                  Critical
+                </span>{" "}
+                — Strategy is manual, or LLM confidence was very low. Requires
                 human authoring or rewrite.
               </li>
               <li>
-                <span className="font-medium text-orange-700">High</span> —
-                Confidence was low, reconciliation failed, or this block feeds
+                <span className={`font-medium ${TONE_TEXT_CLASS[CRITICALITY_TONE.high]}`}>
+                  High
+                </span>{" "}
+                — Confidence was low, reconciliation failed, or this block feeds
                 three or more downstream files. Human review required.
               </li>
               <li>
-                <span className="font-medium text-amber-700">Medium</span> —
-                Translation ran with medium confidence. Worth a spot check.
+                <span className={`font-medium ${TONE_TEXT_CLASS[CRITICALITY_TONE.medium]}`}>
+                  Medium
+                </span>{" "}
+                — Translation ran with medium confidence. Worth a spot check.
               </li>
               <li>
-                <span className="font-medium text-green-700">Low</span> —
-                High confidence, reconciliation passed, minimal downstream
+                <span className={`font-medium ${TONE_TEXT_CLASS[CRITICALITY_TONE.low]}`}>
+                  Low
+                </span>{" "}
+                — High confidence, reconciliation passed, minimal downstream
                 impact. Safe to accept.
               </li>
             </ul>
@@ -506,9 +524,12 @@ export default function BlockPlanTable({
               onClick={() => toggleStrategy(s)}
               aria-pressed={activeStrategies.has(s)}
               className={cn(
-                "h-6 px-2 rounded-full text-[11px] font-medium border transition-colors cursor-pointer",
+                // rounded-lg (6px, scoped to .brand-manifest) matches the Strategy column's own
+                // chip radius — was rounded-full, a mismatched shape (F89 fine-toothed-comb fix).
+                "h-6 px-2 rounded-lg text-[11px] font-medium border transition-colors cursor-pointer",
                 activeStrategies.has(s)
-                  ? "bg-[var(--primary)] text-[var(--primary-foreground)] border-[var(--primary)]"
+                  ? (STRATEGY_PILL_SELECTED_CLASS[s] ??
+                      "bg-[var(--primary)] text-[var(--primary-foreground)] border-[var(--primary)]")
                   : "bg-background text-muted-foreground border-border hover:border-foreground/50",
               )}
             >

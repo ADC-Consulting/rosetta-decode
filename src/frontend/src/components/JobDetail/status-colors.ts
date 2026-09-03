@@ -15,48 +15,58 @@
 /**
  * Semantic tone shared by confidence, strategy, risk, and criticality
  * indicators. Everything in this module reduces to one of these five tones.
+ * (`caution` was merged into `warning` in F89 — visually redundant next to it.)
  */
-export type Tone = "success" | "warning" | "caution" | "danger" | "danger-strong" | "neutral";
+export type Tone = "success" | "warning" | "danger" | "danger-strong" | "neutral";
 
 /**
  * Chip appearance per tone: filled background, no border, 6px radius — the "Manifest" pill
  * convention (F88). `rounded-lg` resolves to the scoped `--radius` (6px) inside `.brand-manifest`
  * and to the global default radius outside it; `border-transparent` overrides Badge's base
  * `border-border`/`border-transparent` variant classes so no visible border ever renders.
- * Tailwind classes only, no raw hex.
+ *
+ * Colors (F89) reference the raw `--tone-X`/`--tone-X-bg` custom properties via Tailwind
+ * arbitrary-value classes (`bg-[var(...)]`/`text-[var(...)]`), not a derived `@theme --color-*`
+ * token — see the `.brand-manifest` comment in index.css for why a derived token would not
+ * re-resolve correctly inside the scoped override (the exact bug F88 found and fixed for
+ * `--primary`). Outside `.brand-manifest`, `--tone-X` resolves to the stock Tailwind hex
+ * equivalents declared at `:root`/`.dark`, so non-Plan-tab consumers are pixel-unchanged.
  */
 export const TONE_CHIP_CLASS: Record<Tone, string> = {
-  success: "text-green-700 bg-green-50 rounded-lg border-transparent",
-  warning: "text-amber-700 bg-amber-50 rounded-lg border-transparent",
-  caution: "text-orange-700 bg-orange-50 rounded-lg border-transparent",
-  danger: "text-red-700 bg-red-50 rounded-lg border-transparent",
-  "danger-strong": "text-red-800 bg-red-100 rounded-lg border-transparent",
+  success: "text-[var(--tone-success)] bg-[var(--tone-success-bg)] rounded-lg border-transparent",
+  warning: "text-[var(--tone-warning)] bg-[var(--tone-warning-bg)] rounded-lg border-transparent",
+  danger: "text-[var(--tone-danger)] bg-[var(--tone-danger-bg)] rounded-lg border-transparent",
+  "danger-strong":
+    "text-[var(--tone-danger-strong)] bg-[var(--tone-danger-strong-bg)] rounded-lg border-transparent",
   neutral: "text-muted-foreground bg-muted rounded-lg border-transparent",
 };
 
 /** Text-only appearance per tone (no background/border) — for inline value text. */
 export const TONE_TEXT_CLASS: Record<Tone, string> = {
-  success: "text-green-700",
-  warning: "text-amber-700",
-  caution: "text-orange-700",
-  danger: "text-red-600",
-  "danger-strong": "text-red-800",
+  success: "text-[var(--tone-success)]",
+  warning: "text-[var(--tone-warning)]",
+  danger: "text-[var(--tone-danger)]",
+  "danger-strong": "text-[var(--tone-danger-strong)]",
   neutral: "text-muted-foreground",
 };
 
 /**
- * Hex bridge — ONLY for contexts that need a computed inline style, such as a
+ * CSS var() bridge — ONLY for contexts that need a computed inline style, such as a
  * `<Progress>` bar fill driven by a CSS variable (Tailwind classes can't
  * target that). Chip/text rendering must always go through the class maps
  * above; this map exists so the header confidence/risk bars in PlanTab don't
  * need their own local hex literals.
+ *
+ * Values are `var(--tone-X)` references (not baked hex, F89) so an inline `style={{ color: ... }}`
+ * consumer re-resolves against the nearest ancestor's `--tone-X` override at render time — inline
+ * style values resolve per the cascade at the element, unlike the `@theme` derived-token
+ * indirection, so this is safe without the arbitrary-value-class workaround.
  */
 export const TONE_HEX: Record<Tone, string> = {
-  success: "#22c55e",
-  warning: "#f59e0b",
-  caution: "#f97316",
-  danger: "#ef4444",
-  "danger-strong": "#dc2626",
+  success: "var(--tone-success)",
+  warning: "var(--tone-warning)",
+  danger: "var(--tone-danger)",
+  "danger-strong": "var(--tone-danger-strong)",
   neutral: "#9ca3af",
 };
 
@@ -145,7 +155,7 @@ export type Criticality = "critical" | "high" | "medium" | "low" | "unknown";
 
 export const CRITICALITY_TONE: Record<Criticality, Tone> = {
   critical: "danger",
-  high: "caution",
+  high: "warning",
   medium: "warning",
   low: "success",
   unknown: "neutral",

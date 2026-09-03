@@ -148,7 +148,10 @@ export default function JobDetailPage(): React.ReactElement {
         <div
           className={cn(
             "sticky top-0 z-20 bg-background border-border border-b pb-2",
-            activeTab === "plan" && "brand-manifest",
+            // F89 margin fix: the outer JobDetailPage scroll container already applies `px-6`
+            // (24px). Plan tab needs a ~40px total inset to match PlanTab.tsx's content root, so
+            // add 16px more here, scoped to the Plan tab only — ETL/Data/BI/AI keep the shared 24px.
+            activeTab === "plan" && "brand-manifest px-4",
           )}
         >
           {/* Row 1: back button left, name + status centered */}
@@ -161,28 +164,27 @@ export default function JobDetailPage(): React.ReactElement {
             >
               <ArrowLeft size={18} />
             </button>
-            <div className="flex flex-col items-center gap-0.5">
-              <div className="flex items-center gap-3">
-                <span className="text-xl font-semibold text-foreground truncate">
-                  {job?.name ?? shortId}
-                </span>
-                {job && <StatusBadge status={job.status} />}
-              </div>
-              {planData && (
-                <span className="text-xs text-muted-foreground">
-                  {new Set(planData.block_plans.map((b) => b.source_file)).size} files
-                  {" · "}
-                  {planData.block_plans.length} steps
-                </span>
-              )}
+            <div className="flex items-center gap-3">
+              <span className="text-xl font-semibold text-foreground truncate">
+                {job?.name ?? shortId}
+              </span>
+              {job && <StatusBadge status={job.status} />}
             </div>
           </div>
 
-          {/* Row 2: tabs bar + right-aligned action cluster */}
-          <div className="flex items-center">
-            <ChevronTabBar activeTab={activeTab} />
+          {/* Row 2: files/steps subtitle left, action cluster right */}
+          <div className="flex items-center justify-between pb-2">
+            <span className="text-xs text-muted-foreground">
+              {planData && (
+                <>
+                  {new Set(planData.block_plans.map((b) => b.source_file)).size} files
+                  {" · "}
+                  {planData.block_plans.length} steps
+                </>
+              )}
+            </span>
 
-            <div className="ml-auto flex items-center gap-2">
+            <div className="flex items-center gap-2">
               {isAccepted ? (
                 <>
                   <Badge
@@ -234,6 +236,11 @@ export default function JobDetailPage(): React.ReactElement {
                 </>
               )}
             </div>
+          </div>
+
+          {/* Row 3: tab bar alone */}
+          <div className="flex items-center">
+            <ChevronTabBar activeTab={activeTab} />
           </div>
         </div>
 

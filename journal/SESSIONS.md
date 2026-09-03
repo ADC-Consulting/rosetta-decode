@@ -6,6 +6,136 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-08-31/09-02 — F89 final fidelity fixes, PRs #136/#137/#138 opened
+
+**Duration:** ~2h across a couple of check-ins | **Focus:** Closing out the remaining F89
+mockup-fidelity gaps and shipping the whole F87→F88→F89 "vibe coded" arc as stacked PRs
+
+### Done
+- Verified the two fixes committed just before this session's start (`f5aa665` button-row
+  position, `d65c081` amber-not-brown) directly in the browser, light + dark theme — both correct
+- Fresh comparison against the published Manifest mockup artboard (computed styles, not just
+  visual) found two more real gaps: the unified summary card's `rounded-xl` (from the shared
+  `Card` primitive) was never covered by the earlier `--radius-lg/-md/-sm` fix and still rendered
+  at stock 12px instead of scoped 6px; its PII accent strip was hardcoded to `bg-red-500` instead
+  of routing through `--tone-danger-strong`. Fixed both, delegated to `frontend-builder`, verified
+  via `getComputedStyle` in both themes, committed as `6302f2a`
+- Another comparison pass found "Needs attention" always showed all cards instead of the mockup's
+  3-card cap + "+N more · Show all" link. Turned out the expand/collapse mechanism already existed
+  in `AttentionCards` — it was just capped at 5, and the test job used throughout verification
+  happened to have exactly 5 items, hiding the gap entirely. One-line fix (`slice(0, 5)` →
+  `slice(0, 3)`), delegated, verified the "show all" link switches to the table view correctly,
+  committed as `b23224d`
+- Pushed all three branches (`feat/F87-design-consistency-shared-primitives`,
+  `feat/F88-manifest-design-system`, `feat/F89-manifest-color-fidelity`) to origin for the first
+  time and opened three stacked PRs: **#136** (F87 → main), **#137** (F88 → F87), **#138**
+  (F89 → F88). No GitHub issue existed for this work (started from a direct chat complaint, not a
+  filed issue) — user confirmed skipping the "Closes #N" line rather than fabricating one
+- `docs/plans/F89-manifest-color-fidelity.md` updated with both post-commit fix write-ups;
+  `journal/BACKLOG.md` updated with PR numbers and the two new completed post-commit items
+
+### Decisions
+- None new — the radius-xl/tone-strip fixes are additional instances of the already-locked
+  Tailwind v4 derived-token pattern (`DECISIONS.md` 2026-08-27), not a new pattern
+
+### Open Questions
+- Same three carried over, unchanged: dark-mode unified card border faintness, when to roll
+  Manifest out to other tabs, `BlockPlanTable`'s own Strategy chip shape
+
+### Next Session — Start Here
+1. PRs #136 → #137 → #138 must merge in that order (each targets the previous branch, not
+   `main`). Check review status / merge them if approved
+2. Decide on the dark-mode card border question, and whether/when to roll Manifest out further
+
+### Files Touched
+- `src/frontend/src/index.css`
+- `src/frontend/src/components/JobDetail/PlanTab.tsx`
+- `docs/plans/F89-manifest-color-fidelity.md`
+- `journal/BACKLOG.md`
+
+---
+
+## 2026-08-26/27 — "Vibe coded" fix: F87 consolidation → F88 Manifest design system → F89 color fidelity
+
+**Duration:** long session, spanned midnight 2026-08-26 → 2026-08-27 | **Focus:** Team feedback that
+the frontend "looks vibe coded" — root-cause, design-direction, implementation, and iterative
+fidelity fixes against a real deployed app
+
+### Done
+- **F87 (design-consistency-shared-primitives):** read-only audit found the root cause wasn't
+  "many small style bugs" but structural — `JobDetail/` had 9+ independently hand-rolled
+  status-pill/color-map/card implementations, including two disagreeing confidence-color maps.
+  Consolidated into `status-colors.ts` (single tone token module) + `StatusChip` component;
+  migrated `PlanTab`/`BlockPlanTable`/`StatusBadge`/`constants.ts`; committed, PR not opened
+- **Design exploration:** since F87 alone didn't resolve the "vibe coded" feeling, built 3
+  visual-direction mockups of the real Plan tab (Ledger/dense, Dossier/editorial, Manifest/
+  structured) as a published design-canvas Artifact; user picked **Manifest** (Archivo + Space
+  Mono, teal accent, 6px radius, one unified card) after evaluating tradeoffs; rollout explicitly
+  scoped to Plan tab + `BlockPlanTable` only, not the whole app
+- **F88 (manifest-design-system):** added a `.brand-manifest` CSS scope class in `index.css`
+  (new fonts/accent/radius tokens, global `:root`/`.dark` shadcn theme untouched) + restructured
+  `PlanTab`'s metrics section into one unified card. Hit and fixed a real Tailwind v4 bug along
+  the way: derived tokens (`--color-primary: var(--primary)`) declared once at `:root` don't
+  re-resolve through a nested primitive override — fixed via raw `var()` arbitrary-value classes.
+  Committed, then a same-day fixup commit closed 4 mockup-fidelity gaps (card border, tag styling,
+  KPI tile tinting)
+- **F89 (manifest-color-fidelity):** direct computed-color comparison against the mockup found F88
+  only changed shape, never actual hex values — Plan tab still rendered stock Tailwind colors.
+  Added scoped `--tone-*`/`--brand-paper` CSS variables (stock defaults at `:root`, muted Manifest
+  values inside `.brand-manifest`); fixed 2 more real bugs found by a color-usage audit (emerald/
+  green mismatch in `BeforeYouAcceptPanel`, redundant `caution`/orange tone merged into `warning`).
+  Hit the SAME derived-token indirection bug a second time, now for `--radius-lg`/`-md`/`-sm` —
+  every `rounded-lg` element was silently rendering at the old 10px instead of scoped 6px; fixed
+  and the pattern is now logged in `DECISIONS.md` so it isn't re-discovered a third time
+- **3 more rounds of user-driven fidelity review**, each found via direct inspection of the
+  running app rather than assumption: (1) Plan tab content padding was ~0 and `StatusBadge`'s
+  job-status pills still used stock Tailwind colors; (2) a fine-toothed-comb audit found a 44px
+  header/body misalignment, Table-view identifier truncation, Strategy filter-pill/chip shape
+  mismatch, an off-grid icon, inconsistent banner heading weight; (3) content margin was still
+  tight (25px from sidebar) after the alignment fix, and "Needs attention" cards were 1-column
+  instead of the mockup's 2-column grid — both fixed
+- 7 commits total on `feat/F89-manifest-color-fidelity` (stacked on `feat/F88-...` on
+  `feat/F87-...`); all `make test` gates green throughout; nothing pushed to remote yet
+
+### Decisions
+- Manifest design direction chosen over Ledger/Dossier; rollout scoped to Plan tab +
+  `BlockPlanTable` only (see `DECISIONS.md` 2026-08-26)
+- `caution` tone merged into `warning` (5 tones total); chevron tab bar shape kept, not replaced
+  with the mockup's pill tabs (see `DECISIONS.md` 2026-08-27)
+- Locked pattern: any future `.brand-manifest`-style scoped CSS override must redeclare Tailwind's
+  *derived* token (or use a raw `var()` arbitrary-value class), not just the primitive — see
+  `DECISIONS.md` 2026-08-27 for the full mechanism
+
+### Open Questions
+- Dark-mode unified card border is faint on 3 of 4 edges (shadcn default) — flagged, not yet
+  decided whether to strengthen or leave as-is
+- When to roll the Manifest system out to the remaining tabs (Data Storage, ETL graph, Lineage,
+  Docs, Explain, jobs list, sidebar) — explicit follow-up, not scheduled
+
+### Next Session — Start Here
+1. Push `feat/F87-design-consistency-shared-primitives`, `feat/F88-manifest-design-system`, and
+   `feat/F89-manifest-color-fidelity` and open PRs (stacked, in that order) — nothing pushed yet
+2. Decide on the dark-mode card border question, and whether/when to roll Manifest out further
+
+### Files Touched
+- `src/frontend/src/index.css`
+- `src/frontend/src/components/JobDetail/status-colors.ts` (new)
+- `src/frontend/src/components/JobDetail/StatusChip.tsx` (new)
+- `src/frontend/src/components/JobDetail/PlanTab.tsx`
+- `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
+- `src/frontend/src/components/JobDetail/StatusBadge.tsx`
+- `src/frontend/src/components/JobDetail/BeforeYouAcceptPanel.tsx`
+- `src/frontend/src/components/JobDetail/ChevronTabBar.tsx`
+- `src/frontend/src/components/JobDetail/constants.ts`
+- `src/frontend/src/pages/JobDetailPage.tsx`
+- `src/frontend/package.json` / `package-lock.json`
+- `docs/plans/F87-design-consistency-shared-primitives.md` (new)
+- `docs/plans/F88-manifest-design-system.md` (new)
+- `docs/plans/F89-manifest-color-fidelity.md` (new)
+- `journal/BACKLOG.md`, `journal/DECISIONS.md`
+
+---
+
 ## 2026-07-10 — Plan tab polish: layout, amber banner, copy button
 
 **Duration:** ~1h | **Focus:** Post-F86 Plan tab polish — three UX fixes after PR #129 merged

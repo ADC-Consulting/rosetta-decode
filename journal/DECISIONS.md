@@ -6,6 +6,44 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-08-27 — F89 color-fidelity fixes: tone cleanup + a locked Tailwind v4 scoping pattern
+
+- **`caution` tone (orange) merged into `warning` (amber):** criticality tier "high" previously
+  rendered as its own orange hue, visually redundant next to `warning`'s amber for tier "medium" —
+  the two read as noise rather than a distinct signal at chip size. Collapsed to 5 semantic tones
+  total (`success`/`warning`/`danger`/`danger-strong`/`neutral`); the tier label text still
+  distinguishes "high" from "medium" · rationale: user evaluated the tradeoff and chose to merge
+  rather than pick a more distinct orange · revisit if a client explicitly needs a 4th visual
+  severity tier
+- **Chevron/arrow tab bar shape kept, not replaced with the Manifest mockup's plain pill tabs:**
+  the mockups (this session) happened to use a plain rounded-pill tab bar as a stylistic choice
+  when built, but `ChevronTabBar` is shared across all 5 tabs and was a deliberate earlier design
+  decision (see 2026-06-02 entry, "aligns UI with migration pipeline stages") · rationale: the
+  user was never asked to sign off on replacing the chevron interaction specifically, only the
+  color/type/radius/density direction; changing it is a bigger, more visible interaction change
+  than the rest of F88/F89's scope · revisit only if the chevron shape itself gets explicitly
+  reconsidered in a future session
+- **LOCKED PATTERN — scoping a CSS custom property override inside `.brand-manifest` must
+  redeclare the *derived* Tailwind token, not just the primitive:** Tailwind v4's `@theme` block
+  derives tokens like `--color-primary: var(--primary)` and `--radius-lg: var(--radius)` **once,
+  at `:root` only**. A `var()` reference inside a custom-property's OWN declared value resolves
+  using the cascade at the element where THAT property is declared — so overriding just the
+  primitive (`--primary`, `--radius`) in a nested scope does NOT retroactively change what the
+  derived token (`--color-primary`, `--radius-lg`) already resolved to at `:root`; utility classes
+  built on the derived token (`bg-primary`, `rounded-lg`) silently keep rendering the old value.
+  Hit and fixed twice this session (once for `--color-primary`/teal accent in F88, once for
+  `--radius-lg`/`--radius-md`/`--radius-sm`/6px-radius in F89) before the pattern was recognized
+  and named. **The fix, and the pattern to follow for any future scoped token:** either (a)
+  redeclare the derived token directly in the scope too (simplest — one extra line per token,
+  used for the radius fix), or (b) reference the raw primitive directly via a Tailwind
+  arbitrary-value class (`bg-[var(--primary)]` instead of `bg-primary`), bypassing the derived
+  token's indirection entirely (used for color, since dozens of consuming classes existed) ·
+  rationale: burned real time twice on the same root cause; recording it so it's not
+  re-discovered a third time · revisit never — applies to any future `.brand-manifest`-style
+  scoped override
+
+---
+
 ## 2026-08-26 — "Manifest" design direction chosen to address "vibe coded" feedback
 
 - **Design direction "Manifest" selected over "Ledger" (dense/plain-text) and "Dossier" (editorial/serif):** three concrete visual-direction mockups of the Plan tab were built and published as a design canvas Artifact (see session journal) after F87's structural-consistency fix did not resolve the underlying "vibe coded" perception. Manifest — Archivo + Space Mono type pairing, a teal brand accent (distinct from the existing semantic red/amber/green), a consistent 6px radius scale, and one unified summary card in place of five stacked boxes — was chosen as the best fit for a compliance/audit B2B tool: enough structure (badges, one card) for reviewers to scan a dense steps table quickly, without the plain-color-only scan risk of Ledger or the editorial/content-site tone of Dossier · rationale: user explicitly evaluated all three and confirmed Manifest · revisit if user feedback after rollout says otherwise
