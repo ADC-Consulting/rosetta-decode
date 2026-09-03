@@ -18,14 +18,20 @@
  */
 export type Tone = "success" | "warning" | "caution" | "danger" | "danger-strong" | "neutral";
 
-/** Chip appearance per tone: background + text + border. Tailwind classes only, no raw hex. */
+/**
+ * Chip appearance per tone: filled background, no border, 6px radius — the "Manifest" pill
+ * convention (F88). `rounded-lg` resolves to the scoped `--radius` (6px) inside `.brand-manifest`
+ * and to the global default radius outside it; `border-transparent` overrides Badge's base
+ * `border-border`/`border-transparent` variant classes so no visible border ever renders.
+ * Tailwind classes only, no raw hex.
+ */
 export const TONE_CHIP_CLASS: Record<Tone, string> = {
-  success: "text-green-700 bg-green-50 border border-green-200",
-  warning: "text-amber-700 bg-amber-50 border border-amber-200",
-  caution: "text-orange-700 bg-orange-50 border border-orange-200",
-  danger: "text-red-700 bg-red-50 border border-red-200",
-  "danger-strong": "text-red-800 bg-red-100 border border-red-300",
-  neutral: "text-muted-foreground bg-muted border border-border",
+  success: "text-green-700 bg-green-50 rounded-lg border-transparent",
+  warning: "text-amber-700 bg-amber-50 rounded-lg border-transparent",
+  caution: "text-orange-700 bg-orange-50 rounded-lg border-transparent",
+  danger: "text-red-700 bg-red-50 rounded-lg border-transparent",
+  "danger-strong": "text-red-800 bg-red-100 rounded-lg border-transparent",
+  neutral: "text-muted-foreground bg-muted rounded-lg border-transparent",
 };
 
 /** Text-only appearance per tone (no background/border) — for inline value text. */

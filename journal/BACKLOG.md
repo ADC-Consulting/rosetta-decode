@@ -617,6 +617,18 @@
 - [x] F87 S-J: manual smoke test (light + dark theme)
 - [x] F87 S-K: `make tsc-check && make frontend-lint && make frontend-build && make test` exit 0
 
+**F88 — "Manifest" design system: Plan tab + ETL block table → see `docs/plans/F88-manifest-design-system.md`**
+- [x] F88 S-A: add `@fontsource/archivo` + `@fontsource/space-mono` → `src/frontend/package.json`
+- [x] F88 S-B: scoped `.brand-manifest` theme tokens (fonts, teal accent, 6px radius) → `src/frontend/src/index.css`
+- [x] F88 S-C: `status-colors.ts` → Manifest pill styling
+- [x] F88 S-D: `StatusChip.tsx` → Manifest pill rendering
+- [x] F88 S-E: `StatusBadge.tsx` → align to new pill convention
+- [x] F88 S-F: `PlanTab.tsx` — apply brand scope to header (Archivo title, teal accent button/tabs) — caveat: title/tabs/Accept button live in `JobDetailPage.tsx` (shared header, out of subtask scope), see plan file note
+- [x] F88 S-G: `PlanTab.tsx` — unified summary card restructure (top-edge color bar, one card)
+- [x] F88 S-H: `BlockPlanTable.tsx` → Manifest conventions (Space Mono step ids, 6px radius)
+- [x] F88 S-I: manual smoke test (light + dark, zero bleed into other tabs)
+- [x] F88 S-J: `make tsc-check && make frontend-lint && make frontend-build && make test` exit 0
+
 **Service delivery documentation (existing GitHub issues)**
 - [ ] #109: Define ADC SAS migration delivery kit
 - [ ] #75: Define knowledge transfer guide

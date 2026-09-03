@@ -2,6 +2,18 @@
 @import "tw-animate-css";
 @import "@fontsource-variable/geist";
 
+/* "Manifest" brand fonts — self-hosted, scoped to .brand-manifest below (see that rule for why
+   these are not added to the global --font-sans / :root). Archivo weights match the approved
+   mockup's `@fontsource-variable/geist` sibling packages 400/500/600/700/800; Space Mono only
+   ships 400/700 upstream, so those are the two weights available. */
+@import "@fontsource/archivo/400.css";
+@import "@fontsource/archivo/500.css";
+@import "@fontsource/archivo/600.css";
+@import "@fontsource/archivo/700.css";
+@import "@fontsource/archivo/800.css";
+@import "@fontsource/space-mono/400.css";
+@import "@fontsource/space-mono/700.css";
+
 @theme {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -138,6 +150,34 @@ body {
     @apply font-sans;
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * "Manifest" brand scope (F88) — Plan tab + BlockPlanTable only.
+ *
+ * Locally redeclares the shadcn tokens consumed by @theme (--color-primary, --radius-lg/md/sm,
+ * --font-sans) PLUS --font-mono, within this class selector only. Deliberately NOT added to
+ * :root/.dark — those stay the global default so every other tab/page is unaffected. Because
+ * `--color-primary: var(--primary)` etc. are resolved at each element's point of use (not baked
+ * in where the token chain is declared), wrapping a DOM subtree in `.brand-manifest` makes any
+ * existing shadcn-token-based classes (bg-primary, rounded-lg, font-sans, font-mono, ...) already
+ * used inside that subtree pick up the new look for free — no new component variants needed.
+ *
+ * `font-family` is set explicitly here (not just the --font-sans variable) so plain text that
+ * has no explicit `font-sans` utility class of its own still inherits Archivo, the same way the
+ * global look depends on `html { @apply font-sans; }` rather than the --font-sans variable alone.
+ * --font-mono is scoped the same way so `font-mono` utility usage (step-id cells, file badges)
+ * picks up Space Mono without touching the global mono stack.
+ * --------------------------------------------------------------------------- */
+.brand-manifest {
+  --primary: #0f7d72;
+  --primary-foreground: #ffffff;
+  --radius: 6px;
+  --font-sans: "Archivo", system-ui, sans-serif;
+  --font-mono: "Space Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --brand-teal: #0f7d72;
+  font-family: var(--font-sans);
+}
+
 .monaco-block-highlight {
   background: rgba(99, 102, 241, 0.12) !important;
   border-left: 2px solid rgba(99, 102, 241, 0.6);

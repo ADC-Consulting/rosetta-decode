@@ -42,7 +42,7 @@ export default function ChevronTabBar({ activeTab }: ChevronTabBarProps): React.
         const baseClasses =
           "relative h-9 rounded-none border-0 px-6 text-sm font-medium transition-colors cursor-pointer";
         const stateClasses = isActive
-          ? "bg-primary text-primary-foreground"
+          ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
           : isVisited
             ? "bg-muted/70 text-foreground hover:bg-muted/80"
             : "bg-muted/30 text-muted-foreground hover:bg-muted/50";
