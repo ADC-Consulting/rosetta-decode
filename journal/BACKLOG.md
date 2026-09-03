@@ -686,9 +686,18 @@
   dark-mode support to the graph if it doesn't have any
 
 **Compute backend correctness (existing GitHub issues)**
-- [ ] #139: README misstates both compute backends — `CLOUD=true` claims Databricks/PySpark but
-  `factory.py` raises `NotImplementedError` (no `databricks.py`); `CLOUD=false` claims
-  pandas/PostgreSQL but `local.py` uses in-memory `sqlite3`
+- [x] #139: README misstated both compute backends — fixed in `README.md` (opening summary, the
+  architecture diagram, and a directory-listing comment) and `docs/architecture.md` (diagram +
+  tech-stack table): `ComputeBackend` is reconciliation-only and never touches generated code
+  (which is always PySpark, per `DataStepAgent`'s prompt); `LocalBackend` uses pandas + in-memory
+  SQLite, not PostgreSQL; `DatabricksBackend` is "not yet implemented," not a working feature.
+  PostgreSQL's real role (job-state store) already had its own diagram box, untouched. GitHub repo
+  description has the same overclaim ("translate to PySpark/Databricks") — flagged separately,
+  not fixed here (live setting, not a file)
+- [x] Found while explaining #139: TensorZero (an optional LLM gateway every worker agent can
+  route through via `TENSORZERO_GATEWAY_URL`) was completely undocumented — it runs as its own
+  service and uses the same Postgres instance for `pg_cron`/`pgvector`, unrelated to the app's own
+  tables. Added a short mention to `docs/architecture.md` (diagram note + tech-stack row)
 - [x] #140: `CLOUD=true` accepted at worker startup, only fails after a job is marked running
   (`main.py:369` → `main.py:1253`) — fixed via a pydantic validator on `WorkerSettings.cloud`
   (`src/worker/core/config.py`), crashing the process at boot instead of failing every job after a
