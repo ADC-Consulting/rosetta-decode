@@ -689,8 +689,11 @@
 - [ ] #139: README misstates both compute backends — `CLOUD=true` claims Databricks/PySpark but
   `factory.py` raises `NotImplementedError` (no `databricks.py`); `CLOUD=false` claims
   pandas/PostgreSQL but `local.py` uses in-memory `sqlite3`
-- [ ] #140: `CLOUD=true` accepted at worker startup, only fails after a job is marked running
-  (`main.py:369` → `main.py:1253`) — should be rejected in `worker_settings` validation instead
+- [x] #140: `CLOUD=true` accepted at worker startup, only fails after a job is marked running
+  (`main.py:369` → `main.py:1253`) — fixed via a pydantic validator on `WorkerSettings.cloud`
+  (`src/worker/core/config.py`), crashing the process at boot instead of failing every job after a
+  full paid LLM pipeline run. `.env.example` note still pending (blocked by sandbox permissions on
+  `.env*` paths — user to add manually), tracked as its own follow-up commit
 
 **Service delivery documentation (existing GitHub issues)**
 - [ ] #109: Define ADC SAS migration delivery kit
