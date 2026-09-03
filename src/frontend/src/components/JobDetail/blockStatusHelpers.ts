@@ -36,19 +36,23 @@ export const STATUS_CONFIG: Record<
   },
   failed: {
     label: "Failed",
-    className: "bg-red-100 text-red-800 border border-red-200",
+    className:
+      "bg-[var(--tone-danger-bg)] text-[var(--tone-danger)] border border-[var(--tone-danger)]/30",
   },
   manual: {
     label: "Manual",
-    className: "bg-red-100 text-red-800 border border-red-200",
+    className:
+      "bg-[var(--tone-danger-bg)] text-[var(--tone-danger)] border border-[var(--tone-danger)]/30",
   },
   review: {
     label: "Review",
-    className: "bg-amber-100 text-amber-800 border border-amber-200",
+    className:
+      "bg-[var(--tone-warning-bg)] text-[var(--tone-warning)] border border-[var(--tone-warning)]/30",
   },
   pass: {
     label: "Pass",
-    className: "bg-green-100 text-green-800 border border-green-200",
+    className:
+      "bg-[var(--tone-success-bg)] text-[var(--tone-success)] border border-[var(--tone-success)]/30",
   },
   pending: {
     label: "Pending",

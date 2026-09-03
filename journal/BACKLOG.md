@@ -659,13 +659,16 @@
 - [x] F90 S-J: `make tsc-check && make frontend-lint && make frontend-build && make test` exit 0
 
 **Manifest design system — follow-up (not yet scheduled)**
-- [ ] Unify `BlockPlanTable.tsx`'s own Strategy column chip (`translated` blue / `translated_with_review`
-  amber, hand-rolled) with the shared `StatusChip` pill shape/system — tracked since F87, still
-  a small, deliberate gap (matches the approved mockup, not a bug, but worth revisiting for full
-  consistency)
+- [x] `BlockPlanTable.tsx`'s Strategy column chip colors unified with the tone system — the pill
+  *shape* was already fixed in F89; this pass fixed the remaining hardcoded `manual`/
+  `translated_with_review` colors (now `--tone-danger`/`--tone-warning`) plus the same duplication
+  in the "Active stat filter chip." The `translated` branch's blue is a confirmed-deliberate
+  exception (matches the approved mockup's Steps table) and was left untouched
 - [ ] Dark-mode unified summary card border is faint on 3 of 4 edges (shadcn's default ~10%-opacity
   white border) — only clearly visible where the colored top-edge accent bar sits. Flagged during
   the fine-toothed-comb audit; user has not yet decided whether to strengthen it or leave as-is
+- [x] Deleted `components/JobDetail/LineageTab.tsx` — confirmed dead code (no imports anywhere),
+  the real Lineage surface is `GlobalLineagePage.tsx` → `LineageGraph.tsx`
 - [ ] shadcn `Dialog` portals to `document.body`, escaping any `.brand-manifest` scope — dialogs
   render stock/unthemed when opened, even inside an already-scoped surface. Found in F90 S-C
   (`BlockCodePopup.tsx`, `FileViewPopup.tsx`) and S-G (`ExplainPage.tsx`'s mode-switch confirmation
@@ -673,10 +676,8 @@
   applies `.brand-manifest` unconditionally to the `JobDetailPage` shell, wiring a `container` prop
   on each `Dialog` to its nearest `.brand-manifest` ancestor (or `document.body` once/if the scope
   ever moves to the app root) is the fix — needs a decision on which
-- [ ] `blockStatusHelpers.ts`'s `STATUS_CONFIG` (consumed by `BlockDetailPanel.tsx`,
-  `FileBlockListPanel.tsx`, and the shared `BlockRow` in `blockRowHelpers.tsx`) still hand-rolls
-  `bg-green/amber/red/teal-100` status colors one level removed via import — found in F90 S-C but
-  out of that subtask's file-list scope; needs its own pass
+- [x] `blockStatusHelpers.ts`'s `STATUS_CONFIG` hand-rolled colors — fixed as a follow-up to F90
+  (see below)
 - [ ] `LineageGraph.tsx`'s `STATUS_STYLE`/`STATUS_SYMBOL` maps (node border/glyph color) use
   literal inline-style hex (`#22c55e`/`#f59e0b`/`#ef4444` — success/warning/danger) with no
   existing dark-mode handling at all — found in F90 S-E, deliberately not fixed as a drive-by
