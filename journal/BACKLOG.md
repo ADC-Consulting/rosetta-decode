@@ -705,8 +705,9 @@ its own design pass first)**
   container-resolution timing bug along the way (`useBrandManifestContainer()`'s approach doesn't
   work when called at the same component's top level as its own `.brand-manifest` div; fixed with
   a callback-ref-via-state pattern instead)
-- [ ] F92 S-E: full manual smoke test
-- [ ] F92 S-F: `make tsc-check && make frontend-lint && make frontend-build && make test` exit 0
+- [x] F92 S-E: full manual smoke test — verified live (no-target and zip-target submissions,
+  light/dark theming)
+- [x] F92 S-F: `make tsc-check && make frontend-lint && make frontend-build && make test` exit 0
 
 **Plan tab effort estimate looks off (found during demo prep, not yet investigated)**
 - [ ] The "Before you accept" panel's "Estimated effort: ~Xh" figure looked wrong on the

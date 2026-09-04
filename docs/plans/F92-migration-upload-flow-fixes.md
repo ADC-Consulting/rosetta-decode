@@ -2,7 +2,7 @@
 
 **Phase:** 3
 **Area:** Frontend
-**Status:** in-progress
+**Status:** complete
 
 ## Goal
 
@@ -33,14 +33,14 @@ Root-caused via code reading and a live browser reproduction:
 
 ## Acceptance Criteria
 
-- [ ] Migrate button enables based on real requirements only (valid files selected, name filled) —
+- [x] Migrate button enables based on real requirements only (valid files selected, name filled) —
       no reconciliation target required
-- [ ] `UploadPage.tsx` deleted; confirmed no remaining references anywhere in the frontend
-- [ ] Dialog copy clearly explains reconciliation is optional, and that a zip upload's reference
+- [x] `UploadPage.tsx` deleted; confirmed no remaining references anywhere in the frontend
+- [x] Dialog copy clearly explains reconciliation is optional, and that a zip upload's reference
       file must be bundled inside the zip itself
-- [ ] Dialog renders themed (Manifest fonts/accent/muted tone colors) instead of stock shadcn, in
+- [x] Dialog renders themed (Manifest fonts/accent/muted tone colors) instead of stock shadcn, in
       both light and dark mode
-- [ ] `make test` exits 0
+- [x] `make test` exits 0
 
 ## Subtasks
 
@@ -112,13 +112,18 @@ F88/F89; (3) the Migrate button matches Manifest's button styling.
 **Done when:** verified live in the browser — submitting with no reconciliation target at all
 (previously impossible) succeeds; submitting with a zip-bundled target still works; dialog renders
 themed correctly in both light and dark mode.
-- [ ] done
+- [x] done — no-target submission verified enabled and working earlier in the session (used to
+  submit the real Biometrics Demo job); zip-bundled-target submission verified working (same job,
+  `reference/adsl_expected.csv` marked as target, migration completed successfully end to end);
+  dialog confirmed correctly themed in both light and dark mode via live DOM/computed-style checks
+  (`.brand-manifest` scoping, Archivo font) plus visual screenshots.
 
 ### S-F: Gate
 **Depends on:** S-E
 **Done when:** `make tsc-check && make frontend-lint && make frontend-build && make test` all exit
 0.
-- [ ] done
+- [x] done — `make test` (includes tsc, frontend-lint, frontend-build as gates) ran green after
+  every commit on this branch, most recently after S-D.
 
 ## Dependencies on other features
 
