@@ -664,26 +664,26 @@
   `translated_with_review` colors (now `--tone-danger`/`--tone-warning`) plus the same duplication
   in the "Active stat filter chip." The `translated` branch's blue is a confirmed-deliberate
   exception (matches the approved mockup's Steps table) and was left untouched
-- [ ] Dark-mode unified summary card border is faint on 3 of 4 edges (shadcn's default ~10%-opacity
-  white border) — only clearly visible where the colored top-edge accent bar sits. Flagged during
-  the fine-toothed-comb audit; user has not yet decided whether to strengthen it or leave as-is
 - [x] Deleted `components/JobDetail/LineageTab.tsx` — confirmed dead code (no imports anywhere),
   the real Lineage surface is `GlobalLineagePage.tsx` → `LineageGraph.tsx`
-- [ ] shadcn `Dialog` portals to `document.body`, escaping any `.brand-manifest` scope — dialogs
-  render stock/unthemed when opened, even inside an already-scoped surface. Found in F90 S-C
-  (`BlockCodePopup.tsx`, `FileViewPopup.tsx`) and S-G (`ExplainPage.tsx`'s mode-switch confirmation
-  dialog); `PlanTab.tsx`'s own `Dialog` (shipped in F88) has the identical gap. Now that F90 S-H
-  applies `.brand-manifest` unconditionally to the `JobDetailPage` shell, wiring a `container` prop
-  on each `Dialog` to its nearest `.brand-manifest` ancestor (or `document.body` once/if the scope
-  ever moves to the app root) is the fix — needs a decision on which
 - [x] `blockStatusHelpers.ts`'s `STATUS_CONFIG` hand-rolled colors — fixed as a follow-up to F90
   (see below)
-- [ ] `LineageGraph.tsx`'s `STATUS_STYLE`/`STATUS_SYMBOL` maps (node border/glyph color) use
-  literal inline-style hex (`#22c55e`/`#f59e0b`/`#ef4444` — success/warning/danger) with no
-  existing dark-mode handling at all — found in F90 S-E, deliberately not fixed as a drive-by
-  change to this 1294-line shared component (used by both the standalone Lineage page and the
-  ETL tab's embedded view); needs its own reviewed subtask, ideally paired with adding proper
-  dark-mode support to the graph if it doesn't have any
+- [x] Correction: `LineageGraph.tsx`'s `STATUS_STYLE`/`STATUS_SYMBOL` was previously described here
+  as "no dark-mode handling at all" — wrong, checked live in the browser and the graph renders
+  fine in dark mode (fixed-light node cards by design, same pattern `TargetGraph.tsx` already
+  uses). The real bug, and it's in **both** files: `TargetGraph.tsx`'s `STATUS_COLOR_MAP` has the
+  identical stock unmuted hex triad, missed during F90 S-C since that audit only grepped Tailwind
+  classes, not inline hex in a JS `Record`. See F91 below for the actual fix.
+
+**F91 — Close out the three remaining F90 design follow-ups → see `docs/plans/F91-design-followups.md`**
+- [ ] F91 S-A: strengthen the dark-mode card border → `PlanTab.tsx`
+- [ ] F91 S-B: thread a `container` prop through the shared `Dialog` wrapper → `ui/dialog.tsx`
+- [ ] F91 S-C: apply `container` at the four dialog usage sites (`BlockCodePopup.tsx`,
+  `FileViewPopup.tsx`, `ExplainPage.tsx`, `PlanTab.tsx`) via a shared hook
+- [ ] F91 S-D: fix `TargetGraph.tsx`'s hardcoded status colors (`STATUS_COLOR_MAP`)
+- [ ] F91 S-E: fix `LineageGraph.tsx`'s hardcoded status colors (`STATUS_STYLE`/`STATUS_SYMBOL`)
+- [ ] F91 S-F: full manual smoke test, light + dark
+- [ ] F91 S-G: `make tsc-check && make frontend-lint && make frontend-build && make test` exit 0
 
 **Compute backend correctness (existing GitHub issues)**
 - [ ] #139: README misstates both compute backends — `CLOUD=true` claims Databricks/PySpark but
