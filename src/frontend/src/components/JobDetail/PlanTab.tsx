@@ -912,7 +912,7 @@ export default function PlanTab({
           const hasPii = piiSignals.length > 0;
 
           return (
-            <Card className="gap-0 py-0 border border-border">
+            <Card className="gap-0 py-0 border border-border plan-summary-card">
               <div
                 className={cn(
                   "h-[3px] shrink-0",

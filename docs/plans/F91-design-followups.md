@@ -38,7 +38,15 @@ now made, and live browser verification corrected the scope of the third — see
 **Depends on:** none
 **Done when:** the unified summary card's border reads clearly on all four edges in dark mode via
 a scoped `dark:` variant on this one card, with light mode pixel-unchanged.
-- [ ] done
+- [x] done — the planned `dark:border-white/20` Tailwind variant turned out to have zero effect:
+  filed as its own bug, **#144** — this project's Tailwind `dark:` variant compiles to
+  `@media (prefers-color-scheme: dark)`, not this app's actual `.dark`-class theme toggle
+  (`enableSystem={false}` in `App.tsx`), so no `dark:`-prefixed utility anywhere in the app has
+  ever responded to the in-app switcher. Routed around it using this project's already-proven
+  pattern instead: a hand-written `.dark .brand-manifest .plan-summary-card { border-color: rgb(255
+  255 255 / 0.2); }` rule in `index.css`. Verified via the app's real theme toggle (not just
+  `.dark` class injection): `borderColor` computed style correctly flips between the stock value
+  and the strengthened one as the toggle is clicked, light mode pixel-unchanged.
 
 ### S-B: Thread a `container` prop through the shared `Dialog` wrapper
 **File:** `src/frontend/src/components/ui/dialog.tsx`
