@@ -377,7 +377,8 @@
 - [x] #45: AI tab placeholder — empty state delivered in F28 S-C, issue closed
 - [ ] #46: Remove legacy tab components — blocked: depends on #41–45
 - [ ] #47: Remove legacy standalone pages and routes — blocked: depends on #46
-- [ ] #52: Revisit sidebar navigation — blocked on persona validation
+- [ ] #52: Revisit sidebar navigation — blocked on persona validation (scope is nav content/
+  structure only — collapse already shipped, see note further down)
 - [x] fix(frontend): PlanTab review queue — removed `.slice(0, 10)` cap; all items now render sorted by criticality
 
 **F35 — Remediation runbook (#19) → see plan at .claude/plans/generate-runbook-for-high-risk-expressive-kernighan.md**
@@ -577,7 +578,8 @@
 **Cleanup / tech debt**
 - [ ] #47: Remove legacy standalone pages and routes
 - [ ] #46: Remove legacy tab components from JobDetailPage
-- [ ] #52: UX — revisit sidebar navigation (align with confirmed user personas)
+- [ ] #52: UX — revisit sidebar navigation (align with confirmed user personas; scope is nav
+  content/structure only — collapse already shipped, see note further down)
 - [ ] #45: AI tab placeholder for AI side-effect data capture
 - [ ] #44: BI tab placeholder for BI side-effect data capture
 
@@ -708,6 +710,30 @@ its own design pass first)**
 - [x] F92 S-E: full manual smoke test — verified live (no-target and zip-target submissions,
   light/dark theming)
 - [x] F92 S-F: `make tsc-check && make frontend-lint && make frontend-build && make test` exit 0
+- [x] F92: pushed `fix/F92-migration-upload-flow-fixes`, opened PR #149 against `fix/F91-design-followups`
+  (stacked — depends on F91/#145's `useBrandManifestContainer()`, not yet merged)
+
+**Migrations page redesign — mockup approved, not yet implemented**
+- [ ] Build the "Manifest"-styled Migrations page redesign against the real `JobsPage.tsx`/
+  `AppSidebar.tsx` — mockup source preserved at `docs/design/MigrationsPage.dc.html` (single
+  1440×940 artboard). Covers: a real Rosetta logo mark (three-bar teal wordmark, replacing the
+  flat foreground-color square), the sidebar's four nav icons corrected to real lucide-react
+  paths, search input + status filter pill + primary "New migration" button, a sortable table with
+  icon-bearing status chips (Needs Review/Running/Accepted/Failed) on Manifest tone tokens,
+  per-row sensitive-data warning icon, contextual row actions (Trace/Watch live/Download) plus a
+  kebab menu, and a bulk-selection hint row. Not scoped into subtasks yet — needs its own
+  plan-feature pass before implementation (touches `JobsPage.tsx` and possibly shared
+  `status-colors.ts`/badge components; check for drift against the real components before
+  building, same as the #52/#148 correction below)
+
+**#52 / #148 sidebar — correction: collapse already exists, don't rebuild it**
+- Built a two-state mockup (expanded 220px / collapsed 56px icon rail) for `AppSidebar.tsx`,
+  intending to propose it as a fix for #52. Before implementing, re-read the live component and
+  found collapse is already fully shipped (`ICON_COL = 56`, `localStorage` persistence, chevron
+  flip, hover tooltips) — predates this session (`6b0137f`). No implementation needed; mockup
+  discarded. Whatever #52/#148's remaining sidebar scope is, it's nav *content/structure*
+  (currently 4 flat, equally-weighted items: Migrations/Lineage/Docs/Explain — no grouping, no
+  usage-weighted hierarchy), not the collapse mechanism.
 
 **Plan tab effort estimate looks off (found during demo prep, not yet investigated)**
 - [ ] The "Before you accept" panel's "Estimated effort: ~Xh" figure looked wrong on the
