@@ -261,6 +261,18 @@ body {
   --brand-paper: #1c2321;
 }
 
+/* Plan tab summary card border strengthening (F91 dark-mode follow-up). border-border resolves to
+   a near-invisible hairline on the dark --brand-paper background. The natural fix (a `dark:`
+   Tailwind utility on the Card, e.g. `dark:border-white/20`) has no effect in this app — see #144:
+   this project's `dark:` variant compiles to `@media (prefers-color-scheme: dark)`, not the actual
+   `.dark` class toggle (`next-themes` here runs with `enableSystem={false}`, fully decoupled from
+   OS preference). Routing around that bug the same way the rest of F88/F89 already does: a
+   hand-written `.dark <scope>` selector, scoped to `.plan-summary-card` specifically (not every
+   bordered surface in `.brand-manifest`) so this doesn't change borders elsewhere in the tab. */
+.dark .brand-manifest .plan-summary-card {
+  border-color: rgb(255 255 255 / 0.2);
+}
+
 .monaco-block-highlight {
   background: rgba(99, 102, 241, 0.12) !important;
   border-left: 2px solid rgba(99, 102, 241, 0.6);

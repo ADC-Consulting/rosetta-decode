@@ -71,11 +71,11 @@ const STATUS_STYLE: Record<
   LineageNode["status"],
   { background: string; border: string; color: string }
 > = {
-  migrated: { background: "#f5f5f5", border: "#22c55e", color: "#1a1a1a" },
-  manual_review: { background: "#f5f5f5", border: "#f59e0b", color: "#1a1a1a" },
+  migrated: { background: "#f5f5f5", border: "#137a52", color: "#1a1a1a" },
+  manual_review: { background: "#f5f5f5", border: "#b5680d", color: "#1a1a1a" },
   unrecognized: {
     background: "#f5f5f5",
-    border: "#ef4444",
+    border: "#b3261e",
     color: "#1a1a1a",
   },
 };
@@ -85,9 +85,9 @@ const STATUS_SYMBOL: Record<
   LineageNode["status"],
   { symbol: string; color: string }
 > = {
-  migrated: { symbol: "✓", color: "#22c55e" },
-  manual_review: { symbol: "⚠", color: "#f59e0b" },
-  unrecognized: { symbol: "✗", color: "#ef4444" },
+  migrated: { symbol: "✓", color: "#137a52" },
+  manual_review: { symbol: "⚠", color: "#b5680d" },
+  unrecognized: { symbol: "✗", color: "#b3261e" },
 };
 
 function abbrevBlockType(bt: string): string {
@@ -662,9 +662,9 @@ const SECTION_LABEL_STYLE: React.CSSProperties = {
 };
 
 const STATUS_ENTRIES: { color: string; label: string }[] = [
-  { color: "#22c55e", label: "All migrated" },
-  { color: "#f59e0b", label: "Needs review" },
-  { color: "#ef4444", label: "Has failures" },
+  { color: "#137a52", label: "All migrated" },
+  { color: "#b5680d", label: "Needs review" },
+  { color: "#b3261e", label: "Has failures" },
 ];
 
 const EDGE_ENTRIES: { reason: string; color: string; dash?: string }[] = [

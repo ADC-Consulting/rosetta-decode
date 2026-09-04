@@ -248,9 +248,9 @@ function SectionLabelNode(): React.ReactElement {
 // ---------------------------------------------------------------------------
 
 const STATUS_COLOR_MAP: Record<NonNullable<FileNode["status"]>, string> = {
-  OK: "#22c55e",
-  UNRECOGNIZED: "#ef4444",
-  ERROR_PRONE: "#f59e0b",
+  OK: "#137a52",
+  UNRECOGNIZED: "#b3261e",
+  ERROR_PRONE: "#b5680d",
 };
 
 interface PipelineStepNodeData {
@@ -621,9 +621,9 @@ function BlocksFileNode({ data }: NodeProps<BlocksFileNodeData>): React.ReactEle
           margin: "0 10px 8px", height: 5, borderRadius: 3,
           background: "#f1f5f9", overflow: "hidden", display: "flex",
         }}>
-          {passW  > 0 && <div style={{ width: `${passW}%`,  background: "#22c55e", flexShrink: 0 }} />}
-          {reviewW > 0 && <div style={{ width: `${reviewW}%`, background: "#f59e0b", flexShrink: 0 }} />}
-          {failW  > 0 && <div style={{ width: `${failW}%`,  background: "#ef4444", flexShrink: 0 }} />}
+          {passW  > 0 && <div style={{ width: `${passW}%`,  background: "#137a52", flexShrink: 0 }} />}
+          {reviewW > 0 && <div style={{ width: `${reviewW}%`, background: "#b5680d", flexShrink: 0 }} />}
+          {failW  > 0 && <div style={{ width: `${failW}%`,  background: "#b3261e", flexShrink: 0 }} />}
         </div>
       </div>
       {(data.hasOutgoing ?? true) && (
@@ -673,9 +673,9 @@ const SECTION_LABEL_STYLE: React.CSSProperties = {
 };
 
 const FILE_STATUS_ENTRIES: { color: string; label: string }[] = [
-  { color: "#22c55e", label: "All migrated" },
-  { color: "#f59e0b", label: "Needs review" },
-  { color: "#ef4444", label: "Has failures" },
+  { color: "#137a52", label: "All migrated" },
+  { color: "#b5680d", label: "Needs review" },
+  { color: "#b3261e", label: "Has failures" },
 ];
 
 function TargetLegend(): React.ReactElement {
