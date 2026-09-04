@@ -709,16 +709,15 @@
   `AZURE_AI_FOUNDRY_ENDPOINT`/`AZURE_AI_FOUNDRY_API_KEY`/`AZURE_ANTHROPIC_ENDPOINT`. Following the
   old template exactly left TensorZero enabled but non-functional for Azure routing. Fixed by
   splitting into two correctly-labeled sections (user applied manually, same permission block)
-- [ ] **#143 (new, filed this session): TensorZero itself is archived** — the company shut down
-  2026-06-12 (confirmed: every repo under the `tensorzero` GitHub org is archived, founder
-  confirmed winding down after failing to find product-market fit). Pinned Docker image keeps
-  working as-is; no security patches/bug fixes/compatibility updates ever again upstream. Used as
-  first-priority routing in ~15 worker agent files, optional (off by default in code, but
-  `.env.example` currently sets a real gateway URL so fresh setups inherit it). Recommended:
-  change `.env.example` to not enable it by default (low-cost, stops new setups silently
-  depending on a dead project) — **not yet done, awaiting user go-ahead**. Bigger question (rip
-  out of the ~15 files vs. leave as a working-but-frozen option) deliberately deferred — no
-  urgency, nothing broken today
+- [x] **#143: TensorZero itself is archived** — the company shut down 2026-06-12 (confirmed: every
+  repo under the `tensorzero` GitHub org is archived, founder confirmed winding down after failing
+  to find product-market fit). Pinned Docker image keeps working as-is; no security patches/bug
+  fixes/compatibility updates ever again upstream. Used as first-priority routing in ~15 worker
+  agent files, optional (off by default in code). `.env.example`'s `TENSORZERO_GATEWAY_URL` +
+  Azure credentials now commented out by default (was pre-enabled) with a note pointing at #143,
+  so fresh setups no longer silently inherit the dependency — still documented and easy to
+  re-enable for anyone who wants it. Bigger question (rip out of the ~15 files vs. leave as a
+  working-but-frozen option) remains deliberately deferred — no urgency, nothing broken today
 
 **Service delivery documentation (existing GitHub issues)**
 - [ ] #109: Define ADC SAS migration delivery kit
