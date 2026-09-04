@@ -679,9 +679,10 @@
 - [x] F91 S-A: strengthen the dark-mode card border → `PlanTab.tsx` (found and filed #144 along the
   way — Tailwind's `dark:` variant never worked with this app's theme toggle at all; routed around
   it via a plain `.dark` CSS selector, the same working pattern used elsewhere in this codebase)
-- [ ] F91 S-B: thread a `container` prop through the shared `Dialog` wrapper → `ui/dialog.tsx`
-- [ ] F91 S-C: apply `container` at the four dialog usage sites (`BlockCodePopup.tsx`,
+- [x] F91 S-B: thread a `container` prop through the shared `Dialog` wrapper → `ui/dialog.tsx`
+- [x] F91 S-C: apply `container` at the four dialog usage sites (`BlockCodePopup.tsx`,
   `FileViewPopup.tsx`, `ExplainPage.tsx`, `PlanTab.tsx`) via a shared hook
+  (`useBrandManifestContainer`, new file in `lib/`)
 - [ ] F91 S-D: fix `TargetGraph.tsx`'s hardcoded status colors (`STATUS_COLOR_MAP`)
 - [ ] F91 S-E: fix `LineageGraph.tsx`'s hardcoded status colors (`STATUS_STYLE`/`STATUS_SYMBOL`)
 - [ ] F91 S-F: full manual smoke test, light + dark

@@ -53,14 +53,23 @@ a scoped `dark:` variant on this one card, with light mode pixel-unchanged.
 **Depends on:** none
 **Done when:** `DialogContent` accepts an optional `container` prop and passes it to the inner
 `DialogPortal`; omitting it preserves today's exact default behavior.
-- [ ] done
+- [x] done — typed via `DialogPrimitive.Portal.Props["container"]` (reusing Base UI's own type),
+  destructured before the rest-spread so it never reaches `DialogPrimitive.Popup`. Verified no
+  existing call site (15 usages app-wide) passes `container`, so this is purely additive.
 
 ### S-C: Apply `container` at each of the four usage sites
 **File:** `BlockCodePopup.tsx`, `FileViewPopup.tsx`, `ExplainPage.tsx`, `PlanTab.tsx`
 **Depends on:** S-B
 **Done when:** a shared hook resolves the nearest `.brand-manifest` ancestor and each of the four
 dialogs passes it as `container`; all four render themed when opened, in both themes.
-- [ ] done
+- [x] done — `useBrandManifestContainer()` in `src/frontend/src/lib/` resolves
+  `document.querySelector(".brand-manifest")` once via a lazy `useState` initializer (an earlier
+  `useEffect`-based attempt tripped `react-hooks/set-state-in-effect`). Verified 3 of 4 dialogs
+  live (BlockCodePopup, FileViewPopup, PlanTab's own dialog) — each is a genuine DOM descendant of
+  `.brand-manifest` when open (`dialog.closest('.brand-manifest') !== null`), Archivo/Space Mono
+  font and 6px radius confirmed via computed style. The 4th (ExplainPage's mode-switch dialog)
+  needs an active sent conversation to trigger and wasn't forced via automation — confirmed
+  correct by code review instead (identical hook, identical `container={container}` wiring).
 
 ### S-D: Fix `TargetGraph.tsx`'s hardcoded status colors
 **File:** `src/frontend/src/components/JobDetail/TargetGraph.tsx`

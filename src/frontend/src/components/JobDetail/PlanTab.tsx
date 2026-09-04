@@ -22,6 +22,7 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { useBrandManifestContainer } from "@/lib/useBrandManifestContainer";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -577,6 +578,7 @@ export default function PlanTab({
   const blocksRef = useRef<HTMLDivElement>(null);
   const attentionRef = useRef<HTMLDivElement>(null);
   const [isRefiningAll, setIsRefiningAll] = useState(false);
+  const container = useBrandManifestContainer();
 
   const blockPlanMap: Record<string, BlockPlan> = planData
     ? Object.fromEntries(planData.block_plans.map(bp => [bp.block_id, bp]))
@@ -948,7 +950,10 @@ export default function PlanTab({
                           >
                             <Info size={12} />
                           </DialogTrigger>
-                          <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+                          <DialogContent
+                            container={container}
+                            className="max-w-lg max-h-[80vh] overflow-y-auto"
+                          >
                             <DialogHeader>
                               <DialogTitle>Confidence &amp; criticality</DialogTitle>
                             </DialogHeader>
