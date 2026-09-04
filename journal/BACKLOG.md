@@ -683,8 +683,10 @@
 - [x] F91 S-C: apply `container` at the four dialog usage sites (`BlockCodePopup.tsx`,
   `FileViewPopup.tsx`, `ExplainPage.tsx`, `PlanTab.tsx`) via a shared hook
   (`useBrandManifestContainer`, new file in `lib/`)
-- [ ] F91 S-D: fix `TargetGraph.tsx`'s hardcoded status colors (`STATUS_COLOR_MAP`)
-- [ ] F91 S-E: fix `LineageGraph.tsx`'s hardcoded status colors (`STATUS_STYLE`/`STATUS_SYMBOL`)
+- [x] F91 S-D: fix `TargetGraph.tsx`'s hardcoded status colors (`STATUS_COLOR_MAP`, the
+  progress-bar fill colors, and the `FILE_STATUS_ENTRIES` legend — three occurrences)
+- [x] F91 S-E: fix `LineageGraph.tsx`'s hardcoded status colors (`STATUS_STYLE`/`STATUS_SYMBOL`,
+  plus a third duplicate in the `STATUS_ENTRIES` legend found via live verification)
 - [ ] F91 S-F: full manual smoke test, light + dark
 - [ ] F91 S-G: `make tsc-check && make frontend-lint && make frontend-build && make test` exit 0
 

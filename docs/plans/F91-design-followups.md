@@ -75,14 +75,18 @@ dialogs passes it as `container`; all four render themed when opened, in both th
 **File:** `src/frontend/src/components/JobDetail/TargetGraph.tsx`
 **Depends on:** none
 **Done when:** `STATUS_COLOR_MAP`'s three hex values are the light-mode muted tone equivalents.
-- [ ] done
+- [x] done — `STATUS_COLOR_MAP`, the progress-bar fill colors, and `FILE_STATUS_ENTRIES`'s legend
+  array (three separate occurrences of the same stock triad) all swapped to the muted
+  success/warning/danger hex values.
 
 ### S-E: Fix `LineageGraph.tsx`'s hardcoded status colors
 **File:** `src/frontend/src/components/LineageGraph.tsx`
 **Depends on:** none
 **Done when:** `STATUS_STYLE`/`STATUS_SYMBOL`'s hex values are the light-mode muted tone
 equivalents; `REASON_COLORS` and hover-edge-label styles left untouched.
-- [ ] done
+- [x] done — `STATUS_STYLE`, `STATUS_SYMBOL`, and (found via live verification after the initial
+  fix) the `STATUS_ENTRIES` legend array all swapped to the muted tone values. `REASON_COLORS` and
+  the neutral `background`/`color` fields left untouched as scoped.
 
 ### S-F: Full manual smoke test
 **Depends on:** S-A, S-B, S-C, S-D, S-E
