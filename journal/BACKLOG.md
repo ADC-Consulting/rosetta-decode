@@ -685,6 +685,15 @@
   ETL tab's embedded view); needs its own reviewed subtask, ideally paired with adding proper
   dark-mode support to the graph if it doesn't have any
 
+**Dev tooling / demo fixtures**
+- [x] fix: `scripts/seed_demo_job.py`'s `_block_revisions()` stubbed every seeded `BlockRevision
+  .python_code` with a placeholder (`f"# generated code for {bid}"`) instead of the real per-block
+  code already sitting unused in `GENERATED_FILES` — made the Plan tab's "View code" dialog show a
+  useless placeholder on the Python side for the demo job. Added `_extract_block_python()`, which
+  slices the right snippet out of `GENERATED_FILES` using its `# SAS: sas/<file>:<line>` provenance
+  markers. Confirmed the real worker pipeline (`main.py`'s `_persist_initial_revisions`) was never
+  affected — it always set `python_code` from the actual translation agent's output
+
 **Compute backend correctness (existing GitHub issues)**
 - [ ] #139: README misstates both compute backends — `CLOUD=true` claims Databricks/PySpark but
   `factory.py` raises `NotImplementedError` (no `databricks.py`); `CLOUD=false` claims
