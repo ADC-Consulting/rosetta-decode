@@ -622,7 +622,6 @@ export default function JobsPage(): React.ReactElement {
       setManifest(data);
       setPhase("submitted");
       void queryClient.invalidateQueries({ queryKey: ["jobs"] });
-      handleDialogOpenChange(false);
     },
     onError: (err) => {
       toast.error(

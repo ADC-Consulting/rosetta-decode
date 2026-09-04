@@ -719,15 +719,23 @@ its own design pass first)**
   and `src/backend/api/` for where `estimated_effort` bands get turned into a number of hours).
   Confirm the mapping/formula is reasonable before trusting this number in front of stakeholders.
 
-**Running-migration UX (found during demo prep, not yet scoped into a plan)**
-- [ ] While a job is `queued`/`running`, the Migrations list only shows a plain-text status label
-  (no progress, phase, or ETA) and there's nothing to look at on the job detail page in the
-  meantime — a submitter has no feedback beyond "wait and refresh." Needs its own design pass:
-  candidates include a phase indicator (parse → translate → reconcile, mirroring the trace/phase
-  events the worker already emits — see `_active_phase`/`tracer.emit("phase_start"/"phase_done")`
-  in `src/worker/main.py`), a progress bar, or a live-updating step count. Should reuse the
-  existing trace/SSE stream (`GET /jobs/{id}/trace/stream`) if it already carries this data rather
-  than inventing a new signal.
+**Correction — running-migration UX note above was wrong**
+- [x] The previous note here claimed there's no in-progress feedback while a job runs. Wrong —
+  `LiveTraceDialog.tsx` already exists and is comprehensive: an "Activity" icon on every Migrations
+  row (pulsing while `queued`/`running`) opens a real SSE-driven (`GET /jobs/{id}/trace/stream`)
+  phase timeline (parse → plan → translate → reconcile → enrichment), per-block status, elapsed
+  timer, and a Stop button. No feature gap here — the note was written from the Migrations list's
+  plain-text status column alone, without noticing the existing per-row trace icon.
+
+**Real bug found instead: successful submission gives no confirmation**
+- [x] `JobsPage.tsx`'s migration mutation's `onSuccess` set `phase` to `"submitted"` (intended to
+  show a confirmation screen with a "View Migration" button) but then immediately called
+  `handleDialogOpenChange(false)` in the same handler, which internally reset `phase` back to
+  `"staging"` and closed the dialog before the confirmation screen could ever render. Fixed by
+  removing that one `handleDialogOpenChange(false)` call — the dialog now stays open and shows the
+  job result card (name, live status badge, "Open full details") with "Done"/"View Migration"
+  footer buttons, exactly as originally built. Verified live: submission keeps the dialog open,
+  "Done" closes it cleanly, and the normal cancel-before-submit flow is unaffected.
 
 **Compute backend correctness (existing GitHub issues)**
 - [ ] #139: README misstates both compute backends — `CLOUD=true` claims Databricks/PySpark but
