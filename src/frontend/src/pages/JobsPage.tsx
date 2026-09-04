@@ -300,7 +300,7 @@ function TreeRow({
         <FileIcon ext={ext} className="h-3.5 w-3.5 shrink-0" />
         <span className="truncate">{node.name}</span>
         {isTarget && (
-          <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">
+          <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-[var(--tone-success-bg)] text-[var(--tone-success)]">
             Target
           </span>
         )}
@@ -535,6 +535,12 @@ export default function JobsPage(): React.ReactElement {
 
   const [uploadOpen, setUploadOpen] = useState<boolean>(false);
   const [traceJobId, setTraceJobId] = useState<string | null>(null);
+  // Callback ref (via state, not useRef) — react-hooks/refs forbids reading `.current`
+  // during render, and DialogContent's `container` prop is read during this component's
+  // render. Setting state from the ref callback triggers a re-render once the node
+  // commits, which happens on JobsPage's own first render (the `.brand-manifest` div
+  // below is unconditionally rendered), well before the dialog can be opened.
+  const [brandManifestEl, setBrandManifestEl] = useState<HTMLDivElement | null>(null);
 
   // ── Upload state (from shared context) ───────────────────────────────────
 
@@ -724,7 +730,7 @@ export default function JobsPage(): React.ReactElement {
                 <TypeBadge ext={ext} />
                 <span className="truncate text-foreground">{f.name}</span>
                 {isTarget && (
-                  <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">
+                  <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-[var(--tone-success-bg)] text-[var(--tone-success)]">
                     Target
                   </span>
                 )}
@@ -763,7 +769,7 @@ export default function JobsPage(): React.ReactElement {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="brand-manifest px-6 py-2 overflow-y-auto flex-1 h-full">
+    <div ref={setBrandManifestEl} className="brand-manifest px-6 py-2 overflow-y-auto flex-1 h-full">
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold text-foreground">Migrations</h1>
@@ -899,7 +905,10 @@ export default function JobsPage(): React.ReactElement {
 
       {/* ── Upload Dialog ───────────────────────────────────────────────── */}
       <Dialog open={uploadOpen} onOpenChange={handleDialogOpenChange}>
-        <DialogContent className="max-w-3xl w-[90vw] h-[85vh] overflow-y-auto flex flex-col">
+        <DialogContent
+          container={brandManifestEl}
+          className="max-w-3xl w-[90vw] h-[85vh] overflow-y-auto flex flex-col"
+        >
           <DialogHeader>
             <DialogTitle>New Migration</DialogTitle>
           </DialogHeader>
@@ -1072,11 +1081,11 @@ export default function JobsPage(): React.ReactElement {
                       </p>
                       {refTargetPath && (
                         refTargetIsOutsideZip ? (
-                          <span className="text-xs text-destructive font-medium">
+                          <span className={`text-xs font-medium ${TONE_TEXT_CLASS.danger}`}>
                             ⚠ Won't upload — outside the zip
                           </span>
                         ) : (
-                          <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                          <span className={`text-xs font-medium ${TONE_TEXT_CLASS.success}`}>
                             ✓ Target set
                           </span>
                         )
@@ -1087,7 +1096,7 @@ export default function JobsPage(): React.ReactElement {
                   {renderFileList()}
 
                   {refTargetIsOutsideZip && (
-                    <p role="alert" className="text-xs text-destructive flex items-start gap-1">
+                    <p role="alert" className={`text-xs flex items-start gap-1 ${TONE_TEXT_CLASS.danger}`}>
                       <Target className="inline h-3 w-3 mt-0.5 shrink-0" />
                       <span>
                         This target sits alongside the zip, not inside it, so it won't be

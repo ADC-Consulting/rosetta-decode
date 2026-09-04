@@ -701,8 +701,10 @@ its own design pass first)**
 - [x] F92 S-C: clarify reconciliation-target UX copy (optional; zip uploads need the reference
   file bundled inside the zip) — also added a live warning for the silent-failure case (target set
   on a file outside the zip)
-- [ ] F92 S-D: apply Manifest design system styling to the dialog (depends on F91's
-  `useBrandManifestContainer()`)
+- [x] F92 S-D: apply Manifest design system styling to the dialog — found and fixed a real
+  container-resolution timing bug along the way (`useBrandManifestContainer()`'s approach doesn't
+  work when called at the same component's top level as its own `.brand-manifest` div; fixed with
+  a callback-ref-via-state pattern instead)
 - [ ] F92 S-E: full manual smoke test
 - [ ] F92 S-F: `make tsc-check && make frontend-lint && make frontend-build && make test` exit 0
 

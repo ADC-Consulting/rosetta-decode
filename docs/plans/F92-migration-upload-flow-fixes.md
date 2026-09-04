@@ -87,7 +87,25 @@ renders inside `.brand-manifest` instead of portaling to `document.body` — the
 fixed for 4 other dialogs in F91, just out of that pass's scope; (2) the "TARGET" badge and other
 hardcoded Tailwind color utilities are swapped for the muted Manifest tone tokens established in
 F88/F89; (3) the Migrate button matches Manifest's button styling.
-- [ ] done
+- [x] done — two color-token conversions (both "Target" badges, in `TreeRow` and the flat
+  top-level file list, to `var(--tone-success-bg)`/`var(--tone-success)`; the reconciliation-status
+  text and outside-zip warning to `TONE_TEXT_CLASS.success`/`.danger`). `TypeBadge`'s "SAS source"
+  tag deliberately left as stock emerald — it's a neutral file-type category color (part of a
+  4-color rainbow scheme alongside sky/violet/amber for other extensions), not a reconciliation
+  status signal, and no existing neutral-category token exists to swap it for.
+
+  The `container` wiring needed a real fix, not just the planned `useBrandManifestContainer()`
+  reuse: that hook's lazy `useState` initializer queries `.brand-manifest` once during the
+  component's own first render, which works for F91's 4 dialogs (deeply-nested, mounting long
+  after their `.brand-manifest` ancestor is already committed) but not here, since `JobsPage`
+  calls the hook at its own top level, in the same render pass as the `.brand-manifest` div it's
+  looking for — the query always ran before that div existed in the live DOM, permanently
+  capturing `undefined`. Fixed with a callback-ref-via-state pattern instead (`useState<Element |
+  null>` set via the div's `ref` prop) — `react-hooks/refs` forbids reading `useRef(...).current`
+  during render, which is what `container={...}` requires. Confirmed via live DOM inspection (not
+  code review alone, since code review missed this the first time): `document.querySelector(
+  '[role="dialog"]').closest('.brand-manifest') !== null` returns `true` on both a cold page load
+  and after client-side navigating away and back.
 
 ### S-E: Full manual smoke test
 **Depends on:** S-A, S-B, S-C, S-D
