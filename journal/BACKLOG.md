@@ -691,6 +691,21 @@
   card border, all four dialogs, both graph components); no regressions found
 - [x] F91 S-G: `make tsc-check && make frontend-lint && make frontend-build && make test` exit 0
 
+**F92 — Fix the migration upload flow → see `docs/plans/F92-migration-upload-flow-fixes.md`
+(tracks issue #148's concrete, ready-to-build half; the welcome-page/sidebar half of #148 needs
+its own design pass first)**
+- [x] F92 S-A: delete dead `UploadPage.tsx` (unrouted since the 2026-04-23 Upload→Dialog decision,
+  never removed)
+- [x] F92 S-B: stop requiring a reconciliation target to enable Migrate — `submitDisabled`
+  incorrectly requires `refTargetPath`, though the backend treats it as optional
+- [x] F92 S-C: clarify reconciliation-target UX copy (optional; zip uploads need the reference
+  file bundled inside the zip) — also added a live warning for the silent-failure case (target set
+  on a file outside the zip)
+- [ ] F92 S-D: apply Manifest design system styling to the dialog (depends on F91's
+  `useBrandManifestContainer()`)
+- [ ] F92 S-E: full manual smoke test
+- [ ] F92 S-F: `make tsc-check && make frontend-lint && make frontend-build && make test` exit 0
+
 **Compute backend correctness (existing GitHub issues)**
 - [ ] #139: README misstates both compute backends — `CLOUD=true` claims Databricks/PySpark but
   `factory.py` raises `NotImplementedError` (no `databricks.py`); `CLOUD=false` claims

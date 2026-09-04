@@ -584,6 +584,18 @@ export default function JobsPage(): React.ReactElement {
     unknownFiles.length > 0
       ? `Unsupported file(s): ${unknownFiles.map((f) => f.name).join(", ")}`
       : null;
+  const hasEligibleTopLevelFile = files.some((f) => {
+    const e = fileExt(f.name);
+    return e === ".csv" || e === ".sas7bdat";
+  });
+  // A zip upload only ever sends `zip_file` to the backend (see submitMigration) —
+  // a reference target set on a file sitting alongside the zip, rather than inside
+  // it, is silently never uploaded. Detect that state so the UI can warn instead of
+  // showing a false "Target set" confirmation.
+  const refTargetIsOutsideZip =
+    zipFile !== undefined &&
+    refTargetPath !== null &&
+    files.some((f) => f.name === refTargetPath);
 
   // Job polling (upload result)
   const jobId = manifest?.job_id ?? null;
@@ -620,8 +632,7 @@ export default function JobsPage(): React.ReactElement {
     files.length === 0 ||
     unknownFiles.length > 0 ||
     isPending ||
-    migrationName.trim() === "" ||
-    !refTargetPath;
+    migrationName.trim() === "";
 
   const isAccepted = jobStatus?.status === "accepted";
   const isProposed =
@@ -1057,21 +1068,53 @@ export default function JobsPage(): React.ReactElement {
                   {files.length > 0 && (
                     <div className="flex items-center justify-between">
                       <p className="text-xs font-medium text-muted-foreground">
-                        <Target className="inline-block w-3 h-3 mr-1" />Select a target dataset for reconciliation
+                        <Target className="inline-block w-3 h-3 mr-1" />Reconciliation target (optional)
                       </p>
                       {refTargetPath && (
-                        <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
-                          ✓ Target set
-                        </span>
+                        refTargetIsOutsideZip ? (
+                          <span className="text-xs text-destructive font-medium">
+                            ⚠ Won't upload — outside the zip
+                          </span>
+                        ) : (
+                          <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                            ✓ Target set
+                          </span>
+                        )
                       )}
                     </div>
                   )}
 
                   {renderFileList()}
 
-                  {files.some((f) => { const e = fileExt(f.name); return e === ".csv" || e === ".sas7bdat"; }) && !refTargetPath && (
+                  {refTargetIsOutsideZip && (
+                    <p role="alert" className="text-xs text-destructive flex items-start gap-1">
+                      <Target className="inline h-3 w-3 mt-0.5 shrink-0" />
+                      <span>
+                        This target sits alongside the zip, not inside it, so it won't be
+                        uploaded — only files bundled inside the zip can be sent as the
+                        reconciliation reference. Unmark it and pick a file from inside the
+                        zip's tree instead, or add the reference file to the zip itself.
+                      </span>
+                    </p>
+                  )}
+
+                  {!refTargetIsOutsideZip && !refTargetPath && zipFile && (
+                    <p className="text-xs text-muted-foreground flex items-start gap-1">
+                      <Target className="inline h-3 w-3 mt-0.5 shrink-0" />
+                      <span>
+                        Optional — migration runs fine without one. To compare output
+                        against a reference, expand the zip above and click the target
+                        icon on a CSV or dataset file inside it. A reference file must be
+                        bundled inside the zip; one added separately here won't be uploaded.
+                      </span>
+                    </p>
+                  )}
+
+                  {!refTargetIsOutsideZip && !refTargetPath && !zipFile && hasEligibleTopLevelFile && (
                     <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      Click <Target className="inline h-3 w-3" /> next to a CSV or dataset file to set it as the reconciliation target.
+                      Optional — migration runs fine without one. Click{" "}
+                      <Target className="inline h-3 w-3" /> next to a CSV or dataset file
+                      to set it as the reconciliation target.
                     </p>
                   )}
 
