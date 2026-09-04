@@ -6,6 +6,28 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-09-03 — TensorZero dependency risk: keep as-is, stop defaulting new setups into it
+
+- **TensorZero (LLM gateway dependency) is archived/unmaintained — company shut down, confirmed via
+  GitHub API and public reporting:** every repo under the `tensorzero` org is archived, founder
+  confirmed winding down after failing to find product-market fit combining the OSS project with a
+  commercial product · filed as #143 · revisit if TensorZero usage in this repo ever grows beyond
+  its current narrow scope (2 Azure-routed models), or if the pinned Docker image needs a security
+  fix it will never receive upstream
+- **Decision: do not rip TensorZero out of the ~15 agent files that check for it, and do not treat
+  this as urgent:** the pinned image works today, nothing is broken, and removing it is real effort
+  against a currently-theoretical risk · rationale: it's optional (off by default in code) and
+  narrowly scoped (two specific Azure model routes), not a load-bearing dependency for the app's
+  core functionality · revisit opportunistically if touching that agent code for another reason, or
+  if the risk materializes (a CVE, a breaking Azure API change TensorZero never gets updated for)
+- **Decision: stop `.env.example` from enabling TensorZero by default for new setups** (recommended,
+  not yet actioned as of this session's end — awaiting user go-ahead) · rationale: the code itself
+  defaults `tensorzero_gateway_url` to `None`, but the template sets a real gateway URL, so every
+  fresh setup following it silently inherits a dependency on a dead project without being told ·
+  revisit: action this the next time `.env.example` is touched, or explicitly when picked up
+
+---
+
 ## 2026-09-02 — F90 Manifest rollout: branch stacking, mockup durability, audit heuristic
 
 - **New feature branches may stack on an unmerged branch rather than wait for merge:** F90 branched

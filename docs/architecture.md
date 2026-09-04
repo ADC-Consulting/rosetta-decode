@@ -60,9 +60,9 @@ Rosetta Decode is a microservices application. Each service is a separate Docker
 │  └──────────────────────────────────────────────────────────────────┘ │
 │                                                         │             │
 │  ┌──────────────────────────────────────────────────────▼──────────┐ │
-│  │  ComputeBackend (abstract interface)                             │ │
-│  │  LocalBackend       → pandas + PostgreSQL      (active)              │ │
-│  │  DatabricksBackend  → PySpark only          (future — Phase 4)    │ │
+│  │  ComputeBackend (abstract interface) — reconciliation only        │ │
+│  │  LocalBackend       → pandas + in-memory SQLite   (active)        │ │
+│  │  DatabricksBackend  → not yet implemented   (future — Phase 4)    │ │
   │  (DLT + Databricks SQL evaluated; deferred — see DECISIONS.md)   │ │
 │  └──────────────────────────────────────────────────────────────────┘ │
 └──────────────────────────────────────────────────────────────────────┘
@@ -74,6 +74,13 @@ Rosetta Decode is a microservices application. Each service is a separate Docker
             │  (anthropic:..., openai:..., …)  │
             └──────────────────────────────────┘
 ```
+
+Optionally, every LLM-calling agent routes through the **TensorZero gateway** instead of calling
+the provider directly, when `TENSORZERO_GATEWAY_URL` is set. TensorZero runs as its own service
+(`docker-compose.yml`) and uses the same Postgres instance as the app for its own storage —
+`pg_cron` (scheduled cleanup/retention) and `pgvector` (similarity search for DICL, its dynamic
+in-context-learning feature). This is unrelated to `jobs`/`block_revisions`/etc., the app's own
+tables in the same database.
 
 ---
 
@@ -264,10 +271,11 @@ All services on bridge network `rosetta-net`. Run the full stack with `make dev`
 | Backend language | Python 3.12 |
 | API framework | FastAPI |
 | Job state | PostgreSQL 16 + SQLAlchemy (async) + Alembic + asyncpg |
-| Local execution | pandas + PostgreSQL |
-| Cloud execution | PySpark / Databricks — Phase 4, paused |
+| Local reconciliation | pandas + in-memory SQLite |
+| Cloud reconciliation | Databricks — not yet implemented (Phase 4) |
 | LLM integration | Pydantic AI — agents, tool definitions, structured outputs |
 | LLM provider | Provider-agnostic via `LLM_MODEL` env var |
+| LLM gateway (optional) | TensorZero — routes/observes LLM calls when `TENSORZERO_GATEWAY_URL` is set; own service, uses `pg_cron`/`pgvector` on the shared Postgres instance |
 | SAS parsing | lark (DATA step grammar), sqlparse (PROC SQL) |
 | Codegen templating | Jinja2 |
 | Lineage / graph | networkx |

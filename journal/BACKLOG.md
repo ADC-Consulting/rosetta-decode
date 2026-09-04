@@ -686,11 +686,38 @@
   dark-mode support to the graph if it doesn't have any
 
 **Compute backend correctness (existing GitHub issues)**
-- [ ] #139: README misstates both compute backends — `CLOUD=true` claims Databricks/PySpark but
-  `factory.py` raises `NotImplementedError` (no `databricks.py`); `CLOUD=false` claims
-  pandas/PostgreSQL but `local.py` uses in-memory `sqlite3`
-- [ ] #140: `CLOUD=true` accepted at worker startup, only fails after a job is marked running
-  (`main.py:369` → `main.py:1253`) — should be rejected in `worker_settings` validation instead
+- [x] #139: README misstated both compute backends — fixed in `README.md` (opening summary, the
+  architecture diagram, and a directory-listing comment) and `docs/architecture.md` (diagram +
+  tech-stack table): `ComputeBackend` is reconciliation-only and never touches generated code
+  (which is always PySpark, per `DataStepAgent`'s prompt); `LocalBackend` uses pandas + in-memory
+  SQLite, not PostgreSQL; `DatabricksBackend` is "not yet implemented," not a working feature.
+  PostgreSQL's real role (job-state store) already had its own diagram box, untouched. GitHub repo
+  description has the same overclaim ("translate to PySpark/Databricks") — flagged separately,
+  not fixed here (live setting, not a file)
+- [x] Found while explaining #139: TensorZero (an optional LLM gateway every worker agent can
+  route through via `TENSORZERO_GATEWAY_URL`) was completely undocumented — it runs as its own
+  service and uses the same Postgres instance for `pg_cron`/`pgvector`, unrelated to the app's own
+  tables. Added a short mention to `docs/architecture.md` (diagram note + tech-stack row)
+- [x] #140: `CLOUD=true` accepted at worker startup, only fails after a job is marked running
+  (`main.py:369` → `main.py:1253`) — fixed via a pydantic validator on `WorkerSettings.cloud`
+  (`src/worker/core/config.py`), crashing the process at boot instead of failing every job after a
+  full paid LLM pipeline run. `.env.example` note added (user applied it manually — sandbox
+  permissions block Claude from editing `.env*` paths directly)
+- [x] `.env.example`'s TensorZero section mislabeled its own Azure credentials — told users to set
+  `AZURE_OPENAI_ENDPOINT`/`AZURE_OPENAI_API_KEY` as "used by TensorZero gateway," but the gateway
+  itself (`config/tensorzero.toml` via `docker-compose.yml`) actually reads
+  `AZURE_AI_FOUNDRY_ENDPOINT`/`AZURE_AI_FOUNDRY_API_KEY`/`AZURE_ANTHROPIC_ENDPOINT`. Following the
+  old template exactly left TensorZero enabled but non-functional for Azure routing. Fixed by
+  splitting into two correctly-labeled sections (user applied manually, same permission block)
+- [x] **#143: TensorZero itself is archived** — the company shut down 2026-06-12 (confirmed: every
+  repo under the `tensorzero` GitHub org is archived, founder confirmed winding down after failing
+  to find product-market fit). Pinned Docker image keeps working as-is; no security patches/bug
+  fixes/compatibility updates ever again upstream. Used as first-priority routing in ~15 worker
+  agent files, optional (off by default in code). `.env.example`'s `TENSORZERO_GATEWAY_URL` +
+  Azure credentials now commented out by default (was pre-enabled) with a note pointing at #143,
+  so fresh setups no longer silently inherit the dependency — still documented and easy to
+  re-enable for anyone who wants it. Bigger question (rip out of the ~15 files vs. leave as a
+  working-but-frozen option) remains deliberately deferred — no urgency, nothing broken today
 
 **Service delivery documentation (existing GitHub issues)**
 - [ ] #109: Define ADC SAS migration delivery kit

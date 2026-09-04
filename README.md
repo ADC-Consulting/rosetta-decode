@@ -12,7 +12,7 @@ The result is paralysis: organisations know they need to migrate, but the cost a
 
 **rosetta-decode** is an agentic migration tool that automates SAS-to-Python translation end to end. It ingests one or more SAS scripts (main programs, macro modules, include files, execution logs, binary `.sas7bdat` datasets), runs them through a multi-agent LLM pipeline, and produces a complete, runnable Python ETL pipeline — with automatic validation to prove the output matches.
 
-The execution target is controlled by a single environment flag: `CLOUD=false` runs on pandas/PostgreSQL locally; `CLOUD=true` targets Databricks via PySpark. The same generated code, same validation, same audit trail — different runtime.
+Generated code is always PySpark. The `CLOUD` flag controls how rosetta-decode itself validates that code: `CLOUD=false` runs reconciliation locally via pandas + in-memory SQLite; `CLOUD=true` targets Databricks for validation — not yet implemented.
 
 **What gets automated:**
 
@@ -297,7 +297,7 @@ rosetta-decode/
 │   │   │   └── reconciliation.py    # ReconciliationService — schema, row count, aggregate checks
 │   │   ├── compute/
 │   │   │   ├── base.py              # ComputeBackend ABC
-│   │   │   ├── local.py             # LocalBackend — pandas + PostgreSQL
+│   │   │   ├── local.py             # LocalBackend — pandas + in-memory SQLite
 │   │   │   └── factory.py           # BackendFactory — reads CLOUD env var
 │   │   └── core/
 │   │       └── config.py            # Worker settings
@@ -420,9 +420,9 @@ Five Docker services. The only shared state is PostgreSQL.
 │  SASParser → MacroExpander → Agents → Router → CodeGenerator        │
 │  → RemoteReconciliationService (HTTP → executor)                     │
 │                                                                       │
-│  ComputeBackend (ABC)                                                 │
-│    LocalBackend      → pandas + PostgreSQL        (CLOUD=false)      │
-│    DatabricksBackend → PySpark                    (Phase 4, stub)    │
+│  ComputeBackend (ABC) — reconciliation only                           │
+│    LocalBackend      → pandas + in-memory SQLite  (CLOUD=false)       │
+│    DatabricksBackend → not yet implemented          (Phase 4)         │
 └──────────────────────┬───────────────────────────────────────────────┘
                        │ HTTP (POST /execute)
                        ▼
