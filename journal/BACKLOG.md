@@ -706,6 +706,26 @@ its own design pass first)**
 - [ ] F92 S-E: full manual smoke test
 - [ ] F92 S-F: `make tsc-check && make frontend-lint && make frontend-build && make test` exit 0
 
+**Plan tab effort estimate looks off (found during demo prep, not yet investigated)**
+- [ ] The "Before you accept" panel's "Estimated effort: ~Xh" figure looked wrong on the
+  Biometrics Demo (SDTM→ADaM) job — needs investigation into where it's actually computed. Traced
+  so far: `migration_planner.py`'s `AnalysisAgent` only assigns a coarse per-block
+  `estimated_effort: "low"|"medium"|"high"` label (see ~line 106, 137, 334) — the aggregate hour
+  figure shown in the UI must be computed by mapping/summing these bands somewhere else (not yet
+  located; check `docs/plans/latest/` for the F86 estimation-model plan, and search the frontend
+  and `src/backend/api/` for where `estimated_effort` bands get turned into a number of hours).
+  Confirm the mapping/formula is reasonable before trusting this number in front of stakeholders.
+
+**Running-migration UX (found during demo prep, not yet scoped into a plan)**
+- [ ] While a job is `queued`/`running`, the Migrations list only shows a plain-text status label
+  (no progress, phase, or ETA) and there's nothing to look at on the job detail page in the
+  meantime — a submitter has no feedback beyond "wait and refresh." Needs its own design pass:
+  candidates include a phase indicator (parse → translate → reconcile, mirroring the trace/phase
+  events the worker already emits — see `_active_phase`/`tracer.emit("phase_start"/"phase_done")`
+  in `src/worker/main.py`), a progress bar, or a live-updating step count. Should reuse the
+  existing trace/SSE stream (`GET /jobs/{id}/trace/stream`) if it already carries this data rather
+  than inventing a new signal.
+
 **Compute backend correctness (existing GitHub issues)**
 - [ ] #139: README misstates both compute backends — `CLOUD=true` claims Databricks/PySpark but
   `factory.py` raises `NotImplementedError` (no `databricks.py`); `CLOUD=false` claims
