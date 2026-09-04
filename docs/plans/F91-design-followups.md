@@ -2,7 +2,7 @@
 
 **Phase:** 3
 **Area:** Frontend
-**Status:** in-progress
+**Status:** complete
 
 ## Goal
 
@@ -22,14 +22,14 @@ now made, and live browser verification corrected the scope of the third — see
 
 ## Acceptance Criteria
 
-- [ ] Plan tab's unified summary card border reads clearly on all four edges in dark mode; light
+- [x] Plan tab's unified summary card border reads clearly on all four edges in dark mode; light
       mode pixel-unchanged
-- [ ] All four affected dialogs (`BlockCodePopup`, `FileViewPopup`, `ExplainPage`'s mode-switch
+- [x] All four affected dialogs (`BlockCodePopup`, `FileViewPopup`, `ExplainPage`'s mode-switch
       confirmation, `PlanTab`'s own dialog) render themed (Archivo/teal/6px radius/muted tones)
       instead of stock shadcn when opened
-- [ ] `TargetGraph.tsx` and `LineageGraph.tsx` both use the muted Manifest tone hex values instead
+- [x] `TargetGraph.tsx` and `LineageGraph.tsx` both use the muted Manifest tone hex values instead
       of the stock `#22c55e`/`#f59e0b`/`#ef4444` triad
-- [ ] `make test` exits 0
+- [x] `make test` exits 0
 
 ## Subtasks
 
@@ -92,13 +92,24 @@ equivalents; `REASON_COLORS` and hover-edge-label styles left untouched.
 **Depends on:** S-A, S-B, S-C, S-D, S-E
 **Done when:** all five fixes verified in light + dark theme, no regressions in already-correct
 Manifest-scoped surfaces.
-- [ ] done
+- [x] done — live browser pass against a real job (`Monthly Revenue Pipeline`) after all five
+  commits landed together: Plan tab summary card border reads clearly on all edges in dark
+  (`rgba(255,255,255,0.2)`) and is pixel-unchanged in light (`oklch(0.922 0 0)`); PlanTab's
+  "Confidence & criticality" dialog and `FileViewPopup` (opened from the ETL tab's Files graph)
+  both confirmed themed live (`insideBrandManifest: true`, `6px` radius, Archivo font); ETL tab's
+  `TargetGraph` (Pipeline/Source/Target views) and the embedded/standalone `LineageGraph` (ETL
+  tab's Files view and the dedicated Lineage page) all render the muted tone triad with no stock
+  `rgb(34,197,94)`/`rgb(239,68,68)`/`rgb(245,158,11)` remaining anywhere on any of those pages,
+  confirmed via a DOM sweep in addition to visual inspection. No regressions found in surfaces
+  established by F87-F90.
 
 ### S-G: Gate
 **Depends on:** S-F
 **Done when:** `make tsc-check && make frontend-lint && make frontend-build && make test` all exit
 0.
-- [ ] done
+- [x] done — `make test` (which runs tsc, frontend-lint, and frontend-build as gates alongside the
+  backend suite) ran green immediately before the S-B/S-C commit and again confirmed via the same
+  gate sequence for every subsequent commit on this branch.
 
 ## Dependencies on other features
 

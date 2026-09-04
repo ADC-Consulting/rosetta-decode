@@ -687,8 +687,9 @@
   progress-bar fill colors, and the `FILE_STATUS_ENTRIES` legend — three occurrences)
 - [x] F91 S-E: fix `LineageGraph.tsx`'s hardcoded status colors (`STATUS_STYLE`/`STATUS_SYMBOL`,
   plus a third duplicate in the `STATUS_ENTRIES` legend found via live verification)
-- [ ] F91 S-F: full manual smoke test, light + dark
-- [ ] F91 S-G: `make tsc-check && make frontend-lint && make frontend-build && make test` exit 0
+- [x] F91 S-F: full manual smoke test, light + dark — verified live against a real job (summary
+  card border, all four dialogs, both graph components); no regressions found
+- [x] F91 S-G: `make tsc-check && make frontend-lint && make frontend-build && make test` exit 0
 
 **Compute backend correctness (existing GitHub issues)**
 - [ ] #139: README misstates both compute backends — `CLOUD=true` claims Databricks/PySpark but
