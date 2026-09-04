@@ -300,7 +300,7 @@ function TreeRow({
         <FileIcon ext={ext} className="h-3.5 w-3.5 shrink-0" />
         <span className="truncate">{node.name}</span>
         {isTarget && (
-          <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">
+          <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-[var(--tone-success-bg)] text-[var(--tone-success)]">
             Target
           </span>
         )}
@@ -535,6 +535,12 @@ export default function JobsPage(): React.ReactElement {
 
   const [uploadOpen, setUploadOpen] = useState<boolean>(false);
   const [traceJobId, setTraceJobId] = useState<string | null>(null);
+  // Callback ref (via state, not useRef) — react-hooks/refs forbids reading `.current`
+  // during render, and DialogContent's `container` prop is read during this component's
+  // render. Setting state from the ref callback triggers a re-render once the node
+  // commits, which happens on JobsPage's own first render (the `.brand-manifest` div
+  // below is unconditionally rendered), well before the dialog can be opened.
+  const [brandManifestEl, setBrandManifestEl] = useState<HTMLDivElement | null>(null);
 
   // ── Upload state (from shared context) ───────────────────────────────────
 
@@ -584,6 +590,18 @@ export default function JobsPage(): React.ReactElement {
     unknownFiles.length > 0
       ? `Unsupported file(s): ${unknownFiles.map((f) => f.name).join(", ")}`
       : null;
+  const hasEligibleTopLevelFile = files.some((f) => {
+    const e = fileExt(f.name);
+    return e === ".csv" || e === ".sas7bdat";
+  });
+  // A zip upload only ever sends `zip_file` to the backend (see submitMigration) —
+  // a reference target set on a file sitting alongside the zip, rather than inside
+  // it, is silently never uploaded. Detect that state so the UI can warn instead of
+  // showing a false "Target set" confirmation.
+  const refTargetIsOutsideZip =
+    zipFile !== undefined &&
+    refTargetPath !== null &&
+    files.some((f) => f.name === refTargetPath);
 
   // Job polling (upload result)
   const jobId = manifest?.job_id ?? null;
@@ -604,7 +622,6 @@ export default function JobsPage(): React.ReactElement {
       setManifest(data);
       setPhase("submitted");
       void queryClient.invalidateQueries({ queryKey: ["jobs"] });
-      handleDialogOpenChange(false);
     },
     onError: (err) => {
       toast.error(
@@ -620,8 +637,7 @@ export default function JobsPage(): React.ReactElement {
     files.length === 0 ||
     unknownFiles.length > 0 ||
     isPending ||
-    migrationName.trim() === "" ||
-    !refTargetPath;
+    migrationName.trim() === "";
 
   const isAccepted = jobStatus?.status === "accepted";
   const isProposed =
@@ -713,7 +729,7 @@ export default function JobsPage(): React.ReactElement {
                 <TypeBadge ext={ext} />
                 <span className="truncate text-foreground">{f.name}</span>
                 {isTarget && (
-                  <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">
+                  <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-[var(--tone-success-bg)] text-[var(--tone-success)]">
                     Target
                   </span>
                 )}
@@ -752,7 +768,7 @@ export default function JobsPage(): React.ReactElement {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="brand-manifest px-6 py-2 overflow-y-auto flex-1 h-full">
+    <div ref={setBrandManifestEl} className="brand-manifest px-6 py-2 overflow-y-auto flex-1 h-full">
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold text-foreground">Migrations</h1>
@@ -888,7 +904,10 @@ export default function JobsPage(): React.ReactElement {
 
       {/* ── Upload Dialog ───────────────────────────────────────────────── */}
       <Dialog open={uploadOpen} onOpenChange={handleDialogOpenChange}>
-        <DialogContent className="max-w-3xl w-[90vw] h-[85vh] overflow-y-auto flex flex-col">
+        <DialogContent
+          container={brandManifestEl}
+          className="max-w-3xl w-[90vw] h-[85vh] overflow-y-auto flex flex-col"
+        >
           <DialogHeader>
             <DialogTitle>New Migration</DialogTitle>
           </DialogHeader>
@@ -1057,21 +1076,53 @@ export default function JobsPage(): React.ReactElement {
                   {files.length > 0 && (
                     <div className="flex items-center justify-between">
                       <p className="text-xs font-medium text-muted-foreground">
-                        <Target className="inline-block w-3 h-3 mr-1" />Select a target dataset for reconciliation
+                        <Target className="inline-block w-3 h-3 mr-1" />Reconciliation target (optional)
                       </p>
                       {refTargetPath && (
-                        <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
-                          ✓ Target set
-                        </span>
+                        refTargetIsOutsideZip ? (
+                          <span className={`text-xs font-medium ${TONE_TEXT_CLASS.danger}`}>
+                            ⚠ Won't upload — outside the zip
+                          </span>
+                        ) : (
+                          <span className={`text-xs font-medium ${TONE_TEXT_CLASS.success}`}>
+                            ✓ Target set
+                          </span>
+                        )
                       )}
                     </div>
                   )}
 
                   {renderFileList()}
 
-                  {files.some((f) => { const e = fileExt(f.name); return e === ".csv" || e === ".sas7bdat"; }) && !refTargetPath && (
+                  {refTargetIsOutsideZip && (
+                    <p role="alert" className={`text-xs flex items-start gap-1 ${TONE_TEXT_CLASS.danger}`}>
+                      <Target className="inline h-3 w-3 mt-0.5 shrink-0" />
+                      <span>
+                        This target sits alongside the zip, not inside it, so it won't be
+                        uploaded — only files bundled inside the zip can be sent as the
+                        reconciliation reference. Unmark it and pick a file from inside the
+                        zip's tree instead, or add the reference file to the zip itself.
+                      </span>
+                    </p>
+                  )}
+
+                  {!refTargetIsOutsideZip && !refTargetPath && zipFile && (
+                    <p className="text-xs text-muted-foreground flex items-start gap-1">
+                      <Target className="inline h-3 w-3 mt-0.5 shrink-0" />
+                      <span>
+                        Optional — migration runs fine without one. To compare output
+                        against a reference, expand the zip above and click the target
+                        icon on a CSV or dataset file inside it. A reference file must be
+                        bundled inside the zip; one added separately here won't be uploaded.
+                      </span>
+                    </p>
+                  )}
+
+                  {!refTargetIsOutsideZip && !refTargetPath && !zipFile && hasEligibleTopLevelFile && (
                     <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      Click <Target className="inline h-3 w-3" /> next to a CSV or dataset file to set it as the reconciliation target.
+                      Optional — migration runs fine without one. Click{" "}
+                      <Target className="inline h-3 w-3" /> next to a CSV or dataset file
+                      to set it as the reconciliation target.
                     </p>
                   )}
 

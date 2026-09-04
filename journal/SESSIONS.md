@@ -6,6 +6,66 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-09-04 — Migrations page mockup wrap-up, sidebar correction, F92 pushed + PR #149
+
+**Duration:** short session (continuation of a compacted conversation) | **Focus:** Finishing the
+Migrations page redesign mockup started last session, critiquing the sidebar nav, and closing out
+F92
+
+### Done
+- Got a partial visual verification of the "Improved Migrations Page" Artifact mockup after
+  several failed attempts to see the full 1440px artboard (canvas pan, scrollbar drag, zoom
+  controls, and browser zoom shortcuts were all blocked or ineffective in this environment; panning
+  the canvas via click-drag eventually worked for the left ~60% of the table). Gave an honest
+  assessment scoped to what was actually seen (logo, sidebar, Name column, status icons all read
+  well) versus what wasn't (Status/Files/Created/Actions columns, search/filter/button row)
+- Delivered a critical assessment of the sidebar nav on request: Migrations and Explain clearly
+  earn their weight, Docs/Lineage's equal visual weight versus actual usage is questionable, and
+  four flat nav items can't scale. Flagged the 220px fixed width as a real cost (directly caused the
+  screenshot struggle above) and recommended a collapsible rail as the highest-priority fix
+- Confirmed two existing GitHub issues cover this territory: **#52** (sidebar navigation revisit,
+  blocked on persona validation) and **#148** (welcome page + sidebar + upload flow; upload flow
+  already shipped as F92)
+- Built a two-artboard mockup (`Main.dc.html` expanded / `SidebarCollapsed.dc.html` new 56px icon
+  rail) and republished it to the same Artifact
+- **Correction, caught before implementing:** on "I like this design, implement it," re-read the
+  live `AppSidebar.tsx` before delegating and found collapse-to-rail is already fully shipped
+  (`ICON_COL = 56`, `localStorage` persistence, chevron flip, hover tooltips), predating this
+  session (`6b0137f`). The earlier critique was wrong — should have re-read the component instead
+  of relying on an older recollection of it. No implementation needed; logged as a correction in
+  `journal/DECISIONS.md` and `journal/BACKLOG.md` so #52/#148 aren't reopened against the wrong
+  gap. Sent internal feedback about the overconfident critique
+- Verified push state: `fix/F92-migration-upload-flow-fixes` had 5 commits, no upstream, not on
+  `origin` at all. Pushed on request
+- Opened **PR #149** (`fix/F92-migration-upload-flow-fixes` → `fix/F91-design-followups`, stacked —
+  depends on F91/#145's `useBrandManifestContainer()`, which is still open)
+
+### Decisions
+- Sidebar collapse behavior is not a gap; #52/#148's remaining sidebar scope is nav item
+  content/structure only, not the collapse mechanism (see `journal/DECISIONS.md`, 2026-09-04)
+
+### Open Questions
+- The sidebar mockup (`SidebarCollapsed.dc.html`) is now dead — collapse already exists — no action
+  needed, just don't resurrect it
+
+### Next Session — Start Here
+1. No feature is in-progress. Next candidates: implementing the Migrations page redesign against
+   `JobsPage.tsx`/`AppSidebar.tsx` (mockup at `docs/design/MigrationsPage.dc.html`, needs a
+   plan-feature pass first — not yet scoped into subtasks), #148's welcome-page half (needs its own
+   design pass, same process as F87-F90's "Manifest" direction), #52's actual remaining scope (nav
+   content/structure, now correctly narrowed), or the still-untraced Plan tab effort-estimate
+   formula noted earlier in the backlog. Confirm which with the user before starting
+
+### Files Touched
+- `journal/BACKLOG.md` — F92 marked pushed/PR'd; #52 lines annotated to correct scope; new notes on
+  the sidebar-collapse-already-exists finding and the not-yet-implemented Migrations page redesign
+- `journal/DECISIONS.md` — new 2026-09-04 entry locking in the #52/#148 scope correction
+- `docs/design/MigrationsPage.dc.html` — new; preserved mockup source (previously only a scratchpad
+  file and a published Artifact link), following the same pattern as `docs/design/Manifest.dc.html`
+- No other application code changed this session
+
+---
+
 ## 2026-09-02 — F90: Manifest design system rolled out to the whole frontend
 
 **Duration:** long session | **Focus:** Extending the "Manifest" design direction from the Plan

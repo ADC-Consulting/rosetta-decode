@@ -6,6 +6,19 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-09-04 — Sidebar collapse already shipped; #52/#148 scope corrected
+
+- **`AppSidebar.tsx`'s collapse-to-rail behavior is not a gap:** critiqued it as fixed-width with
+  no collapse affordance without re-reading the live component, built a two-state mockup to "fix"
+  it, then found on attempting to implement that it already collapses (56px icon rail, `localStorage`
+  persistence, chevron flip, hover tooltips), shipped in `6b0137f`, predating this session · root
+  cause was relying on a stale prior-session recollection of the component instead of re-reading
+  current source before making a critical claim · revisit never — #52/#148's remaining sidebar
+  scope is nav item content/structure (currently 4 flat, equally-weighted items: Migrations/
+  Lineage/Docs/Explain, no grouping or usage-weighted hierarchy), not the collapse mechanism
+
+---
+
 ## 2026-09-02 — F90 Manifest rollout: branch stacking, mockup durability, audit heuristic
 
 - **New feature branches may stack on an unmerged branch rather than wait for merge:** F90 branched
