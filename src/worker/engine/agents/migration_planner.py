@@ -111,6 +111,16 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
     5. List cross_file_dependencies: plain-English notes for any dataset that flows
        between files.
 
+    Writing style for "summary" and "rationale" text:
+    - Plain declarative sentences. Use a period, comma, or colon to join clauses; do not
+      use an em dash as a stylistic device.
+    - No throat-clearing or meta-commentary ("It's important to note that...", "This
+      essentially...", "Note that...").
+    - No hedgy filler or corporate buzzwords (avoid: leverage, seamless, robust, utilize,
+      "in order to"; write "to" instead).
+    - Write like a senior engineer explaining this to a colleague in a status update:
+      direct, specific, no padding.
+
     Special rules for macro utility blocks:
     - Blocks inside `macros/` files (e.g. `working/macros/assert_rowcount.sas`) that are
       assertion or validation helpers — recognisable by macro parameter names like `&ds` or
