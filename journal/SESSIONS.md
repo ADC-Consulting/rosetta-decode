@@ -97,6 +97,52 @@ F92
   file and a published Artifact link), following the same pattern as `docs/design/Manifest.dc.html`
 - No other application code changed this session
 
+**Duration:** short session | **Focus:** Copy pass on the migration job Plan tab — remove
+AI-sounding/templated phrasing and unmotivated em dashes, both in static UI copy and in the worker
+prompt that generates the plan summary and Needs-attention text
+
+### Done
+- Reviewed all hardcoded copy rendered on the Plan tab: `PlanTab.tsx`, `BeforeYouAcceptPanel.tsx`,
+  and `BlockPlanTable.tsx` (the Steps table it embeds). `ScopingSummaryPanel.tsx`/`ReconSummaryCard.tsx`
+  are not rendered on this tab, so out of scope
+- Found one genuine issue: `BeforeYouAcceptPanel.tsx`'s headline used an em dash as a stylistic tic
+  ("X of Y steps translated automatically — no action needed.") while the file's own sibling
+  message two branches below already used a plain period for the near-identical zero-review-count
+  case ("All steps translated automatically. No manual work required before accepting.") —
+  inconsistent, so changed the dash to a period for consistency. Delegated to `frontend-builder`
+- Deliberately left everything else alone: the "Term — definition" glossary-style dashes in the
+  confidence/criticality help text and throughout `BlockPlanTable.tsx`, the punchy verdict-banner
+  dashes ("All steps verified — safe to accept."), and badge-label dashes ("Manual — cannot
+  auto-convert", "Delivered — Accepted") are all consistent, deliberate UI conventions used
+  throughout the codebase, not AI writing tics — rewriting them would be busywork, not a fix
+- Traced the LLM-generated Plan tab content (the pipeline `summary` and per-block `rationale` shown
+  in Needs-attention cards) to `src/worker/engine/agents/migration_planner.py`'s `_SYSTEM_PROMPT`
+  (confirmed `plain_english.py`'s `non_technical_doc` is a separate document rendered on the Docs
+  page, not the Plan tab — out of scope). The prompt had no prose-style constraint at all. Added a
+  new "Writing style for summary and rationale text" section (plain declarative sentences, no em
+  dashes as a stylistic device, no throat-clearing/meta-commentary, no buzzwords like leverage/
+  seamless/robust/utilize). Delegated to `backend-builder`; purely additive, JSON schema/strategy
+  values/risk levels untouched
+- `make test` via `tester`: all seven gates green (ruff-check, ruff-format, mypy, pytest+coverage,
+  tsc, frontend-lint, frontend-build). Confirmed no test asserts against the literal
+  `_SYSTEM_PROMPT` string, so the new prompt section broke nothing
+- Verified live at localhost:5173 on the "Simple FSI demo" migration's Plan tab: "Before you accept"
+  now reads "4 of 12 steps translated automatically. No action needed." with a period. The
+  worker-prompt change is forward-looking only (can't rewrite this job's already-generated
+  summary/rationale text, which was already dash-free) — nothing further to verify live for that
+  half without running a brand-new migration
+- Not committed — waiting on the user's explicit go-ahead, per the project's commit-gating rule
+
+### Next
+- Commit both changes once the user confirms (message TBD, e.g.
+  `fix(plan-tab): remove AI-sounding em dash from copy + add prose style constraint to planner prompt`)
+- No other Plan tab copy issues outstanding
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/BeforeYouAcceptPanel.tsx` — em dash → period in the
+  auto-verified headline
+- `src/worker/engine/agents/migration_planner.py` — new writing-style section in `_SYSTEM_PROMPT`
+
 ---
 
 ## 2026-09-02 — F90: Manifest design system rolled out to the whole frontend

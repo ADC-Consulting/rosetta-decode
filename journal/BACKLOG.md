@@ -749,6 +749,17 @@ its own design pass first)**
   and `src/backend/api/` for where `estimated_effort` bands get turned into a number of hours).
   Confirm the mapping/formula is reasonable before trusting this number in front of stakeholders.
 
+**Plan tab copy pass — AI-sounding phrasing / unmotivated em dashes (2026-09-09)**
+- [x] Reviewed `PlanTab.tsx`, `BeforeYouAcceptPanel.tsx`, `BlockPlanTable.tsx` for hardcoded copy
+  that reads as AI-generated or templated. Fixed one real issue: em dash in
+  `BeforeYouAcceptPanel.tsx`'s auto-verified headline, inconsistent with the file's own
+  period-punctuated sibling message. Everything else (glossary-style "Term — definition" dashes,
+  verdict-banner dashes, badge-label dashes) is a deliberate, consistent UI convention — left as is
+- [x] Added a prose-style constraint ("no em dashes, plain declarative sentences, no buzzwords") to
+  `migration_planner.py`'s `_SYSTEM_PROMPT`, since it generates the Plan tab's `summary` and
+  `rationale` (Needs-attention) text for every future migration. Purely additive, JSON schema
+  unchanged
+
 **Correction — running-migration UX note above was wrong**
 - [x] The previous note here claimed there's no in-progress feedback while a job runs. Wrong —
   `LiveTraceDialog.tsx` already exists and is comprehensive: an "Activity" icon on every Migrations
