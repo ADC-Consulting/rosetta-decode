@@ -498,6 +498,17 @@ function PipelineTargetStepNode({ data }: NodeProps<PipelineTargetStepData>): Re
             <span>↑ {data.step.inputs.length} in</span>
             <span>↓ {data.step.outputs.length} out</span>
           </div>
+
+          {/* View steps hint */}
+          <div style={{
+            marginTop: 5, display: "flex",
+            alignItems: "center", gap: 3,
+          }}>
+            <ChevronRight size={11} style={{ color: "#94a3b8" }} />
+            <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "ui-monospace, monospace" }}>
+              View steps
+            </span>
+          </div>
         </div>
       </div>
       <Handle
@@ -867,7 +878,7 @@ function buildPipelineStepsGraph(
   const edges = buildRawEdges(lineage, nodeSet, sasToPyMap);
 
   const NODE_W = 260;
-  const NODE_H = 140;
+  const NODE_H = 158; // +18 vs. base 140 to fit the "View steps" hint row (same treatment as BLOCKS_COMPACT_H's 72->88 bump)
 
   const rawNodes: Node<PipelineTargetStepData>[] = pyFiles.map((pyFile, i) => {
     const sasFiles = pyToSasMap.get(pyFile) ?? pyFileToSasFiles(pyFile, blockPlans);
