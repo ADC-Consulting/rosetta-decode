@@ -14,7 +14,7 @@ import {
   sasFileToPyFile,
 } from "@/lib/sas-python-file-map";
 import dagre from "dagre";
-import { RotateCcw } from "lucide-react";
+import { ChevronRight, RotateCcw } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
   Background,
@@ -395,25 +395,21 @@ function PipelineStepNode({ data }: NodeProps<PipelineStepNodeData>): React.Reac
 // ---------------------------------------------------------------------------
 
 interface PipelineTargetStepData {
-  stepNumber: number;       // 1-based index
+  stepNumber: number;       // 1-based index (Python file order)
   stepName: string;
   description: string;
-  pyModules: string[];      // the .py files for this step
   status: FileNode["status"];
-  step: PipelineStep;       // the raw step object for click handler
+  step: PipelineStep;       // synthetic step (one per .py file) for click handler / side panel
 }
 
 function PipelineTargetStepNode({ data }: NodeProps<PipelineTargetStepData>): React.ReactElement {
   const accentColor = data.status ? STATUS_COLOR_MAP[data.status] : "#94a3b8";
-  const MAX_BADGES = 3;
-  const visibleModules = data.pyModules.slice(0, MAX_BADGES);
-  const extraCount = data.pyModules.length - MAX_BADGES;
 
   return (
     <>
       <Handle
         type="target"
-        position={Position.Top}
+        position={Position.Left}
         style={{
           background: accentColor,
           width: 8,
@@ -488,59 +484,25 @@ function PipelineTargetStepNode({ data }: NodeProps<PipelineTargetStepData>): Re
             </div>
           )}
 
-          {/* Row 3: .py module badges */}
-          {data.pyModules.length > 0 && (
-            <div
-              style={{
-                marginTop: 6,
-                display: "flex",
-                flexWrap: "wrap",
-                gap: 4,
-                alignItems: "center",
-              }}
-            >
-              {visibleModules.map((mod) => (
-                <span
-                  key={mod}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    background: "#f0fdf4",
-                    color: "#15803d",
-                    fontSize: 9,
-                    fontWeight: 700,
-                    fontFamily: "ui-monospace, monospace",
-                    padding: "2px 5px",
-                    borderRadius: 4,
-                    letterSpacing: "0.02em",
-                    maxWidth: 180,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {mod}
-                </span>
-              ))}
-              {extraCount > 0 && (
-                <span
-                  style={{
-                    fontSize: 9,
-                    fontWeight: 600,
-                    color: "#64748b",
-                    fontFamily: "ui-monospace, monospace",
-                  }}
-                >
-                  +{extraCount} more
-                </span>
-              )}
-            </div>
-          )}
+          {/* Row 3: input/output dataset counts */}
+          <div
+            style={{
+              marginTop: 5,
+              display: "flex",
+              gap: 8,
+              fontSize: 10,
+              color: "#94a3b8",
+              fontFamily: "ui-monospace, monospace",
+            }}
+          >
+            <span>↑ {data.step.inputs.length} in</span>
+            <span>↓ {data.step.outputs.length} out</span>
+          </div>
         </div>
       </div>
       <Handle
         type="source"
-        position={Position.Bottom}
+        position={Position.Right}
         style={{
           background: accentColor,
           width: 8,
@@ -567,7 +529,7 @@ interface BlocksFileNodeData {
   hasOutgoing?: boolean;
 }
 
-const BLOCKS_COMPACT_H = 72;
+const BLOCKS_COMPACT_H = 88;
 
 function BlocksFileNode({ data }: NodeProps<BlocksFileNodeData>): React.ReactElement {
   const accentColor = data.status ? STATUS_COLOR_MAP[data.status] : "#94a3b8";
@@ -624,6 +586,16 @@ function BlocksFileNode({ data }: NodeProps<BlocksFileNodeData>): React.ReactEle
           {passW  > 0 && <div style={{ width: `${passW}%`,  background: "#137a52", flexShrink: 0 }} />}
           {reviewW > 0 && <div style={{ width: `${reviewW}%`, background: "#b5680d", flexShrink: 0 }} />}
           {failW  > 0 && <div style={{ width: `${failW}%`,  background: "#b3261e", flexShrink: 0 }} />}
+        </div>
+        {/* View blocks hint */}
+        <div style={{
+          padding: "0 10px 8px", display: "flex",
+          alignItems: "center", gap: 3,
+        }}>
+          <ChevronRight size={11} style={{ color: "#94a3b8" }} />
+          <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "ui-monospace, monospace" }}>
+            View blocks
+          </span>
         </div>
       </div>
       {(data.hasOutgoing ?? true) && (
@@ -848,44 +820,77 @@ function buildModulesGraph(
   return { layoutNodes: allLayoutNodes, edges: rawEdges };
 }
 
+// Filename -> display title, e.g. "clean_ae_data.py" -> "Clean Ae Data".
+// Derived purely from the generated filename — never from SAS narrative text.
+function pyFileToStepTitle(pyFile: string): string {
+  const base = pyFile.replace(/\.py$/, "").split("/").pop() ?? pyFile;
+  return base
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+// Synthesize a card description from this file's BlockPlan.rationale strings —
+// the same field FileBlockListPanel already treats as the primary human-readable
+// label for a block (locked decision, journal/DECISIONS.md 2026-06-24). Nothing
+// here is fabricated or LLM-generated at render time; it's a join/truncation of
+// existing plan data.
+function summarizeFileBlocks(fileBlocks: BlockPlan[]): string {
+  if (fileBlocks.length === 0) return "";
+  const RISK_WEIGHT: Record<BlockPlan["risk"], number> = { high: 3, medium: 2, low: 1 };
+  const ranked = [...fileBlocks].sort((a, b) => RISK_WEIGHT[b.risk] - RISK_WEIGHT[a.risk]);
+  const picked = ranked
+    .slice(0, 3)
+    .map((bp) => bp.rationale.trim())
+    .filter(Boolean);
+  if (picked.length === 0) {
+    return `${fileBlocks.length} ${fileBlocks.length === 1 ? "block" : "blocks"} migrated`;
+  }
+  const joined = picked.join(" • ");
+  const MAX_LEN = 170;
+  return joined.length > MAX_LEN ? `${joined.slice(0, MAX_LEN - 1).trimEnd()}…` : joined;
+}
+
 function buildPipelineStepsGraph(
+  pyFiles: string[],
   lineage: JobLineageResponse,
   blockPlans: BlockPlan[],
   trustFiles: TrustReportFile[] | undefined,
   pyToSasMap: Map<string, string[]>,
   sasToPyMap: Map<string, string[]>,
 ): { layoutNodes: Node[]; edges: Edge[] } {
-  const steps = lineage.pipeline_steps ?? [];
+  const nodeSet = new Set(pyFiles);
+  // Reuse the same block-level edge derivation as the Files/Blocks views
+  // (see buildRawEdges) instead of a purely sequential chain — it's a small
+  // lift and gives a more accurate dependency graph than "file i -> file i+1".
+  const edges = buildRawEdges(lineage, nodeSet, sasToPyMap);
 
-  const STATUS_SEVERITY: Record<NonNullable<FileNode["status"]>, number> = {
-    UNRECOGNIZED: 3,
-    ERROR_PRONE: 2,
-    OK: 1,
-  };
+  const NODE_W = 260;
+  const NODE_H = 140;
 
-  const rawNodes: Node<PipelineTargetStepData>[] = steps.map((step, i) => {
-    // Derive Python modules from block IDs in this step using the accurate reverse map
-    const pyModules = [...new Set(
-      step.blocks
-        .map((blockId) => blockPlans.find((bp) => bp.block_id === blockId)?.source_file)
-        .filter((sf): sf is string => !!sf)
-        .flatMap((sf) => sasToPyMap.get(sf) ?? [sasFileToPyFile(sf)]),
-    )];
+  const rawNodes: Node<PipelineTargetStepData>[] = pyFiles.map((pyFile, i) => {
+    const sasFiles = pyToSasMap.get(pyFile) ?? pyFileToSasFiles(pyFile, blockPlans);
+    const fileBlocks = blockPlans.filter((bp) => sasFiles.includes(bp.source_file));
 
-    // Aggregate status from .py modules — pick worst
-    let worstStatus: FileNode["status"] = null;
-    for (const pyFile of pyModules) {
-      const s = aggregateStatus(pyFile, blockPlans, trustFiles, pyToSasMap);
-      if (s === null) continue;
-      if (worstStatus === null || STATUS_SEVERITY[s] > STATUS_SEVERITY[worstStatus]) {
-        worstStatus = s;
-      }
-    }
+    const status = aggregateStatus(pyFile, blockPlans, trustFiles, pyToSasMap);
+    const description = summarizeFileBlocks(fileBlocks);
 
-    const NODE_W = 260;
-    const NODE_H = 140;
+    // Synthetic PipelineStep — keeps the existing onPipelineStepClick(step: PipelineStep)
+    // contract (and the downstream PipelineStepPanel) working, but every field is
+    // derived from this Python file / its BlockPlans, not from lineage.pipeline_steps.
+    const step: PipelineStep = {
+      step_id: pyFile,
+      name: pyFileToStepTitle(pyFile),
+      description,
+      files: sasFiles,
+      blocks: fileBlocks.map((bp) => bp.block_id),
+      inputs: [...new Set(fileBlocks.flatMap((bp) => bp.input_datasets))],
+      outputs: [...new Set(fileBlocks.flatMap((bp) => bp.output_datasets))],
+    };
+
     return {
-      id: step.step_id,
+      id: pyFile,
       type: "pipelineTargetStep",
       position: { x: 0, y: 0 },
       width: NODE_W,
@@ -893,24 +898,14 @@ function buildPipelineStepsGraph(
       data: {
         stepNumber: i + 1,
         stepName: step.name,
-        description: step.description,
-        pyModules,
-        status: worstStatus,
+        description,
+        status,
         step,
       },
     };
   });
 
-  // Sequential edges: step[i] → step[i+1]
-  const edges: Edge[] = steps.slice(0, -1).map((step, i) => ({
-    id: `ps-edge-${i}`,
-    source: step.step_id,
-    target: steps[i + 1].step_id,
-    style: { stroke: "#94a3b8", strokeWidth: 1.5 },
-    markerEnd: { type: MarkerType.ArrowClosed, color: "#94a3b8" },
-  }));
-
-  const layoutNodes = applyDagreLayout(rawNodes, edges, 260, 140, {
+  const layoutNodes = applyDagreLayout(rawNodes, edges, NODE_W, NODE_H, {
     rankdir: "LR",
     ranksep: 80,
     nodesep: 40,
@@ -1021,7 +1016,7 @@ function TargetGraphInner({
   const { layoutNodes: builtNodes, edges: builtEdges } = isEmpty
     ? { layoutNodes: [], edges: [] }
     : view === "pipeline"
-      ? buildPipelineStepsGraph(lineage, blockPlans, trustFiles, pyToSasMap, sasToPyMap)
+      ? buildPipelineStepsGraph(pyFiles, lineage, blockPlans, trustFiles, pyToSasMap, sasToPyMap)
       : view === "blocks"
         ? buildBlocksGraph(
             pyFiles,

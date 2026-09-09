@@ -488,6 +488,7 @@ export default function ETLTab({
               trustBlock={trustBlocks[selectedBlock!]}
               isHumanVerified={humanVerifiedBlocks.has(selectedBlock!)}
               parentPyFile={graphView === "target" ? blockDetailParentPyFile : undefined}
+              mode={graphView === "target" ? "target" : "source"}
               onBack={() => setSelectedBlock(null)}
               onViewCode={(blockId) => {
                 setCodePopupBlockId(blockId);
