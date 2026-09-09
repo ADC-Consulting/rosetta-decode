@@ -1144,7 +1144,7 @@ export default function JobsPage(): React.ReactElement {
             >
               {manifest !== null ? "Done" : "Cancel"}
             </Button>
-            {manifest === null && (
+            {phase === "staging" && (
               <Button
                 type="submit"
                 form="migration-form"
@@ -1156,7 +1156,7 @@ export default function JobsPage(): React.ReactElement {
               </Button>
             )}
 
-            {manifest !== null && (
+            {phase === "submitted" && manifest !== null && (
               <Button
                 onClick={() => {
                   const id = manifest.job_id;
