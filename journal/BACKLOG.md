@@ -712,6 +712,10 @@ its own design pass first)**
 - [x] F92 S-F: `make tsc-check && make frontend-lint && make frontend-build && make test` exit 0
 - [x] F92: pushed `fix/F92-migration-upload-flow-fixes`, opened PR #149 against `fix/F91-design-followups`
   (stacked — depends on F91/#145's `useBrandManifestContainer()`, not yet merged)
+- [x] F92 follow-up (2026-09-09, user report "why can't I press migrate"): dialog footer's
+  Migrate/View-Migration buttons keyed off `manifest` instead of `phase` — stuck on "View
+  Migration" for the second+ migration submitted via "Start another" in one dialog session.
+  Fixed in `JobsPage.tsx`, verified in browser, committed d56ea9e; not yet pushed
 
 **Migrations page redesign — mockup approved, not yet implemented**
 - [ ] Build the "Manifest"-styled Migrations page redesign against the real `JobsPage.tsx`/

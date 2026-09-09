@@ -6,7 +6,40 @@ Most recent session on top. Each entry should answer:
 
 ---
 
-## 2026-09-04 — Migrations page mockup wrap-up, sidebar correction, F92 pushed + PR #149
+## 2026-09-09 — Fixed stuck Migrate button on second migration in a dialog session
+
+**Duration:** short session | **Focus:** Bug report from the user ("why can't I press migrate")
+on `fix/F92-migration-upload-flow-fixes`, already pushed as PR #149
+
+### Done
+- Diagnosed: after submitting one migration and clicking "Start another" in the New Migration
+  dialog, the Migrate button never reappears — the dialog footer shows a stale "View Migration"
+  button pointing at the *first* job instead. Only affects the second+ migration submitted in the
+  same dialog session; the first submission is unaffected
+- Root cause: `newMigration()` in `UploadStateContext.tsx` correctly resets `phase` back to
+  `"staging"` but intentionally leaves `manifest` set (so the prior job's result card stays
+  visible above the new form). The dialog footer in `JobsPage.tsx`, however, was keying its
+  Migrate/View-Migration button choice off `manifest === null` / `manifest !== null` instead of
+  `phase` — so once `manifest` was set from job 1, the footer stayed stuck on "View Migration"
+  even after `phase` flipped back to `"staging"` for job 2. This was masked before commit
+  `12310d5` (keep dialog open after successful submission), because the dialog used to fully
+  reset (clearing `manifest` too) and close immediately after every submit — so a user never
+  reached "Start another" while `manifest` was still set
+- Fix: footer conditionals in `JobsPage.tsx` now key off `phase === "staging"` (Migrate button)
+  and `phase === "submitted"` (View Migration button), matching the state machine that already
+  drives the form body correctly. Left the `newMigration()` stale comment (referencing the
+  deleted `/upload` route) untouched — out of scope, not part of this bug
+- `ruff`/`mypy` weren't available until `uv sync --extra dev` was run (dev extras weren't
+  synced in this environment) — synced, then `make test` passed clean: ruff, mypy, pytest+coverage,
+  tsc, frontend-lint, frontend-build all green
+- Verified live in the browser against the local dev stack (localhost:5173): first submission
+  and "Start another" second submission both now show a clickable Migrate button and persist
+  after a page reload
+- Committed as `fix(JobsPage): key dialog footer buttons off phase instead of manifest`; not
+  yet pushed
+
+### Next
+- Push and update PR #149, or fold into a follow-up PR, per user's call
 
 **Duration:** short session (continuation of a compacted conversation) | **Focus:** Finishing the
 Migrations page redesign mockup started last session, critiquing the sidebar nav, and closing out
