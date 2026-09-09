@@ -716,6 +716,43 @@ its own design pass first)**
   Migrate/View-Migration buttons keyed off `manifest` instead of `phase` — stuck on "View
   Migration" for the second+ migration submitted via "Start another" in one dialog session.
   Fixed in `JobsPage.tsx`, verified in browser, committed d56ea9e; not yet pushed
+- [x] F92 follow-up (2026-09-09, user report "ETL tab does not look right"): Target "Pipeline"
+  sub-view rendered step-card connectors as a looping curve — `PipelineTargetStepNode` in
+  `TargetGraph.tsx` had `Handle` positions pinned Top/Bottom while the layout is horizontal
+  (`rankdir: "LR"`). Fixed by switching the two handles to Left/Right, matching the already-correct
+  Source-side `PipelineStepCard.tsx`. `make test` green (7/7 gates), verified live on both
+  Source and Target Pipeline views; not yet committed
+- [x] F92 follow-up (2026-09-09, same report): investigated the Target "Steps" sub-view showing a
+  single aggregate card for a one-Python-file migration — confirmed by-design (grouping is
+  genuinely per generated Python file, verified against a 6-file migration rendering 6 correctly
+  linked cards), not a bug. Live-testing did surface a real polish gap: the file-card had no visual
+  affordance that it's clickable. Added a persistent chevron + "View blocks" hint row to
+  `BlocksFileNode` (`TargetGraph.tsx`), following the `BlockDetailPanel.tsx` breadcrumb-chevron
+  precedent from F71. `make test` green (7/7 gates), verified live at N=1 (Simple FSI demo) and
+  N=6 (Biometrics Demo — SDTM to ADaM) — reads well at both, no layout overlap; not yet committed
+- [x] F92 follow-up (2026-09-09, new rule: Target view must be Python-only, never SAS-derived):
+  found and fixed three violations, frontend-only. (1) Target's "Pipeline" sub-view was built from
+  `lineage.pipeline_steps` — SAS-only narrative text from `LineageEnricherAgent`, generated before
+  Python exists — explaining why it mirrored Source's step names exactly; rewrote
+  `buildPipelineStepsGraph` (`TargetGraph.tsx`) to group by generated Python file, with
+  title/description synthesized from `BlockPlan.rationale` (no new LLM call). (2) Target's Files/
+  Blocks edge topology was projected from SAS file-level `file_edges`; changed to block-level
+  `lineage.nodes`/`lineage.edges`, then **reverted back to file-level after live verification proved
+  the block-level data was missing a real cross-file dependency** (DM→ADSL edge on Biometrics Demo)
+  that file-level data correctly captured — confirmed via a direct `curl` of `/jobs/{id}/lineage`.
+  Also added a "↑ N in / ↓ M out" dataset-count row to Target Pipeline cards, matching Source's,
+  using data Fix A already computes. (3) `BlockDetailPanel` always showed raw SAS `block_type` as
+  its heading regardless of mode; added `mode?: "source" | "target"` prop — target mode now shows
+  `blockPlan.rationale` as the heading with `block_type` demoted to a secondary `SAS` chip (matching
+  `FileBlockListPanel`'s established convention), source mode unchanged. `make test` green (7/7
+  gates) after both rounds of changes; verified live on Simple FSI demo (1 file) and Biometrics
+  Demo — SDTM to ADaM (6 files). Flagged, not built: cross-file edges are still SAS-derived (via
+  `file_edges`' `INCLUDE`/`MACRO_CALL`/`READS_DATASET`/`WRITES_DATASET` detection), not computed
+  from the generated Python's actual imports — true independence would need that parser as a
+  stricter follow-up. Known wrinkle: `ETLTab.tsx` still passes the old SAS-narrative
+  `pipeline_steps` as `allSteps` into `PipelineStepPanel`, so the Target-mode side panel's
+  step-number lookup won't match Fix A's new per-file step IDs (degrades gracefully, not fixed here).
+  Not yet committed — `TargetGraph.tsx`, `BlockDetailPanel.tsx`, `ETLTab.tsx` all have pending diffs
 
 **Migrations page redesign — mockup approved, not yet implemented**
 - [ ] Build the "Manifest"-styled Migrations page redesign against the real `JobsPage.tsx`/

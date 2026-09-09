@@ -143,6 +143,151 @@ prompt that generates the plan summary and Needs-attention text
   auto-verified headline
 - `src/worker/engine/agents/migration_planner.py` — new writing-style section in `_SYSTEM_PROMPT`
 
+**Duration:** short session | **Focus:** Follow-up bug report from the user on the ETL tab
+("the target ETL only has one step, the source ETL steps also look weird") for the "Simple FSI
+demo" migration, still on `fix/F92-migration-upload-flow-fixes`
+
+### Done
+- Diagnosed two reported issues by reading `TargetGraph.tsx`/`LineageGraph.tsx`/`ETLTab.tsx` and
+  reproducing live at localhost:5173:
+  1. **Real bug, fixed:** the ETL tab's Target "Pipeline" sub-view rendered connector edges
+     between step cards as a loop (arcing from the bottom of one card, under, and back into the
+     top of the next) instead of a clean left-to-right line. Root cause: `PipelineTargetStepNode`
+     in `TargetGraph.tsx` pinned its React Flow `Handle` positions to `Position.Top` (target) /
+     `Position.Bottom` (source) while the pipeline nodes are laid out horizontally via
+     `applyDagreLayout(..., { rankdir: "LR" })` — a mismatch between vertical handle anchors and a
+     horizontal layout. Fixed by changing the two handle positions to `Position.Left` /
+     `Position.Right`, matching the existing LR layout and the already-correct analogous Source
+     component (`PipelineStepCard.tsx`). Source's Pipeline view was independently confirmed clean
+     (its handles were already Left/Right) — this was a Target-only defect, not shared with Source.
+  2. **Not a bug, confirmed by design, but a real polish gap found:** the Target "Steps" sub-view
+     showing a single aggregate card ("12 steps" + status bar) for this one-Python-file migration
+     matches the locked 2026-06-24 "ETL tab Target Blocks redesign" decision (`journal/DECISIONS.md`)
+     — grouping is genuinely per generated Python file (`buildBlocksGraph` maps over `pyFiles`), not
+     a hardcoded collapse; a 6-file migration ("Biometrics Demo — SDTM to ADaM") was checked live and
+     correctly renders 6 file-cards with real edges between them. Traced the original rationale to
+     commit `155abf9`/F67: the redesign replaced inline per-block SAS-construct rows inside each
+     node, not "many cards vs. one" — the single-file case was never the scenario being weighed.
+     Live-testing the single-file card fresh (with first-time-user legibility in mind, given this
+     tool's target user is a non-technical business/code owner) confirmed the card had zero visual
+     affordance that it's interactive — no chevron, no hint text, no visible edges — plausibly
+     reading as a broken/empty render rather than "one file, click to expand"
+- Delegated the Target Pipeline fix to `frontend-builder` (two `Handle` `position` prop changes,
+  `TargetGraph.tsx` lines ~416/~543); scope held strictly to those two lines, no changes to the
+  orphaned/unused `PipelineStepNode` dead code found nearby
+- User decided on Issue 2: add a persistent chevron + "View blocks" hint to the file-card,
+  unconditionally (not scoped to the single-file case), following the `BlockDetailPanel.tsx`
+  breadcrumb-chevron precedent from F71. Delegated to `frontend-builder`: new `ChevronRight`
+  (lucide-react) + hint row added to `BlocksFileNode` below the segmented status bar,
+  `BLOCKS_COMPACT_H` bumped 72→88 to keep dagre vertical spacing correct
+- `make test` via `tester`, run twice (once per change): all seven gates green both times
+  (ruff-check, ruff-format, mypy, pytest+coverage, tsc, frontend-lint, frontend-build)
+- Verified live at localhost:5173: Target Pipeline sub-view renders clean straight connectors
+  between all 4 step cards (Source confirmed to have no analogous issue); the new "View blocks"
+  hint reads clearly on both the single-file card (Simple FSI demo) and all 6 cards of a multi-file
+  migration (Biometrics Demo — SDTM to ADaM), with no crowding of the status bar and no overlap in
+  the stacked multi-card DAG layout
+- Noted (not a code defect): a full page reload of the ETL tab once transiently re-rendered the
+  pre-fix looped edges even though the on-disk file and git diff both already showed the fix —
+  self-resolved on a second reload. Most likely a Vite dev-server/Docker bind-mount HMR staleness
+  blip, not a regression; worth a re-check if it recurs
+- Neither change committed yet — waiting on the user's explicit go-ahead, per the project's
+  commit-gating rule; user wants to review both diffs themselves first
+
+### Next
+- Commit both TargetGraph.tsx changes once the user confirms (likely as one commit, e.g.
+  `fix(TargetGraph): correct Pipeline handle positions and add Blocks-view click affordance`, or
+  split if the user prefers)
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/TargetGraph.tsx` —
+  (1) `PipelineTargetStepNode` `Handle` `position` props, `Position.Top`→`Position.Left` and
+  `Position.Bottom`→`Position.Right` (lines ~416, ~543);
+  (2) `BlocksFileNode` gained a persistent chevron+"View blocks" hint row (new `ChevronRight` import
+  from `lucide-react`, `BLOCKS_COMPACT_H` 72→88, new footer `<div>` after the segmented bar, ~line 628)
+
+**Duration:** short session | **Focus:** New product rule surfaced while reading `ETLTab.tsx` for
+the chevron work above: the ETL tab's Target view must be built only from generated-Python data,
+never SAS-derived narrative structure. Investigated and fixed three concrete violations, all still
+on `fix/F92-migration-upload-flow-fixes`
+
+### Done
+- Diagnosed (via `fullstack-planner`, then independently verified with direct file reads and a
+  live `curl` of `/jobs/{id}/lineage`) that Target's "Pipeline" sub-view was structurally built from
+  `lineage.pipeline_steps` — SAS-only narrative text authored by `LineageEnricherAgent`
+  (`src/worker/engine/agents/lineage_enricher.py`) from SAS source alone, before Python code exists.
+  This is why Target's Pipeline view showed the exact same step names/descriptions as Source's.
+  Two smaller leaks found alongside: Target's Files/Blocks edge topology was a re-projection of
+  SAS file-level `file_edges`, and `BlockDetailPanel`'s primary heading always showed the raw SAS
+  `block_type` (e.g. "PROC_SQL") regardless of Source/Target mode
+- User confirmed fixing all three, frontend-only, no backend/worker/LLM changes:
+  - **Fix A** (`TargetGraph.tsx`, `buildPipelineStepsGraph`): now builds one card per generated
+    Python file (`pyFiles`, file order) instead of `lineage.pipeline_steps`. Title = filename in
+    Title Case (`pyFileToStepTitle`); description = synthesized from that file's `BlockPlan.rationale`
+    strings, risk-ranked and joined (`summarizeFileBlocks`) — nothing fabricated, no new LLM call.
+    Removed the now-redundant `.py` module badge row (the card *is* the module now)
+  - **Fix B** (`TargetGraph.tsx`, `buildRawEdges`): changed to project cross-file edges from
+    block-level `lineage.nodes`/`lineage.edges` instead of file-level `lineage.file_edges`
+  - **Fix C** (`BlockDetailPanel.tsx` + `ETLTab.tsx`): added `mode?: "source" | "target"` prop
+    (mirroring `PipelineStepPanel`'s existing pattern). In target mode, `blockPlan.rationale`
+    becomes the bold primary heading, `block_type` demoted to a small secondary `SAS` chip (matching
+    `FileBlockListPanel`'s established rationale-primary/`[SAS]`-secondary convention); source mode
+    unchanged. Wired via `mode={graphView === "target" ? "target" : "source"}` in `ETLTab.tsx`
+  - `make test` green after Fix A/B/C (7/7 gates)
+- **Regression found in Fix B during live verification** (flagged by a mid-verification check after
+  this agent hit a rate-limit interruption — test-runner subagent also died, work was picked up and
+  confirmed intact from git diff, nothing lost): on "Biometrics Demo — SDTM to ADaM" (6 files),
+  Source's Pipeline view correctly showed 3 edges converging into "Build ADaM ADSL" (DM, EX, AE);
+  Target's Fix-B block-level edges only showed 2 (EX, AE) — the DM edge was silently missing.
+  Root-caused by fetching the live `/jobs/{id}/lineage` payload directly: the backend's block-level
+  `lineage.edges` array genuinely has no edge from any `sas/01_build_sdtm_dm.sas` block to any
+  `sas/05_build_adam_adsl.sas` block, while `lineage.file_edges` correctly has
+  `{source_file: "sas/01_build_sdtm_dm.sas", target_file: "sas/05_build_adam_adsl.sas",
+  reason: "READS_DATASET"}`. Verdict: Fix B's move to block-level edges was a regression here, not
+  an improvement — SAS-file-to-Python-file mapping in this codebase is consistently 1:1, so the
+  file-level signal already projects cleanly and is empirically more complete than the block-level
+  one. **Reverted `buildRawEdges` back to `lineage.file_edges`** (restoring the pre-session
+  implementation verbatim), keeping the rest of Fix A/B intact
+- Also closed a parity gap flagged during the same check: Target's Pipeline cards had no dataset
+  in/out count, unlike Source's "↑ N in / ↓ M out" row. Added the identical row to
+  `PipelineTargetStepNode`, sourced from the synthetic `step.inputs`/`step.outputs` arrays Fix A
+  already builds — no new data needed
+- `make test` green again after the edge revert + in/out count (7/7 gates)
+- Verified live at localhost:5173 on both jobs: Simple FSI demo (1 Python file) and Biometrics
+  Demo — SDTM to ADaM (6 files) — Target Pipeline cards now show Python-file titles and
+  rationale-based descriptions (not SAS narrative), the DM→ADSL edge is back (3 edges into ADSL,
+  matching Source), in/out counts render on all cards, and `BlockDetailPanel` shows rationale as
+  the heading with a demoted `SAS` chip in target mode / unchanged `block_type` heading in source
+  mode
+- Flagged, not built (explicitly out of scope): even `file_edges`-based cross-file edges are still
+  SAS-derived (via SAS-side `INCLUDE`/`MACRO_CALL`/`READS_DATASET`/`WRITES_DATASET` detection, not
+  the generated Python's actual imports/dataframe references) — true independence would require
+  parsing the generated Python, a possible stricter follow-up
+- Nothing committed — five separate uncommitted hunks now sit in `TargetGraph.tsx`
+  (Handle-position fix, chevron affordance, Fix A, Fix B + its edge-source revert, in/out count)
+  plus `BlockDetailPanel.tsx`/`ETLTab.tsx` (Fix C); user wants to review all diffs before any commit
+
+### Next
+- User to review all uncommitted diffs (`TargetGraph.tsx`, `BlockDetailPanel.tsx`, `ETLTab.tsx`),
+  then confirm before `git-committer` is invoked (likely as one or two conventional commits)
+- Possible stricter follow-up (not scoped): compute Target edge accuracy from generated Python
+  imports/dataframe references instead of any SAS-derived signal
+- Known wrinkle flagged by `frontend-builder`, not yet addressed: `ETLTab.tsx` still passes the old
+  `etlLineage.pipeline_steps` as `allSteps` into `PipelineStepPanel`, so the Target-mode side panel's
+  step-number/upstream-dataset lookups won't match Fix A's new per-file synthetic step IDs (degrades
+  gracefully — shows the raw filename instead of a step number — but reads a bit poorer until
+  `ETLTab.tsx` is updated to pass the new per-file steps through)
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/TargetGraph.tsx` — `buildPipelineStepsGraph` rewritten to
+  group by `pyFiles` (new `pyFileToStepTitle`/`summarizeFileBlocks` helpers), `buildRawEdges`
+  changed to block-level then reverted back to `lineage.file_edges`, `PipelineTargetStepNode` lost
+  its `.py` module badge row and gained an "↑ N in / ↓ M out" row
+- `src/frontend/src/components/JobDetail/BlockDetailPanel.tsx` — new `mode?: "source" | "target"`
+  prop; target-mode heading shows `blockPlan.rationale` + demoted `SAS`/`block_type` chip
+- `src/frontend/src/components/JobDetail/ETLTab.tsx` — passes
+  `mode={graphView === "target" ? "target" : "source"}` into `BlockDetailPanel`
+
 ---
 
 ## 2026-09-02 — F90: Manifest design system rolled out to the whole frontend
