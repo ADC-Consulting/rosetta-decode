@@ -288,6 +288,33 @@ on `fix/F92-migration-upload-flow-fixes`
 - `src/frontend/src/components/JobDetail/ETLTab.tsx` — passes
   `mode={graphView === "target" ? "target" : "source"}` into `BlockDetailPanel`
 
+**Duration:** short session | **Focus:** Follow-up on top of the committed `2867e9b`/`e80c74f`
+source/target-separation work — user found the Target "Pipeline" sub-view card had the same
+no-click-affordance problem the chevron/hint fix already solved for the Blocks/Steps view, just
+never applied to this sibling component
+
+### Done
+- Confirmed live: `PipelineTargetStepNode` cards ARE clickable (opens `PipelineStepPanel` with
+  blocks/modules/feeds-into info) but had zero visual cue saying so — same gap `BlocksFileNode`
+  had before its chevron+hint fix earlier this session
+- Delegated to `frontend-builder`: added an unconditional chevron+"View steps" hint row to
+  `PipelineTargetStepNode` (`TargetGraph.tsx`), styled identically to `BlocksFileNode`'s existing
+  hint row (reused the already-imported `ChevronRight`), placed after the "↑ N in / ↓ M out" row.
+  Bumped `NODE_H` 140→158 inside `buildPipelineStepsGraph` to fit the new row without clipping or
+  dagre vertical overlap (same proportional bump `BLOCKS_COMPACT_H` got earlier: 72→88)
+- `make test`: seven gates green
+- Verified live at localhost:5173: hint row renders cleanly below the in/out counts with no
+  clipping on Simple FSI demo (1 card) and all 6 cards of Biometrics Demo — SDTM to ADaM, no overlap
+  in the stacked multi-card DAG layout, edges/counts from the prior fix still intact
+- Not committed — user reviews first, same pattern as every other change today
+
+### Next
+- User to review this diff alongside anything else still pending, then confirm before commit
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/TargetGraph.tsx` — `PipelineTargetStepNode` gained a
+  chevron+"View steps" hint row; `NODE_H` (inside `buildPipelineStepsGraph`) 140→158
+
 ---
 
 ## 2026-09-02 — F90: Manifest design system rolled out to the whole frontend

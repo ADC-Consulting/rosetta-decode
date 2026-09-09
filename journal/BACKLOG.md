@@ -753,6 +753,13 @@ its own design pass first)**
   `pipeline_steps` as `allSteps` into `PipelineStepPanel`, so the Target-mode side panel's
   step-number lookup won't match Fix A's new per-file step IDs (degrades gracefully, not fixed here).
   Not yet committed — `TargetGraph.tsx`, `BlockDetailPanel.tsx`, `ETLTab.tsx` all have pending diffs
+- [x] F92 follow-up (2026-09-09, on top of committed `2867e9b`/`e80c74f`): Target Pipeline sub-view
+  card (`PipelineTargetStepNode`) had the same no-click-affordance gap the chevron/hint fix already
+  solved for `BlocksFileNode`, just never applied here — confirmed live it's clickable (opens
+  `PipelineStepPanel`) but had no visual cue. Added the same unconditional chevron+"View steps" hint
+  row (`TargetGraph.tsx`), `NODE_H` 140→158 to fit it. `make test` green (7/7 gates); verified live
+  on Simple FSI demo (1 card) and Biometrics Demo — SDTM to ADaM (6 cards), no clipping/overlap.
+  Not yet committed — user reviews first
 
 **Migrations page redesign — mockup approved, not yet implemented**
 - [ ] Build the "Manifest"-styled Migrations page redesign against the real `JobsPage.tsx`/
