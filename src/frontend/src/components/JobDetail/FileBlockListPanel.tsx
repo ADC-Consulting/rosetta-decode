@@ -9,11 +9,11 @@ import { TONE_TEXT_CLASS } from "./status-colors";
 // ---------------------------------------------------------------------------
 
 interface FileBlockListPanelProps {
-  pyFile: string;
+  title: string;
   blockPlans: BlockPlan[];
   trustBlocks: Record<string, TrustReportBlock>;
   humanVerifiedBlocks: Set<string>;
-  sasFiles: string[];
+  blockIds: string[];
   onBlockClick: (blockId: string) => void;
   onClose: () => void;
 }
@@ -55,18 +55,17 @@ function sortOrder(label: string): number {
 // ---------------------------------------------------------------------------
 
 export default function FileBlockListPanel({
-  pyFile,
+  title,
   blockPlans,
   trustBlocks,
   humanVerifiedBlocks,
-  sasFiles,
+  blockIds,
   onBlockClick,
   onClose,
 }: FileBlockListPanelProps): React.ReactElement {
-  const basename = pyFile.split("/").pop() ?? pyFile;
-
-  // Filter to blocks belonging to this pyFile's SAS sources
-  const fileBlocks = blockPlans.filter((bp) => sasFiles.includes(bp.source_file));
+  // Filter to exactly this group's blocks (by id, not by SAS-file membership —
+  // a file can be shared across steps, so file-inclusion would over-select).
+  const fileBlocks = blockPlans.filter((bp) => blockIds.includes(bp.block_id));
 
   // Annotate with status and sort
   const annotated = fileBlocks.map((bp) => {
@@ -89,9 +88,9 @@ export default function FileBlockListPanel({
         <div className="flex items-center justify-between gap-2">
           <span
             className="font-mono font-bold text-sm text-foreground truncate"
-            title={pyFile}
+            title={title}
           >
-            {basename}
+            {title}
           </span>
           <Button
             variant="ghost"

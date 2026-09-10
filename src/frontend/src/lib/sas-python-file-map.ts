@@ -11,6 +11,17 @@ export function sasFileToPyFile(sourceFile: string): string {
   return `${stem}.py`;
 }
 
+// Filename -> display title, e.g. "clean_ae_data.py" -> "Clean Ae Data".
+// Derived purely from the generated filename — never from SAS narrative text.
+export function pyFileToStepTitle(pyFile: string): string {
+  const base = pyFile.replace(/\.py$/, "").split("/").pop() ?? pyFile;
+  return base
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
 // Returns all SAS source files in blockPlans that map to a given Python filename.
 // When the result has >1 entry, those SAS files were merged into one Python module.
 export function pyFileToSasFiles(pyFile: string, blockPlans: BlockPlan[]): string[] {

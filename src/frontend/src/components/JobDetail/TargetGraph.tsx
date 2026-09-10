@@ -11,6 +11,7 @@ import {
   buildPyFileToSasFilesMap,
   buildSasFileToPyFilesMap,
   pyFileToSasFiles,
+  pyFileToStepTitle,
   sasFileToPyFile,
 } from "@/lib/sas-python-file-map";
 import dagre from "dagre";
@@ -831,17 +832,6 @@ function buildModulesGraph(
   return { layoutNodes: allLayoutNodes, edges: rawEdges };
 }
 
-// Filename -> display title, e.g. "clean_ae_data.py" -> "Clean Ae Data".
-// Derived purely from the generated filename — never from SAS narrative text.
-function pyFileToStepTitle(pyFile: string): string {
-  const base = pyFile.replace(/\.py$/, "").split("/").pop() ?? pyFile;
-  return base
-    .split(/[_-]+/)
-    .filter(Boolean)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
-}
-
 // Synthesize a card description from this file's BlockPlan.rationale strings —
 // the same field FileBlockListPanel already treats as the primary human-readable
 // label for a block (locked decision, journal/DECISIONS.md 2026-06-24). Nothing
@@ -863,58 +853,122 @@ function summarizeFileBlocks(fileBlocks: BlockPlan[]): string {
   return joined.length > MAX_LEN ? `${joined.slice(0, MAX_LEN - 1).trimEnd()}…` : joined;
 }
 
+// Step-to-step edges via dataset-name matching between each step's derived
+// inputs/outputs — the same method Source's Pipeline view uses (buildPipelineEdges
+// in LineageGraph.tsx), which works regardless of file boundaries (unlike a
+// file_edges projection, which produces zero edges whenever every step lives in
+// a single SAS/generated-Python file — the common case this fix targets).
+function buildStepDatasetEdges(
+  steps: { step_id: string; inputs: string[]; outputs: string[] }[],
+): Edge[] {
+  const edges: Edge[] = [];
+  for (let i = 0; i < steps.length; i++) {
+    for (let j = 0; j < steps.length; j++) {
+      if (i === j) continue;
+      const shared = steps[i].outputs.filter((o) => steps[j].inputs.includes(o));
+      if (shared.length > 0) {
+        edges.push({
+          id: `pse-${steps[i].step_id}-${steps[j].step_id}`,
+          source: steps[i].step_id,
+          target: steps[j].step_id,
+          type: "hover",
+          data: { label: shared.join(", ").toLowerCase() },
+          style: { stroke: "#3b82f6", strokeWidth: 1.5 },
+          markerEnd: { type: MarkerType.ArrowClosed, color: "#3b82f6" },
+        });
+      }
+    }
+  }
+  return edges;
+}
+
+// Same aggregation as aggregateStatus, but keyed directly off a set of SAS
+// source files instead of derived from a single generated Python file.
+function aggregateStatusForFiles(
+  sasFiles: string[],
+  trustFiles: TrustReportFile[] | undefined,
+): FileNode["status"] {
+  if (!trustFiles || sasFiles.length === 0) return null;
+  const entries = sasFiles
+    .map((sf) => trustFiles.find((tf) => tf.source_file === sf))
+    .filter((tf): tf is TrustReportFile => tf !== undefined);
+  if (entries.length === 0) return null;
+  if (entries.some((tf) => tf.failed_reconciliation > 0)) return "UNRECOGNIZED";
+  if (entries.some((tf) => tf.needs_review > 0 || tf.manual_todo > 0)) return "ERROR_PRONE";
+  return "OK";
+}
+
 function buildPipelineStepsGraph(
-  pyFiles: string[],
   lineage: JobLineageResponse,
   blockPlans: BlockPlan[],
   trustFiles: TrustReportFile[] | undefined,
-  pyToSasMap: Map<string, string[]>,
   sasToPyMap: Map<string, string[]>,
 ): { layoutNodes: Node[]; edges: Edge[] } {
-  const nodeSet = new Set(pyFiles);
-  // Reuse the same block-level edge derivation as the Files/Blocks views
-  // (see buildRawEdges) instead of a purely sequential chain — it's a small
-  // lift and gives a more accurate dependency graph than "file i -> file i+1".
-  const edges = buildRawEdges(lineage, nodeSet, sasToPyMap);
+  const steps = lineage.pipeline_steps ?? [];
 
   const NODE_W = 260;
   const NODE_H = 158; // +18 vs. base 140 to fit the "View steps" hint row (same treatment as BLOCKS_COMPACT_H's 72->88 bump)
 
-  const rawNodes: Node<PipelineTargetStepData>[] = pyFiles.map((pyFile, i) => {
-    const sasFiles = pyToSasMap.get(pyFile) ?? pyFileToSasFiles(pyFile, blockPlans);
-    const fileBlocks = blockPlans.filter((bp) => sasFiles.includes(bp.source_file));
+  // First pass: derive each step's synthetic (Python-oriented) data — name,
+  // description, inputs/outputs — from its blocks. step_id/blocks membership
+  // is reused as a grouping key only (never step.name/step.description).
+  const synthesized = steps.map((step, i) => {
+    const stepBlocks = blockPlans.filter((bp) => step.blocks.includes(bp.block_id));
 
-    const status = aggregateStatus(pyFile, blockPlans, trustFiles, pyToSasMap);
-    const description = summarizeFileBlocks(fileBlocks);
+    const pyFilesForStep = [
+      ...new Set(
+        stepBlocks.flatMap(
+          (bp) => sasToPyMap.get(bp.source_file) ?? [sasFileToPyFile(bp.source_file)],
+        ),
+      ),
+    ].filter((f) => f !== "pipeline.py");
+    const title =
+      pyFilesForStep.length > 0
+        ? pyFilesForStep.map(pyFileToStepTitle).join(" / ")
+        : `Step ${i + 1}`;
+
+    const status = aggregateStatusForFiles(step.files, trustFiles);
+    const description = summarizeFileBlocks(stepBlocks);
 
     // Synthetic PipelineStep — keeps the existing onPipelineStepClick(step: PipelineStep)
-    // contract (and the downstream PipelineStepPanel) working, but every field is
-    // derived from this Python file / its BlockPlans, not from lineage.pipeline_steps.
-    const step: PipelineStep = {
-      step_id: pyFile,
-      name: pyFileToStepTitle(pyFile),
+    // contract (and the downstream PipelineStepPanel) working, but the name/description
+    // are Python-derived while step_id/blocks/inputs/outputs mirror the real step so box
+    // count always matches Source's Pipeline view.
+    const syntheticStep: PipelineStep = {
+      step_id: step.step_id,
+      name: title,
       description,
-      files: sasFiles,
-      blocks: fileBlocks.map((bp) => bp.block_id),
-      inputs: [...new Set(fileBlocks.flatMap((bp) => bp.input_datasets))],
-      outputs: [...new Set(fileBlocks.flatMap((bp) => bp.output_datasets))],
+      files: pyFilesForStep,
+      blocks: step.blocks,
+      inputs: [...new Set(stepBlocks.flatMap((bp) => bp.input_datasets))],
+      outputs: [...new Set(stepBlocks.flatMap((bp) => bp.output_datasets))],
     };
 
-    return {
-      id: pyFile,
+    return { i, title, status, description, syntheticStep };
+  });
+
+  // Second pass: edges via dataset-name matching on the synthesized inputs/outputs
+  // — this correctly finds transitions even when every step lives in a single
+  // generated Python file (see buildStepDatasetEdges for why file-level edges
+  // can't represent that case).
+  const edges = buildStepDatasetEdges(synthesized.map((s) => s.syntheticStep));
+
+  const rawNodes: Node<PipelineTargetStepData>[] = synthesized.map(
+    ({ i, title, status, description, syntheticStep }) => ({
+      id: syntheticStep.step_id,
       type: "pipelineTargetStep",
       position: { x: 0, y: 0 },
       width: NODE_W,
       height: NODE_H,
       data: {
         stepNumber: i + 1,
-        stepName: step.name,
+        stepName: title,
         description,
         status,
-        step,
+        step: syntheticStep,
       },
-    };
-  });
+    }),
+  );
 
   const layoutNodes = applyDagreLayout(rawNodes, edges, NODE_W, NODE_H, {
     rankdir: "LR",
@@ -925,29 +979,56 @@ function buildPipelineStepsGraph(
   return { layoutNodes, edges };
 }
 
+// Groups by pipeline step (not by generated Python file) for the same reason
+// buildPipelineStepsGraph does — a step's blocks may all compile into one
+// file, which would otherwise collapse this view to a single node.
 function buildBlocksGraph(
-  pyFiles: string[],
   lineage: JobLineageResponse,
   blockPlans: BlockPlan[],
   trustFiles: TrustReportFile[] | undefined,
   trustBlocks: Record<string, TrustReportBlock> | undefined,
-  pyToSasMap: Map<string, string[]>,
   sasToPyMap: Map<string, string[]>,
 ): { layoutNodes: Node[]; edges: Edge[] } {
-  const nodeSet = new Set(pyFiles);
-  const rawEdges = buildRawEdges(lineage, nodeSet, sasToPyMap);
+  const steps = lineage.pipeline_steps ?? [];
+
+  // Same per-step derivation as buildPipelineStepsGraph, kept local (rather
+  // than shared) since the two views' node shapes differ enough that a
+  // shared helper would need its own indirection to stay readable.
+  const synthesized = steps.map((step, i) => {
+    const stepBlocks = blockPlans.filter((bp) => step.blocks.includes(bp.block_id));
+    const pyFilesForStep = [
+      ...new Set(
+        stepBlocks.flatMap(
+          (bp) => sasToPyMap.get(bp.source_file) ?? [sasFileToPyFile(bp.source_file)],
+        ),
+      ),
+    ].filter((f) => f !== "pipeline.py");
+    const title =
+      pyFilesForStep.length > 0
+        ? pyFilesForStep.map(pyFileToStepTitle).join(" / ")
+        : `Step ${i + 1}`;
+    return {
+      stepId: step.step_id,
+      title,
+      blocks: stepBlocks,
+      inputs: [...new Set(stepBlocks.flatMap((bp) => bp.input_datasets))],
+      outputs: [...new Set(stepBlocks.flatMap((bp) => bp.output_datasets))],
+      status: aggregateStatusForFiles(step.files, trustFiles),
+    };
+  });
+
+  const rawEdges = buildStepDatasetEdges(
+    synthesized.map((s) => ({ step_id: s.stepId, inputs: s.inputs, outputs: s.outputs })),
+  );
 
   const incomingIds = new Set(rawEdges.map((e) => e.target));
   const outgoingIds = new Set(rawEdges.map((e) => e.source));
 
-  const rawNodes: Node<BlocksFileNodeData>[] = pyFiles.map((pyFile) => {
-    const sasFiles = pyToSasMap.get(pyFile) ?? pyFileToSasFiles(pyFile, blockPlans);
-    const fileBlocks = blockPlans.filter((bp) => sasFiles.includes(bp.source_file));
-
+  const rawNodes: Node<BlocksFileNodeData>[] = synthesized.map((s) => {
     let passCount = 0;
     let reviewCount = 0;
     let failCount = 0;
-    for (const bp of fileBlocks) {
+    for (const bp of s.blocks) {
       const tb = trustBlocks?.[bp.block_id];
       const kind = getBlockStatus(bp, tb, false);
       const label = STATUS_CONFIG[kind].label;
@@ -961,18 +1042,18 @@ function buildBlocksGraph(
     }
 
     return {
-      id: pyFile,
+      id: s.stepId,
       type: "blocksFile",
       position: { x: 0, y: 0 },
       data: {
-        filename: pyFile,
-        status: aggregateStatus(pyFile, blockPlans, trustFiles, pyToSasMap),
+        filename: s.title,
+        status: s.status,
         passCount,
         reviewCount,
         failCount,
-        totalCount: fileBlocks.length,
-        hasIncoming: incomingIds.has(pyFile),
-        hasOutgoing: outgoingIds.has(pyFile),
+        totalCount: s.blocks.length,
+        hasIncoming: incomingIds.has(s.stepId),
+        hasOutgoing: outgoingIds.has(s.stepId),
       },
     };
   });
@@ -1027,17 +1108,9 @@ function TargetGraphInner({
   const { layoutNodes: builtNodes, edges: builtEdges } = isEmpty
     ? { layoutNodes: [], edges: [] }
     : view === "pipeline"
-      ? buildPipelineStepsGraph(pyFiles, lineage, blockPlans, trustFiles, pyToSasMap, sasToPyMap)
+      ? buildPipelineStepsGraph(lineage, blockPlans, trustFiles, sasToPyMap)
       : view === "blocks"
-        ? buildBlocksGraph(
-            pyFiles,
-            lineage,
-            blockPlans,
-            trustFiles,
-            trustBlocks,
-            pyToSasMap,
-            sasToPyMap,
-          )
+        ? buildBlocksGraph(lineage, blockPlans, trustFiles, trustBlocks, sasToPyMap)
         : buildModulesGraph(pyFiles, lineage, blockPlans, trustFiles, pyToSasMap, sasToPyMap, "LR");
 
   const [nodes, setNodes, onNodesChange] = useNodesState(builtNodes);
