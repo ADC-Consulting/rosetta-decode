@@ -31,18 +31,28 @@ _DECIMAL_FORMATS = re.compile(
 def map_sas_to_semantic_type(sas_type: str, sas_format: str | None) -> str:
     """Map a SAS storage type and display format to a semantic target type.
 
+    Format-based checks run before the sas_type presence check. Columns computed
+    inline in a SAS DATA step (as opposed to columns read directly from a real
+    SAS7BDAT/XPORT file, where pyreadstat can determine storage type directly)
+    often have no captured sas_type, but sas_format (e.g. "DATE9.", "COMMA18.2")
+    is still reliable evidence of the column's type — only SAS numeric variables
+    ever carry numeric/date formats — regardless of whether sas_type was captured.
+
     Args:
-        sas_type: "character"/"string" (SAS7BDAT/XPORT) or "double" (from readstat_variable_types)
+        sas_type: "character"/"string" (SAS7BDAT/XPORT) or "double" (from
+            readstat_variable_types); may be empty/None for inline-computed
+            DATA step columns.
         sas_format: SAS format name e.g. "DATE9.", "$40.", "DATETIME20." (may be empty/None)
 
     Returns:
-        One of: "String", "Date", "Timestamp", "Decimal", "Number", "Integer", "Unknown"
+        One of: "String", "Date", "Timestamp", "Decimal", "Number", "Integer", "Unknown".
+        "Unknown" is only returned when both sas_type and sas_format are absent.
     """
-    if not sas_type:
-        return "Unknown"
-    fmt = (sas_format or "").strip().lstrip("$").rstrip(".")
+    # SAS: src/backend/api/schema_utils.py:31
     if sas_type in {"character", "string"}:
         return "String"
+
+    fmt = (sas_format or "").strip().lstrip("$").rstrip(".")
     # numeric — check format for semantic hint
     # Datetime must be tested before date: DATETIME... starts with DATE...
     if _DATETIME_FORMATS.match(fmt):
@@ -51,6 +61,13 @@ def map_sas_to_semantic_type(sas_type: str, sas_format: str | None) -> str:
         return "Date"
     if _DECIMAL_FORMATS.match(fmt) and "." in (sas_format or ""):
         return "Decimal"
+
+    # Only bail out to "Unknown" when there is neither a captured sas_type NOR a
+    # format to fall back on. A present-but-unrecognized format still implies a
+    # numeric SAS variable (mirrors the fallback for known-numeric sas_type values
+    # that don't match a specific format pattern).
+    if not sas_type and not fmt:
+        return "Unknown"
     return "Number"
 
 
