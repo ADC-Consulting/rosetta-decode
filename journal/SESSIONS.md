@@ -6,6 +6,124 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-09-10 — Target ETL views collapsed to 1 box when all blocks compile to one file
+
+**Duration:** short session | **Focus:** Follow-up on yesterday's ETL source/target separation
+fix — user reported Target still showed a single node in both the Pipeline and Steps views on
+"Simple FSI demo" and a duplicate "Demo" job, still on `fix/F92-migration-upload-flow-fixes`
+
+### Done
+- Root cause: yesterday's Fix A grouped Target's Pipeline view by generated Python file. This
+  migration's 12 SAS blocks all compile into a single `.py` file, so grouping-by-file collapsed
+  the view to 1 box even though there are 4 real conceptual stages (matching Source's Pipeline
+  view). Confirmed via live testing that the 6-file "Biometrics Demo" job was unaffected (still
+  correctly showed 6 boxes) — this was specifically a single-output-file edge case
+- Asked the user to confirm scope via AskUserQuestion before touching anything, given this
+  reopens a decision from earlier in the previous session. Confirmed: group Target's Pipeline
+  *and* Steps/Blocks views by the same step boundaries Source uses (`lineage.pipeline_steps[].blocks`
+  as a grouping key only — never `step.name`/`step.description`, which is SAS narrative text),
+  so box count always matches Source regardless of how many `.py` files codegen produced
+- Two consecutive background-agent attempts at this fix failed on infrastructure errors (a rate
+  limit, then a 600s stream stall) before writing anything to disk (confirmed via `git diff` both
+  times — clean tree, no partial progress lost). After the second failure, implemented directly
+  instead of re-delegating a third time — a deviation from this project's orchestrator-never-writes-code
+  convention, done transparently to avoid a third infrastructure-failure cycle
+- `buildPipelineStepsGraph` (`TargetGraph.tsx`) rewritten to partition by `pipeline_steps[].blocks`
+  instead of by generated file; title/description still derived from each step's `BlockPlan`s
+  (`pyFileToStepTitle`, `summarizeFileBlocks`), never from the step's own SAS-narrative fields
+- Found a second bug while verifying: the new step-grouped edges initially came up empty for the
+  single-file case. Root cause: edges were projected from `lineage.file_edges` (SAS-file-level),
+  which is structurally incapable of representing a transition between steps that live in the
+  *same* SAS file. Fixed by adding `buildStepDatasetEdges` — matching each step's derived
+  `outputs`/`inputs` dataset names, the same method Source's own Pipeline view uses
+  (`buildPipelineEdges` in `LineageGraph.tsx`) — which works regardless of file boundaries
+- Applied the same step-grouping to `buildBlocksGraph` (Target's "Steps" toggle), since the user's
+  report named both views. Re-read the locked 2026-06-24 F67 decision first — its rationale was
+  block-detail-in-node vs. block-detail-in-side-panel, orthogonal to file-vs-step grouping, so no
+  conflict. This required reworking `FileBlockListPanel` to filter by exact `block_id` membership
+  instead of SAS-file inclusion (a file can be shared across steps, so file-inclusion would
+  over-select) — renamed its `pyFile`/`sasFiles` props to `title`/`blockIds` (single call site,
+  no back-compat concern)
+- Moved `pyFileToStepTitle` out of `TargetGraph.tsx` into `lib/sas-python-file-map.ts` — exporting
+  a plain function from a component file tripped `react-refresh/only-export-components` in
+  `frontend-lint`; the shared-helpers file is also the more natural home given its siblings
+  (`sasFileToPyFile`, `pyFileToSasFiles`)
+- Found and ruled out a red herring while debugging: `lineage.nodes[].id` uses a `file::line`
+  (double-colon) format, while `BlockPlan.block_id`/`pipeline_steps[].blocks` both use `file:line`
+  (single colon) — two different ID spaces for two different purposes. Confirmed via direct API
+  calls that my code only ever compares within the single-colon space, so this wasn't a bug
+- Found and left alone (pre-existing, not a regression): 1 of this job's 12 blocks (a
+  `PROC_FORMAT` setup block) isn't assigned to any `pipeline_step` by the backend's
+  `lineage_enricher` agent — confirmed via direct API call. Equally invisible in Source's own
+  Pipeline view, so this is a known data characteristic, not something today's fix introduced
+- `make test`: 7/7 gates green. Verified live on "Simple FSI demo" (now 4 boxes in both Pipeline
+  and Steps views, matching Source, edges connecting them correctly, drill-through to
+  `FileBlockListPanel`/`BlockDetailPanel` still works) and "Biometrics Demo — SDTM to ADaM" (still
+  6 correctly-titled boxes, no regression)
+- Not committed — waiting on the user's review, same as every change this session
+
+### Next
+- Commit once the user confirms
+- Minor gap carried over, not addressed: `ETLTab.tsx` still passes the SAS-narrative
+  `pipeline_steps` into `PipelineStepPanel`'s `allSteps` prop for step-number lookup in the
+  Target-mode side panel — degrades gracefully (shows the step id instead of a number), not in
+  scope for this fix
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/TargetGraph.tsx` — `buildPipelineStepsGraph` and
+  `buildBlocksGraph` rewritten to group by step; new `buildStepDatasetEdges`,
+  `aggregateStatusForFiles` helpers; `pyFileToStepTitle` moved out (see below)
+- `src/frontend/src/lib/sas-python-file-map.ts` — gained `pyFileToStepTitle` (moved from
+  `TargetGraph.tsx`)
+- `src/frontend/src/components/JobDetail/FileBlockListPanel.tsx` — `pyFile`/`sasFiles` props
+  renamed to `title`/`blockIds`; filters by block id instead of SAS-file membership
+- `src/frontend/src/components/JobDetail/ETLTab.tsx` — `selectedTargetPyFile` state renamed to
+  `selectedTargetStepId`; new `selectedTargetStepData` derivation feeding the renamed
+  `FileBlockListPanel` props
+
+**Second follow-up — `map_sas_to_semantic_type()` ignored `sas_format` when `sas_type` was blank**
+
+- Confirmed bug (also on Simple FSI demo, `4e059dee-d20a-47fb-ac25-f418b7408edc`):
+  `map_sas_to_semantic_type()` (`src/backend/api/schema_utils.py`) bailed out to `"Unknown"`
+  whenever `sas_type` was empty, before ever checking `sas_format` — but `sas_format` (e.g.
+  `DATE9.`, `COMMA18.2`) is present and reliable even when `sas_type` is blank, which happens for
+  columns computed inline in a SAS DATA step (as opposed to columns read from a real
+  SAS7BDAT/XPORT file, where pyreadstat determines storage type directly). Only SAS numeric
+  variables carry numeric/date formats, so a format match is trustworthy regardless of `sas_type`.
+  Live impact: `loan_control_report`'s `report_date`/`period_end`/`available_date`/`exposure_dkk`/
+  `leverage` all showed a blank dash in the frontend Data tab (Target side) instead of
+  DATE/DECIMAL/DOUBLE PRECISION, because the frontend's `SEMANTIC_TO_PG` map has no entry for
+  `"Unknown"` (`DataStorageTab.tsx`)
+- Fix: reordered the function so the format-regex checks (`_DATETIME_FORMATS`, `_DATE_FORMATS`,
+  `_DECIMAL_FORMATS`) run before the `sas_type` presence check; `"character"`/`"string"` →
+  `"String"` stays the unconditional first check. Falls back to `"Unknown"` only when both
+  `sas_type` is empty AND no format matched; a blank `sas_type` with an unrecognized-but-present
+  format now falls to `"Number"` (mirrors the existing known-numeric-`sas_type` fallback), not
+  `"Unknown"`
+- Found and fixed one existing test asserting the old (buggy) behavior:
+  `test_empty_sas_type_with_format_is_unknown` (`tests/test_schema_utils.py`) asserted
+  `map_sas_to_semantic_type("", "DATE9.") == "Unknown"`; renamed to
+  `test_empty_sas_type_with_date_format_is_date` with the corrected expected value `"Date"`. Added
+  two new regression tests for the exact reported scenario: blank `sas_type` + `COMMA18.2` →
+  `"Decimal"`, and blank `sas_type` + an unrecognized numeric format (`8.4`, the `leverage`
+  column's actual format) → `"Number"`
+- `make test`: 7/7 gates green (ruff, mypy, pytest+coverage, tsc, frontend-lint, frontend-build)
+- Confirmed `map_sas_to_semantic_type` is called live inside `build_job_schema()` on every
+  `GET /jobs/{id}/schema` request, re-interpreting already-persisted `job.migration_plan` data —
+  no worker re-run needed. However the `backend` service has no source bind-mount
+  (`docker-compose.yml`; `src/backend/Dockerfile` `COPY`s source at build time), so a plain
+  `docker compose restart backend` would NOT have picked up the fix — rebuilt the image
+  (`docker compose build backend`) before restarting
+- Verified live: `curl http://localhost:8000/jobs/4e059dee-d20a-47fb-ac25-f418b7408edc/schema` now
+  shows `report_date`/`period_end`/`available_date` → `"Date"`, `exposure_dkk` → `"Decimal"`,
+  `leverage` → `"Number"` (its `8.4` format matches none of the three regexes, as expected). Checked
+  the frontend Data tab (Target side, `loan_control_report`): all five previously-blank columns now
+  show DATE/DATE/DATE/DECIMAL/DOUBLE PRECISION instead of a dash. Spot-checked `customers`
+  (character columns) — still `String`/`TEXT`, no regression
+- Not yet committed — user reviews first
+
+---
+
 ## 2026-09-09 — Fixed stuck Migrate button on second migration in a dialog session
 
 **Duration:** short session | **Focus:** Bug report from the user ("why can't I press migrate")

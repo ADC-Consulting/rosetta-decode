@@ -760,6 +760,42 @@ its own design pass first)**
   row (`TargetGraph.tsx`), `NODE_H` 140→158 to fit it. `make test` green (7/7 gates); verified live
   on Simple FSI demo (1 card) and Biometrics Demo — SDTM to ADaM (6 cards), no clipping/overlap.
   Not yet committed — user reviews first
+- [x] F92 follow-up (2026-09-10, user report "Target still shows a single node for pipeline view
+  and for steps view"): the 2026-09-09 Python-only-data fix grouped Target's Pipeline view by
+  generated Python file — correct in principle, but this migration's 12 blocks all compile into
+  one `.py` file, so it collapsed to 1 box instead of showing the 4 real conceptual stages. User
+  confirmed (via clarifying question): group Target's Pipeline *and* Steps views by the same step
+  boundaries Source uses, box count always matching Source, regardless of file count. Rewrote
+  `buildPipelineStepsGraph` and `buildBlocksGraph` (`TargetGraph.tsx`) to partition by
+  `pipeline_steps[].blocks` (grouping key only, never the SAS-narrative `step.name`/`description`).
+  Also fixed a second bug found while verifying: step-to-step edges came up empty for the
+  single-file case because they were projected from SAS file-level `file_edges`, which can't
+  represent a same-file transition — added `buildStepDatasetEdges`, matching each step's derived
+  input/output dataset names (the same method Source's own Pipeline view already uses). Reworked
+  `FileBlockListPanel` to filter by exact block id instead of SAS-file membership (props renamed
+  `pyFile`/`sasFiles` → `title`/`blockIds`) since the Steps view's drill-down needed it. Moved
+  `pyFileToStepTitle` to `lib/sas-python-file-map.ts` (exporting it from `TargetGraph.tsx` tripped
+  `react-refresh/only-export-components`). Ruled out one red herring (`lineage.nodes[].id` uses a
+  different, double-colon id format than `BlockPlan.block_id` — two separate id spaces, not a bug)
+  and found one pre-existing, unrelated data gap (1 of 12 blocks isn't assigned to any pipeline
+  step by the backend — equally true on Source's Pipeline view, not a regression). Two background
+  agents failed on infrastructure errors before any code was written; implemented directly after
+  the second failure rather than risk a third — flagged as a deviation from this project's
+  orchestrator-never-writes-code convention. `make test` green (7/7 gates); verified live on
+  Simple FSI demo (now 4 boxes matching Source in both views) and Biometrics Demo — SDTM to ADaM
+  (still 6, no regression). Not yet committed — user reviews first
+- [x] F92 follow-up (2026-09-10, confirmed bug): `map_sas_to_semantic_type()`
+  (`src/backend/api/schema_utils.py`) checked `sas_type` first and returned `"Unknown"` before ever
+  checking `sas_format`, so inline-computed DATA step columns with no captured `sas_type` (but a
+  diagnostic format like `DATE9.`/`COMMA18.2`) showed as blank instead of DATE/DECIMAL in the
+  frontend Data tab — `loan_control_report` on Simple FSI demo (`4e059dee-d20a-47fb-ac25-f418b7408edc`)
+  had 5/6 columns affected. Reordered the function to check format-regex patterns before the
+  `sas_type` bailout; `"Unknown"` now only when both `sas_type` and `sas_format` are absent/unmatched.
+  Updated one existing test that asserted the old buggy behavior, added 2 regression tests.
+  `make test` 7/7 green. Rebuilt+restarted the `backend` container (no source bind-mount, so a plain
+  restart wouldn't have picked up the fix) and verified live via curl and the frontend Data tab —
+  all 5 previously-blank columns now show correctly, `customers` (String/TEXT) unaffected. Not yet
+  committed — user reviews first
 
 **Migrations page redesign — mockup approved, not yet implemented**
 - [ ] Build the "Manifest"-styled Migrations page redesign against the real `JobsPage.tsx`/
