@@ -6,6 +6,25 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-09-10 — ETL tab Target view must be Python-only; grouping key is step, not file
+
+- **Target's ETL views (Pipeline, Files, Steps/Blocks) must derive their content only from
+  generated Python/BlockPlan data, never from SAS-only sources:** user's explicit rule, given
+  after noticing Target's Pipeline view mirrored Source's SAS-narrative step names verbatim ·
+  root cause was `lineage.pipeline_steps` (SAS-only, produced by `LineageEnricherAgent` before
+  Python exists) being reused wholesale for Target rendering · revisit never — this is a standing
+  constraint for any future Target-view work in `TargetGraph.tsx`
+- **Target's Pipeline/Steps views group by pipeline-step boundaries (`pipeline_steps[].blocks`
+  membership), not by generated Python file:** refines the 2026-06-24 "ETL tab Target Blocks
+  redesign" decision below — grouping by file is correct when file count reflects real structure,
+  but collapses to a single box whenever a migration's blocks all compile into one file (common
+  for small migrations), losing all step-level structure Source still shows · step-boundary
+  membership is reused purely as a grouping key (never the step's own SAS-narrative name/
+  description) so this doesn't reintroduce the Python-only violation above · revisit if codegen
+  ever produces a finer-grained file-per-step output, which would make file-grouping accurate again
+
+---
+
 ## 2026-09-04 — Sidebar collapse already shipped; #52/#148 scope corrected
 
 - **`AppSidebar.tsx`'s collapse-to-rail behavior is not a gap:** critiqued it as fixed-width with

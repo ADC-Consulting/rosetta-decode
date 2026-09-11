@@ -6,6 +6,58 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-09-10 — Session close: F92 follow-up fixes, PR #149 updated, pushed
+
+**Duration:** ~2 days (2026-09-09 to 2026-09-10) | **Focus:** Bug-fix follow-ups on
+`fix/F92-migration-upload-flow-fixes`, surfaced through live user testing of the upload dialog fix
+
+### Done
+- Fixed a stuck Migrate button bug — dialog footer keyed off `manifest` instead of `phase`
+- Removed an AI-sounding em dash from Plan tab copy; added a style constraint to the migration
+  planner's system prompt so future generated summaries read plainer
+- Fixed the ETL tab's Target view leaking SAS-only data into what should be Python-only content —
+  Pipeline view mirroring SAS narrative text, a connector-rendering bug, edge topology,
+  `BlockDetailPanel`'s heading (see new `DECISIONS.md` entry)
+- Fixed Target's Pipeline/Steps views collapsing to a single box whenever a migration's blocks all
+  compile into one generated file — regrouped by step boundaries instead of by file
+- Fixed a PostgreSQL type-inference bug (`schema_utils.py`) leaving several Data-tab columns blank
+  instead of DATE/DECIMAL/NUMBER
+- Updated PR #149's description (stale since 2026-09-04) to reflect all of the above; pushed all
+  11 new commits
+
+### Decisions
+- See `journal/DECISIONS.md` 2026-09-10 entry — Target ETL view must be Python-only; grouping key
+  is step, not file
+
+### Open Questions
+- none
+
+### Next Session — Start Here
+1. PR #149 is stacked on PR #145 (F91), still open/unmerged as of this session — check whether F91
+   has since merged; if so, consider rebasing #149 onto `main` directly
+2. If a demo is imminent, clean up the stray test migrations sitting in the Migrations list
+   ("Second migration test", "Browser verify test", "Demo") — no delete UI exists, would need
+   direct DB access
+3. Two known, deliberately-unaddressed gaps carried forward: (a) `ETLTab.tsx`'s Target-mode side
+   panel still does step-number lookup against SAS-narrative `pipeline_steps`, degrades
+   gracefully; (b) Target's cross-file edge topology is still derived from SAS `file_edges`
+   detection, not the generated Python's actual imports
+
+### Files Touched
+- `src/frontend/src/pages/JobsPage.tsx`
+- `src/frontend/src/components/JobDetail/BeforeYouAcceptPanel.tsx`
+- `src/worker/engine/agents/migration_planner.py`
+- `src/frontend/src/components/JobDetail/ETLTab.tsx`
+- `src/frontend/src/components/JobDetail/TargetGraph.tsx`
+- `src/frontend/src/components/JobDetail/BlockDetailPanel.tsx`
+- `src/frontend/src/components/JobDetail/FileBlockListPanel.tsx`
+- `src/frontend/src/lib/sas-python-file-map.ts`
+- `src/backend/api/schema_utils.py`
+- `tests/test_schema_utils.py`
+- `journal/SESSIONS.md`, `journal/BACKLOG.md`, `journal/DECISIONS.md`
+
+---
+
 ## 2026-09-10 — Target ETL views collapsed to 1 box when all blocks compile to one file
 
 **Duration:** short session | **Focus:** Follow-up on yesterday's ETL source/target separation

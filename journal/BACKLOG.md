@@ -715,13 +715,13 @@ its own design pass first)**
 - [x] F92 follow-up (2026-09-09, user report "why can't I press migrate"): dialog footer's
   Migrate/View-Migration buttons keyed off `manifest` instead of `phase` — stuck on "View
   Migration" for the second+ migration submitted via "Start another" in one dialog session.
-  Fixed in `JobsPage.tsx`, verified in browser, committed d56ea9e; not yet pushed
+  Fixed in `JobsPage.tsx`, verified in browser, committed d56ea9e; pushed, in PR #149
 - [x] F92 follow-up (2026-09-09, user report "ETL tab does not look right"): Target "Pipeline"
   sub-view rendered step-card connectors as a looping curve — `PipelineTargetStepNode` in
   `TargetGraph.tsx` had `Handle` positions pinned Top/Bottom while the layout is horizontal
   (`rankdir: "LR"`). Fixed by switching the two handles to Left/Right, matching the already-correct
   Source-side `PipelineStepCard.tsx`. `make test` green (7/7 gates), verified live on both
-  Source and Target Pipeline views; not yet committed
+  Source and Target Pipeline views; committed as part of 2867e9b, pushed, in PR #149
 - [x] F92 follow-up (2026-09-09, same report): investigated the Target "Steps" sub-view showing a
   single aggregate card for a one-Python-file migration — confirmed by-design (grouping is
   genuinely per generated Python file, verified against a 6-file migration rendering 6 correctly
@@ -729,7 +729,8 @@ its own design pass first)**
   affordance that it's clickable. Added a persistent chevron + "View blocks" hint row to
   `BlocksFileNode` (`TargetGraph.tsx`), following the `BlockDetailPanel.tsx` breadcrumb-chevron
   precedent from F71. `make test` green (7/7 gates), verified live at N=1 (Simple FSI demo) and
-  N=6 (Biometrics Demo — SDTM to ADaM) — reads well at both, no layout overlap; not yet committed
+  N=6 (Biometrics Demo — SDTM to ADaM) — reads well at both, no layout overlap; committed as part
+  of 2867e9b, pushed, in PR #149
 - [x] F92 follow-up (2026-09-09, new rule: Target view must be Python-only, never SAS-derived):
   found and fixed three violations, frontend-only. (1) Target's "Pipeline" sub-view was built from
   `lineage.pipeline_steps` — SAS-only narrative text from `LineageEnricherAgent`, generated before
@@ -752,14 +753,14 @@ its own design pass first)**
   stricter follow-up. Known wrinkle: `ETLTab.tsx` still passes the old SAS-narrative
   `pipeline_steps` as `allSteps` into `PipelineStepPanel`, so the Target-mode side panel's
   step-number lookup won't match Fix A's new per-file step IDs (degrades gracefully, not fixed here).
-  Not yet committed — `TargetGraph.tsx`, `BlockDetailPanel.tsx`, `ETLTab.tsx` all have pending diffs
+  Committed as 2867e9b (`TargetGraph.tsx`, `BlockDetailPanel.tsx`, `ETLTab.tsx`), pushed, in PR #149
 - [x] F92 follow-up (2026-09-09, on top of committed `2867e9b`/`e80c74f`): Target Pipeline sub-view
   card (`PipelineTargetStepNode`) had the same no-click-affordance gap the chevron/hint fix already
   solved for `BlocksFileNode`, just never applied here — confirmed live it's clickable (opens
   `PipelineStepPanel`) but had no visual cue. Added the same unconditional chevron+"View steps" hint
   row (`TargetGraph.tsx`), `NODE_H` 140→158 to fit it. `make test` green (7/7 gates); verified live
   on Simple FSI demo (1 card) and Biometrics Demo — SDTM to ADaM (6 cards), no clipping/overlap.
-  Not yet committed — user reviews first
+  Committed as 2b1e1c0, pushed, in PR #149
 - [x] F92 follow-up (2026-09-10, user report "Target still shows a single node for pipeline view
   and for steps view"): the 2026-09-09 Python-only-data fix grouped Target's Pipeline view by
   generated Python file — correct in principle, but this migration's 12 blocks all compile into
@@ -783,7 +784,7 @@ its own design pass first)**
   the second failure rather than risk a third — flagged as a deviation from this project's
   orchestrator-never-writes-code convention. `make test` green (7/7 gates); verified live on
   Simple FSI demo (now 4 boxes matching Source in both views) and Biometrics Demo — SDTM to ADaM
-  (still 6, no regression). Not yet committed — user reviews first
+  (still 6, no regression). Committed as 041b1f9, pushed, in PR #149
 - [x] F92 follow-up (2026-09-10, confirmed bug): `map_sas_to_semantic_type()`
   (`src/backend/api/schema_utils.py`) checked `sas_type` first and returned `"Unknown"` before ever
   checking `sas_format`, so inline-computed DATA step columns with no captured `sas_type` (but a
@@ -794,8 +795,8 @@ its own design pass first)**
   Updated one existing test that asserted the old buggy behavior, added 2 regression tests.
   `make test` 7/7 green. Rebuilt+restarted the `backend` container (no source bind-mount, so a plain
   restart wouldn't have picked up the fix) and verified live via curl and the frontend Data tab —
-  all 5 previously-blank columns now show correctly, `customers` (String/TEXT) unaffected. Not yet
-  committed — user reviews first
+  all 5 previously-blank columns now show correctly, `customers` (String/TEXT) unaffected. Committed
+  as ef6a1ec, pushed, in PR #149
 
 **Migrations page redesign — mockup approved, not yet implemented**
 - [ ] Build the "Manifest"-styled Migrations page redesign against the real `JobsPage.tsx`/
