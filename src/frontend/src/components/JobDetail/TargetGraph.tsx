@@ -14,6 +14,7 @@ import {
   pyFileToStepTitle,
   sasFileToPyFile,
 } from "@/lib/sas-python-file-map";
+import { deriveTargetPipelineSteps } from "@/lib/target-steps";
 import dagre from "dagre";
 import { ChevronRight, RotateCcw } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -832,27 +833,6 @@ function buildModulesGraph(
   return { layoutNodes: allLayoutNodes, edges: rawEdges };
 }
 
-// Synthesize a card description from this file's BlockPlan.rationale strings —
-// the same field FileBlockListPanel already treats as the primary human-readable
-// label for a block (locked decision, journal/DECISIONS.md 2026-06-24). Nothing
-// here is fabricated or LLM-generated at render time; it's a join/truncation of
-// existing plan data.
-function summarizeFileBlocks(fileBlocks: BlockPlan[]): string {
-  if (fileBlocks.length === 0) return "";
-  const RISK_WEIGHT: Record<BlockPlan["risk"], number> = { high: 3, medium: 2, low: 1 };
-  const ranked = [...fileBlocks].sort((a, b) => RISK_WEIGHT[b.risk] - RISK_WEIGHT[a.risk]);
-  const picked = ranked
-    .slice(0, 3)
-    .map((bp) => bp.rationale.trim())
-    .filter(Boolean);
-  if (picked.length === 0) {
-    return `${fileBlocks.length} ${fileBlocks.length === 1 ? "block" : "blocks"} migrated`;
-  }
-  const joined = picked.join(" • ");
-  const MAX_LEN = 170;
-  return joined.length > MAX_LEN ? `${joined.slice(0, MAX_LEN - 1).trimEnd()}…` : joined;
-}
-
 // Step-to-step edges via dataset-name matching between each step's derived
 // inputs/outputs — the same method Source's Pipeline view uses (buildPipelineEdges
 // in LineageGraph.tsx), which works regardless of file boundaries (unlike a
@@ -909,66 +889,32 @@ function buildPipelineStepsGraph(
   const NODE_W = 260;
   const NODE_H = 158; // +18 vs. base 140 to fit the "View steps" hint row (same treatment as BLOCKS_COMPACT_H's 72->88 bump)
 
-  // First pass: derive each step's synthetic (Python-oriented) data — name,
-  // description, inputs/outputs — from its blocks. step_id/blocks membership
-  // is reused as a grouping key only (never step.name/step.description).
-  const synthesized = steps.map((step, i) => {
-    const stepBlocks = blockPlans.filter((bp) => step.blocks.includes(bp.block_id));
+  // Synthetic (Python-oriented) steps — name/description/files re-derived from
+  // Python filenames + block rationale, while step_id/blocks/inputs/outputs
+  // mirror the real step. Shared with ETLTab.tsx so the pipeline graph and the
+  // PipelineStepPanel side panel always agree on step identity and dataset flow.
+  const syntheticSteps = deriveTargetPipelineSteps(steps, blockPlans, sasToPyMap);
 
-    const pyFilesForStep = [
-      ...new Set(
-        stepBlocks.flatMap(
-          (bp) => sasToPyMap.get(bp.source_file) ?? [sasFileToPyFile(bp.source_file)],
-        ),
-      ),
-    ].filter((f) => f !== "pipeline.py");
-    const title =
-      pyFilesForStep.length > 0
-        ? pyFilesForStep.map(pyFileToStepTitle).join(" / ")
-        : `Step ${i + 1}`;
-
-    const status = aggregateStatusForFiles(step.files, trustFiles);
-    const description = summarizeFileBlocks(stepBlocks);
-
-    // Synthetic PipelineStep — keeps the existing onPipelineStepClick(step: PipelineStep)
-    // contract (and the downstream PipelineStepPanel) working, but the name/description
-    // are Python-derived while step_id/blocks/inputs/outputs mirror the real step so box
-    // count always matches Source's Pipeline view.
-    const syntheticStep: PipelineStep = {
-      step_id: step.step_id,
-      name: title,
-      description,
-      files: pyFilesForStep,
-      blocks: step.blocks,
-      inputs: [...new Set(stepBlocks.flatMap((bp) => bp.input_datasets))],
-      outputs: [...new Set(stepBlocks.flatMap((bp) => bp.output_datasets))],
-    };
-
-    return { i, title, status, description, syntheticStep };
-  });
-
-  // Second pass: edges via dataset-name matching on the synthesized inputs/outputs
-  // — this correctly finds transitions even when every step lives in a single
+  // Edges via dataset-name matching on the synthesized inputs/outputs — this
+  // correctly finds transitions even when every step lives in a single
   // generated Python file (see buildStepDatasetEdges for why file-level edges
   // can't represent that case).
-  const edges = buildStepDatasetEdges(synthesized.map((s) => s.syntheticStep));
+  const edges = buildStepDatasetEdges(syntheticSteps);
 
-  const rawNodes: Node<PipelineTargetStepData>[] = synthesized.map(
-    ({ i, title, status, description, syntheticStep }) => ({
-      id: syntheticStep.step_id,
-      type: "pipelineTargetStep",
-      position: { x: 0, y: 0 },
-      width: NODE_W,
-      height: NODE_H,
-      data: {
-        stepNumber: i + 1,
-        stepName: title,
-        description,
-        status,
-        step: syntheticStep,
-      },
-    }),
-  );
+  const rawNodes: Node<PipelineTargetStepData>[] = syntheticSteps.map((syntheticStep, i) => ({
+    id: syntheticStep.step_id,
+    type: "pipelineTargetStep",
+    position: { x: 0, y: 0 },
+    width: NODE_W,
+    height: NODE_H,
+    data: {
+      stepNumber: i + 1,
+      stepName: syntheticStep.name,
+      description: syntheticStep.description,
+      status: aggregateStatusForFiles(steps[i].files, trustFiles),
+      step: syntheticStep,
+    },
+  }));
 
   const layoutNodes = applyDagreLayout(rawNodes, edges, NODE_W, NODE_H, {
     rankdir: "LR",

@@ -15,6 +15,7 @@ import {
   pyFileToStepTitle,
   sasFileToPyFile,
 } from "@/lib/sas-python-file-map";
+import { deriveTargetPipelineSteps } from "@/lib/target-steps";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import BlockCodePopup from "./BlockCodePopup";
@@ -181,6 +182,16 @@ export default function ETLTab({
         ? buildPyFileToSasFilesMap(generatedFiles)
         : new Map<string, string[]>(),
     [generatedFiles],
+  );
+
+  // ── Target-mode synthetic pipeline steps (Python-derived) ─────────────────
+  // Mirrors exactly what TargetGraph.tsx's buildPipelineStepsGraph() derives for
+  // the pipeline view, so the PipelineStepPanel's `allSteps` (used for producer/
+  // consumer lookups and "Depends on"/"Feeds into" labels) never falls back to
+  // the raw SAS-narrative `etlLineage.pipeline_steps` in target mode.
+  const targetSyntheticSteps = useMemo(
+    () => deriveTargetPipelineSteps(etlLineage?.pipeline_steps ?? [], blockPlans, sasToPyMap),
+    [etlLineage, blockPlans, sasToPyMap],
   );
 
   // ── Derived SAS source files for the selected Python module ───────────────
@@ -435,7 +446,11 @@ export default function ETLTab({
           <div className="w-80 border-l border-border overflow-y-auto shrink-0">
             <PipelineStepPanel
               step={selectedStep}
-              allSteps={etlLineage?.pipeline_steps ?? []}
+              allSteps={
+                graphView === "target"
+                  ? targetSyntheticSteps
+                  : (etlLineage?.pipeline_steps ?? [])
+              }
               blockPlans={blockPlans}
               trustBlocks={trustBlocks}
               humanVerifiedBlocks={humanVerifiedBlocks}
@@ -449,7 +464,7 @@ export default function ETLTab({
               }}
               onClose={() => setSelectedStep(null)}
               mode={graphView === "target" ? "target" : "source"}
-              sasToPyMap={graphView === "target" ? sasToPyMap : undefined}
+              pyToSasMap={graphView === "target" ? pyToSasMap : undefined}
               onPyFileClick={(pyFile) => {
                 setFileViewPopup({
                   filename: pyFile,
