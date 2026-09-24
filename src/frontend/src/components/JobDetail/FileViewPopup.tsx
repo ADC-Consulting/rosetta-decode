@@ -5,6 +5,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useBrandManifestContainer } from "@/lib/useBrandManifestContainer";
 import { registerSasLanguage } from "./registerSasLanguage";
 
 const Editor = lazy(() => import("@monaco-editor/react"));
@@ -24,10 +25,12 @@ export default function FileViewPopup({
 }: FileViewPopupProps): React.ReactElement {
   const basename = filename.split("/").pop() ?? filename;
   const lineCount = content.split("\n").length;
+  const container = useBrandManifestContainer();
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent
+        container={container}
         className="flex flex-col gap-0 p-0 overflow-hidden"
         style={{ width: "80vw", maxWidth: "80vw", height: "80vh", maxHeight: "80vh" }}
         aria-label={`File: ${basename}`}

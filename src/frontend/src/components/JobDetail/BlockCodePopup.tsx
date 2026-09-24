@@ -11,6 +11,7 @@ import { Editor } from "@monaco-editor/react";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { Suspense, useMemo, useState } from "react";
+import { useBrandManifestContainer } from "@/lib/useBrandManifestContainer";
 import { registerSasLanguage } from "./registerSasLanguage";
 import { TONE_CHIP_CLASS } from "./status-colors";
 
@@ -104,6 +105,7 @@ export default function BlockCodePopup({
   const [localPython, setLocalPython] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
   const [isVerified, setIsVerified] = useState(false);
+  const container = useBrandManifestContainer();
 
   const {
     data: revisionHistory,
@@ -155,6 +157,7 @@ export default function BlockCodePopup({
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent
+        container={container}
         className="flex flex-col gap-0 p-0 overflow-hidden"
         style={{ width: "80vw", maxWidth: "80vw", height: "80vh", maxHeight: "80vh" }}
         aria-label={`Block code: ${displayId}`}
