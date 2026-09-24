@@ -6,6 +6,20 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-09-11 — Parsing generated Python imports for cross-file edges: won't fix, not deferred
+
+- **Target's Files/Blocks cross-file edge topology stays SAS-derived (`file_edges` detection);
+  parsing the generated Python's actual imports is not a viable stricter follow-up:** this had been
+  flagged on 2026-09-09/10 as a "possible stricter follow-up" left for later. Investigated directly
+  by reading the actual generated `pipeline.py` for a live job — it unconditionally imports and
+  calls every module in one fixed linear sequence (`dataframes = mod.run(dataframes)`, one line per
+  module, in file order), regardless of real data dependency between them. Parsing that would only
+  ever yield a trivial straight-line chain — strictly less accurate than the existing SAS-derived
+  edges, not more · revisit only if codegen's output shape changes to reflect real per-module
+  dependencies (e.g. conditional/dependency-ordered calls instead of a fixed sequence)
+
+---
+
 ## 2026-09-10 — ETL tab Target view must be Python-only; grouping key is step, not file
 
 - **Target's ETL views (Pipeline, Files, Steps/Blocks) must derive their content only from

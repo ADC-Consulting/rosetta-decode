@@ -815,6 +815,40 @@ its own design pass first)**
   by both `TargetGraph.tsx` and `ETLTab.tsx` so the graph and side panel always agree. `make test`
   7/7 green; verified live on Simple FSI demo and Biometrics Demo — SDTM to ADaM (6-file, no
   regression); Source mode confirmed unaffected. Committed as 98b0a74, pushed, in PR #149
+- [x] F92 follow-up (2026-09-11): deleted the 3 stray test-migration jobs left in the DB from
+  live-verifying earlier F92 fixes ("Second migration test", "Browser verify test", "Demo") — no
+  delete UI exists, removed directly via `DELETE FROM jobs WHERE id IN (...)`; all FKs referencing
+  `job_id` (`job_versions`, `block_revisions`, `job_traces`) are `ON DELETE CASCADE`, confirmed
+  clean before deleting, no orphaned rows
+- [x] F92 follow-up (2026-09-11): investigated whether cross-file edges (Target Files/Blocks view)
+  could be computed from the generated Python's actual imports instead of SAS `file_edges`
+  detection, per the "stricter follow-up" flagged in the 2026-09-09 entry above — confirmed a dead
+  end, not deferred; see `journal/DECISIONS.md` 2026-09-11 entry for the reasoning
+  (`pipeline.py` always calls every module in one fixed linear sequence, so parsing it can't yield
+  anything more accurate than what's already shown)
+- [x] F92: PR #149 merged to `main` (2026-09-24, merge commit `c0947e0`) — closes out the entire
+  F92 chain (upload dialog fix + all follow-ups above). Resolved one merge conflict first
+  (`journal/BACKLOG.md` — two sections appended at the same anchor point by #149 and the
+  separately-merged #146; kept both, no content lost, `make test` 7/7 green after merge). PRs
+  #145 (F91), #146, #147 all merged same session, ahead of #149. Local checkout moved to `main`;
+  `backend`/`worker` containers rebuilt + restarted (no source bind-mount, unlike `frontend`) to
+  pick up the merged code
+
+**Open-PR triage (2026-09-24)**
+- [ ] #142: `fix: reject CLOUD=true at startup + correct compute backend docs (#140, #139)` — full
+  test suite green, based on `main`, no dependencies — ready to merge, just needs someone to do it
+- [ ] #135 (draft, since 2026-08-19): `fix(frontend): fix Dokploy access` — never taken out of
+  draft; confirm still needed and finish, or close
+- [ ] #134 (felix-adc, Aug 18): `Create outline for competitiveness file` — small business doc,
+  needs a content review, not a code review
+- [ ] #133 (felix-adc, Aug 13): `Add data handling and security overview for enterprise pilots` —
+  same, business doc
+- [ ] #113 (mattiatonelliadc, Jun 22): `feat(F77): scoping/assessment mode` — real feature, 28
+  files, 3+ months stale; needs a rebase-and-review decision or explicit close
+- [ ] #112 (felix-adc, Jun 19): `feat(sample-data): sas_pharma_sandbox fixture` — large (+17765),
+  GitHub couldn't compute mergeable status as of this check; needs its own look
+- [ ] #34 (emilie-adc, May 22): `Feat/f22 assessment ux` — 4+ months stale, +7177/-2865, mergeable
+  status unknown as of this check
 
 **Migrations page redesign — mockup approved, not yet implemented**
 - [ ] Build the "Manifest"-styled Migrations page redesign against the real `JobsPage.tsx`/
