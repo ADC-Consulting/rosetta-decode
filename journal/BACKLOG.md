@@ -797,6 +797,15 @@ its own design pass first)**
   restart wouldn't have picked up the fix) and verified live via curl and the frontend Data tab —
   all 5 previously-blank columns now show correctly, `customers` (String/TEXT) unaffected. Committed
   as ef6a1ec, pushed, in PR #149
+- [x] F92 follow-up (2026-09-11): closed the `PipelineStepPanel` wrinkle flagged above (2026-09-09
+  entry) — Target-mode side panel's "Python modules" section mistranslated `step.files` through
+  `sasToPyMap` (already Python filenames in target mode), and "Depends on"/"Feeds into" leaked raw
+  SAS-narrative text and mismatched producer/consumer lookups because `ETLTab.tsx` passed the
+  unmodified backend `pipeline_steps` as `allSteps` regardless of mode. Extracted the synthetic-step
+  derivation into shared `src/frontend/src/lib/target-steps.ts` (`deriveTargetPipelineSteps()`), used
+  by both `TargetGraph.tsx` and `ETLTab.tsx` so the graph and side panel always agree. `make test`
+  7/7 green; verified live on Simple FSI demo and Biometrics Demo — SDTM to ADaM (6-file, no
+  regression); Source mode confirmed unaffected. Committed as 98b0a74, pushed, in PR #149
 
 **Migrations page redesign — mockup approved, not yet implemented**
 - [ ] Build the "Manifest"-styled Migrations page redesign against the real `JobsPage.tsx`/
