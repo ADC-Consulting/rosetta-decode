@@ -6,6 +6,52 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-09-11 — Fixed Target-mode PipelineStepPanel bugs (Python modules, Depends on/Feeds into)
+
+**Focus:** Three related bugs in the ETL tab's Target-mode step detail side panel
+(`PipelineStepPanel.tsx`), all stemming from the 041b1f9 refactor that changed the synthetic
+`PipelineStep` semantics for Target mode without updating this panel — closes the gap flagged as
+open item 3a in the 2026-09-10 entry.
+
+### Done
+- Bug 1 — "Python modules" section: was treating `step.files` (already Python filenames in target
+  mode) as SAS filenames and re-translating via `sasToPyMap`, producing "file.py ← file.py". Now
+  iterates `step.files` directly and looks up the true SAS source(s) via a new `pyToSasMap` prop.
+- Bug 2 — "Depends on"/"Feeds into" were leaking raw SAS-narrative text because `ETLTab.tsx` passed
+  the unmodified backend `etlLineage.pipeline_steps` as `allSteps` regardless of mode. Extracted the
+  per-step synthesis logic that `TargetGraph.tsx`'s `buildPipelineStepsGraph()` used inline into a
+  shared `deriveTargetPipelineSteps()` in new file `src/frontend/src/lib/target-steps.ts`. Both
+  `TargetGraph.tsx` and `ETLTab.tsx` now call it, so `allSteps` in target mode is the same
+  Python-derived synthetic array as `step` itself.
+- Bug 3 — producer/consumer lookup missing matches (e.g. step 3 outputs incorrectly showing "final
+  output" instead of a step 4 consumer) self-resolved once Bug 2 made `allSteps` consistent with
+  `step`'s inputs/outputs provenance; verified explicitly live, not just assumed.
+- `make test` green (ruff, mypy, pytest+coverage, tsc, frontend-lint, frontend-build).
+- Verified live on "Simple FSI demo" (`4e059dee...`) and "Biometrics Demo — SDTM to ADaM"
+  (`61cb7eeb...`, 6-file job, confirms no regression on the already-working multi-file case).
+  Source mode confirmed pixel-identical to before (raw SAS narrative, no Python modules section).
+
+### Decisions
+- None new — this implements the Target-mode invariant already locked in on 2026-09-10
+  (DECISIONS.md): Target ETL view must be Python-only, never fall back to raw SAS-narrative step
+  data.
+
+### Open Questions
+- None
+
+### Next Session — Start Here
+- Nothing outstanding from this fix. Remaining known gap from 2026-09-10 (b) — Target's cross-file
+  edge topology still derived from SAS `file_edges` detection rather than generated Python's actual
+  imports — is untouched and still open.
+
+### Files Touched
+- `src/frontend/src/components/JobDetail/PipelineStepPanel.tsx`
+- `src/frontend/src/components/JobDetail/TargetGraph.tsx`
+- `src/frontend/src/components/JobDetail/ETLTab.tsx`
+- `src/frontend/src/lib/target-steps.ts` (new)
+
+---
+
 ## 2026-09-10 — Session close: F92 follow-up fixes, PR #149 updated, pushed
 
 **Duration:** ~2 days (2026-09-09 to 2026-09-10) | **Focus:** Bug-fix follow-ups on
