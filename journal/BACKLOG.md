@@ -850,18 +850,40 @@ its own design pass first)**
 - [ ] #34 (emilie-adc, May 22): `Feat/f22 assessment ux` — 4+ months stale, +7177/-2865, mergeable
   status unknown as of this check
 
-**Migrations page redesign — mockup approved, not yet implemented**
-- [ ] Build the "Manifest"-styled Migrations page redesign against the real `JobsPage.tsx`/
-  `AppSidebar.tsx` — mockup source preserved at `docs/design/MigrationsPage.dc.html` (single
-  1440×940 artboard). Covers: a real Rosetta logo mark (three-bar teal wordmark, replacing the
-  flat foreground-color square), the sidebar's four nav icons corrected to real lucide-react
-  paths, search input + status filter pill + primary "New migration" button, a sortable table with
-  icon-bearing status chips (Needs Review/Running/Accepted/Failed) on Manifest tone tokens,
-  per-row sensitive-data warning icon, contextual row actions (Trace/Watch live/Download) plus a
-  kebab menu, and a bulk-selection hint row. Not scoped into subtasks yet — needs its own
-  plan-feature pass before implementation (touches `JobsPage.tsx` and possibly shared
-  `status-colors.ts`/badge components; check for drift against the real components before
-  building, same as the #52/#148 correction below)
+**Migrations page redesign — mockup approved, now scoped into F93/F94 (2026-09-24)**
+- [x] F93: Migrations page visual refresh (no backend changes) — complete → see
+  `docs/plans/F93-migrations-page-visual-refresh.md`
+  - [x] F93 S-A: Job-status → Tone map → `src/frontend/src/components/JobDetail/status-colors.ts`
+  - [x] F93 S-B: Status column → `StatusChip` → `src/frontend/src/pages/JobsPage.tsx`
+  - [x] F93 S-C: Header stat line → `src/frontend/src/pages/JobsPage.tsx`
+  - [x] F93 S-D: Search input (client-side name filter) → `src/frontend/src/pages/JobsPage.tsx`
+  - [x] F93 S-E: Status filter pill → `src/frontend/src/pages/JobsPage.tsx`
+  - [x] F93 S-F: Sortable columns → `src/frontend/src/pages/JobsPage.tsx`
+  - [x] F93 S-G: Sidebar icon verification → `src/frontend/src/components/AppSidebar.tsx` (no
+    change needed — mockup icons are byte-identical to the live lucide-react imports)
+  - [x] F93 S-H: Manual smoke test — verified live via browser automation
+  - [x] F93 S-I: `make test` gate — all 7 gates green
+- [ ] F94: Migration row actions — sensitive-data flag, delete, archive, bulk actions (backend +
+  frontend) → see `docs/plans/F94-migration-row-actions.md`
+  - [ ] F94 S-A: Alembic migration — `is_archived` column → `alembic/versions/021_add_job_is_archived.py`
+  - [ ] F94 S-B: `JobSummary` schema fields → `src/backend/api/schemas.py`
+  - [ ] F94 S-C: List route — populate fields + exclude archived by default → `src/backend/api/routes/jobs.py`
+  - [ ] F94 S-D: `DELETE /jobs/{job_id}` route → `src/backend/api/routes/jobs.py`
+  - [ ] F94 S-E: `PATCH /jobs/{job_id}/archive` route → `src/backend/api/routes/jobs.py`
+  - [ ] F94 S-F: Backend route tests → `tests/test_jobs_routes.py`
+  - [ ] F94 S-G: Frontend types → `src/frontend/src/api/types.ts`
+  - [ ] F94 S-H: Frontend API client functions → `src/frontend/src/api/jobs.ts`
+  - [ ] F94 S-I: Bulk selection + bulk action bar → `src/frontend/src/pages/JobsPage.tsx`
+  - [ ] F94 S-J: Per-row kebab menu (Delete migration) → `src/frontend/src/pages/JobsPage.tsx`
+  - [ ] F94 S-K: Sensitive-data warning icon → `src/frontend/src/pages/JobsPage.tsx`
+  - [ ] F94 S-L: "Show archived" toggle → `src/frontend/src/pages/JobsPage.tsx`
+  - [ ] F94 S-M: Trace vs "Watch live" row action → `src/frontend/src/pages/JobsPage.tsx`
+  - [ ] F94 S-N: Manual smoke test
+  - [ ] F94 S-O: `make test` gate
+  - Locked semantics: Delete = hard delete (FK-cascade), Archive = soft-hide (`is_archived` flag,
+    reversible) — see `journal/DECISIONS.md` 2026-09-24
+  - Land F93 before F94 — both touch `JobsPage.tsx` heavily; avoid parallel branches on the same
+    file
 
 **#52 / #148 sidebar — correction: collapse already exists, don't rebuild it**
 - Built a two-state mockup (expanded 220px / collapsed 56px icon rail) for `AppSidebar.tsx`,

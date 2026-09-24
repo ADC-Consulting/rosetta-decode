@@ -3,7 +3,8 @@ import { submitMigration } from "@/api/migrate";
 import LiveTraceDialog from "@/components/LiveTraceDialog";
 import type { JobStatusValue, JobSummary } from "@/api/types";
 import { Button } from "@/components/ui/button";
-import { TONE_HEX, TONE_TEXT_CLASS } from "@/components/JobDetail/status-colors";
+import { JOB_STATUS_TONE, TONE_TEXT_CLASS } from "@/components/JobDetail/status-colors";
+import StatusChip from "@/components/JobDetail/StatusChip";
 import {
   Dialog,
   DialogContent,
@@ -11,15 +12,25 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useUploadState } from "@/context/UploadStateContext";
 import { cn } from "@/lib/utils";
 import { STATUS_LABEL } from "@/pages/JobDetailPage";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
+  AlertTriangle,
   Archive,
+  Check,
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   ClipboardCopy,
   Database,
   ExternalLink,
@@ -29,7 +40,9 @@ import {
   Folder,
   FolderOpen,
   ScrollText,
+  Search,
   Target,
+  XCircle,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -465,47 +478,111 @@ function ZipCard({
 }
 
 // ---------------------------------------------------------------------------
-// TableStatus (jobs table)
+// StatusCell (jobs table) — StatusChip + status icon, per the Manifest mockup
 // ---------------------------------------------------------------------------
 
 const POLLING_STATUSES: JobStatusValue[] = ["queued", "running", "proposed"];
 
-function TableStatus({ status }: { status: JobStatusValue }): React.ReactElement {
-  const GRADIENT: Partial<Record<JobStatusValue, string>> = {
-    queued:       "linear-gradient(90deg, #94a3b8 20%, #e2e8f0 50%, #94a3b8 80%)",
-    running:      "linear-gradient(90deg, #93c5fd 20%, #eff6ff 50%, #93c5fd 80%)",
-    proposed:     `linear-gradient(90deg, ${TONE_HEX.warning} 20%, var(--tone-warning-bg) 50%, ${TONE_HEX.warning} 80%)`,
-    under_review: `linear-gradient(90deg, ${TONE_HEX.warning} 20%, var(--tone-warning-bg) 50%, ${TONE_HEX.warning} 80%)`,
-  };
-  const SOLID: Partial<Record<JobStatusValue, string>> = {
-    accepted: TONE_TEXT_CLASS.success,
-    done:     TONE_TEXT_CLASS.success,
-    failed:   TONE_TEXT_CLASS.danger,
-  };
-
-  if (SOLID[status]) {
-    return <span className={`text-sm font-medium ${SOLID[status]}`}>{STATUS_LABEL[status]}</span>;
-  }
-
-  const gradient = GRADIENT[status] ?? "linear-gradient(90deg, #94a3b8 20%, #e2e8f0 50%, #94a3b8 80%)";
-  return (
-    <>
-      <style>{`@keyframes table-shimmer { from { background-position: 200% center; } to { background-position: -200% center; } }`}</style>
+/**
+ * queued/running have no verdict yet, so their icon is a pulsing dot (mirrors the mockup's
+ * `.pulse` running-row treatment) rather than a static glyph — preserves the in-progress visual
+ * cue that the old shimmer-text `TableStatus` gave, now that the chip itself is static.
+ */
+function StatusCellIcon({ status }: { status: JobStatusValue }): React.ReactElement | null {
+  if (status === "queued" || status === "running") {
+    return (
       <span
-        className="text-sm font-medium"
-        style={{
-          display: "inline-block",
-          backgroundImage: gradient,
-          backgroundSize: "200% 100%",
-          WebkitBackgroundClip: "text",
-          WebkitTextFillColor: "transparent",
-          backgroundClip: "text",
-          animation: "table-shimmer 4s linear infinite",
-        }}
-      >
-        {STATUS_LABEL[status]}
-      </span>
-    </>
+        className="h-1.5 w-1.5 rounded-full bg-current animate-pulse"
+        aria-hidden="true"
+      />
+    );
+  }
+  if (status === "proposed" || status === "under_review") {
+    return <AlertTriangle aria-hidden="true" />;
+  }
+  if (status === "accepted" || status === "done") {
+    return <Check aria-hidden="true" />;
+  }
+  if (status === "failed") {
+    return <XCircle aria-hidden="true" />;
+  }
+  return null;
+}
+
+function StatusCell({ status }: { status: JobStatusValue }): React.ReactElement {
+  return (
+    <StatusChip tone={JOB_STATUS_TONE[status]}>
+      <StatusCellIcon status={status} />
+      {STATUS_LABEL[status]}
+    </StatusChip>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Status filter options (S-E)
+// ---------------------------------------------------------------------------
+// `proposed` and `under_review` share the "Needs Review" label (STATUS_LABEL) and the same
+// `warning` tone — collapsed into one filter option here too, rather than two dropdown entries
+// with identical text that would filter differently underneath. Same reasoning for
+// `accepted`/`done` staying separate: they render distinct labels ("Accepted" vs "Done"), so a
+// user filtering by one shouldn't silently also match the other.
+
+interface StatusFilterOption {
+  value: string;
+  label: string;
+  statuses: JobStatusValue[];
+}
+
+const STATUS_FILTER_OPTIONS: StatusFilterOption[] = [
+  { value: "all", label: "All statuses", statuses: [] },
+  { value: "queued", label: STATUS_LABEL.queued, statuses: ["queued"] },
+  { value: "running", label: STATUS_LABEL.running, statuses: ["running"] },
+  { value: "needs_review", label: "Needs Review", statuses: ["proposed", "under_review"] },
+  { value: "accepted", label: STATUS_LABEL.accepted, statuses: ["accepted"] },
+  { value: "done", label: STATUS_LABEL.done, statuses: ["done"] },
+  { value: "failed", label: STATUS_LABEL.failed, statuses: ["failed"] },
+];
+
+// ---------------------------------------------------------------------------
+// SortableHeader (jobs table) — chevron sort-direction indicator per mockup
+// ---------------------------------------------------------------------------
+
+type SortColumn = "name" | "status" | "files" | "created";
+
+function SortableHeader({
+  column,
+  label,
+  activeColumn,
+  direction,
+  onToggle,
+}: {
+  column: SortColumn;
+  label: string;
+  activeColumn: SortColumn;
+  direction: "asc" | "desc";
+  onToggle: (column: SortColumn) => void;
+}): React.ReactElement {
+  const isActive = activeColumn === column;
+  return (
+    <button
+      type="button"
+      onClick={() => onToggle(column)}
+      aria-label={`Sort by ${label}`}
+      className={cn(
+        "inline-flex items-center gap-1 cursor-pointer select-none transition-colors",
+        isActive ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+      )}
+    >
+      {label}
+      {isActive && direction === "desc" ? (
+        <ChevronUp className="h-3 w-3" aria-hidden="true" />
+      ) : (
+        <ChevronDown
+          className={cn("h-3 w-3", isActive ? "opacity-100" : "opacity-40")}
+          aria-hidden="true"
+        />
+      )}
+    </button>
   );
 }
 
@@ -530,6 +607,77 @@ export default function JobsPage(): React.ReactElement {
         : false;
     },
   });
+
+  // ── Header stat line (S-C) ─────────────────────────────────────────────────
+
+  const stats = useMemo(() => {
+    const list = jobs ?? [];
+    return {
+      total: list.length,
+      needsReview: list.filter(
+        (j) => j.status === "proposed" || j.status === "under_review",
+      ).length,
+      running: list.filter((j) => j.status === "running" || j.status === "queued")
+        .length,
+      accepted: list.filter((j) => j.status === "accepted").length,
+    };
+  }, [jobs]);
+
+  // ── Search + status filter, sort (S-D, S-E, S-F) ────────────────────────────
+  // One shared filter-state object (search + status) so the two filters compose via AND
+  // instead of being derived independently.
+
+  const [tableFilter, setTableFilter] = useState<{ search: string; status: string }>({
+    search: "",
+    status: "all",
+  });
+
+  const [tableSort, setTableSort] = useState<{
+    column: SortColumn;
+    direction: "asc" | "desc";
+  }>({ column: "name", direction: "asc" });
+
+  function toggleSort(column: SortColumn) {
+    setTableSort((prev) =>
+      prev.column === column
+        ? { column, direction: prev.direction === "asc" ? "desc" : "asc" }
+        : { column, direction: "asc" },
+    );
+  }
+
+  const visibleJobs = useMemo(() => {
+    const list = jobs ?? [];
+    const query = tableFilter.search.trim().toLowerCase();
+    const statusOption =
+      STATUS_FILTER_OPTIONS.find((o) => o.value === tableFilter.status) ??
+      STATUS_FILTER_OPTIONS[0];
+    const filtered = list.filter((job) => {
+      if (statusOption.statuses.length > 0 && !statusOption.statuses.includes(job.status)) {
+        return false;
+      }
+      if (query === "") return true;
+      return (job.name ?? job.job_id).toLowerCase().includes(query);
+    });
+
+    const { column, direction } = tableSort;
+    const sign = direction === "asc" ? 1 : -1;
+    return [...filtered].sort((a, b) => {
+      switch (column) {
+        case "name":
+          return sign * (a.name ?? a.job_id).localeCompare(b.name ?? b.job_id);
+        case "status":
+          return sign * STATUS_LABEL[a.status].localeCompare(STATUS_LABEL[b.status]);
+        case "files":
+          return sign * ((a.file_count ?? 0) - (b.file_count ?? 0));
+        case "created":
+          return (
+            sign * (new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+          );
+        default:
+          return 0;
+      }
+    });
+  }, [jobs, tableFilter, tableSort]);
 
   // ── Dialog state ──────────────────────────────────────────────────────────
 
@@ -765,16 +913,67 @@ export default function JobsPage(): React.ReactElement {
     );
   }
 
+  const hasJobs = !isLoading && jobs !== undefined && jobs.length > 0;
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div ref={setBrandManifestEl} className="brand-manifest px-6 py-2 overflow-y-auto flex-1 h-full">
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold text-foreground">Migrations</h1>
-          <Button variant="outline" onClick={() => setUploadOpen(true)}>
-            New migration
-          </Button>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-semibold text-foreground">Migrations</h1>
+            {hasJobs && (
+              <p className="mt-1 text-sm text-muted-foreground">
+                {stats.total} {stats.total === 1 ? "migration" : "migrations"}, {stats.needsReview}{" "}
+                need review, {stats.running} running, {stats.accepted} accepted
+              </p>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {hasJobs && (
+              <>
+                <div className="relative">
+                  <Search
+                    className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                    aria-hidden="true"
+                  />
+                  <input
+                    type="text"
+                    value={tableFilter.search}
+                    onChange={(e) =>
+                      setTableFilter((prev) => ({ ...prev, search: e.target.value }))
+                    }
+                    placeholder="Search migrations…"
+                    aria-label="Search migrations"
+                    className="h-9 w-64 rounded-md border border-border bg-background pl-8 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+
+                <Select
+                  value={tableFilter.status}
+                  onValueChange={(value) =>
+                    setTableFilter((prev) => ({ ...prev, status: value }))
+                  }
+                >
+                  <SelectTrigger aria-label="Filter by status" className="h-9">
+                    <SelectValue placeholder="All statuses" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {STATUS_FILTER_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </>
+            )}
+            <Button variant="outline" onClick={() => setUploadOpen(true)}>
+              New migration
+            </Button>
+          </div>
         </div>
 
         {isLoading && (
@@ -793,22 +992,55 @@ export default function JobsPage(): React.ReactElement {
           </p>
         )}
 
-        {!isLoading && jobs !== undefined && jobs.length > 0 && (
+        {hasJobs && visibleJobs.length === 0 && (
+          <p className="text-sm text-muted-foreground py-4">
+            {tableFilter.search.trim() !== ""
+              ? `No migrations match “${tableFilter.search.trim()}”.`
+              : "No migrations match the selected status."}{" "}
+            Try a different search term or status filter.
+          </p>
+        )}
+
+        {hasJobs && visibleJobs.length > 0 && (
           <div className="overflow-x-auto rounded-md border border-border">
             <table className="w-full text-sm" aria-label="Migration jobs">
               <thead>
                 <tr className="border-b border-border bg-muted text-muted-foreground text-left">
                   <th scope="col" className="px-4 py-2.5 font-medium w-[40%]">
-                    Name
+                    <SortableHeader
+                      column="name"
+                      label="Name"
+                      activeColumn={tableSort.column}
+                      direction={tableSort.direction}
+                      onToggle={toggleSort}
+                    />
                   </th>
                   <th scope="col" className="px-4 py-2.5 font-medium">
-                    Status
+                    <SortableHeader
+                      column="status"
+                      label="Status"
+                      activeColumn={tableSort.column}
+                      direction={tableSort.direction}
+                      onToggle={toggleSort}
+                    />
                   </th>
                   <th scope="col" className="px-4 py-2.5 font-medium">
-                    Files
+                    <SortableHeader
+                      column="files"
+                      label="Files"
+                      activeColumn={tableSort.column}
+                      direction={tableSort.direction}
+                      onToggle={toggleSort}
+                    />
                   </th>
                   <th scope="col" className="px-4 py-2.5 font-medium">
-                    Created
+                    <SortableHeader
+                      column="created"
+                      label="Created"
+                      activeColumn={tableSort.column}
+                      direction={tableSort.direction}
+                      onToggle={toggleSort}
+                    />
                   </th>
                   <th scope="col" className="px-4 py-2.5 font-medium sr-only">
                     Actions
@@ -816,7 +1048,7 @@ export default function JobsPage(): React.ReactElement {
                 </tr>
               </thead>
               <tbody>
-                {jobs.map((job) => {
+                {visibleJobs.map((job) => {
                   const isClickable =
                     job.status === "proposed" ||
                     job.status === "accepted" ||
@@ -853,7 +1085,7 @@ export default function JobsPage(): React.ReactElement {
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <TableStatus status={job.status} />
+                        <StatusCell status={job.status} />
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">
                         {job.file_count != null ? job.file_count : "—"}

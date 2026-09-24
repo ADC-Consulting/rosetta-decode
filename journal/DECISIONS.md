@@ -6,6 +6,31 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-09-24 — Migrations page redesign split into F93 (visual) / F94 (row actions); delete/archive semantics locked
+
+- **The approved Migrations-page mockup (`docs/design/MigrationsPage.dc.html`) is split into two
+  features, not built as one:** F93 covers everything requiring no backend change (status chip
+  restyle onto the existing Manifest tone system, header stat line, client-side search/filter/sort,
+  sidebar icon verification). F94 covers everything the mockup implies that doesn't exist in the
+  backend/frontend yet (per-row sensitive-data flag, hard delete, archive, bulk selection, kebab
+  menu, richer Trace/"Watch live" row action) · rationale: user's explicit choice when asked —
+  about half the mockup's elements were net-new product decisions disguised as a visual mockup
+  (confirmed via a fidelity check before planning: token/color layer matched live `.brand-manifest`
+  scope exactly, no F88/F89-style drift, but `sensitive_data_findings` isn't on the list endpoint,
+  no delete/archive endpoint exists, no search/filter/sort state exists) · revisit never — land F93
+  before F94 since both touch `JobsPage.tsx` heavily
+- **Delete = hard delete, Archive = soft-hide (`is_archived` flag):** the mockup shows both a
+  destructive per-row "Delete migration" (kebab, red) and a separate bulk "Archive" action as
+  distinct operations. Delete permanently removes the job row via FK cascade (same cascade
+  confirmed working during the 2026-09-24 stray-test-job cleanup), behind a confirm dialog. Archive
+  only flips a flag — row, `migration_plan`, `generated_files`, and audit trail stay intact,
+  excluded from the default list view, recoverable via a "Show archived" toggle · rationale: user's
+  explicit choice when asked, appropriate for a compliance/audit tool where full destruction of an
+  accepted migration's audit record needs to be a deliberate, separate action from routine list
+  cleanup · revisit never
+
+---
+
 ## 2026-09-11 — Parsing generated Python imports for cross-file edges: won't fix, not deferred
 
 - **Target's Files/Blocks cross-file edge topology stays SAS-derived (`file_edges` detection);
