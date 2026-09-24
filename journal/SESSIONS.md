@@ -6,6 +6,55 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-09-24 — PR #149 (F92) merged to main; closed out remaining open items; PR landscape triaged
+
+**Duration:** ~1h | **Focus:** Wrapping up the F92 branch — closing two deliberately-deferred items
+from the 2026-09-10 session-close note, then merging PR #149 to `main` and cataloging the state of
+every other open PR
+
+### Done
+- Deleted the 3 stray test-migration jobs left in the DB from live-verifying earlier F92 fixes
+  ("Second migration test", "Browser verify test", "Demo") — confirmed all FKs referencing `job_id`
+  are `ON DELETE CASCADE` before deleting directly via SQL; no orphaned rows
+- Investigated whether Target's cross-file edges could be computed from the generated Python's
+  actual imports instead of SAS `file_edges` detection (flagged as a "possible stricter follow-up"
+  on 2026-09-09/10) — read a live job's generated `pipeline.py` directly and confirmed it always
+  calls every module in one fixed linear sequence regardless of real dependency, so parsing it
+  can't yield anything more accurate than the existing SAS-derived edges. Closed out as won't-fix,
+  not deferred — see `journal/DECISIONS.md`
+- Cataloged all 11 open PRs in the repo (not just the F92 stack) — sorted into "ready to merge, no
+  dependencies" (#142, #146, #147), "the blocking stack" (#145 → #149), and "stale, needs an owner
+  decision" (#135 draft, #134/#133 business docs, #113/#112/#34 large stale feature branches, 3-4+
+  months old). User reviewed and merged #145, #146, #147 directly on GitHub
+- #149's base auto-retargeted to `main` after #145 merged, surfacing a merge conflict — resolved:
+  only real overlap was `journal/BACKLOG.md` (two sections appended at the same anchor point by
+  #149 and the separately-merged #146); kept both sections, no content lost. `scripts/seed_demo_job.py`
+  and `BlockPlanTable.tsx` merged cleanly. `make test` 7/7 green on the merged result before pushing
+- User approved and merged #149 to `main` (merge commit `c0947e0`) — closes the entire F92 chain
+- Moved local checkout to `main`, pulled (35 commits fast-forward). Rebuilt + restarted `backend`
+  and `worker` containers (no source bind-mount, unlike `frontend`) so the merged code is actually
+  live in the dev stack, not just on disk — confirmed backend responds 200 after restart
+
+### Decisions
+- See `journal/DECISIONS.md` 2026-09-11 entry — parsing generated Python imports for cross-file
+  edges is a dead end given how `pipeline.py` is structured, not merely deferred
+
+### Open Questions
+- none
+
+### Next Session — Start Here
+1. #142 is green and ready to merge with no dependencies — just needs someone to do it
+2. 6 PRs need an owner decision, not a routine merge — see the "Open-PR triage (2026-09-24)" note
+   in `journal/BACKLOG.md` for the full list and what each needs (draft finish/close, content
+   review, or rebase-and-review/close for the stale feature branches)
+3. No F92 work remains open — the next feature work is whatever's picked up fresh from the backlog
+
+### Files Touched
+- `journal/BACKLOG.md`, `journal/DECISIONS.md`, `journal/SESSIONS.md` (this entry)
+- No application code changed this session (DB row deletion + docker rebuild only, no source edits)
+
+---
+
 ## 2026-09-11 — Fixed Target-mode PipelineStepPanel bugs (Python modules, Depends on/Feeds into)
 
 **Focus:** Three related bugs in the ETL tab's Target-mode step detail side panel
