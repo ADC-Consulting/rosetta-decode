@@ -17,6 +17,7 @@ Usage:
 import asyncio
 import hashlib
 import os
+import re
 import sys
 import uuid
 from datetime import UTC, datetime
@@ -1525,6 +1526,45 @@ LINEAGE = {
 # Block revisions — provide reconciliation_status for each block
 # ---------------------------------------------------------------------------
 
+_SAS_MARKER_RE = re.compile(r"#\s*SAS:\s*sas/(\S+?\.sas:\d+)")
+
+
+def _extract_block_python(bid: str) -> str:
+    """Extract the real generated Python snippet for a block_id from GENERATED_FILES.
+
+    Scans every file's content in ``GENERATED_FILES`` for ``# SAS: sas/<file>:<line>``
+    provenance markers. Finds the first line whose marker matches ``bid`` and returns
+    that line through (but excluding) the next line whose marker references a
+    *different* block_id — or through the end of the file's content if no such line
+    exists (e.g. it's the last block in the file, or the only other matching markers
+    reference this same block_id).
+
+    Args:
+        bid: The block_id to extract, e.g. "01_load_sources.sas:4".
+
+    Returns:
+        The extracted Python snippet, or a placeholder string if no file in
+        ``GENERATED_FILES`` has a marker matching ``bid``.
+    """
+    for content in GENERATED_FILES.values():
+        lines = content.split("\n")
+        matches = [
+            i
+            for i, line in enumerate(lines)
+            if (m := _SAS_MARKER_RE.search(line)) and m.group(1) == bid
+        ]
+        if not matches:
+            continue
+        start = matches[0]
+        end = len(lines)
+        for i in range(start + 1, len(lines)):
+            m = _SAS_MARKER_RE.search(lines[i])
+            if m and m.group(1) != bid:
+                end = i
+                break
+        return "\n".join(lines[start:end]).rstrip()
+    return f"# generated code for {bid}"
+
 
 def _block_revisions(job_id: str) -> list[dict[str, object]]:
     """One BlockRevision per block; manual block has no reconciliation."""
@@ -1539,7 +1579,7 @@ def _block_revisions(job_id: str) -> list[dict[str, object]]:
                 "job_id": job_id,
                 "block_id": bid,
                 "revision_number": rev_num,
-                "python_code": f"# generated code for {bid}",
+                "python_code": _extract_block_python(str(bid)),
                 "strategy": bp["strategy"],
                 "confidence": bp["confidence_band"],
                 "uncertainty_notes": [],
