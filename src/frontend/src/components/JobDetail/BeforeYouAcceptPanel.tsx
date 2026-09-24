@@ -106,7 +106,7 @@ export default function BeforeYouAcceptPanel({
         <div className="space-y-2 pl-5">
           {/* Headline */}
           <p className="text-sm text-muted-foreground">
-            {trustReport.auto_verified} of {total} steps translated automatically — no action
+            {trustReport.auto_verified} of {total} steps translated automatically. No action
             needed.
           </p>
 

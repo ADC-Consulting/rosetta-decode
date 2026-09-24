@@ -2,7 +2,6 @@ import { useState } from "react";
 import type { BlockPlan, PipelineStep, TrustReportBlock } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { ChevronDown, ChevronRight, X } from "lucide-react";
-import { sasFileToPyFile } from "@/lib/sas-python-file-map";
 import { BlockRow } from "./blockRowHelpers";
 
 interface PipelineStepPanelProps {
@@ -14,7 +13,7 @@ interface PipelineStepPanelProps {
   onBlockClick: (blockId: string) => void;
   onClose: () => void;
   mode?: "source" | "target";
-  sasToPyMap?: Map<string, string[]>;
+  pyToSasMap?: Map<string, string[]>;
   onPyFileClick?: (pyFile: string) => void;
 }
 
@@ -27,7 +26,7 @@ export default function PipelineStepPanel({
   onBlockClick,
   onClose,
   mode = "source",
-  sasToPyMap,
+  pyToSasMap,
   onPyFileClick,
 }: PipelineStepPanelProps): React.ReactElement {
   const [blocksExpanded, setBlocksExpanded] = useState(false);
@@ -140,21 +139,14 @@ export default function PipelineStepPanel({
           <div className="border-b border-border">
             <div className={sectionLabel}>Python modules</div>
             <div className="px-3 pb-2 flex flex-col gap-2">
-              {(() => {
-                const seen = new Set<string>();
-                const rows: Array<{ pyFile: string; sasFile: string }> = [];
-                for (const sasFile of step.files) {
-                  const pyFiles = sasToPyMap?.get(sasFile) ?? [sasFileToPyFile(sasFile)];
-                  for (const pyFile of pyFiles) {
-                    const key = `${pyFile}||${sasFile}`;
-                    if (!seen.has(key)) {
-                      seen.add(key);
-                      rows.push({ pyFile, sasFile });
-                    }
-                  }
-                }
-                return rows.map(({ pyFile, sasFile }) => (
-                  <div key={`${pyFile}||${sasFile}`} className="flex flex-col gap-0.5">
+              {/* step.files is already the list of generated Python modules in
+                  target mode (see TargetGraph.tsx's buildPipelineStepsGraph) —
+                  no SAS→Python translation needed here. The "← source" line
+                  looks up the true SAS source file(s) via the reverse map. */}
+              {step.files.map((pyFile) => {
+                const sasFiles = pyToSasMap?.get(pyFile) ?? [];
+                return (
+                  <div key={pyFile} className="flex flex-col gap-0.5">
                     <button
                       type="button"
                       onClick={() => onPyFileClick?.(pyFile)}
@@ -163,12 +155,17 @@ export default function PipelineStepPanel({
                     >
                       {pyFile.split("/").pop() ?? pyFile}
                     </button>
-                    <span className="text-[11px] font-mono text-muted-foreground truncate ml-2">
-                      ← {sasFile.split("/").pop()}
-                    </span>
+                    {sasFiles.length > 0 && (
+                      <span
+                        className="text-[11px] font-mono text-muted-foreground truncate ml-2"
+                        title={sasFiles.join(", ")}
+                      >
+                        ← {sasFiles.map((sf) => sf.split("/").pop()).join(", ")}
+                      </span>
+                    )}
                   </div>
-                ));
-              })()}
+                );
+              })}
             </div>
           </div>
         )}

@@ -12,8 +12,10 @@ import {
   buildPyFileToSasFilesMap,
   buildSasFileToPyFilesMap,
   pyFileToSasFiles,
+  pyFileToStepTitle,
   sasFileToPyFile,
 } from "@/lib/sas-python-file-map";
+import { deriveTargetPipelineSteps } from "@/lib/target-steps";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import BlockCodePopup from "./BlockCodePopup";
@@ -92,7 +94,7 @@ export default function ETLTab({
   // Block code popup — separate from selectedBlock so target panel doesn't auto-open popup
   const [codePopupBlockId, setCodePopupBlockId] = useState<string | null>(null);
   // Selected Python file in blocks view (opens FileBlockListPanel)
-  const [selectedTargetPyFile, setSelectedTargetPyFile] = useState<string | null>(null);
+  const [selectedTargetStepId, setSelectedTargetStepId] = useState<string | null>(null);
   // Full-file view popup (Source Files + Target Files node clicks)
   const [fileViewPopup, setFileViewPopup] = useState<{
     filename: string;
@@ -182,6 +184,16 @@ export default function ETLTab({
     [generatedFiles],
   );
 
+  // ── Target-mode synthetic pipeline steps (Python-derived) ─────────────────
+  // Mirrors exactly what TargetGraph.tsx's buildPipelineStepsGraph() derives for
+  // the pipeline view, so the PipelineStepPanel's `allSteps` (used for producer/
+  // consumer lookups and "Depends on"/"Feeds into" labels) never falls back to
+  // the raw SAS-narrative `etlLineage.pipeline_steps` in target mode.
+  const targetSyntheticSteps = useMemo(
+    () => deriveTargetPipelineSteps(etlLineage?.pipeline_steps ?? [], blockPlans, sasToPyMap),
+    [etlLineage, blockPlans, sasToPyMap],
+  );
+
   // ── Derived SAS source files for the selected Python module ───────────────
   const selectedPyModuleSasFiles = useMemo(() => {
     if (!selectedPyModule) return [];
@@ -198,6 +210,22 @@ export default function ETLTab({
     return pyFiles?.[0] ?? sasFileToPyFile(selectedBlockPlan.source_file);
   }, [selectedBlock, selectedBlockPlan, selectedPyModule, sasToPyMap]);
 
+  // ── Selected Target step (Steps/Blocks view) → title + exact block-id list ──
+  // FileBlockListPanel filters by block_id, not by SAS-file membership, since a
+  // file can be shared across steps (see TargetGraph.tsx's buildBlocksGraph).
+  const selectedTargetStepData = useMemo(() => {
+    const step = etlLineage?.pipeline_steps?.find((s) => s.step_id === selectedTargetStepId);
+    if (!step) return null;
+    const stepBlocks = blockPlans.filter((bp) => step.blocks.includes(bp.block_id));
+    const pyFilesForStep = [
+      ...new Set(
+        stepBlocks.flatMap((bp) => sasToPyMap.get(bp.source_file) ?? [sasFileToPyFile(bp.source_file)]),
+      ),
+    ].filter((f) => f !== "pipeline.py");
+    const title = pyFilesForStep.length > 0 ? pyFilesForStep.map(pyFileToStepTitle).join(" / ") : step.step_id;
+    return { title, blockIds: step.blocks };
+  }, [etlLineage, selectedTargetStepId, blockPlans, sasToPyMap]);
+
   // ── Handlers ─────────────────────────────────────────────────────────────
   const handleToggle = (next: "source" | "target") => {
     setGraphView(next);
@@ -206,7 +234,7 @@ export default function ETLTab({
     setSelectedPyModule(null);
     setSelectedBlock(null);
     setCodePopupBlockId(null);
-    setSelectedTargetPyFile(null);
+    setSelectedTargetStepId(null);
     if (next === "target") {
       setTargetView(sourceView);
     } else {
@@ -267,7 +295,7 @@ export default function ETLTab({
     setSelectedBlock(null);
     setSelectedStep(null);
     setFileViewPopup(null);
-    setSelectedTargetPyFile(null);
+    setSelectedTargetStepId(null);
   };
 
   // ── Determine right panel for target view ─────────────────────────────────
@@ -278,7 +306,7 @@ export default function ETLTab({
   const showTargetModulePanel =
     graphView === "target" && targetView !== "blocks" && !!selectedPyModule && !showBlockDetail;
   const showFileBlockListPanel =
-    graphView === "target" && targetView === "blocks" && !!selectedTargetPyFile && !showBlockDetail;
+    graphView === "target" && targetView === "blocks" && !!selectedTargetStepId && !showBlockDetail;
 
   // ── Render ───────────────────────────────────────────────────────────────
   const hasSidePanel =
@@ -384,8 +412,8 @@ export default function ETLTab({
               }}
               onModuleClick={handleModuleClick}
               onBlockClick={handleTargetBlockClick}
-              onBlocksFileClick={(pyFile) => {
-                setSelectedTargetPyFile(pyFile);
+              onBlocksFileClick={(stepId) => {
+                setSelectedTargetStepId(stepId);
                 setSelectedBlock(null);
                 setSelectedPyModule(null);
               }}
@@ -418,7 +446,11 @@ export default function ETLTab({
           <div className="w-80 border-l border-border overflow-y-auto shrink-0">
             <PipelineStepPanel
               step={selectedStep}
-              allSteps={etlLineage?.pipeline_steps ?? []}
+              allSteps={
+                graphView === "target"
+                  ? targetSyntheticSteps
+                  : (etlLineage?.pipeline_steps ?? [])
+              }
               blockPlans={blockPlans}
               trustBlocks={trustBlocks}
               humanVerifiedBlocks={humanVerifiedBlocks}
@@ -432,7 +464,7 @@ export default function ETLTab({
               }}
               onClose={() => setSelectedStep(null)}
               mode={graphView === "target" ? "target" : "source"}
-              sasToPyMap={graphView === "target" ? sasToPyMap : undefined}
+              pyToSasMap={graphView === "target" ? pyToSasMap : undefined}
               onPyFileClick={(pyFile) => {
                 setFileViewPopup({
                   filename: pyFile,
@@ -468,13 +500,13 @@ export default function ETLTab({
         {showFileBlockListPanel && (
           <div className="w-80 border-l border-border overflow-y-auto shrink-0">
             <FileBlockListPanel
-              pyFile={selectedTargetPyFile!}
+              title={selectedTargetStepData?.title ?? selectedTargetStepId!}
               blockPlans={blockPlans}
               trustBlocks={trustBlocks}
               humanVerifiedBlocks={humanVerifiedBlocks}
-              sasFiles={pyToSasMap.get(selectedTargetPyFile!) ?? pyFileToSasFiles(selectedTargetPyFile!, blockPlans)}
+              blockIds={selectedTargetStepData?.blockIds ?? []}
               onBlockClick={handleTargetBlockClick}
-              onClose={() => setSelectedTargetPyFile(null)}
+              onClose={() => setSelectedTargetStepId(null)}
             />
           </div>
         )}
@@ -488,6 +520,7 @@ export default function ETLTab({
               trustBlock={trustBlocks[selectedBlock!]}
               isHumanVerified={humanVerifiedBlocks.has(selectedBlock!)}
               parentPyFile={graphView === "target" ? blockDetailParentPyFile : undefined}
+              mode={graphView === "target" ? "target" : "source"}
               onBack={() => setSelectedBlock(null)}
               onViewCode={(blockId) => {
                 setCodePopupBlockId(blockId);
@@ -495,7 +528,7 @@ export default function ETLTab({
               onClose={() => {
                 setSelectedBlock(null);
                 setSelectedPyModule(null);
-                setSelectedTargetPyFile(null);
+                setSelectedTargetStepId(null);
               }}
               onViewSourceFile={(sasFile) => {
                 setFileViewPopup({

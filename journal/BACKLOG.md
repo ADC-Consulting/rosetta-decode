@@ -377,7 +377,8 @@
 - [x] #45: AI tab placeholder — empty state delivered in F28 S-C, issue closed
 - [ ] #46: Remove legacy tab components — blocked: depends on #41–45
 - [ ] #47: Remove legacy standalone pages and routes — blocked: depends on #46
-- [ ] #52: Revisit sidebar navigation — blocked on persona validation
+- [ ] #52: Revisit sidebar navigation — blocked on persona validation (scope is nav content/
+  structure only — collapse already shipped, see note further down)
 - [x] fix(frontend): PlanTab review queue — removed `.slice(0, 10)` cap; all items now render sorted by criticality
 
 **F35 — Remediation runbook (#19) → see plan at .claude/plans/generate-runbook-for-high-risk-expressive-kernighan.md**
@@ -577,7 +578,8 @@
 **Cleanup / tech debt**
 - [ ] #47: Remove legacy standalone pages and routes
 - [ ] #46: Remove legacy tab components from JobDetailPage
-- [ ] #52: UX — revisit sidebar navigation (align with confirmed user personas)
+- [ ] #52: UX — revisit sidebar navigation (align with confirmed user personas; scope is nav
+  content/structure only — collapse already shipped, see note further down)
 - [ ] #45: AI tab placeholder for AI side-effect data capture
 - [ ] #44: BI tab placeholder for BI side-effect data capture
 
@@ -699,6 +701,181 @@
   slices the right snippet out of `GENERATED_FILES` using its `# SAS: sas/<file>:<line>` provenance
   markers. Confirmed the real worker pipeline (`main.py`'s `_persist_initial_revisions`) was never
   affected — it always set `python_code` from the actual translation agent's output
+
+**F92 — Fix the migration upload flow → see `docs/plans/F92-migration-upload-flow-fixes.md`
+(tracks issue #148's concrete, ready-to-build half; the welcome-page/sidebar half of #148 needs
+its own design pass first)**
+- [x] F92 S-A: delete dead `UploadPage.tsx` (unrouted since the 2026-04-23 Upload→Dialog decision,
+  never removed)
+- [x] F92 S-B: stop requiring a reconciliation target to enable Migrate — `submitDisabled`
+  incorrectly requires `refTargetPath`, though the backend treats it as optional
+- [x] F92 S-C: clarify reconciliation-target UX copy (optional; zip uploads need the reference
+  file bundled inside the zip) — also added a live warning for the silent-failure case (target set
+  on a file outside the zip)
+- [x] F92 S-D: apply Manifest design system styling to the dialog — found and fixed a real
+  container-resolution timing bug along the way (`useBrandManifestContainer()`'s approach doesn't
+  work when called at the same component's top level as its own `.brand-manifest` div; fixed with
+  a callback-ref-via-state pattern instead)
+- [x] F92 S-E: full manual smoke test — verified live (no-target and zip-target submissions,
+  light/dark theming)
+- [x] F92 S-F: `make tsc-check && make frontend-lint && make frontend-build && make test` exit 0
+- [x] F92: pushed `fix/F92-migration-upload-flow-fixes`, opened PR #149 against `fix/F91-design-followups`
+  (stacked — depends on F91/#145's `useBrandManifestContainer()`, not yet merged)
+- [x] F92 follow-up (2026-09-09, user report "why can't I press migrate"): dialog footer's
+  Migrate/View-Migration buttons keyed off `manifest` instead of `phase` — stuck on "View
+  Migration" for the second+ migration submitted via "Start another" in one dialog session.
+  Fixed in `JobsPage.tsx`, verified in browser, committed d56ea9e; pushed, in PR #149
+- [x] F92 follow-up (2026-09-09, user report "ETL tab does not look right"): Target "Pipeline"
+  sub-view rendered step-card connectors as a looping curve — `PipelineTargetStepNode` in
+  `TargetGraph.tsx` had `Handle` positions pinned Top/Bottom while the layout is horizontal
+  (`rankdir: "LR"`). Fixed by switching the two handles to Left/Right, matching the already-correct
+  Source-side `PipelineStepCard.tsx`. `make test` green (7/7 gates), verified live on both
+  Source and Target Pipeline views; committed as part of 2867e9b, pushed, in PR #149
+- [x] F92 follow-up (2026-09-09, same report): investigated the Target "Steps" sub-view showing a
+  single aggregate card for a one-Python-file migration — confirmed by-design (grouping is
+  genuinely per generated Python file, verified against a 6-file migration rendering 6 correctly
+  linked cards), not a bug. Live-testing did surface a real polish gap: the file-card had no visual
+  affordance that it's clickable. Added a persistent chevron + "View blocks" hint row to
+  `BlocksFileNode` (`TargetGraph.tsx`), following the `BlockDetailPanel.tsx` breadcrumb-chevron
+  precedent from F71. `make test` green (7/7 gates), verified live at N=1 (Simple FSI demo) and
+  N=6 (Biometrics Demo — SDTM to ADaM) — reads well at both, no layout overlap; committed as part
+  of 2867e9b, pushed, in PR #149
+- [x] F92 follow-up (2026-09-09, new rule: Target view must be Python-only, never SAS-derived):
+  found and fixed three violations, frontend-only. (1) Target's "Pipeline" sub-view was built from
+  `lineage.pipeline_steps` — SAS-only narrative text from `LineageEnricherAgent`, generated before
+  Python exists — explaining why it mirrored Source's step names exactly; rewrote
+  `buildPipelineStepsGraph` (`TargetGraph.tsx`) to group by generated Python file, with
+  title/description synthesized from `BlockPlan.rationale` (no new LLM call). (2) Target's Files/
+  Blocks edge topology was projected from SAS file-level `file_edges`; changed to block-level
+  `lineage.nodes`/`lineage.edges`, then **reverted back to file-level after live verification proved
+  the block-level data was missing a real cross-file dependency** (DM→ADSL edge on Biometrics Demo)
+  that file-level data correctly captured — confirmed via a direct `curl` of `/jobs/{id}/lineage`.
+  Also added a "↑ N in / ↓ M out" dataset-count row to Target Pipeline cards, matching Source's,
+  using data Fix A already computes. (3) `BlockDetailPanel` always showed raw SAS `block_type` as
+  its heading regardless of mode; added `mode?: "source" | "target"` prop — target mode now shows
+  `blockPlan.rationale` as the heading with `block_type` demoted to a secondary `SAS` chip (matching
+  `FileBlockListPanel`'s established convention), source mode unchanged. `make test` green (7/7
+  gates) after both rounds of changes; verified live on Simple FSI demo (1 file) and Biometrics
+  Demo — SDTM to ADaM (6 files). Flagged, not built: cross-file edges are still SAS-derived (via
+  `file_edges`' `INCLUDE`/`MACRO_CALL`/`READS_DATASET`/`WRITES_DATASET` detection), not computed
+  from the generated Python's actual imports — true independence would need that parser as a
+  stricter follow-up. Known wrinkle: `ETLTab.tsx` still passes the old SAS-narrative
+  `pipeline_steps` as `allSteps` into `PipelineStepPanel`, so the Target-mode side panel's
+  step-number lookup won't match Fix A's new per-file step IDs (degrades gracefully, not fixed here).
+  Committed as 2867e9b (`TargetGraph.tsx`, `BlockDetailPanel.tsx`, `ETLTab.tsx`), pushed, in PR #149
+- [x] F92 follow-up (2026-09-09, on top of committed `2867e9b`/`e80c74f`): Target Pipeline sub-view
+  card (`PipelineTargetStepNode`) had the same no-click-affordance gap the chevron/hint fix already
+  solved for `BlocksFileNode`, just never applied here — confirmed live it's clickable (opens
+  `PipelineStepPanel`) but had no visual cue. Added the same unconditional chevron+"View steps" hint
+  row (`TargetGraph.tsx`), `NODE_H` 140→158 to fit it. `make test` green (7/7 gates); verified live
+  on Simple FSI demo (1 card) and Biometrics Demo — SDTM to ADaM (6 cards), no clipping/overlap.
+  Committed as 2b1e1c0, pushed, in PR #149
+- [x] F92 follow-up (2026-09-10, user report "Target still shows a single node for pipeline view
+  and for steps view"): the 2026-09-09 Python-only-data fix grouped Target's Pipeline view by
+  generated Python file — correct in principle, but this migration's 12 blocks all compile into
+  one `.py` file, so it collapsed to 1 box instead of showing the 4 real conceptual stages. User
+  confirmed (via clarifying question): group Target's Pipeline *and* Steps views by the same step
+  boundaries Source uses, box count always matching Source, regardless of file count. Rewrote
+  `buildPipelineStepsGraph` and `buildBlocksGraph` (`TargetGraph.tsx`) to partition by
+  `pipeline_steps[].blocks` (grouping key only, never the SAS-narrative `step.name`/`description`).
+  Also fixed a second bug found while verifying: step-to-step edges came up empty for the
+  single-file case because they were projected from SAS file-level `file_edges`, which can't
+  represent a same-file transition — added `buildStepDatasetEdges`, matching each step's derived
+  input/output dataset names (the same method Source's own Pipeline view already uses). Reworked
+  `FileBlockListPanel` to filter by exact block id instead of SAS-file membership (props renamed
+  `pyFile`/`sasFiles` → `title`/`blockIds`) since the Steps view's drill-down needed it. Moved
+  `pyFileToStepTitle` to `lib/sas-python-file-map.ts` (exporting it from `TargetGraph.tsx` tripped
+  `react-refresh/only-export-components`). Ruled out one red herring (`lineage.nodes[].id` uses a
+  different, double-colon id format than `BlockPlan.block_id` — two separate id spaces, not a bug)
+  and found one pre-existing, unrelated data gap (1 of 12 blocks isn't assigned to any pipeline
+  step by the backend — equally true on Source's Pipeline view, not a regression). Two background
+  agents failed on infrastructure errors before any code was written; implemented directly after
+  the second failure rather than risk a third — flagged as a deviation from this project's
+  orchestrator-never-writes-code convention. `make test` green (7/7 gates); verified live on
+  Simple FSI demo (now 4 boxes matching Source in both views) and Biometrics Demo — SDTM to ADaM
+  (still 6, no regression). Committed as 041b1f9, pushed, in PR #149
+- [x] F92 follow-up (2026-09-10, confirmed bug): `map_sas_to_semantic_type()`
+  (`src/backend/api/schema_utils.py`) checked `sas_type` first and returned `"Unknown"` before ever
+  checking `sas_format`, so inline-computed DATA step columns with no captured `sas_type` (but a
+  diagnostic format like `DATE9.`/`COMMA18.2`) showed as blank instead of DATE/DECIMAL in the
+  frontend Data tab — `loan_control_report` on Simple FSI demo (`4e059dee-d20a-47fb-ac25-f418b7408edc`)
+  had 5/6 columns affected. Reordered the function to check format-regex patterns before the
+  `sas_type` bailout; `"Unknown"` now only when both `sas_type` and `sas_format` are absent/unmatched.
+  Updated one existing test that asserted the old buggy behavior, added 2 regression tests.
+  `make test` 7/7 green. Rebuilt+restarted the `backend` container (no source bind-mount, so a plain
+  restart wouldn't have picked up the fix) and verified live via curl and the frontend Data tab —
+  all 5 previously-blank columns now show correctly, `customers` (String/TEXT) unaffected. Committed
+  as ef6a1ec, pushed, in PR #149
+- [x] F92 follow-up (2026-09-11): closed the `PipelineStepPanel` wrinkle flagged above (2026-09-09
+  entry) — Target-mode side panel's "Python modules" section mistranslated `step.files` through
+  `sasToPyMap` (already Python filenames in target mode), and "Depends on"/"Feeds into" leaked raw
+  SAS-narrative text and mismatched producer/consumer lookups because `ETLTab.tsx` passed the
+  unmodified backend `pipeline_steps` as `allSteps` regardless of mode. Extracted the synthetic-step
+  derivation into shared `src/frontend/src/lib/target-steps.ts` (`deriveTargetPipelineSteps()`), used
+  by both `TargetGraph.tsx` and `ETLTab.tsx` so the graph and side panel always agree. `make test`
+  7/7 green; verified live on Simple FSI demo and Biometrics Demo — SDTM to ADaM (6-file, no
+  regression); Source mode confirmed unaffected. Committed as 98b0a74, pushed, in PR #149
+
+**Migrations page redesign — mockup approved, not yet implemented**
+- [ ] Build the "Manifest"-styled Migrations page redesign against the real `JobsPage.tsx`/
+  `AppSidebar.tsx` — mockup source preserved at `docs/design/MigrationsPage.dc.html` (single
+  1440×940 artboard). Covers: a real Rosetta logo mark (three-bar teal wordmark, replacing the
+  flat foreground-color square), the sidebar's four nav icons corrected to real lucide-react
+  paths, search input + status filter pill + primary "New migration" button, a sortable table with
+  icon-bearing status chips (Needs Review/Running/Accepted/Failed) on Manifest tone tokens,
+  per-row sensitive-data warning icon, contextual row actions (Trace/Watch live/Download) plus a
+  kebab menu, and a bulk-selection hint row. Not scoped into subtasks yet — needs its own
+  plan-feature pass before implementation (touches `JobsPage.tsx` and possibly shared
+  `status-colors.ts`/badge components; check for drift against the real components before
+  building, same as the #52/#148 correction below)
+
+**#52 / #148 sidebar — correction: collapse already exists, don't rebuild it**
+- Built a two-state mockup (expanded 220px / collapsed 56px icon rail) for `AppSidebar.tsx`,
+  intending to propose it as a fix for #52. Before implementing, re-read the live component and
+  found collapse is already fully shipped (`ICON_COL = 56`, `localStorage` persistence, chevron
+  flip, hover tooltips) — predates this session (`6b0137f`). No implementation needed; mockup
+  discarded. Whatever #52/#148's remaining sidebar scope is, it's nav *content/structure*
+  (currently 4 flat, equally-weighted items: Migrations/Lineage/Docs/Explain — no grouping, no
+  usage-weighted hierarchy), not the collapse mechanism.
+
+**Plan tab effort estimate looks off (found during demo prep, not yet investigated)**
+- [ ] The "Before you accept" panel's "Estimated effort: ~Xh" figure looked wrong on the
+  Biometrics Demo (SDTM→ADaM) job — needs investigation into where it's actually computed. Traced
+  so far: `migration_planner.py`'s `AnalysisAgent` only assigns a coarse per-block
+  `estimated_effort: "low"|"medium"|"high"` label (see ~line 106, 137, 334) — the aggregate hour
+  figure shown in the UI must be computed by mapping/summing these bands somewhere else (not yet
+  located; check `docs/plans/latest/` for the F86 estimation-model plan, and search the frontend
+  and `src/backend/api/` for where `estimated_effort` bands get turned into a number of hours).
+  Confirm the mapping/formula is reasonable before trusting this number in front of stakeholders.
+
+**Plan tab copy pass — AI-sounding phrasing / unmotivated em dashes (2026-09-09)**
+- [x] Reviewed `PlanTab.tsx`, `BeforeYouAcceptPanel.tsx`, `BlockPlanTable.tsx` for hardcoded copy
+  that reads as AI-generated or templated. Fixed one real issue: em dash in
+  `BeforeYouAcceptPanel.tsx`'s auto-verified headline, inconsistent with the file's own
+  period-punctuated sibling message. Everything else (glossary-style "Term — definition" dashes,
+  verdict-banner dashes, badge-label dashes) is a deliberate, consistent UI convention — left as is
+- [x] Added a prose-style constraint ("no em dashes, plain declarative sentences, no buzzwords") to
+  `migration_planner.py`'s `_SYSTEM_PROMPT`, since it generates the Plan tab's `summary` and
+  `rationale` (Needs-attention) text for every future migration. Purely additive, JSON schema
+  unchanged
+
+**Correction — running-migration UX note above was wrong**
+- [x] The previous note here claimed there's no in-progress feedback while a job runs. Wrong —
+  `LiveTraceDialog.tsx` already exists and is comprehensive: an "Activity" icon on every Migrations
+  row (pulsing while `queued`/`running`) opens a real SSE-driven (`GET /jobs/{id}/trace/stream`)
+  phase timeline (parse → plan → translate → reconcile → enrichment), per-block status, elapsed
+  timer, and a Stop button. No feature gap here — the note was written from the Migrations list's
+  plain-text status column alone, without noticing the existing per-row trace icon.
+
+**Real bug found instead: successful submission gives no confirmation**
+- [x] `JobsPage.tsx`'s migration mutation's `onSuccess` set `phase` to `"submitted"` (intended to
+  show a confirmation screen with a "View Migration" button) but then immediately called
+  `handleDialogOpenChange(false)` in the same handler, which internally reset `phase` back to
+  `"staging"` and closed the dialog before the confirmation screen could ever render. Fixed by
+  removing that one `handleDialogOpenChange(false)` call — the dialog now stays open and shows the
+  job result card (name, live status badge, "Open full details") with "Done"/"View Migration"
+  footer buttons, exactly as originally built. Verified live: submission keeps the dialog open,
+  "Done" closes it cleanly, and the normal cancel-before-submit flow is unaffected.
 
 **Compute backend correctness (existing GitHub issues)**
 - [ ] #139: README misstates both compute backends — `CLOUD=true` claims Databricks/PySpark but

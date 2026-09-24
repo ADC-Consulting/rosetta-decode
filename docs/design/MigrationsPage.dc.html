@@ -1,0 +1,409 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    :root {
+      --primary: #0f7d72;
+      --primary-foreground: #ffffff;
+      --radius: 6px;
+      --tone-success: #137a52;
+      --tone-success-bg: #e3f3ec;
+      --tone-warning: #b5680d;
+      --tone-warning-bg: #fbedd8;
+      --tone-danger: #b3261e;
+      --tone-danger-bg: #fbe4e1;
+      --tone-danger-strong: #8f1c15;
+      --tone-danger-strong-bg: #f6d4d0;
+      --border: oklch(0.922 0 0);
+      --muted-foreground: oklch(0.556 0 0);
+      --foreground: oklch(0.145 0 0);
+      --muted: oklch(0.97 0 0);
+      --background: oklch(1 0 0);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "Archivo", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: var(--primary); }
+    a:hover { color: #0c655c; }
+    ::selection { background: var(--tone-success-bg); }
+
+    button { font-family: inherit; cursor: pointer; }
+
+    .rail-item {
+      display: flex; align-items: center; height: 40px; border-radius: 6px; color: var(--muted-foreground);
+    }
+    .rail-item:hover { background: var(--muted); color: var(--foreground); }
+
+    .link-action {
+      display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px 0 8px;
+      border: none; background: transparent; border-radius: 6px; font-size: 13px; font-weight: 500;
+      color: var(--muted-foreground); transition: background-color .12s, color .12s;
+    }
+    .link-action:hover { background: var(--muted); color: var(--foreground); }
+    .link-action.is-live { color: var(--primary); }
+    .link-action.is-live:hover { background: rgba(15,125,114,0.08); color: var(--primary); }
+    .link-action.is-primary { color: var(--foreground); }
+
+    .kebab-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 28px; height: 28px; border-radius: 6px; border: none; background: transparent;
+      color: var(--muted-foreground); flex-shrink: 0;
+    }
+    .kebab-btn:hover { background: var(--muted); color: var(--foreground); }
+
+    .kebab-menu {
+      position: absolute; top: 34px; right: 0; width: 168px; background: #fff;
+      border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+      padding: 4px; z-index: 5;
+    }
+    .kebab-item {
+      display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: 6px;
+      font-size: 13px; color: var(--foreground);
+    }
+    .kebab-item:hover { background: var(--muted); }
+    .kebab-item.danger { color: var(--tone-danger); }
+    .kebab-item.danger:hover { background: var(--tone-danger-bg); }
+
+    .chip {
+      display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 10px;
+      border-radius: 6px; font-size: 12.5px; font-weight: 500; white-space: nowrap;
+    }
+    .sort-th {
+      display: inline-flex; align-items: center; gap: 4px; cursor: pointer; user-select: none;
+      color: var(--muted-foreground); font-weight: 600; font-size: 12px; letter-spacing: 0.02em;
+    }
+    .sort-th:hover { color: var(--foreground); }
+    .sort-th.active { color: var(--foreground); }
+    .sort-th svg { opacity: 0.4; }
+    .sort-th.active svg { opacity: 1; }
+
+    tr.row { border-top: 1px solid var(--border); }
+    tr.row:hover { background: #fbfbfb; }
+    tr.row.is-selected { background: var(--tone-success-bg); }
+
+    input[type="checkbox"] {
+      appearance: none; width: 16px; height: 16px; border-radius: 4px;
+      border: 1.5px solid oklch(0.75 0 0); background: #fff; cursor: pointer; position: relative; flex-shrink: 0;
+    }
+    input[type="checkbox"]:checked { background: var(--primary); border-color: var(--primary); }
+    input[type="checkbox"]:checked::after {
+      content: ""; position: absolute; left: 4px; top: 1px; width: 4px; height: 8px;
+      border: solid white; border-width: 0 1.5px 1.5px 0; transform: rotate(45deg);
+    }
+
+    .search-input {
+      width: 260px; height: 36px; border: 1px solid var(--border); border-radius: 6px;
+      padding: 0 10px 0 34px; font-size: 13.5px; color: var(--foreground); background: #fff;
+    }
+    .search-input::placeholder { color: var(--muted-foreground); }
+    .search-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(15,125,114,0.12); }
+
+    .filter-pill {
+      display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 11px 0 13px;
+      border: 1px solid var(--border); border-radius: 6px; font-size: 13.5px; color: var(--foreground);
+      background: #fff;
+    }
+
+    .btn-primary {
+      display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 15px;
+      background: var(--primary); color: var(--primary-foreground); border: none; border-radius: 6px;
+      font-size: 13.5px; font-weight: 600;
+    }
+    .btn-primary:hover { background: #0c655c; }
+
+    @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+    .pulse { animation: pulse-dot 1.6s ease-in-out infinite; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 940px; background: var(--background); display: flex; color: var(--foreground);">
+
+  <!-- ============================== SIDEBAR (recreated from AppSidebar.tsx) ============================== -->
+  <aside style="width: 220px; flex-shrink: 0; display: flex; flex-direction: column; height: 940px; background: var(--background); border-right: 1px solid var(--border);">
+    <div style="display: flex; align-items: center; height: 56px; border-bottom: 1px solid var(--border); padding-left: 18px; gap: 9px;">
+      <svg width="18" height="18" viewBox="0 0 20 20" style="flex-shrink: 0;">
+        <rect x="2" y="3" width="16" height="3" rx="1.5" fill="var(--primary)"></rect>
+        <rect x="2" y="8.5" width="11" height="3" rx="1.5" fill="var(--primary)" opacity="0.5"></rect>
+        <rect x="2" y="14" width="6" height="3" rx="1.5" fill="var(--primary)" opacity="0.4"></rect>
+      </svg>
+      <span style="font-size: 15px; font-weight: 700; letter-spacing: -0.01em;">Rosetta</span>
+    </div>
+
+    <nav style="flex: 1; padding: 8px 0; display: flex; flex-direction: column;">
+      <div style="display: flex; align-items: center; gap: 12px; height: 40px; padding-left: 19px; background: var(--muted); color: var(--foreground); font-weight: 500; font-size: 14px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"></rect><rect width="7" height="7" x="3" y="14" rx="1"></rect><path d="M14 4h7"></path><path d="M14 9h7"></path><path d="M14 15h7"></path><path d="M14 20h7"></path></svg>
+        Migrations
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px; height: 40px; padding-left: 19px; color: var(--muted-foreground); font-size: 14px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="18" r="3"></circle><circle cx="6" cy="6" r="3"></circle><circle cx="18" cy="6" r="3"></circle><path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9"></path><path d="M12 12v3"></path></svg>
+        Lineage
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px; height: 40px; padding-left: 19px; color: var(--muted-foreground); font-size: 14px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"></path><path d="M14 2v5a1 1 0 0 0 1 1h5"></path><path d="M10 9H8"></path><path d="M16 13H8"></path><path d="M16 17H8"></path></svg>
+        Docs
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px; height: 40px; padding-left: 19px; color: var(--muted-foreground); font-size: 14px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"></path></svg>
+        Explain
+      </div>
+    </nav>
+
+    <div style="border-top: 1px solid var(--border); padding: 8px 0;">
+      <div class="rail-item" style="justify-content: flex-start; margin: 0 8px; padding-left: 11px;" title="Toggle theme">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg>
+      </div>
+      <div class="rail-item" style="justify-content: flex-start; margin: 0 8px; padding-left: 11px;" title="Collapse sidebar">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ============================== MAIN CONTENT ============================== -->
+  <main style="flex: 1; padding: 28px 32px; overflow: hidden;">
+
+    <!-- Header row -->
+    <div style="display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 22px;">
+      <div>
+        <h1 style="font-size: 23px; font-weight: 700; margin: 0 0 4px;">Migrations</h1>
+        <p style="margin: 0; font-size: 13.5px; color: var(--muted-foreground);">6 migrations, 3 need review, 1 running, 1 accepted</p>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <div style="position: relative;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--muted-foreground); pointer-events: none;"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+          <input class="search-input" type="text" placeholder="Search migrations…" value="" />
+        </div>
+
+        <div class="filter-pill">
+          All statuses
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--muted-foreground);"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </div>
+
+        <button class="btn-primary">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          New migration
+        </button>
+      </div>
+    </div>
+
+    <!-- Table -->
+    <div style="border: 1px solid var(--border); border-radius: 6px; overflow: visible; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+      <table style="width: 100%; border-collapse: collapse; font-size: 13.5px;">
+        <thead>
+          <tr style="background: var(--muted);">
+            <th style="width: 44px; padding: 12px 0 12px 18px; text-align: left; border-radius: 6px 0 0 0;">
+              <input type="checkbox" />
+            </th>
+            <th style="padding: 12px; text-align: left;">
+              <span class="sort-th active">
+                Name
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </span>
+            </th>
+            <th style="padding: 12px; text-align: left; width: 140px;">
+              <span class="sort-th">Status</span>
+            </th>
+            <th style="padding: 12px; text-align: left; width: 80px;">
+              <span class="sort-th">
+                Files
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </span>
+            </th>
+            <th style="padding: 12px; text-align: left; width: 170px;">
+              <span class="sort-th">
+                Created
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </span>
+            </th>
+            <th style="padding: 12px 18px 12px 12px; text-align: right; width: 150px; color: var(--muted-foreground); font-weight: 600; font-size: 12px; border-radius: 0 6px 0 0;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+
+          <!-- Row 1 — Needs Review, sensitive data, selected, kebab open -->
+          <tr class="row is-selected">
+            <td style="padding: 16px 0 16px 18px;"><input type="checkbox" checked /></td>
+            <td style="padding: 16px 12px;">
+              <div style="display: flex; align-items: center; gap: 7px;">
+                <span style="font-weight: 500;">Biometrics Demo — SDTM to ADaM</span>
+                <span title="Sensitive data detected — 4 columns">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
+                </span>
+              </div>
+            </td>
+            <td style="padding: 16px 12px;">
+              <span class="chip" style="color: var(--tone-warning); background: var(--tone-warning-bg);">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"></path><path d="M12 17h.01"></path><path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path></svg>
+                Needs Review
+              </span>
+            </td>
+            <td style="padding: 16px 12px; color: var(--muted-foreground);">18 files</td>
+            <td style="padding: 16px 12px; color: var(--muted-foreground);">Sep 4, 1:12 PM</td>
+            <td style="padding: 16px 18px 16px 12px; position: relative;">
+              <div style="display: flex; align-items: center; justify-content: flex-end; gap: 2px;">
+                <button class="link-action is-primary">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"></path></svg>
+                  Trace
+                </button>
+                <button class="kebab-btn">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1.2"></circle><circle cx="12" cy="12" r="1.2"></circle><circle cx="12" cy="19" r="1.2"></circle></svg>
+                </button>
+              </div>
+              <div class="kebab-menu">
+                <div class="kebab-item danger">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                  Delete migration
+                </div>
+              </div>
+            </td>
+          </tr>
+
+          <!-- Row 2 — Running (live) -->
+          <tr class="row">
+            <td style="padding: 16px 0 16px 18px;"><input type="checkbox" /></td>
+            <td style="padding: 16px 12px;"><span style="font-weight: 500;">pharma-schema-v4</span></td>
+            <td style="padding: 16px 12px;">
+              <span class="chip" style="color: var(--primary); background: rgba(15,125,114,0.1);">
+                <span class="pulse" style="width: 6px; height: 6px; border-radius: 999px; background: var(--primary);"></span>
+                Running
+              </span>
+            </td>
+            <td style="padding: 16px 12px; color: var(--muted-foreground);">18 files</td>
+            <td style="padding: 16px 12px; color: var(--muted-foreground);">Sep 4, 2:02 PM</td>
+            <td style="padding: 16px 18px 16px 12px;">
+              <div style="display: flex; align-items: center; justify-content: flex-end;">
+                <button class="link-action is-live">
+                  <span class="pulse" style="width: 6px; height: 6px; border-radius: 999px; background: var(--primary);"></span>
+                  Watch live
+                </button>
+              </div>
+            </td>
+          </tr>
+
+          <!-- Row 3 — Accepted, download available -->
+          <tr class="row">
+            <td style="padding: 16px 0 16px 18px;"><input type="checkbox" /></td>
+            <td style="padding: 16px 12px;">
+              <div style="display: flex; align-items: center; gap: 7px;">
+                <span style="font-weight: 500;">KYC / AML Client Screening</span>
+                <span title="Sensitive data detected — 6 columns">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
+                </span>
+              </div>
+            </td>
+            <td style="padding: 16px 12px;">
+              <span class="chip" style="color: var(--tone-success); background: var(--tone-success-bg);">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                Accepted
+              </span>
+            </td>
+            <td style="padding: 16px 12px; color: var(--muted-foreground);">13 files</td>
+            <td style="padding: 16px 12px; color: var(--muted-foreground);">Jun 29, 2:32 PM</td>
+            <td style="padding: 16px 18px 16px 12px;">
+              <div style="display: flex; align-items: center; justify-content: flex-end; gap: 2px;">
+                <button class="link-action is-primary">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                  Download
+                </button>
+                <button class="kebab-btn">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1.2"></circle><circle cx="12" cy="12" r="1.2"></circle><circle cx="12" cy="19" r="1.2"></circle></svg>
+                </button>
+              </div>
+            </td>
+          </tr>
+
+          <!-- Row 4 — Needs Review -->
+          <tr class="row">
+            <td style="padding: 16px 0 16px 18px;"><input type="checkbox" /></td>
+            <td style="padding: 16px 12px;"><span style="font-weight: 500;">Monthly Revenue Pipeline</span></td>
+            <td style="padding: 16px 12px;">
+              <span class="chip" style="color: var(--tone-warning); background: var(--tone-warning-bg);">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"></path><path d="M12 17h.01"></path><path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path></svg>
+                Needs Review
+              </span>
+            </td>
+            <td style="padding: 16px 12px; color: var(--muted-foreground);">9 files</td>
+            <td style="padding: 16px 12px; color: var(--muted-foreground);">Sep 4, 10:24 AM</td>
+            <td style="padding: 16px 18px 16px 12px;">
+              <div style="display: flex; align-items: center; justify-content: flex-end; gap: 2px;">
+                <button class="link-action is-primary">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"></path></svg>
+                  Trace
+                </button>
+                <button class="kebab-btn">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1.2"></circle><circle cx="12" cy="12" r="1.2"></circle><circle cx="12" cy="19" r="1.2"></circle></svg>
+                </button>
+              </div>
+            </td>
+          </tr>
+
+          <!-- Row 5 — Failed -->
+          <tr class="row">
+            <td style="padding: 16px 0 16px 18px;"><input type="checkbox" /></td>
+            <td style="padding: 16px 12px;"><span style="font-weight: 500; color: var(--muted-foreground);">verify-dataset-name-fix</span></td>
+            <td style="padding: 16px 12px;">
+              <span class="chip" style="color: var(--tone-danger); background: var(--tone-danger-bg);">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+                Failed
+              </span>
+            </td>
+            <td style="padding: 16px 12px; color: var(--muted-foreground);">18 files</td>
+            <td style="padding: 16px 12px; color: var(--muted-foreground);">Jun 16, 8:20 AM</td>
+            <td style="padding: 16px 18px 16px 12px;">
+              <div style="display: flex; align-items: center; justify-content: flex-end; gap: 2px;">
+                <button class="link-action is-primary">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"></path></svg>
+                  Trace
+                </button>
+                <button class="kebab-btn">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1.2"></circle><circle cx="12" cy="12" r="1.2"></circle><circle cx="12" cy="19" r="1.2"></circle></svg>
+                </button>
+              </div>
+            </td>
+          </tr>
+
+          <!-- Row 6 — Needs Review -->
+          <tr class="row">
+            <td style="padding: 16px 0 16px 18px;"><input type="checkbox" /></td>
+            <td style="padding: 16px 12px;"><span style="font-weight: 500;">pharma-schema-v3</span></td>
+            <td style="padding: 16px 12px;">
+              <span class="chip" style="color: var(--tone-warning); background: var(--tone-warning-bg);">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"></path><path d="M12 17h.01"></path><path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path></svg>
+                Needs Review
+              </span>
+            </td>
+            <td style="padding: 16px 12px; color: var(--muted-foreground);">18 files</td>
+            <td style="padding: 16px 12px; color: var(--muted-foreground);">Jun 12, 2:42 PM</td>
+            <td style="padding: 16px 18px 16px 12px;">
+              <div style="display: flex; align-items: center; justify-content: flex-end; gap: 2px;">
+                <button class="link-action is-primary">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"></path></svg>
+                  Trace
+                </button>
+                <button class="kebab-btn">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1.2"></circle><circle cx="12" cy="12" r="1.2"></circle><circle cx="12" cy="19" r="1.2"></circle></svg>
+                </button>
+              </div>
+            </td>
+          </tr>
+
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Selection hint -->
+    <div style="margin-top: 12px; font-size: 12.5px; color: var(--muted-foreground);">
+      1 selected. A bulk action bar (Download, Archive, Delete) replaces the toolbar above while any row is checked.
+    </div>
+
+  </main>
+</div>
+</x-dc>
+</body>
+</html>
