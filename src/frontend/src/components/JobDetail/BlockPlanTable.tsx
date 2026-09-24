@@ -342,6 +342,35 @@ function extractBlockSection(fullCode: string, blockId: string): string {
   return lines.slice(startIdx, endIdx === -1 ? undefined : endIdx).join("\n");
 }
 
+// Matches the provenance comment codegen stamps on every generated line group, e.g.
+// `# SAS: sas/01_load_sources.sas:4` — see CLAUDE.md's "Generated Python must include
+// provenance comments" rule. Captures the "<file>.sas:<line>" portion, which matches a
+// BlockPlan's `block_id` exactly (both omit the `sas/` directory prefix).
+const SAS_MARKER_RE = /#\s*SAS:\s*sas\/(\S+?\.sas:\d+)/;
+
+/**
+ * Resolves which entry of `generatedFiles` a given `block_id` was emitted into, by scanning
+ * every file's content for a provenance marker whose captured block id matches. The SAS→Python
+ * file grouping is not always 1:1 (multiple SAS files can be assembled into one generated
+ * module), so this cannot be derived from filenames alone.
+ */
+function resolveGeneratedFileName(
+  generatedFiles: Record<string, string> | undefined,
+  blockId: string,
+): string | null {
+  if (!generatedFiles) return null;
+  for (const [filename, content] of Object.entries(generatedFiles)) {
+    if (
+      content
+        .split("\n")
+        .some((line) => SAS_MARKER_RE.exec(line)?.[1] === blockId)
+    ) {
+      return filename;
+    }
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
@@ -376,6 +405,7 @@ export default function BlockPlanTable({
   const [codeSasFile, setCodeSasFile] = useState<string>("");
   const [sasCode, setSasCode] = useState<string>("");
   const [codeDialogPython, setCodeDialogPython] = useState<string>("");
+  const [codeDialogFile, setCodeDialogFile] = useState<string | null>(null);
   const [codeEditable, setCodeEditable] = useState(false);
   const [codeSaving, setCodeSaving] = useState(false);
   const [codeLoading, setCodeLoading] = useState(false);
@@ -410,6 +440,7 @@ export default function BlockPlanTable({
               );
             })(),
         );
+        setCodeDialogFile(resolveGeneratedFileName(generatedFiles, codeBlockId));
         const entry = sources.sources[codeSasFile]
           ? ([codeSasFile, sources.sources[codeSasFile]] as [string, string])
           : Object.entries(sources.sources).find(
@@ -421,6 +452,7 @@ export default function BlockPlanTable({
         setSasCode(entry ? entry[1] : "");
       } catch {
         setCodeDialogPython(initialCodeRef.current ?? "");
+        setCodeDialogFile(null);
         setSasCode("");
       } finally {
         setCodeLoading(false);
@@ -811,6 +843,7 @@ export default function BlockPlanTable({
                                   initialCodeRef.current = jobPythonCode ?? "";
                                   setCodeEditable(false);
                                   setCodeDialogPython("");
+                                  setCodeDialogFile(null);
                                   setCodeSasFile(bp.source_file);
                                   setCodeBlockId(bp.block_id);
                                 }}
@@ -1033,6 +1066,11 @@ export default function BlockPlanTable({
               <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Python — generated
               </span>
+              {codeDialogFile && (
+                <span className="text-[11px] font-mono text-muted-foreground/70">
+                  {codeDialogFile}
+                </span>
+              )}
               {codeEditable && (
                 <span className="ml-1.5 text-[10px] text-amber-600 dark:text-amber-400 font-medium">
                   editing
