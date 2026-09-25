@@ -835,8 +835,15 @@ its own design pass first)**
   pick up the merged code
 
 **Open-PR triage (2026-09-24)**
-- [ ] #142: `fix: reject CLOUD=true at startup + correct compute backend docs (#140, #139)` — full
-  test suite green, based on `main`, no dependencies — ready to merge, just needs someone to do it
+- [x] #142: `fix: reject CLOUD=true at startup + correct compute backend docs (#140, #139)` — merged
+  2026-09-25. Had gone stale (opened 2026-09-03, before the whole F87–F92 stack landed) — was
+  showing `CONFLICTING`/`DIRTY` against current `main` by the time this was picked up. Functional
+  code (`src/worker/core/config.py`'s startup validator + `tests/test_worker_config.py`) merged
+  clean with zero conflicts; only `journal/DECISIONS.md`/`journal/SESSIONS.md` conflicted (two
+  journals independently appended at the same top-of-file anchor point after divergence — same
+  pattern as the #149 merge conflict). Resolved additively: kept both sets of entries, reordered
+  chronologically (the PR's 2026-09-03 entries inserted between 2026-09-04 and 2026-09-02, not left
+  at the top). `make test` green after the merge; GitHub CI green; merged via `gh pr merge --merge`
 - [ ] #135 (draft, since 2026-08-19): `fix(frontend): fix Dokploy access` — never taken out of
   draft; confirm still needed and finish, or close
 - [ ] #134 (felix-adc, Aug 18): `Create outline for competitiveness file` — small business doc,
