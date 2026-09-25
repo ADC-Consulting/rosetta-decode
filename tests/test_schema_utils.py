@@ -75,9 +75,22 @@ def test_empty_sas_type_is_unknown() -> None:
     assert map_sas_to_semantic_type("", None) == "Unknown"
 
 
-def test_empty_sas_type_with_format_is_unknown() -> None:
-    """Empty sas_type takes priority over any format hint."""
-    assert map_sas_to_semantic_type("", "DATE9.") == "Unknown"
+def test_empty_sas_type_with_date_format_is_date() -> None:
+    """Inline-computed DATA step columns (e.g. a report_date derived in a DATA
+    step) have no captured sas_type, but a DATE9. format is still reliable
+    evidence of a date column — format wins over a blank sas_type."""
+    assert map_sas_to_semantic_type("", "DATE9.") == "Date"
+
+
+def test_empty_sas_type_with_decimal_format_is_decimal() -> None:
+    assert map_sas_to_semantic_type("", "COMMA18.2") == "Decimal"
+
+
+def test_empty_sas_type_with_unrecognized_numeric_format_is_number() -> None:
+    """A format present but matching no specific date/decimal pattern still
+    implies a numeric SAS variable, so it falls back to "Number" rather than
+    "Unknown" when sas_type is blank."""
+    assert map_sas_to_semantic_type("", "8.4") == "Number"
 
 
 def test_xport_string_type_maps_to_string() -> None:

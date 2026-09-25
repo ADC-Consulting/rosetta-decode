@@ -19,6 +19,7 @@ interface BlockDetailPanelProps {
   onViewCode: (blockId: string) => void;
   onClose: () => void;
   onViewSourceFile?: (sasFile: string) => void;
+  mode?: "source" | "target";
 }
 
 // ---------------------------------------------------------------------------
@@ -83,6 +84,7 @@ export default function BlockDetailPanel({
   onViewCode,
   onClose,
   onViewSourceFile,
+  mode = "source",
 }: BlockDetailPanelProps): React.ReactElement {
   const statusKind = getBlockStatus(blockPlan, trustBlock, isHumanVerified);
   const statusCfg = STATUS_CONFIG[statusKind];
@@ -139,11 +141,27 @@ export default function BlockDetailPanel({
 
       {/* Body */}
       <div className="flex flex-col gap-3 px-3 py-3 flex-1 overflow-y-auto min-h-0">
-        {/* Block type */}
+        {/* Block heading: rationale (target) or block_type (source) */}
         <div>
-          <span className="text-sm font-bold font-mono text-foreground">
-            {blockPlan.block_type}
-          </span>
+          {mode === "target" ? (
+            <>
+              <span className="block text-sm font-bold text-foreground leading-snug">
+                {blockPlan.rationale || blockPlan.block_type}
+              </span>
+              <div className="flex items-center gap-1.5 mt-1">
+                <span className="inline-flex items-center rounded px-1 text-[9px] font-semibold bg-slate-100 text-slate-500 font-mono shrink-0">
+                  SAS
+                </span>
+                <span className="text-[10px] text-muted-foreground font-mono truncate">
+                  {blockPlan.block_type}
+                </span>
+              </div>
+            </>
+          ) : (
+            <span className="text-sm font-bold font-mono text-foreground">
+              {blockPlan.block_type}
+            </span>
+          )}
           {onViewSourceFile ? (
             <button
               type="button"

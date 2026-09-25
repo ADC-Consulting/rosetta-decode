@@ -19,6 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useBrandManifestContainer } from "@/lib/useBrandManifestContainer";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useReducer, useRef, useState } from "react";
@@ -209,6 +210,7 @@ export default function ExplainPage(): React.ReactElement {
   const [recentSessions, setRecentSessions] = useState<
     ExplainSessionResponse[]
   >([]);
+  const container = useBrandManifestContainer();
 
   const { data: allJobs } = useQuery({
     queryKey: ["jobs"],
@@ -551,7 +553,7 @@ export default function ExplainPage(): React.ReactElement {
           if (!open) dispatch({ type: "CANCEL_SWITCH" });
         }}
       >
-        <DialogContent>
+        <DialogContent container={container}>
           <DialogHeader>
             <DialogTitle>Switch context?</DialogTitle>
           </DialogHeader>
