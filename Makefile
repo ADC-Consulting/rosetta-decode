@@ -6,8 +6,14 @@ SHELL := bash
 .SHELLFLAGS := -eu -o pipefail -c
 
 # Pytest: quiet, no header, no warnings, short tracebacks, only failure summary
+# NOTE: --no-summary is intentionally NOT set. Under pytest>=9, --no-summary
+# disables the whole pytest_terminal_summary hook, which also suppresses the
+# `=== FAILURES ===` tracebacks (summary_failures()), not just the trailing
+# one-line "N failed, M passed" recap. That leaves a failing `make test` with
+# no diagnostic output at all. -rN already trims the old short summary; the
+# FAILURES section + final recap line are exactly what a CI-style gate needs.
 PYTEST_FLAGS := --no-header -q -p no:cacheprovider -W ignore --disable-warnings \
-                --tb=short -rN --no-summary
+                --tb=short -rN
 # npm: kill progress/funding/audit/notice noise
 NPM_FLAGS := --silent --no-fund --no-audit --no-update-notifier --loglevel=error
 # Docker: quiet build
