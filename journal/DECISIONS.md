@@ -6,6 +6,42 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-09-24 — F94 live-testing findings: reversibility gap fixed, pre-existing Checkbox bug fixed
+
+- **Archive was not actually reversible from the UI as first built — fixed before sign-off:** the
+  initial F94 implementation gave "Show archived" as a way to *view* archived jobs, but the kebab
+  menu on an archived row only ever showed "Delete migration" and the bulk-bar "Archive" button
+  always sent `archived: true`, so nothing in the UI could call `archiveJob(id, false)` even though
+  the backend fully supported it. Caught via live browser testing, not code review. Fix: kebab menu
+  shows "Unarchive" (no confirm dialog — non-destructive) when the row is already archived; the
+  bulk-bar button flips to "Unarchive" only when every selected row is already archived, otherwise
+  stays "Archive" and re-archiving an already-archived row in a mixed batch is a harmless no-op ·
+  rationale: "reversible" was the explicit locked semantic for Archive (see the entry below) — a
+  reversible state with no UI path back is not actually reversible to a user · revisit never
+- **`src/frontend/src/components/ui/checkbox.tsx` had a self-import bug since commit `02e84ec`,
+  invisible until F94 was the first feature to render a live `<Checkbox>`:** line 3 imported
+  `Checkbox as CheckboxPrimitive` from `@/components/ui/checkbox` (itself) instead of
+  `@base-ui/react/checkbox`, leaving `CheckboxPrimitive` `undefined` and white-screening any page
+  that rendered the component. Every sibling primitive (`button.tsx`, `select.tsx`, `dialog.tsx`,
+  etc.) already imports correctly from `@base-ui/react/<name>` — this file was the one outlier.
+  Fixed as a standalone one-line change, unrelated to and not scoped as part of F93/F94's own work
+  · rationale: a pre-existing latent bug blocking a locked feature's own delivery must be fixed
+  regardless of whose branch surfaces it first · revisit never
+- **`make test`'s `PYTEST_FLAGS` carried `--no-summary`, which under pytest≥9 silently suppresses
+  ALL failure diagnostics, not just the old one-line recap — fixed on its own branch, unrelated to
+  F93/F94:** confirmed via `git log -p` that `--no-summary` was added in `5332ffa` (Apr 2026) under
+  a comment claiming it keeps "only failure summary" — the opposite of its actual effect under the
+  project's pinned pytest 9.0.3, where it disables the entire `pytest_terminal_summary` hook
+  including `summary_failures()` (the `=== FAILURES ===` traceback section). Every red `make test`
+  run since has printed dots/F's and a bare exit code, nothing else. Fix: removed the flag; `-rN`
+  and `--tb=short` already keep noise down on a green run. Verified via a deliberately-broken test
+  showing a real traceback, then full `make test` still green with the flag gone · branch
+  `chore/fix-pytest-no-summary-suppression`, PR pending · rationale: this had already cost real
+  debugging time this session (a failure had to be diagnosed via static code reading instead of an
+  actual traceback) and will keep costing time on every future red run until fixed · revisit never
+
+---
+
 ## 2026-09-24 — Migrations page redesign split into F93 (visual) / F94 (row actions); delete/archive semantics locked
 
 - **The approved Migrations-page mockup (`docs/design/MigrationsPage.dc.html`) is split into two

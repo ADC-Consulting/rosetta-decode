@@ -40,6 +40,8 @@ export interface JobSummary {
   error: string | null;
   name: string | null;
   file_count: number;
+  sensitive_data: boolean;
+  is_archived: boolean;
 }
 
 export interface FileRejection {

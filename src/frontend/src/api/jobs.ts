@@ -34,11 +34,26 @@ export async function getJob(jobId: string): Promise<JobStatus> {
   return res.json() as Promise<JobStatus>;
 }
 
-export async function listJobs(): Promise<JobSummary[]> {
-  const res = await fetch(`${BASE}/jobs`);
+export async function listJobs(includeArchived = false): Promise<JobSummary[]> {
+  const params = includeArchived ? "?include_archived=true" : "";
+  const res = await fetch(`${BASE}/jobs${params}`);
   if (!res.ok) throw new Error(await extractApiError(res));
   const data = (await res.json()) as { jobs: JobSummary[] };
   return data.jobs;
+}
+
+export async function deleteJob(jobId: string): Promise<void> {
+  const res = await fetch(`${BASE}/jobs/${jobId}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(await extractApiError(res));
+}
+
+export async function archiveJob(jobId: string, archived: boolean): Promise<void> {
+  const res = await fetch(`${BASE}/jobs/${jobId}/archive`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ archived }),
+  });
+  if (!res.ok) throw new Error(await extractApiError(res));
 }
 
 export async function downloadJob(jobId: string): Promise<Blob> {

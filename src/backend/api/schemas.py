@@ -50,6 +50,8 @@ class JobSummary(BaseModel):
     error: str | None = None
     name: str | None = None
     file_count: int = 0
+    sensitive_data: bool = False
+    is_archived: bool = False
 
 
 class JobListResponse(BaseModel):
@@ -399,6 +401,12 @@ class PatchPlanRequest(BaseModel):
     """Request body for PATCH /jobs/{id}/plan."""
 
     block_overrides: list[BlockOverride] = []
+
+
+class ArchiveJobRequest(BaseModel):
+    """Request body for PATCH /jobs/{id}/archive."""
+
+    archived: bool
 
 
 class JobVersionSummary(BaseModel):

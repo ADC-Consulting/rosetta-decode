@@ -863,27 +863,32 @@ its own design pass first)**
     change needed — mockup icons are byte-identical to the live lucide-react imports)
   - [x] F93 S-H: Manual smoke test — verified live via browser automation
   - [x] F93 S-I: `make test` gate — all 7 gates green
-- [ ] F94: Migration row actions — sensitive-data flag, delete, archive, bulk actions (backend +
-  frontend) → see `docs/plans/F94-migration-row-actions.md`
-  - [ ] F94 S-A: Alembic migration — `is_archived` column → `alembic/versions/021_add_job_is_archived.py`
-  - [ ] F94 S-B: `JobSummary` schema fields → `src/backend/api/schemas.py`
-  - [ ] F94 S-C: List route — populate fields + exclude archived by default → `src/backend/api/routes/jobs.py`
-  - [ ] F94 S-D: `DELETE /jobs/{job_id}` route → `src/backend/api/routes/jobs.py`
-  - [ ] F94 S-E: `PATCH /jobs/{job_id}/archive` route → `src/backend/api/routes/jobs.py`
-  - [ ] F94 S-F: Backend route tests → `tests/test_jobs_routes.py`
-  - [ ] F94 S-G: Frontend types → `src/frontend/src/api/types.ts`
-  - [ ] F94 S-H: Frontend API client functions → `src/frontend/src/api/jobs.ts`
-  - [ ] F94 S-I: Bulk selection + bulk action bar → `src/frontend/src/pages/JobsPage.tsx`
-  - [ ] F94 S-J: Per-row kebab menu (Delete migration) → `src/frontend/src/pages/JobsPage.tsx`
-  - [ ] F94 S-K: Sensitive-data warning icon → `src/frontend/src/pages/JobsPage.tsx`
-  - [ ] F94 S-L: "Show archived" toggle → `src/frontend/src/pages/JobsPage.tsx`
-  - [ ] F94 S-M: Trace vs "Watch live" row action → `src/frontend/src/pages/JobsPage.tsx`
-  - [ ] F94 S-N: Manual smoke test
-  - [ ] F94 S-O: `make test` gate
+- [x] F94: Migration row actions — sensitive-data flag, delete, archive, bulk actions (backend +
+  frontend) — complete → see `docs/plans/F94-migration-row-actions.md`
+  - [x] F94 S-A: Alembic migration — `is_archived` column → `alembic/versions/021_add_job_is_archived.py`
+  - [x] F94 S-B: `JobSummary` schema fields → `src/backend/api/schemas.py`
+  - [x] F94 S-C: List route — populate fields + exclude archived by default → `src/backend/api/routes/jobs.py`
+  - [x] F94 S-D: `DELETE /jobs/{job_id}` route → `src/backend/api/routes/jobs.py`
+  - [x] F94 S-E: `PATCH /jobs/{job_id}/archive` route → `src/backend/api/routes/jobs.py`
+  - [x] F94 S-F: Backend route tests → `tests/test_jobs_routes_comprehensive.py`
+  - [x] F94 S-G: Frontend types → `src/frontend/src/api/types.ts`
+  - [x] F94 S-H: Frontend API client functions → `src/frontend/src/api/jobs.ts`
+  - [x] F94 S-I: Bulk selection + bulk action bar → `src/frontend/src/components/JobsTable/{BulkActionBar,DeleteConfirmDialog}.tsx`
+  - [x] F94 S-J: Per-row kebab menu (Delete + Unarchive) → `src/frontend/src/components/JobsTable/MigrationRowActions.tsx`
+  - [x] F94 S-K: Sensitive-data warning icon → `src/frontend/src/components/JobsTable/SensitiveDataIcon.tsx`
+  - [x] F94 S-L: "Show archived" toggle → `src/frontend/src/pages/JobsPage.tsx`
+  - [x] F94 S-M: Trace vs "Watch live" row action → `src/frontend/src/components/JobsTable/MigrationRowActions.tsx`
+  - [x] F94 S-N: Manual smoke test — verified live via browser automation against the real dev stack
+  - [x] F94 S-O: `make test` gate — all 7 gates green
   - Locked semantics: Delete = hard delete (FK-cascade), Archive = soft-hide (`is_archived` flag,
-    reversible) — see `journal/DECISIONS.md` 2026-09-24
-  - Land F93 before F94 — both touch `JobsPage.tsx` heavily; avoid parallel branches on the same
-    file
+    reversible — including from the UI via an added Unarchive kebab item + bulk toggle) — see
+    `journal/DECISIONS.md` 2026-09-24
+  - Live testing surfaced and fixed two bugs: a pre-existing unrelated self-import bug in
+    `checkbox.tsx` (white-screened any page rendering a `Checkbox`) and the missing unarchive path
+    noted above
+  - Also fixed a separate, unrelated tooling bug found during this work: `make test`'s
+    `PYTEST_FLAGS` carried `--no-summary`, which under pytest≥9 suppresses failure tracebacks
+    entirely — see `chore/fix-pytest-no-summary-suppression`
 
 **#52 / #148 sidebar — correction: collapse already exists, don't rebuild it**
 - Built a two-state mockup (expanded 220px / collapsed 56px icon rail) for `AppSidebar.tsx`,

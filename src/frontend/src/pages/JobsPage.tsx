@@ -1,10 +1,16 @@
-import { downloadJob, getJob, listJobs } from "@/api/jobs";
+import { archiveJob, deleteJob, downloadJob, getJob, listJobs } from "@/api/jobs";
 import { submitMigration } from "@/api/migrate";
 import LiveTraceDialog from "@/components/LiveTraceDialog";
 import type { JobStatusValue, JobSummary } from "@/api/types";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { JOB_STATUS_TONE, TONE_TEXT_CLASS } from "@/components/JobDetail/status-colors";
 import StatusChip from "@/components/JobDetail/StatusChip";
+import BulkActionBar from "@/components/JobsTable/BulkActionBar";
+import DeleteConfirmDialog from "@/components/JobsTable/DeleteConfirmDialog";
+import MigrationRowActions from "@/components/JobsTable/MigrationRowActions";
+import SensitiveDataIcon from "@/components/JobsTable/SensitiveDataIcon";
 import {
   Dialog,
   DialogContent,
@@ -24,7 +30,6 @@ import { cn } from "@/lib/utils";
 import { STATUS_LABEL } from "@/pages/JobDetailPage";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Activity,
   AlertTriangle,
   Archive,
   Check,
@@ -594,11 +599,18 @@ export default function JobsPage(): React.ReactElement {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
+  // ── Show archived toggle (S-L) ───────────────────────────────────────────
+  // Kept independent of the search/status filter row so it stays reachable
+  // even when the default (unarchived) list is empty — otherwise Archive
+  // wouldn't be reversible from the UI.
+
+  const [includeArchived, setIncludeArchived] = useState<boolean>(false);
+
   // ── Jobs list query ───────────────────────────────────────────────────────
 
   const { data: jobs, isLoading } = useQuery<JobSummary[], Error>({
-    queryKey: ["jobs"],
-    queryFn: listJobs,
+    queryKey: ["jobs", includeArchived],
+    queryFn: () => listJobs(includeArchived),
     refetchInterval: (query) => {
       const list = query.state.data;
       if (!list) return false;
@@ -678,6 +690,100 @@ export default function JobsPage(): React.ReactElement {
       }
     });
   }, [jobs, tableFilter, tableSort]);
+
+  // ── Bulk selection + delete/archive (S-I, S-J) ──────────────────────────────
+
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deleteTarget, setDeleteTarget] = useState<string[] | null>(null);
+
+  const allVisibleSelected =
+    visibleJobs.length > 0 && visibleJobs.every((j) => selectedIds.has(j.job_id));
+  const someVisibleSelected = visibleJobs.some((j) => selectedIds.has(j.job_id));
+
+  // All currently-selected rows already archived → bulk action flips to "Unarchive".
+  // Mixed selections (some archived, some not) keep the "Archive" label and re-archive
+  // every selected id — a no-op for the ones already archived, so this stays a single,
+  // always-correct action instead of needing a disabled state or partial-apply logic.
+  const selectedJobs = useMemo(
+    () => (jobs ?? []).filter((j) => selectedIds.has(j.job_id)),
+    [jobs, selectedIds],
+  );
+  const allSelectedArchived =
+    selectedJobs.length > 0 && selectedJobs.every((j) => j.is_archived);
+
+  function toggleSelectAll(checked: boolean) {
+    setSelectedIds(checked ? new Set(visibleJobs.map((j) => j.job_id)) : new Set());
+  }
+
+  function toggleSelectRow(jobId: string, checked: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(jobId);
+      else next.delete(jobId);
+      return next;
+    });
+  }
+
+  const deleteMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      for (const id of ids) await deleteJob(id);
+    },
+    onSuccess: (_data, ids) => {
+      toast.success(ids.length > 1 ? `${ids.length} migrations deleted.` : "Migration deleted.");
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        for (const id of ids) next.delete(id);
+        return next;
+      });
+      setDeleteTarget(null);
+      void queryClient.invalidateQueries({ queryKey: ["jobs"] });
+    },
+    onError: () => toast.error("Could not delete. Please try again."),
+  });
+
+  const archiveMutation = useMutation({
+    mutationFn: async ({ ids, archived }: { ids: string[]; archived: boolean }) => {
+      for (const id of ids) await archiveJob(id, archived);
+    },
+    onSuccess: (_data, { ids, archived }) => {
+      const verb = archived ? "archived" : "unarchived";
+      toast.success(ids.length > 1 ? `${ids.length} migrations ${verb}.` : `Migration ${verb}.`);
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        for (const id of ids) next.delete(id);
+        return next;
+      });
+      void queryClient.invalidateQueries({ queryKey: ["jobs"] });
+    },
+    onError: (_err, { archived }) =>
+      toast.error(archived ? "Could not archive. Please try again." : "Could not unarchive. Please try again."),
+  });
+
+  function saveJobZip(jobId: string, blob: Blob) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `rosetta-${jobId}.zip`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleDownloadJob(jobId: string) {
+    try {
+      saveJobZip(jobId, await downloadJob(jobId));
+    } catch {
+      toast.error("Download failed.");
+    }
+  }
+
+  async function handleBulkDownload(ids: string[]) {
+    // Sequential, not parallel — per-job downloads triggered one at a time so
+    // the browser doesn't block a burst of programmatic anchor clicks.
+    // Combining these into a single zip is explicitly out of scope (F94).
+    for (const id of ids) {
+      await handleDownloadJob(id);
+    }
+  }
 
   // ── Dialog state ──────────────────────────────────────────────────────────
 
@@ -931,49 +1037,71 @@ export default function JobsPage(): React.ReactElement {
             )}
           </div>
 
-          <div className="flex items-center gap-2">
-            {hasJobs && (
-              <>
-                <div className="relative">
-                  <Search
-                    className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-                    aria-hidden="true"
-                  />
-                  <input
-                    type="text"
-                    value={tableFilter.search}
-                    onChange={(e) =>
-                      setTableFilter((prev) => ({ ...prev, search: e.target.value }))
-                    }
-                    placeholder="Search migrations…"
-                    aria-label="Search migrations"
-                    className="h-9 w-64 rounded-md border border-border bg-background pl-8 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
-                </div>
+          {selectedIds.size > 0 ? (
+            <BulkActionBar
+              selectedCount={selectedIds.size}
+              onDownload={() => void handleBulkDownload([...selectedIds])}
+              onArchive={() =>
+                archiveMutation.mutate({ ids: [...selectedIds], archived: !allSelectedArchived })
+              }
+              onDeleteClick={() => setDeleteTarget([...selectedIds])}
+              onClear={() => setSelectedIds(new Set())}
+              isArchiving={archiveMutation.isPending}
+              allSelectedArchived={allSelectedArchived}
+            />
+          ) : (
+            <div className="flex items-center gap-2">
+              {hasJobs && (
+                <>
+                  <div className="relative">
+                    <Search
+                      className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                    <input
+                      type="text"
+                      value={tableFilter.search}
+                      onChange={(e) =>
+                        setTableFilter((prev) => ({ ...prev, search: e.target.value }))
+                      }
+                      placeholder="Search migrations…"
+                      aria-label="Search migrations"
+                      className="h-9 w-64 rounded-md border border-border bg-background pl-8 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
 
-                <Select
-                  value={tableFilter.status}
-                  onValueChange={(value) =>
-                    setTableFilter((prev) => ({ ...prev, status: value }))
-                  }
-                >
-                  <SelectTrigger aria-label="Filter by status" className="h-9">
-                    <SelectValue placeholder="All statuses" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {STATUS_FILTER_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </>
-            )}
-            <Button variant="outline" onClick={() => setUploadOpen(true)}>
-              New migration
-            </Button>
-          </div>
+                  <Select
+                    value={tableFilter.status}
+                    onValueChange={(value) =>
+                      setTableFilter((prev) => ({ ...prev, status: value }))
+                    }
+                  >
+                    <SelectTrigger aria-label="Filter by status" className="h-9">
+                      <SelectValue placeholder="All statuses" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {STATUS_FILTER_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </>
+              )}
+              <label className="flex h-9 items-center gap-1.5 px-1 text-sm text-muted-foreground cursor-pointer select-none">
+                <Checkbox
+                  checked={includeArchived}
+                  onCheckedChange={(checked) => setIncludeArchived(checked === true)}
+                  aria-label="Show archived migrations"
+                />
+                Show archived
+              </label>
+              <Button variant="outline" onClick={() => setUploadOpen(true)}>
+                New migration
+              </Button>
+            </div>
+          )}
         </div>
 
         {isLoading && (
@@ -1002,135 +1130,136 @@ export default function JobsPage(): React.ReactElement {
         )}
 
         {hasJobs && visibleJobs.length > 0 && (
-          <div className="overflow-x-auto rounded-md border border-border">
-            <table className="w-full text-sm" aria-label="Migration jobs">
-              <thead>
-                <tr className="border-b border-border bg-muted text-muted-foreground text-left">
-                  <th scope="col" className="px-4 py-2.5 font-medium w-[40%]">
-                    <SortableHeader
-                      column="name"
-                      label="Name"
-                      activeColumn={tableSort.column}
-                      direction={tableSort.direction}
-                      onToggle={toggleSort}
-                    />
-                  </th>
-                  <th scope="col" className="px-4 py-2.5 font-medium">
-                    <SortableHeader
-                      column="status"
-                      label="Status"
-                      activeColumn={tableSort.column}
-                      direction={tableSort.direction}
-                      onToggle={toggleSort}
-                    />
-                  </th>
-                  <th scope="col" className="px-4 py-2.5 font-medium">
-                    <SortableHeader
-                      column="files"
-                      label="Files"
-                      activeColumn={tableSort.column}
-                      direction={tableSort.direction}
-                      onToggle={toggleSort}
-                    />
-                  </th>
-                  <th scope="col" className="px-4 py-2.5 font-medium">
-                    <SortableHeader
-                      column="created"
-                      label="Created"
-                      activeColumn={tableSort.column}
-                      direction={tableSort.direction}
-                      onToggle={toggleSort}
-                    />
-                  </th>
-                  <th scope="col" className="px-4 py-2.5 font-medium sr-only">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleJobs.map((job) => {
-                  const isClickable =
-                    job.status === "proposed" ||
-                    job.status === "accepted" ||
-                    job.status === "done";
-                  return (
-                    <tr
-                      key={job.job_id}
-                      onClick={() => {
-                        if (isClickable) navigate(`/jobs/${job.job_id}`);
-                      }}
-                      role={isClickable ? "button" : undefined}
-                      tabIndex={isClickable ? 0 : undefined}
-                      aria-label={`${job.name ?? job.job_id.slice(0, 8)}, status ${STATUS_LABEL[job.status]}`}
-                      aria-disabled={!isClickable}
-                      onKeyDown={(e) => {
-                        if (!isClickable) return;
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          navigate(`/jobs/${job.job_id}`);
-                        }
-                      }}
-                      className={cn(
-                        "border-b border-border last:border-0 transition-colors",
-                        isClickable
-                          ? "cursor-pointer hover:bg-muted/50"
-                          : "cursor-default opacity-70",
-                      )}
-                    >
-                      <td className="px-4 py-3 text-foreground font-medium">
-                        {job.name ?? (
-                          <span className="font-mono text-muted-foreground">
-                            {job.job_id.slice(0, 8)}…
-                          </span>
+          <TooltipProvider>
+            <div className="overflow-x-auto rounded-md border border-border">
+              <table className="w-full text-sm" aria-label="Migration jobs">
+                <thead>
+                  <tr className="border-b border-border bg-muted text-muted-foreground text-left">
+                    <th scope="col" className="w-10 px-4 py-2.5">
+                      <Checkbox
+                        checked={allVisibleSelected}
+                        indeterminate={someVisibleSelected && !allVisibleSelected}
+                        onCheckedChange={(checked) => toggleSelectAll(checked === true)}
+                        aria-label="Select all migrations"
+                      />
+                    </th>
+                    <th scope="col" className="px-4 py-2.5 font-medium w-[40%]">
+                      <SortableHeader
+                        column="name"
+                        label="Name"
+                        activeColumn={tableSort.column}
+                        direction={tableSort.direction}
+                        onToggle={toggleSort}
+                      />
+                    </th>
+                    <th scope="col" className="px-4 py-2.5 font-medium">
+                      <SortableHeader
+                        column="status"
+                        label="Status"
+                        activeColumn={tableSort.column}
+                        direction={tableSort.direction}
+                        onToggle={toggleSort}
+                      />
+                    </th>
+                    <th scope="col" className="px-4 py-2.5 font-medium">
+                      <SortableHeader
+                        column="files"
+                        label="Files"
+                        activeColumn={tableSort.column}
+                        direction={tableSort.direction}
+                        onToggle={toggleSort}
+                      />
+                    </th>
+                    <th scope="col" className="px-4 py-2.5 font-medium">
+                      <SortableHeader
+                        column="created"
+                        label="Created"
+                        activeColumn={tableSort.column}
+                        direction={tableSort.direction}
+                        onToggle={toggleSort}
+                      />
+                    </th>
+                    <th scope="col" className="px-4 py-2.5 font-medium sr-only">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleJobs.map((job) => {
+                    const isClickable =
+                      job.status === "proposed" ||
+                      job.status === "accepted" ||
+                      job.status === "done";
+                    return (
+                      <tr
+                        key={job.job_id}
+                        onClick={() => {
+                          if (isClickable) navigate(`/jobs/${job.job_id}`);
+                        }}
+                        role={isClickable ? "button" : undefined}
+                        tabIndex={isClickable ? 0 : undefined}
+                        aria-label={`${job.name ?? job.job_id.slice(0, 8)}, status ${STATUS_LABEL[job.status]}`}
+                        aria-disabled={!isClickable}
+                        onKeyDown={(e) => {
+                          if (!isClickable) return;
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            navigate(`/jobs/${job.job_id}`);
+                          }
+                        }}
+                        className={cn(
+                          "border-b border-border last:border-0 transition-colors",
+                          isClickable
+                            ? "cursor-pointer hover:bg-muted/50"
+                            : "cursor-default opacity-70",
                         )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <StatusCell status={job.status} />
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {job.file_count != null ? job.file_count : "—"}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {new Date(job.created_at).toLocaleString()}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="inline-flex items-center gap-1 justify-end">
-                          {(job.status === "queued" || job.status === "running" || job.status === "done" || job.status === "under_review" || job.status === "proposed") && (
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-7 w-7"
-                              title="Live trace"
-                              aria-label={`Live trace for job ${job.job_id.slice(0, 8)}`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setTraceJobId(job.job_id);
-                              }}
-                            >
-                              <Activity className={`h-4 w-4 ${["running", "queued"].includes(job.status) ? "text-primary animate-pulse" : "text-muted-foreground"}`} />
-                            </Button>
-                          )}
-                          {job.status === "accepted" && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void downloadJob(job.job_id);
-                              }}
-                              aria-label={`Download results for job ${job.job_id.slice(0, 8)}`}
-                            >
-                              Download
-                            </Button>
-                          )}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                      >
+                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                          <Checkbox
+                            checked={selectedIds.has(job.job_id)}
+                            onCheckedChange={(checked) =>
+                              toggleSelectRow(job.job_id, checked === true)
+                            }
+                            aria-label={`Select ${job.name ?? job.job_id.slice(0, 8)}`}
+                          />
+                        </td>
+                        <td className="px-4 py-3 text-foreground font-medium">
+                          <span className="inline-flex items-center gap-1.5">
+                            {job.name ?? (
+                              <span className="font-mono text-muted-foreground">
+                                {job.job_id.slice(0, 8)}…
+                              </span>
+                            )}
+                            {job.sensitive_data && <SensitiveDataIcon />}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <StatusCell status={job.status} />
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">
+                          {job.file_count != null ? job.file_count : "—"}
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">
+                          {new Date(job.created_at).toLocaleString()}
+                        </td>
+                        <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                          <MigrationRowActions
+                            job={job}
+                            onTraceClick={() => setTraceJobId(job.job_id)}
+                            onDeleteClick={() => setDeleteTarget([job.job_id])}
+                            onDownloadClick={() => void handleDownloadJob(job.job_id)}
+                            onUnarchiveClick={() =>
+                              archiveMutation.mutate({ ids: [job.job_id], archived: false })
+                            }
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </TooltipProvider>
         )}
       </div>
 
@@ -1411,6 +1540,18 @@ export default function JobsPage(): React.ReactElement {
           if (!open) setTraceJobId(null);
         }}
         onJobDone={() => queryClient.invalidateQueries({ queryKey: ["jobs"] })}
+      />
+
+      <DeleteConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        count={deleteTarget?.length ?? 0}
+        isPending={deleteMutation.isPending}
+        onConfirm={() => {
+          if (deleteTarget) deleteMutation.mutate(deleteTarget);
+        }}
       />
     </div>
   );

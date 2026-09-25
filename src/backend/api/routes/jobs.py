@@ -22,6 +22,7 @@ from src.backend.api.runbook_templates import remediation_outline as _remediatio
 from src.backend.api.runbook_templates import why_risky as _why_risky
 from src.backend.api.schemas import (
     AcceptJobRequest,
+    ArchiveJobRequest,
     AttachmentInfo,
     AuditResponse,
     BlockPythonEditRequest,
@@ -95,13 +96,16 @@ router = APIRouter()
 @router.get("/jobs", response_model=JobListResponse)
 async def list_jobs(
     status: str | None = Query(default=None),
+    include_archived: bool = Query(default=False),
     session: AsyncSession = Depends(get_async_session),
 ) -> JobListResponse:
-    """Return a summary list of all migration jobs, newest first.
+    """Return a summary list of migration jobs, newest first.
 
     Args:
         status: Optional comma-separated list of statuses to filter by
             (e.g. ``proposed,accepted,done``).
+        include_archived: When ``False`` (default), archived jobs are excluded
+            from the result. When ``True``, archived jobs are included.
         session: Injected async database session.
 
     Returns:
@@ -112,6 +116,8 @@ async def list_jobs(
         statuses = [s.strip() for s in status.split(",") if s.strip()]
         if statuses:
             query = query.where(Job.status.in_(statuses))
+    if not include_archived:
+        query = query.where(Job.is_archived.is_(False))
     result = await session.execute(query)
     jobs = result.scalars().all()
     return JobListResponse(
@@ -133,6 +139,14 @@ async def list_jobs(
                         and k not in ("__ref_csv__", "__ref_sas7bdat__")
                     )
                 ),
+                sensitive_data=bool(
+                    (j.migration_plan_post_run or j.migration_plan or {}).get(
+                        "sensitive_data_findings"
+                    )
+                ),
+                # bool() guards against None on an unflushed/partially-populated Job
+                # (SQLAlchemy `default=` only applies at INSERT/flush time).
+                is_archived=bool(j.is_archived),
             )
             for j in jobs
         ]
@@ -729,6 +743,76 @@ async def _get_job_or_404(job_id: uuid.UUID, session: AsyncSession) -> Job:
     if job is None:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
     return job
+
+
+@router.delete("/jobs/{job_id}", status_code=204, response_model=None)
+async def delete_job(
+    job_id: uuid.UUID,
+    session: AsyncSession = Depends(get_async_session),
+) -> None:
+    """Hard-delete a migration job and all its FK-cascaded child rows.
+
+    Relies on the existing ``ondelete="CASCADE"`` foreign keys (and matching
+    ORM ``cascade="all, delete-orphan"`` relationships) on ``job_versions``,
+    ``block_revisions``, and ``job_traces`` — no manual cascade-delete logic
+    is needed here. This is irreversible; see ``PATCH /jobs/{id}/archive``
+    for the reversible alternative.
+
+    Args:
+        job_id: UUID of the migration job to delete.
+        session: Injected async database session.
+
+    Raises:
+        HTTPException: 404 if the job does not exist.
+    """
+    job = await _get_job_or_404(job_id, session)
+    await session.delete(job)
+    await session.commit()
+
+
+@router.patch("/jobs/{job_id}/archive", response_model=JobStatusResponse)
+async def archive_job(
+    job_id: uuid.UUID,
+    request: ArchiveJobRequest,
+    session: AsyncSession = Depends(get_async_session),
+) -> JobStatusResponse:
+    """Set or clear the archived flag on a job. Reversible — no data is touched.
+
+    Args:
+        job_id: UUID of the migration job.
+        request: Desired archived state.
+        session: Injected async database session.
+
+    Returns:
+        Updated JobStatusResponse reflecting the new archived state.
+
+    Raises:
+        HTTPException: 404 if the job does not exist.
+    """
+    await _get_job_or_404(job_id, session)
+
+    await session.execute(
+        update(Job).where(Job.id == str(job_id)).values(is_archived=request.archived)
+    )
+    await session.commit()
+
+    result2 = await session.execute(select(Job).where(Job.id == str(job_id)))
+    updated = result2.scalar_one()
+    return JobStatusResponse(
+        job_id=uuid.UUID(updated.id),
+        status=updated.status,
+        python_code=updated.python_code,
+        report=updated.report,
+        error=updated.error,
+        name=updated.name,
+        generated_files=updated.generated_files,
+        user_overrides=updated.user_overrides,
+        accepted_at=updated.accepted_at,
+        accepted_by=updated.accepted_by,
+        parent_job_id=updated.parent_job_id,
+        trigger=updated.trigger or "agent",
+        skip_llm=updated.skip_llm if updated.skip_llm is not None else False,
+    )
 
 
 _REVIEW_STATUSES = frozenset({"proposed", "under_review"})
