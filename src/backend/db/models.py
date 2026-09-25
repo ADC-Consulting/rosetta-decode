@@ -53,6 +53,10 @@ class Job(Base):
     cancellation_requested: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=sa.text("false"), nullable=False
     )
+    # SAS: docs/plans/F94-migration-row-actions.md:S-A
+    is_archived: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa.text("false"), nullable=False
+    )
     parent_job_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     trigger: Mapped[str] = mapped_column(
         String(32), nullable=False, default="agent", server_default=sa.text("'agent'")

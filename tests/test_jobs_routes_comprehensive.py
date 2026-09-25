@@ -2,13 +2,20 @@
 
 import pathlib
 import uuid
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+import pytest_asyncio
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from src.backend.api.routes.jobs import (
     _classify_attachment,
     accept_job,
+    archive_job,
+    delete_job,
     download_attachment,
     download_job,
     get_job,
@@ -23,7 +30,8 @@ from src.backend.api.routes.jobs import (
     save_block_python,
     update_python_code,
 )
-from src.backend.db.models import Job
+from src.backend.api.schemas import ArchiveJobRequest
+from src.backend.db.models import Base, Job, JobVersion
 
 
 def _make_job(
@@ -44,6 +52,7 @@ def _make_job(
         input_hash="abc123",
         trigger="agent",
         skip_llm=False,
+        is_archived=False,
         created_at=_now,
         updated_at=_now,
     )
@@ -91,7 +100,7 @@ async def test_list_jobs_no_filter() -> None:
     result_mock.scalars.return_value.all.return_value = [job2, job1]
     session.execute.return_value = result_mock
 
-    response = await list_jobs(None, session)
+    response = await list_jobs(None, session=session)
 
     assert len(response.jobs) == 2
     assert response.jobs[0].status == "done"
@@ -107,7 +116,7 @@ async def test_list_jobs_with_single_status_filter() -> None:
     result_mock.scalars.return_value.all.return_value = [job1]
     session.execute.return_value = result_mock
 
-    response = await list_jobs("done", session)
+    response = await list_jobs("done", session=session)
 
     assert len(response.jobs) == 1
     assert response.jobs[0].status == "done"
@@ -123,7 +132,7 @@ async def test_list_jobs_with_multiple_status_filters() -> None:
     result_mock.scalars.return_value.all.return_value = [job1, job2]
     session.execute.return_value = result_mock
 
-    response = await list_jobs("proposed,done", session)
+    response = await list_jobs("proposed,done", session=session)
 
     assert len(response.jobs) == 2
 
@@ -136,7 +145,7 @@ async def test_list_jobs_with_empty_status_filter() -> None:
     result_mock.scalars.return_value.all.return_value = []
     session.execute.return_value = result_mock
 
-    response = await list_jobs("", session)
+    response = await list_jobs("", session=session)
 
     # Empty status should not add WHERE clause
     assert response.jobs == []
@@ -150,7 +159,7 @@ async def test_list_jobs_with_whitespace_status_filter() -> None:
     result_mock.scalars.return_value.all.return_value = []
     session.execute.return_value = result_mock
 
-    response = await list_jobs("  ,  , ", session)
+    response = await list_jobs("  ,  , ", session=session)
 
     assert response.jobs == []
 
@@ -1103,3 +1112,197 @@ async def test_download_job_returns_zip_for_accepted_status() -> None:
     response = await download_job(job_id, session)
 
     assert response.media_type == "application/zip"
+
+
+# ─── F94: archive / sensitive_data / hard delete (real in-memory DB) ──────────
+#
+# These use a real SQLite async engine (rather than a mocked session) because
+# list_jobs' archived/status filtering happens in the SQL WHERE clause and
+# delete_job's cascade relies on SQLAlchemy's ORM cascade="all, delete-orphan"
+# (already declared on Job.versions et al.) being exercised end to end — a
+# mocked session.execute() can't exercise either.
+
+_F94_TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+
+
+@pytest_asyncio.fixture(scope="function")
+async def f94_session() -> AsyncGenerator[AsyncSession, None]:
+    """Fresh in-memory database session for each F94 route test."""
+    engine = create_async_engine(_F94_TEST_DATABASE_URL, echo=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+    async with factory() as session:
+        yield session
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+    await engine.dispose()
+
+
+async def _f94_insert_job(
+    session: AsyncSession,
+    *,
+    migration_plan: dict[str, Any] | None = None,
+    migration_plan_post_run: dict[str, Any] | None = None,
+    is_archived: bool = False,
+) -> str:
+    """Insert a Job row for F94 route tests and return its string ID."""
+    job_id = str(uuid.uuid4())
+    now = datetime.now(UTC)
+    job = Job(
+        id=job_id,
+        status="proposed",
+        input_hash="abc123",
+        files={"test.sas": "data out; set in; run;"},
+        migration_plan=migration_plan,
+        migration_plan_post_run=migration_plan_post_run,
+        is_archived=is_archived,
+        created_at=now,
+        updated_at=now,
+    )
+    session.add(job)
+    await session.commit()
+    return job_id
+
+
+@pytest.mark.asyncio
+async def test_list_jobs_excludes_archived_by_default(f94_session: AsyncSession) -> None:
+    """list_jobs omits archived rows unless include_archived=True."""
+    active_id = await _f94_insert_job(f94_session, is_archived=False)
+    archived_id = await _f94_insert_job(f94_session, is_archived=True)
+
+    response = await list_jobs(None, False, session=f94_session)
+
+    returned_ids = {str(j.job_id) for j in response.jobs}
+    assert returned_ids == {active_id}
+    assert archived_id not in returned_ids
+
+
+@pytest.mark.asyncio
+async def test_list_jobs_include_archived_true_includes_archived(
+    f94_session: AsyncSession,
+) -> None:
+    """list_jobs returns archived rows too when include_archived=True."""
+    active_id = await _f94_insert_job(f94_session, is_archived=False)
+    archived_id = await _f94_insert_job(f94_session, is_archived=True)
+
+    response = await list_jobs(None, True, session=f94_session)
+
+    returned_ids = {str(j.job_id) for j in response.jobs}
+    assert returned_ids == {active_id, archived_id}
+    archived_summary = next(j for j in response.jobs if str(j.job_id) == archived_id)
+    assert archived_summary.is_archived is True
+
+
+@pytest.mark.asyncio
+async def test_list_jobs_sensitive_data_true_when_findings_present(
+    f94_session: AsyncSession,
+) -> None:
+    """sensitive_data is True when migration_plan_post_run has findings."""
+    job_id = await _f94_insert_job(
+        f94_session,
+        migration_plan_post_run={
+            "sensitive_data_findings": [
+                {
+                    "column": "ssn",
+                    "matched_signal": "ssn",
+                    "source_type": "file",
+                    "source": "dm.sas",
+                }
+            ]
+        },
+    )
+
+    response = await list_jobs(None, False, session=f94_session)
+
+    summary = next(j for j in response.jobs if str(j.job_id) == job_id)
+    assert summary.sensitive_data is True
+
+
+@pytest.mark.asyncio
+async def test_list_jobs_sensitive_data_false_when_absent(f94_session: AsyncSession) -> None:
+    """sensitive_data is False when no findings are present on either plan column."""
+    job_id = await _f94_insert_job(
+        f94_session,
+        migration_plan={"sensitive_data_findings": []},
+        migration_plan_post_run=None,
+    )
+
+    response = await list_jobs(None, False, session=f94_session)
+
+    summary = next(j for j in response.jobs if str(j.job_id) == job_id)
+    assert summary.sensitive_data is False
+
+
+@pytest.mark.asyncio
+async def test_delete_job_removes_row_and_cascades(f94_session: AsyncSession) -> None:
+    """delete_job hard-deletes the job row and cascades to child JobVersion rows."""
+    job_id = await _f94_insert_job(f94_session)
+    version = JobVersion(
+        id=str(uuid.uuid4()),
+        job_id=job_id,
+        tab="editor",
+        content={"python_code": "x = 1"},
+        trigger="human-save",
+    )
+    f94_session.add(version)
+    await f94_session.commit()
+
+    await delete_job(uuid.UUID(job_id), session=f94_session)
+
+    job_result = await f94_session.execute(select(Job).where(Job.id == job_id))
+    assert job_result.scalar_one_or_none() is None
+
+    version_result = await f94_session.execute(
+        select(JobVersion).where(JobVersion.job_id == job_id)
+    )
+    assert version_result.scalar_one_or_none() is None
+
+
+@pytest.mark.asyncio
+async def test_delete_job_not_found_returns_404(f94_session: AsyncSession) -> None:
+    """delete_job raises 404 for an unknown job id."""
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc_info:
+        await delete_job(uuid.uuid4(), session=f94_session)
+
+    assert exc_info.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_archive_job_toggles_flag_and_reflected_in_list(
+    f94_session: AsyncSession,
+) -> None:
+    """archive_job sets is_archived, and a subsequent list_jobs reflects it."""
+    job_id = await _f94_insert_job(f94_session, is_archived=False)
+
+    response = await archive_job(
+        uuid.UUID(job_id), ArchiveJobRequest(archived=True), session=f94_session
+    )
+    assert response.job_id == uuid.UUID(job_id)
+
+    default_list = await list_jobs(None, False, session=f94_session)
+    assert job_id not in {str(j.job_id) for j in default_list.jobs}
+
+    full_list = await list_jobs(None, True, session=f94_session)
+    archived_summary = next(j for j in full_list.jobs if str(j.job_id) == job_id)
+    assert archived_summary.is_archived is True
+
+    # Reversible: un-archiving restores it to the default list.
+    await archive_job(uuid.UUID(job_id), ArchiveJobRequest(archived=False), session=f94_session)
+    restored_list = await list_jobs(None, False, session=f94_session)
+    assert job_id in {str(j.job_id) for j in restored_list.jobs}
+
+
+@pytest.mark.asyncio
+async def test_archive_job_not_found_returns_404(f94_session: AsyncSession) -> None:
+    """archive_job raises 404 for an unknown job id."""
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc_info:
+        await archive_job(uuid.uuid4(), ArchiveJobRequest(archived=True), session=f94_session)
+
+    assert exc_info.value.status_code == 404
