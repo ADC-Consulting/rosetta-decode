@@ -1,7 +1,7 @@
 import type { MigrateResponse } from "./types";
 import { extractApiError } from "./errors";
 
-const BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+const BASE = import.meta.env.VITE_API_URL ?? "";
 
 export async function submitMigration(
   sasFiles: File[],

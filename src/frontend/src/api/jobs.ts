@@ -26,7 +26,7 @@ import type {
     TrustReportResponse,
 } from "./types";
 
-const BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+const BASE = import.meta.env.VITE_API_URL ?? "";
 
 export async function getJob(jobId: string): Promise<JobStatus> {
   const res = await fetch(`${BASE}/jobs/${jobId}`);
