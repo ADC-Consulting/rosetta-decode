@@ -53,6 +53,7 @@ Execution backend abstracted behind `ComputeBackend` interface in `src/worker/co
 - Formatter: ruff (format + lint)
 - Tests: always run via `make test` (never `uv run pytest` directly); every new SAS construct handler MUST ship with a reconciliation test
 - Commit style: conventional commits (feat:, fix:, docs:, chore:, refactor:, test:)
+- Frontend PRs must include a screenshot (or GIF) of the UI change — see `git-pr-summary` skill
 - Generated Python must include provenance comments: `# SAS: <file>:<line>`
 
 ## Critical Rules

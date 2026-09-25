@@ -69,5 +69,6 @@ The user will copy-paste this directly into the GitHub PR description.
 - **No emojis**
 - **No "this PR" self-references inside bullet points** — just state what changed
 - **Tests section is always present** — even if no new tests, state the total count and coverage
+- **Frontend PRs need a screenshot** — if the PR touches anything under `src/frontend/`, attach a screenshot (or short GIF for a multi-step interaction) of the change; a text-only description of a UI change isn't enough for review
 - **Not in this PR section is always present** — name the next backlog items explicitly
 - Keep the whole block under ~40 lines. Reviewers scan, they don't read.
