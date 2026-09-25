@@ -1,3 +1,5 @@
+import type { JobStatusValue } from "@/api/types";
+
 // ---------------------------------------------------------------------------
 // Shared status-color tokens for the Job Detail Plan/ETL surfaces.
 //
@@ -159,4 +161,24 @@ export const CRITICALITY_TONE: Record<Criticality, Tone> = {
   medium: "warning",
   low: "success",
   unknown: "neutral",
+};
+
+// ---------------------------------------------------------------------------
+// Job status (Migrations list — F93)
+// ---------------------------------------------------------------------------
+
+/**
+ * Tone for the Migrations list Status column (`JobsPage.tsx`), rendered via `StatusChip`.
+ * queued/running are both mid-flight (no verdict yet) so share `neutral`; proposed/under_review
+ * both mean "needs a human look" so share `warning`; accepted/done both mean the job reached a
+ * final good state so share `success`; failed is the only `danger`.
+ */
+export const JOB_STATUS_TONE: Record<JobStatusValue, Tone> = {
+  queued: "neutral",
+  running: "neutral",
+  proposed: "warning",
+  under_review: "warning",
+  accepted: "success",
+  done: "success",
+  failed: "danger",
 };
