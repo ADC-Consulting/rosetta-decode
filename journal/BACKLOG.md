@@ -593,6 +593,10 @@
   - [x] F96 S-D: Wire the route → `src/frontend/src/App.tsx`
   - [x] F96 S-E: Manual smoke test — verified live via browser automation, light + dark
   - [x] F96 S-F: `make test` gate — all 7 gates green
+  - [x] F96 S-G: critical-test follow-up — trimmed vertical spacing so the page fits presentation
+    resolutions (~1024x768) without scrolling; found during a post-ship critical testing pass,
+    not a launch blocker (page already scrolled correctly via `overflow-y-auto`, just didn't fit
+    "at rest")
   - Closes #148 entirely (all four items now delivered: welcome page, sidebar via F95, upload
     flow unification + styling via F92)
   - Closes the last open item from #148 (sidebar/upload-flow/styling items already shipped via

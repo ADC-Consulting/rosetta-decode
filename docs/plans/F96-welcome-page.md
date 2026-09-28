@@ -110,6 +110,19 @@ collapses sensibly at narrow widths; no console errors.
 frontend-build all green).
 - [x] done — all 7 gates green, exit code 0.
 
+### S-G: Critical-test follow-up — trim vertical spacing to fit presentation resolutions
+**File:** `src/frontend/src/pages/WelcomePage.tsx`
+**Depends on:** S-F
+**Done when:** a critical live-testing pass (run after S-F, at the user's request) found the
+page's content measured ~929-1042px tall, meaning a real conference-room projector (1024×768,
+~650-700px usable after browser chrome) would need to scroll to reach the trust strip — not
+broken (`overflow-y-auto` on the page's own root already prevents any clipped/inaccessible
+content) but missing the "show the page at rest" goal for exactly the setting this page is built
+for. Tightened padding/margin values only (no content, font sizes, or breakpoints changed):
+reduced measured height by ~214px. Verified live: fits with zero scroll even at 1024×591, better
+than the 768px target, in both light and dark theme. `make test` re-run green after this change.
+- [x] done
+
 ## Dependencies on other features
 
 - None strictly blocking — `WelcomePage.tsx` reuses the live `<AppSidebar />` component directly
