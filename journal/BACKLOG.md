@@ -377,8 +377,7 @@
 - [x] #45: AI tab placeholder — empty state delivered in F28 S-C, issue closed
 - [ ] #46: Remove legacy tab components — blocked: depends on #41–45
 - [ ] #47: Remove legacy standalone pages and routes — blocked: depends on #46
-- [ ] #52: Revisit sidebar navigation — blocked on persona validation (scope is nav content/
-  structure only — collapse already shipped, see note further down)
+- [x] #52: Revisit sidebar navigation — complete, delivered as F95
 - [x] fix(frontend): PlanTab review queue — removed `.slice(0, 10)` cap; all items now render sorted by criticality
 
 **F35 — Remediation runbook (#19) → see plan at .claude/plans/generate-runbook-for-high-risk-expressive-kernighan.md**
@@ -578,8 +577,15 @@
 **Cleanup / tech debt**
 - [ ] #47: Remove legacy standalone pages and routes
 - [ ] #46: Remove legacy tab components from JobDetailPage
-- [ ] #52: UX — revisit sidebar navigation (align with confirmed user personas; scope is nav
-  content/structure only — collapse already shipped, see note further down)
+- [x] F95: Sidebar nav persona realignment (#52) — complete → see
+  `docs/plans/F95-sidebar-nav-persona-realignment.md`
+  - [x] F95 S-A: Remove Lineage nav entry, keep the route → `src/frontend/src/components/AppSidebar.tsx`
+  - [x] F95 S-B: Rename "Docs" to "Reports" → `src/frontend/src/components/AppSidebar.tsx`
+  - [x] F95 S-C: Manual smoke test — verified live via browser automation
+  - [x] F95 S-D: `make test` gate — all 7 gates green
+  - Locked constraint: removing Lineage from nav must never delete `/lineage`/`GlobalLineagePage`
+    — nav-link removal only, route stays fully functional — see `journal/DECISIONS.md` 2026-09-28
+    and memory note `feedback_nav_removal_keeps_functionality`
 - [ ] #45: AI tab placeholder for AI side-effect data capture
 - [ ] #44: BI tab placeholder for BI side-effect data capture
 

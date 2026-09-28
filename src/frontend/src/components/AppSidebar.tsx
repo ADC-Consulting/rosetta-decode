@@ -3,7 +3,6 @@ import {
   ChevronLeft,
   ChevronRight,
   FileText,
-  GitFork,
   LayoutList,
   MessageSquare,
   Moon,
@@ -21,8 +20,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { to: "/jobs", label: "Migrations", Icon: LayoutList },
-  { to: "/lineage", label: "Lineage", Icon: GitFork },
-  { to: "/docs", label: "Docs", Icon: FileText },
+  { to: "/docs", label: "Reports", Icon: FileText },
   { to: "/explain", label: "Explain", Icon: MessageSquare },
 ];
 
