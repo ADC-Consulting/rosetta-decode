@@ -6,6 +6,29 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-09-28 — #52 sidebar nav scoped as F95: cut Lineage, rename Docs, P0 is the deciding lens
+
+- **P0 (ADC consultant, `docs/personas.md`) is the lens for #52, not P1/P2:** #52 explicitly gated
+  any sidebar change on confirming target personas. `docs/personas.md` (PR #156) settled that —
+  current usage is demo/engagement-kickoff-led by ADC's own consultants, not a client's embedded
+  technical lead or PO. The Persona × Feature mapping table built from that doc drives this
+  decision · revisit if/when the tool is actually embedded in a client's day-to-day workflow and
+  P1/P2 become the real current users
+- **"Docs" renamed to "Reports"; global Lineage cut from the sidebar (route/component untouched):**
+  per the mapping table, "Docs" is unclear naming for what's actually a trust-closing plain-English
+  report view (P0 and P2 both rely on it), and the global cross-job Lineage page has no owner
+  across any of the three personas — most likely scoped for the not-yet-built compliance/auditor
+  persona (#30, Phase 3+) · revisit when #30 is scoped — Lineage may belong back in the nav then
+- **LOCKED: removing a nav item never deletes the underlying feature** — user's explicit
+  instruction. `/lineage` and `GlobalLineagePage.tsx` stay fully functional and reachable by direct
+  URL; only the sidebar's `NAV_ITEMS` entry is removed. Scoped as F95
+  (`docs/plans/F95-sidebar-nav-persona-realignment.md`), stacked on `fix/sidebar-rosetta-logo-mark`
+  (PR #157) to avoid a same-file (`AppSidebar.tsx`) conflict with that in-flight branch · rationale:
+  the feature must be trivially re-addable later, not rebuilt from scratch · revisit never — this
+  is a standing rule for any future nav-visibility change, not just this one
+
+---
+
 ## 2026-09-28 — Two more instances of the `.brand-manifest` derived-token indirection bug, found and fixed
 
 - **LOCKED PATTERN, extended:** the F88 comment on `--radius-xl`/`--radius-lg`/`--radius-md`/
