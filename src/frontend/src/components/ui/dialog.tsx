@@ -2,6 +2,7 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import * as React from "react";
 
 import { Button } from "@/components/ui/button";
+import { useBrandManifestContainer } from "@/lib/useBrandManifestContainer";
 import { cn } from "@/lib/utils";
 
 function Dialog({ ...props }: DialogPrimitive.Root.Props) {
@@ -43,8 +44,11 @@ function DialogContent({
 }: DialogPrimitive.Popup.Props & {
   container?: DialogPrimitive.Portal.Props["container"];
 }) {
+  // Hooks must run unconditionally regardless of whether `container` was passed explicitly.
+  const defaultContainer = useBrandManifestContainer();
+
   return (
-    <DialogPortal container={container}>
+    <DialogPortal container={container ?? defaultContainer}>
       <DialogOverlay />
       <DialogPrimitive.Popup
         data-slot="dialog-content"

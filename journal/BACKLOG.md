@@ -676,6 +676,13 @@
   uses). The real bug, and it's in **both** files: `TargetGraph.tsx`'s `STATUS_COLOR_MAP` has the
   identical stock unmuted hex triad, missed during F90 S-C since that audit only grepped Tailwind
   classes, not inline hex in a JS `Record`. See F91 below for the actual fix.
+- [x] Sidebar logo mark — F93 scoped everything from the approved mockup except the logo itself
+  (flat `bg-foreground` square instead of the three-bar teal wordmark); fixed in
+  `AppSidebar.tsx` → see `journal/DECISIONS.md` 2026-09-28
+- [x] `--color-primary`/`--color-primary-foreground` indirection bug (default-variant `Button`
+  rendered black instead of teal inside `.brand-manifest`) + `DialogContent` portaling outside
+  `.brand-manifest` entirely on 10 of 15 dialog sites — both fixed at the root, not per-site →
+  see `journal/DECISIONS.md` 2026-09-28
 
 **F91 — Close out the three remaining F90 design follow-ups → see `docs/plans/F91-design-followups.md`**
 - [x] F91 S-A: strengthen the dark-mode card border → `PlanTab.tsx` (found and filed #144 along the

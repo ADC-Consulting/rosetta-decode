@@ -6,6 +6,38 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-09-28 — Two more instances of the `.brand-manifest` derived-token indirection bug, found and fixed
+
+- **LOCKED PATTERN, extended:** the F88 comment on `--radius-xl`/`--radius-lg`/`--radius-md`/
+  `--radius-sm` already named `--color-primary` as "same indirection bug class" back when it was
+  written — it just never got fixed at the time. Found and fixed now, while verifying an unrelated
+  logo-mark fix (F93's missed subtask): `--color-primary`/`--color-primary-foreground` are declared
+  once at `:root` via Tailwind's `@theme` and never re-resolve inside `.brand-manifest`'s
+  `--primary`/`--primary-foreground` override, so any default-variant `<Button>` (and
+  `BlockPlanTable.tsx`'s Save button, which used the raw `bg-primary` utility directly) rendered
+  black instead of teal. Fixed the same way as the radius tokens: redeclared both inside
+  `.brand-manifest` in `index.css`. No `.dark .brand-manifest` counterpart needed, same reasoning as
+  the radius fix — `--primary`/`--primary-foreground` themselves are never theme-varied · revisit:
+  if a *third* derived token needs this treatment, stop patching one at a time and consider whether
+  `.brand-manifest` should redeclare the whole derived-token layer at once
+- **A second, related indirection bug — dialog content portaling outside `.brand-manifest`
+  entirely:** `DialogContent` required every caller to manually pass
+  `container={useBrandManifestContainer()}` (F91 added this to 4 sites: `BlockCodePopup.tsx`,
+  `FileViewPopup.tsx`, `ExplainPage.tsx`, `PlanTab.tsx`; F94 added a 5th, `JobsPage.tsx`, without
+  realizing it was the same fix). Audited every `<DialogContent>` in the codebase and found 10 more
+  sites without it (`LiveTraceDialog.tsx`, `BlockRefineDialog.tsx`, both dialogs in
+  `BlockPlanTable.tsx`, `BlockRevisionDrawer.tsx`, `NoteDialog.tsx`, `EvaluationTab.tsx`,
+  `DocsPage.tsx`, both dialogs in `JobDetailPage.tsx`) — every one silently portaling to
+  `document.body`, losing the Archivo/Space Mono fonts, 6px radius, and teal accent whenever opened.
+  Root cause of why this kept recurring: no default, so every new dialog had to remember a manual
+  step. Fixed at the source instead of patching 10 call sites: `DialogContent` now calls
+  `useBrandManifestContainer()` internally and falls back to it when no `container` prop is passed,
+  so every current and future `<DialogContent>` gets this for free · the 5 already-fixed sites were
+  left untouched (their explicit prop is now redundant but still correct — no churn) · revisit
+  never — this closes the whole bug class, not just the known instances
+
+---
+
 ## 2026-09-24 — F94 live-testing findings: reversibility gap fixed, pre-existing Checkbox bug fixed
 
 - **Archive was not actually reversible from the UI as first built — fixed before sign-off:** the
