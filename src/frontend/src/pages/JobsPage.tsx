@@ -1495,6 +1495,12 @@ export default function JobsPage(): React.ReactElement {
                   )}
                 </form>
               )}
+
+              {phase === "staging" && (
+                <p className="text-xs text-muted-foreground">
+                  This runs the full AI translation.
+                </p>
+              )}
             </div>
           </div>
 
