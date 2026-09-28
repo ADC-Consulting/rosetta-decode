@@ -6,6 +6,43 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-09-28 — Welcome page scoped as F96: closes out #148, mockup-first per this repo's standing process
+
+- **#148's last open item (a welcome page at `/`) scoped as F96 after a mockup pass, not built
+  directly:** followed the same process as F87–F90 and the Migrations-page mockup — a Claude
+  Artifact mockup was built, iterated through several rounds of self-critique and correction, then
+  scoped into a real plan only once approved. Mockup:
+  https://claude.ai/artifact/YbsWRL5EM52aDNDZxU99Xf · revisit never — this is the established
+  process for any future design-canvas work
+- **Locked content decisions for F96:** primary CTA is "New migration" (upload) only, no
+  demo-picker — `docs/personas.md`'s P0 correction (below) confirmed no persistent demo library is
+  maintained in the tool, so a demo-scenario picker would have no real content to point to. Static
+  content only, no live migration counts/stats, so the page never looks stale or empty regardless
+  of demo-account state. Copy stays concrete to SAS→Python, the actual current capability and
+  market-entry wedge — not generalized toward "multiple languages," even though that's the
+  product's long-term vision (see memory note `project_multi_language_vision`) · rationale: a
+  prospect evaluating whether this handles their SAS estate needs the concrete case proven, not a
+  roadmap tease · revisit if a second language pair is ever actually shipped
+- **`docs/personas.md` correction: P0 does not pick from a seeded/vertical-matched demo
+  library** — the persona doc's first draft (PR #156) stated P0 "picks a seeded demo job
+  (industry/vertical-matched) or the client's own small pilot upload," an unconfirmed inference
+  that turned out to be wrong. User corrected while reviewing the F96 mockup: demo/pilot SAS files
+  are uploaded live as part of each session, no persistent library is kept in the tool · fixed on
+  PR #156 before merge, not as a follow-up patch · revisit if a curated demo library is ever
+  actually built
+- **The welcome page's hero includes a real, syntactically-verified SAS→PySpark code snippet as
+  visual proof, not just descriptive claims:** the first mockup draft used a text-only "trust
+  strip" (three adjective bullets: "every line traced," "validated," "audit trail") with no
+  concrete evidence. Self-critique + user review identified this as the page's weakest point for a
+  page whose whole job is building credibility in seconds. Added a side-by-side SAS/PySpark
+  code-proof panel instead — caught and fixed one real bug in the first pass (a literal `...`
+  placeholder inside `F.datediff(...)`, not valid Python) before finalizing; the corrected snippet
+  was traced statement-by-statement against real PySpark semantics (`F.datediff(end, start)`
+  argument order) before being accepted · revisit never — any future marketing/landing surface for
+  this product should prefer showing a real translation over describing one
+
+---
+
 ## 2026-09-28 — #52 sidebar nav scoped as F95: cut Lineage, rename Docs, P0 is the deciding lens
 
 - **P0 (ADC consultant, `docs/personas.md`) is the lens for #52, not P1/P2:** #52 explicitly gated

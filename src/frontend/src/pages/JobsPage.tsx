@@ -50,7 +50,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 
 // ---------------------------------------------------------------------------
@@ -597,6 +597,7 @@ function SortableHeader({
 
 export default function JobsPage(): React.ReactElement {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
 
   // ── Show archived toggle (S-L) ───────────────────────────────────────────
@@ -795,6 +796,26 @@ export default function JobsPage(): React.ReactElement {
   // commits, which happens on JobsPage's own first render (the `.brand-manifest` div
   // below is unconditionally rendered), well before the dialog can be opened.
   const [brandManifestEl, setBrandManifestEl] = useState<HTMLDivElement | null>(null);
+
+  // Opens the upload dialog automatically when arriving via "/jobs?upload=1" — the
+  // WelcomePage (F96) "New migration" CTA navigates here rather than duplicating the
+  // dialog. Mount-only: strips the param once handled so a later back/forward nav to
+  // this URL doesn't reopen the dialog unexpectedly.
+  useEffect(() => {
+    if (searchParams.get("upload") === "1") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional
+      setUploadOpen(true);
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete("upload");
+          return next;
+        },
+        { replace: true },
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Upload state (from shared context) ───────────────────────────────────
 
