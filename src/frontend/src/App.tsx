@@ -1,6 +1,6 @@
 import { ThemeProvider } from "next-themes";
 import { lazy, Suspense } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Route, Routes } from "react-router-dom";
 import AppSidebar from "./components/AppSidebar";
 import { Toaster } from "./components/ui/sonner";
 import { UploadStateProvider } from "./context/UploadStateContext";
@@ -11,6 +11,7 @@ const EditorFullPage = lazy(() => import("./pages/EditorFullPage"));
 const GlobalLineagePage = lazy(() => import("./pages/GlobalLineagePage"));
 const DocsPage = lazy(() => import("./pages/DocsPage"));
 const ExplainPage = lazy(() => import("./pages/ExplainPage"));
+const WelcomePage = lazy(() => import("./pages/WelcomePage"));
 
 function App(): React.ReactElement {
   return (
@@ -27,7 +28,7 @@ function App(): React.ReactElement {
               }
             >
               <Routes>
-                <Route path="/" element={<Navigate to="/jobs" replace />} />
+                <Route path="/" element={<WelcomePage />} />
                 <Route path="/jobs" element={<JobsPage />} />
                 <Route path="/jobs/:id" element={<JobDetailPage />} />
                 <Route path="/jobs/:id/editor" element={<EditorFullPage />} />

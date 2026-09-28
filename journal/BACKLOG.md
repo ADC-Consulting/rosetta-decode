@@ -586,6 +586,24 @@
   - Locked constraint: removing Lineage from nav must never delete `/lineage`/`GlobalLineagePage`
     — nav-link removal only, route stays fully functional — see `journal/DECISIONS.md` 2026-09-28
     and memory note `feedback_nav_removal_keeps_functionality`
+- [x] F96: Welcome page (#148, remaining item) — complete → see `docs/plans/F96-welcome-page.md`
+  - [x] F96 S-A: Extract and commit the approved mockup source → `docs/design/welcome-page.dc.html`
+  - [x] F96 S-B: `WelcomePage.tsx` component → `src/frontend/src/pages/WelcomePage.tsx`
+  - [x] F96 S-C: Wire the CTA to the existing upload dialog → `WelcomePage.tsx`, `JobsPage.tsx`
+  - [x] F96 S-D: Wire the route → `src/frontend/src/App.tsx`
+  - [x] F96 S-E: Manual smoke test — verified live via browser automation, light + dark
+  - [x] F96 S-F: `make test` gate — all 7 gates green
+  - [x] F96 S-G: critical-test follow-up — trimmed vertical spacing so the page fits presentation
+    resolutions (~1024x768) without scrolling; found during a post-ship critical testing pass,
+    not a launch blocker (page already scrolled correctly via `overflow-y-auto`, just didn't fit
+    "at rest")
+  - Closes #148 entirely (all four items now delivered: welcome page, sidebar via F95, upload
+    flow unification + styling via F92)
+  - Closes the last open item from #148 (sidebar/upload-flow/styling items already shipped via
+    F92/F95). Mockup: https://claude.ai/artifact/YbsWRL5EM52aDNDZxU99Xf
+  - Locked: static content only (no live stats), single CTA (New migration upload, no demo-picker
+    since no persistent demo library exists), copy stays concrete to SAS→Python — see
+    `journal/DECISIONS.md` 2026-09-28
 - [ ] #45: AI tab placeholder for AI side-effect data capture
 - [ ] #44: BI tab placeholder for BI side-effect data capture
 
@@ -716,8 +734,8 @@
   affected — it always set `python_code` from the actual translation agent's output
 
 **F92 — Fix the migration upload flow → see `docs/plans/F92-migration-upload-flow-fixes.md`
-(tracks issue #148's concrete, ready-to-build half; the welcome-page/sidebar half of #148 needs
-its own design pass first)**
+(tracks issue #148's concrete, ready-to-build half; the welcome-page/sidebar half of #148 was
+scoped and delivered later as F95 (sidebar) and F96 (welcome page))**
 - [x] F92 S-A: delete dead `UploadPage.tsx` (unrouted since the 2026-04-23 Upload→Dialog decision,
   never removed)
 - [x] F92 S-B: stop requiring a reconciliation target to enable Migrate — `submitDisabled`
