@@ -199,6 +199,17 @@ body {
 .brand-manifest {
   --primary: #0f7d72;
   --primary-foreground: #ffffff;
+  /* Derived color tokens (F90 fidelity fix) — same indirection bug class as the radius fix below:
+     @theme's `--color-primary: var(--primary)` / `--color-primary-foreground: var(--primary-foreground)`
+     resolve once at :root and do not re-resolve through this scope's --primary/--primary-foreground
+     override, so default-variant <Button> (and any other bg-primary/text-primary-foreground consumer)
+     rendered black instead of teal inside .brand-manifest. Redeclared here so bg-primary/
+     text-primary-foreground utilities pick up the teal brand color for free, matching the manual
+     bg-[var(--primary)] workaround already used in a few places (JobDetailPage, BlockPlanTable) —
+     no .dark .brand-manifest counterpart needed for the same reason as --radius below: --primary/
+     --primary-foreground themselves are never theme-varied. */
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
   --radius: 6px;
   /* Derived radius tokens (F89 fidelity fix) — @theme's --radius-xl/lg/md/sm formulas resolve once
      at :root and do not re-resolve through this scope's --radius override (same indirection bug
