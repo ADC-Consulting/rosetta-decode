@@ -6,6 +6,31 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-09-28 — Effort-estimate investigation: formula is correct, two follow-ups flagged not fixed
+
+- **"Before you accept" panel's effort-estimate figure traced end to end, no code bug found:**
+  investigated after it "looked wrong" on a real demo job. Formula
+  (`BeforeYouAcceptPanel.tsx:51-54`, `needs_review×1h + manual_todo×4h +
+  failed_reconciliation×2h`) matches its own documented spec (F86). Independently recomputed
+  `needs_review` from the Biometrics Demo job's real 23-block list using the actual trust-report
+  criteria and got 14, exactly matching the API's reported count — no miscounting anywhere in the
+  pipeline. The number that "looked wrong" is correct arithmetic on correct data · revisit never —
+  this specific bug hunt is closed
+- **Hardcoded effort rates (1h/4h/2h) flagged as possibly miscalibrated but NOT changed:** never
+  validated against real consultant billing time. User's gut sense: they "look a little off," no
+  confirmed direction or data to act on · decision: do not guess-fix — track actual vs estimated
+  review time on real engagements, recalibrate from that data when it exists · revisit once real
+  engagement data is available
+- **Unused richer per-block `estimated_effort` field (`AnalysisAgent`, `migration_planner.py`)
+  found unreliable on real data, not just unused:** compared against its sibling `risk` field
+  across all 23 real Biometrics Demo blocks — 30% rated lower than `risk`, none rated higher; reads
+  as a systematically-optimistic echo of `risk`, not an independent signal. Recommendation:
+  remove rather than keep dormant (costs a real LLM call for zero value; a known-unreliable field
+  left in place risks silent misuse later) — not yet actioned, awaiting go-ahead · revisit if this
+  gets scoped as a cleanup task
+
+---
+
 ## 2026-09-28 — Welcome page scoped as F96: closes out #148, mockup-first per this repo's standing process
 
 - **#148's last open item (a welcome page at `/`) scoped as F96 after a mockup pass, not built

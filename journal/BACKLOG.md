@@ -937,15 +937,30 @@ scoped and delivered later as F95 (sidebar) and F96 (welcome page))**
   (currently 4 flat, equally-weighted items: Migrations/Lineage/Docs/Explain — no grouping, no
   usage-weighted hierarchy), not the collapse mechanism.
 
-**Plan tab effort estimate looks off (found during demo prep, not yet investigated)**
-- [ ] The "Before you accept" panel's "Estimated effort: ~Xh" figure looked wrong on the
-  Biometrics Demo (SDTM→ADaM) job — needs investigation into where it's actually computed. Traced
-  so far: `migration_planner.py`'s `AnalysisAgent` only assigns a coarse per-block
-  `estimated_effort: "low"|"medium"|"high"` label (see ~line 106, 137, 334) — the aggregate hour
-  figure shown in the UI must be computed by mapping/summing these bands somewhere else (not yet
-  located; check `docs/plans/latest/` for the F86 estimation-model plan, and search the frontend
-  and `src/backend/api/` for where `estimated_effort` bands get turned into a number of hours).
-  Confirm the mapping/formula is reasonable before trusting this number in front of stakeholders.
+**Plan tab effort estimate — investigated 2026-09-28, no code bug found, two flagged follow-ups**
+- [x] Investigated the "Before you accept" panel's "Estimated effort: ~Xh" figure, which looked
+  wrong on the Biometrics Demo (SDTM→ADaM) job. Traced to `BeforeYouAcceptPanel.tsx:51-54`:
+  `needs_review×1h + manual_todo×4h + failed_reconciliation×2h`, matching its documented spec in
+  `docs/plans/latest/F86-before-you-accept-panel.md`. Independently recomputed `needs_review` from
+  the job's real 23-block list using the actual trust-report criteria (`strategy ==
+  "translated_with_review"` OR `reconciliation_status == "fail"` OR confidence in
+  low/very_low/unknown) — got 14, exactly matching the API. No miscounting, no code bug. The
+  arithmetic is correct on correct data end to end — see `journal/DECISIONS.md` 2026-09-28.
+- [ ] **Follow-up 1 (unconfirmed, needs real data):** the hardcoded rates themselves (1h/4h/2h)
+  were never validated against real consultant billing time. User's gut sense during this
+  investigation: they "look a little off," but without a clear read on direction (too generous vs
+  too conservative) or a data basis to act on yet. Do not guess-fix the numbers — track actual vs
+  estimated review time on the next few real engagements, then recalibrate from that data.
+- [ ] **Follow-up 2 (recommended, not yet actioned):** `AnalysisAgent` (`migration_planner.py`)
+  computes a richer per-block `estimated_effort: "low"|"medium"|"high"` field that has zero
+  consumers anywhere in the codebase — confirmed unused via repo-wide grep. Pulled all 23 real
+  block_plans from the Biometrics Demo job and compared `estimated_effort` against its sibling
+  `risk` field: 7/23 blocks (~30%) rated `estimated_effort` *lower* than `risk`, zero rated it
+  higher — reads as a noisier, systematically-optimistic echo of `risk` rather than an
+  independent, reliable signal. Recommendation: remove the unused field rather than keep it
+  dormant "in case it's useful later" (costs a real LLM call for zero current value, and leaving a
+  known-unreliable field in place risks someone wiring it into a real accept/reject decision
+  without seeing this investigation) — not yet actioned, pending go-ahead.
 
 **Plan tab copy pass — AI-sounding phrasing / unmotivated em dashes (2026-09-09)**
 - [x] Reviewed `PlanTab.tsx`, `BeforeYouAcceptPanel.tsx`, `BlockPlanTable.tsx` for hardcoded copy
