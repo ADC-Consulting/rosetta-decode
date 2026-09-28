@@ -3,7 +3,6 @@ import {
   ChevronLeft,
   ChevronRight,
   FileText,
-  GitFork,
   LayoutList,
   MessageSquare,
   Moon,
@@ -21,8 +20,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { to: "/jobs", label: "Migrations", Icon: LayoutList },
-  { to: "/lineage", label: "Lineage", Icon: GitFork },
-  { to: "/docs", label: "Docs", Icon: FileText },
+  { to: "/docs", label: "Reports", Icon: FileText },
   { to: "/explain", label: "Explain", Icon: MessageSquare },
 ];
 
@@ -64,10 +62,22 @@ export default function AppSidebar(): React.ReactElement {
         className="flex items-center h-14 border-b border-border shrink-0 overflow-hidden"
         style={{ paddingLeft: (ICON_COL - 20) / 2 }}
       >
-        <span
-          className="size-5 rounded-md bg-foreground shrink-0"
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 20 20"
+          className="shrink-0"
           aria-hidden="true"
-        />
+        >
+          {/* fill-[var(--primary)] (not fill-primary/--color-primary) — matches the
+              .brand-manifest indirection-bug workaround already used in PlanTab/BlockPlanTable
+              (see src/frontend/src/index.css around line 188): --color-primary is only declared
+              once at :root via @theme, so it does not re-resolve inside .brand-manifest scopes;
+              referencing --primary directly does. */}
+          <rect x="2" y="3" width="16" height="3" rx="1.5" className="fill-[var(--primary)]" />
+          <rect x="2" y="8.5" width="11" height="3" rx="1.5" className="fill-[var(--primary)] opacity-50" />
+          <rect x="2" y="14" width="6" height="3" rx="1.5" className="fill-[var(--primary)] opacity-40" />
+        </svg>
         <span
           className="text-sm font-semibold text-foreground whitespace-nowrap overflow-hidden transition-[width,opacity,margin] duration-200 ease-in-out"
           style={{

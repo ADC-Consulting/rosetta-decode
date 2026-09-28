@@ -1033,7 +1033,11 @@ export default function BlockPlanTable({
                     }
                   }}
                   disabled={codeSaving}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                  // bg-[var(--primary)] (not bg-primary): the derived --color-primary token only
+                  // resolves once at :root and doesn't re-resolve under the .brand-manifest
+                  // override (see index.css's "F88 indirection bug" note) — same raw-var pattern
+                  // already used for the strategy pills above and elsewhere in this file.
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-[var(--primary)] text-[var(--primary-foreground)] hover:bg-[var(--primary)]/90 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors"
                 >
                   {codeSaving ? "Saving…" : "Save"}
                 </button>

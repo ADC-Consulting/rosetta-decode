@@ -377,8 +377,7 @@
 - [x] #45: AI tab placeholder — empty state delivered in F28 S-C, issue closed
 - [ ] #46: Remove legacy tab components — blocked: depends on #41–45
 - [ ] #47: Remove legacy standalone pages and routes — blocked: depends on #46
-- [ ] #52: Revisit sidebar navigation — blocked on persona validation (scope is nav content/
-  structure only — collapse already shipped, see note further down)
+- [x] #52: Revisit sidebar navigation — complete, delivered as F95
 - [x] fix(frontend): PlanTab review queue — removed `.slice(0, 10)` cap; all items now render sorted by criticality
 
 **F35 — Remediation runbook (#19) → see plan at .claude/plans/generate-runbook-for-high-risk-expressive-kernighan.md**
@@ -578,8 +577,33 @@
 **Cleanup / tech debt**
 - [ ] #47: Remove legacy standalone pages and routes
 - [ ] #46: Remove legacy tab components from JobDetailPage
-- [ ] #52: UX — revisit sidebar navigation (align with confirmed user personas; scope is nav
-  content/structure only — collapse already shipped, see note further down)
+- [x] F95: Sidebar nav persona realignment (#52) — complete → see
+  `docs/plans/F95-sidebar-nav-persona-realignment.md`
+  - [x] F95 S-A: Remove Lineage nav entry, keep the route → `src/frontend/src/components/AppSidebar.tsx`
+  - [x] F95 S-B: Rename "Docs" to "Reports" → `src/frontend/src/components/AppSidebar.tsx`
+  - [x] F95 S-C: Manual smoke test — verified live via browser automation
+  - [x] F95 S-D: `make test` gate — all 7 gates green
+  - Locked constraint: removing Lineage from nav must never delete `/lineage`/`GlobalLineagePage`
+    — nav-link removal only, route stays fully functional — see `journal/DECISIONS.md` 2026-09-28
+    and memory note `feedback_nav_removal_keeps_functionality`
+- [x] F96: Welcome page (#148, remaining item) — complete → see `docs/plans/F96-welcome-page.md`
+  - [x] F96 S-A: Extract and commit the approved mockup source → `docs/design/welcome-page.dc.html`
+  - [x] F96 S-B: `WelcomePage.tsx` component → `src/frontend/src/pages/WelcomePage.tsx`
+  - [x] F96 S-C: Wire the CTA to the existing upload dialog → `WelcomePage.tsx`, `JobsPage.tsx`
+  - [x] F96 S-D: Wire the route → `src/frontend/src/App.tsx`
+  - [x] F96 S-E: Manual smoke test — verified live via browser automation, light + dark
+  - [x] F96 S-F: `make test` gate — all 7 gates green
+  - [x] F96 S-G: critical-test follow-up — trimmed vertical spacing so the page fits presentation
+    resolutions (~1024x768) without scrolling; found during a post-ship critical testing pass,
+    not a launch blocker (page already scrolled correctly via `overflow-y-auto`, just didn't fit
+    "at rest")
+  - Closes #148 entirely (all four items now delivered: welcome page, sidebar via F95, upload
+    flow unification + styling via F92)
+  - Closes the last open item from #148 (sidebar/upload-flow/styling items already shipped via
+    F92/F95). Mockup: https://claude.ai/artifact/YbsWRL5EM52aDNDZxU99Xf
+  - Locked: static content only (no live stats), single CTA (New migration upload, no demo-picker
+    since no persistent demo library exists), copy stays concrete to SAS→Python — see
+    `journal/DECISIONS.md` 2026-09-28
 - [ ] #45: AI tab placeholder for AI side-effect data capture
 - [ ] #44: BI tab placeholder for BI side-effect data capture
 
@@ -676,6 +700,13 @@
   uses). The real bug, and it's in **both** files: `TargetGraph.tsx`'s `STATUS_COLOR_MAP` has the
   identical stock unmuted hex triad, missed during F90 S-C since that audit only grepped Tailwind
   classes, not inline hex in a JS `Record`. See F91 below for the actual fix.
+- [x] Sidebar logo mark — F93 scoped everything from the approved mockup except the logo itself
+  (flat `bg-foreground` square instead of the three-bar teal wordmark); fixed in
+  `AppSidebar.tsx` → see `journal/DECISIONS.md` 2026-09-28
+- [x] `--color-primary`/`--color-primary-foreground` indirection bug (default-variant `Button`
+  rendered black instead of teal inside `.brand-manifest`) + `DialogContent` portaling outside
+  `.brand-manifest` entirely on 10 of 15 dialog sites — both fixed at the root, not per-site →
+  see `journal/DECISIONS.md` 2026-09-28
 
 **F91 — Close out the three remaining F90 design follow-ups → see `docs/plans/F91-design-followups.md`**
 - [x] F91 S-A: strengthen the dark-mode card border → `PlanTab.tsx` (found and filed #144 along the
@@ -703,8 +734,8 @@
   affected — it always set `python_code` from the actual translation agent's output
 
 **F92 — Fix the migration upload flow → see `docs/plans/F92-migration-upload-flow-fixes.md`
-(tracks issue #148's concrete, ready-to-build half; the welcome-page/sidebar half of #148 needs
-its own design pass first)**
+(tracks issue #148's concrete, ready-to-build half; the welcome-page/sidebar half of #148 was
+scoped and delivered later as F95 (sidebar) and F96 (welcome page))**
 - [x] F92 S-A: delete dead `UploadPage.tsx` (unrouted since the 2026-04-23 Upload→Dialog decision,
   never removed)
 - [x] F92 S-B: stop requiring a reconciliation target to enable Migrate — `submitDisabled`

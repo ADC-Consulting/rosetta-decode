@@ -31,6 +31,98 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-09-28 — Welcome page scoped as F96: closes out #148, mockup-first per this repo's standing process
+
+- **#148's last open item (a welcome page at `/`) scoped as F96 after a mockup pass, not built
+  directly:** followed the same process as F87–F90 and the Migrations-page mockup — a Claude
+  Artifact mockup was built, iterated through several rounds of self-critique and correction, then
+  scoped into a real plan only once approved. Mockup:
+  https://claude.ai/artifact/YbsWRL5EM52aDNDZxU99Xf · revisit never — this is the established
+  process for any future design-canvas work
+- **Locked content decisions for F96:** primary CTA is "New migration" (upload) only, no
+  demo-picker — `docs/personas.md`'s P0 correction (below) confirmed no persistent demo library is
+  maintained in the tool, so a demo-scenario picker would have no real content to point to. Static
+  content only, no live migration counts/stats, so the page never looks stale or empty regardless
+  of demo-account state. Copy stays concrete to SAS→Python, the actual current capability and
+  market-entry wedge — not generalized toward "multiple languages," even though that's the
+  product's long-term vision (see memory note `project_multi_language_vision`) · rationale: a
+  prospect evaluating whether this handles their SAS estate needs the concrete case proven, not a
+  roadmap tease · revisit if a second language pair is ever actually shipped
+- **`docs/personas.md` correction: P0 does not pick from a seeded/vertical-matched demo
+  library** — the persona doc's first draft (PR #156) stated P0 "picks a seeded demo job
+  (industry/vertical-matched) or the client's own small pilot upload," an unconfirmed inference
+  that turned out to be wrong. User corrected while reviewing the F96 mockup: demo/pilot SAS files
+  are uploaded live as part of each session, no persistent library is kept in the tool · fixed on
+  PR #156 before merge, not as a follow-up patch · revisit if a curated demo library is ever
+  actually built
+- **The welcome page's hero includes a real, syntactically-verified SAS→PySpark code snippet as
+  visual proof, not just descriptive claims:** the first mockup draft used a text-only "trust
+  strip" (three adjective bullets: "every line traced," "validated," "audit trail") with no
+  concrete evidence. Self-critique + user review identified this as the page's weakest point for a
+  page whose whole job is building credibility in seconds. Added a side-by-side SAS/PySpark
+  code-proof panel instead — caught and fixed one real bug in the first pass (a literal `...`
+  placeholder inside `F.datediff(...)`, not valid Python) before finalizing; the corrected snippet
+  was traced statement-by-statement against real PySpark semantics (`F.datediff(end, start)`
+  argument order) before being accepted · revisit never — any future marketing/landing surface for
+  this product should prefer showing a real translation over describing one
+
+---
+
+## 2026-09-28 — #52 sidebar nav scoped as F95: cut Lineage, rename Docs, P0 is the deciding lens
+
+- **P0 (ADC consultant, `docs/personas.md`) is the lens for #52, not P1/P2:** #52 explicitly gated
+  any sidebar change on confirming target personas. `docs/personas.md` (PR #156) settled that —
+  current usage is demo/engagement-kickoff-led by ADC's own consultants, not a client's embedded
+  technical lead or PO. The Persona × Feature mapping table built from that doc drives this
+  decision · revisit if/when the tool is actually embedded in a client's day-to-day workflow and
+  P1/P2 become the real current users
+- **"Docs" renamed to "Reports"; global Lineage cut from the sidebar (route/component untouched):**
+  per the mapping table, "Docs" is unclear naming for what's actually a trust-closing plain-English
+  report view (P0 and P2 both rely on it), and the global cross-job Lineage page has no owner
+  across any of the three personas — most likely scoped for the not-yet-built compliance/auditor
+  persona (#30, Phase 3+) · revisit when #30 is scoped — Lineage may belong back in the nav then
+- **LOCKED: removing a nav item never deletes the underlying feature** — user's explicit
+  instruction. `/lineage` and `GlobalLineagePage.tsx` stay fully functional and reachable by direct
+  URL; only the sidebar's `NAV_ITEMS` entry is removed. Scoped as F95
+  (`docs/plans/F95-sidebar-nav-persona-realignment.md`), stacked on `fix/sidebar-rosetta-logo-mark`
+  (PR #157) to avoid a same-file (`AppSidebar.tsx`) conflict with that in-flight branch · rationale:
+  the feature must be trivially re-addable later, not rebuilt from scratch · revisit never — this
+  is a standing rule for any future nav-visibility change, not just this one
+
+---
+
+## 2026-09-28 — Two more instances of the `.brand-manifest` derived-token indirection bug, found and fixed
+
+- **LOCKED PATTERN, extended:** the F88 comment on `--radius-xl`/`--radius-lg`/`--radius-md`/
+  `--radius-sm` already named `--color-primary` as "same indirection bug class" back when it was
+  written — it just never got fixed at the time. Found and fixed now, while verifying an unrelated
+  logo-mark fix (F93's missed subtask): `--color-primary`/`--color-primary-foreground` are declared
+  once at `:root` via Tailwind's `@theme` and never re-resolve inside `.brand-manifest`'s
+  `--primary`/`--primary-foreground` override, so any default-variant `<Button>` (and
+  `BlockPlanTable.tsx`'s Save button, which used the raw `bg-primary` utility directly) rendered
+  black instead of teal. Fixed the same way as the radius tokens: redeclared both inside
+  `.brand-manifest` in `index.css`. No `.dark .brand-manifest` counterpart needed, same reasoning as
+  the radius fix — `--primary`/`--primary-foreground` themselves are never theme-varied · revisit:
+  if a *third* derived token needs this treatment, stop patching one at a time and consider whether
+  `.brand-manifest` should redeclare the whole derived-token layer at once
+- **A second, related indirection bug — dialog content portaling outside `.brand-manifest`
+  entirely:** `DialogContent` required every caller to manually pass
+  `container={useBrandManifestContainer()}` (F91 added this to 4 sites: `BlockCodePopup.tsx`,
+  `FileViewPopup.tsx`, `ExplainPage.tsx`, `PlanTab.tsx`; F94 added a 5th, `JobsPage.tsx`, without
+  realizing it was the same fix). Audited every `<DialogContent>` in the codebase and found 10 more
+  sites without it (`LiveTraceDialog.tsx`, `BlockRefineDialog.tsx`, both dialogs in
+  `BlockPlanTable.tsx`, `BlockRevisionDrawer.tsx`, `NoteDialog.tsx`, `EvaluationTab.tsx`,
+  `DocsPage.tsx`, both dialogs in `JobDetailPage.tsx`) — every one silently portaling to
+  `document.body`, losing the Archivo/Space Mono fonts, 6px radius, and teal accent whenever opened.
+  Root cause of why this kept recurring: no default, so every new dialog had to remember a manual
+  step. Fixed at the source instead of patching 10 call sites: `DialogContent` now calls
+  `useBrandManifestContainer()` internally and falls back to it when no `container` prop is passed,
+  so every current and future `<DialogContent>` gets this for free · the 5 already-fixed sites were
+  left untouched (their explicit prop is now redundant but still correct — no churn) · revisit
+  never — this closes the whole bug class, not just the known instances
+
+---
+
 ## 2026-09-24 — F94 live-testing findings: reversibility gap fixed, pre-existing Checkbox bug fixed
 
 - **Archive was not actually reversible from the UI as first built — fixed before sign-off:** the
