@@ -25,7 +25,7 @@ generated Python to an audience that mostly can't read either.
 
 | View | What they use it for |
 |---|---|
-| **Migrations list** | Entry point — picks a seeded demo job (industry/vertical-matched) or the client's own small pilot upload; needs to read as a credible portfolio at a glance, not a raw job queue |
+| **Migrations list** | Entry point — no persistent demo library is maintained in the tool; demo/pilot SAS files are uploaded live as part of the session. Needs to read as a credible portfolio at a glance, not a raw job queue, once jobs exist |
 | **Plan tab** | The core narrative surface — confidence, risk, what needs review — walked through live |
 | **Docs page / Report tab** | The trust-closing moment: the plain-English proof it's not a black box, shown to whoever in the room can't read code |
 | **ETL / Data Storage tabs** | Depth-on-demand when a technical stakeholder wants to see under the hood |
@@ -39,7 +39,8 @@ generated Python to an audience that mostly can't read either.
 
 ### Actions they take
 
-- Upload or select a demo/pilot SAS project
+- Upload a demo or pilot SAS project live, as part of the session (not pulled from a
+  pre-built library kept in the tool)
 - Narrate the Plan tab and Report/Docs content live, in front of the client
 - Field "what about this SAS construct" questions via Explain
 - (Future) scope an engagement before committing to a full migration — see GitHub issue #113
