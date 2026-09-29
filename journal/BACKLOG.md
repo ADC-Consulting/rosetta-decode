@@ -257,6 +257,18 @@
 
 ---
 
+## Infrastructure / Deployment
+
+**F97 — Demo-environment deployment hardening (Dokploy)** (`docs/plans/F97-demo-environment-deployment-hardening.md`)
+
+- [x] F97 A: Multi-stage frontend Dockerfile + nginx config → see `docs/plans/F97-demo-environment-deployment-hardening.md`
+- [x] F97 B: `docker-compose.yml` frontend service update → see `docs/plans/F97-demo-environment-deployment-hardening.md`
+- [x] F97 C: GitHub branch protection on `main` → see `docs/plans/F97-demo-environment-deployment-hardening.md`
+- [ ] F97 D: Dokploy dashboard reconfiguration (manual) → see `docs/plans/F97-demo-environment-deployment-hardening.md`
+- [ ] F97 E: Journal + docs update → see `docs/plans/F97-demo-environment-deployment-hardening.md`
+
+---
+
 ## Phase 3 — Frontend Features (post-MVP)
 
 **F24 — SAS Editor Fidelity (`docs/plans/latest/F24-sas-editor-fidelity.md`) — complete**
