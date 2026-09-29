@@ -115,8 +115,8 @@ export default function WelcomePage(): React.ReactElement {
             </h1>
 
             <p className="text-base leading-relaxed text-muted-foreground max-w-[52ch] mb-4">
-              A working Python pipeline from a legacy SAS job, without weeks of manual rewriting,
-              ready to hand to your own engineers.
+              A working Python pipeline from a legacy SAS job. Without weeks of manual rewriting.
+              Ready to hand to your own engineers.
             </p>
 
             <div className="flex items-center gap-4">
