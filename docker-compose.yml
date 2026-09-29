@@ -111,6 +111,13 @@ services:
       dockerfile: Dockerfile
     ports:
       - "5173:80"
+    environment:
+      # Optional demo HTTP Basic Auth gate (F97 subtask F). Empty-string
+      # defaults so local `make dev`/`docker compose up` — which never set
+      # these in the shell/.env — stay frictionless with no auth prompt.
+      # Dokploy sets real values for the deployed demo via its Environment tab.
+      - DEMO_AUTH_USER=${DEMO_AUTH_USER:-}
+      - DEMO_AUTH_PASSWORD=${DEMO_AUTH_PASSWORD:-}
     networks:
       - rosetta-net
 

@@ -264,6 +264,7 @@
 - [x] F97 A: Multi-stage frontend Dockerfile + nginx config → see `docs/plans/F97-demo-environment-deployment-hardening.md`
 - [x] F97 B: `docker-compose.yml` frontend service update → see `docs/plans/F97-demo-environment-deployment-hardening.md`
 - [x] F97 C: GitHub branch protection on `main` → see `docs/plans/F97-demo-environment-deployment-hardening.md`
+- [x] F97 F: HTTP Basic Auth for the demo environment → see `docs/plans/F97-demo-environment-deployment-hardening.md`
 - [ ] F97 D: Dokploy dashboard reconfiguration (manual) → see `docs/plans/F97-demo-environment-deployment-hardening.md`
 - [ ] F97 E: Journal + docs update → see `docs/plans/F97-demo-environment-deployment-hardening.md`
 

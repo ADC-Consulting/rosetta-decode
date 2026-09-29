@@ -25,6 +25,16 @@ Done looks like: the demo environment is served by a real static build (not a de
 cannot receive code that fails CI, and Dokploy is watching the right branch with sensible path
 filtering.
 
+**Added mid-plan (2026-09-29):** checked ADC's Confluence handbook (issue #127 pointed at it) for
+the actual ADC-recommended Dokploy process. Found a genuine compliance gap: ADC's demo guide and
+its MS2.5 Secure Software Development Policy require internet-facing demos hosted on ADC
+infrastructure to have some form of access gating — ADC's own demo templates ship with auth built
+in. This deployment currently has none, and the tool already flags `sensitive_data_findings` on
+uploaded content, meaning real prospect/client data could reach a fully open instance. Folded in
+as subtask F below (shared HTTP Basic Auth via nginx, user's explicit choice over full SSO — see
+`journal/DECISIONS.md` 2026-09-29 entries for the full rationale, including the separately-decided
+solo-developer exception to MS2.5 §6.2's reviewer requirement, which is NOT being changed here).
+
 ## Acceptance Criteria
 
 - [ ] Frontend is served via nginx from a `vite build` static output, not `npm run dev`
@@ -41,6 +51,11 @@ filtering.
       performed by the user — no Dokploy API/CLI access in this session)
 - [ ] Demo environment verified live: page loads at `rosetta.dokploy-1.adc-it.com`, API calls
       succeed, SSE endpoints (trace stream, explain streaming) still work through the proxy
+- [ ] The whole app (static assets + all proxied API routes) is gated behind HTTP Basic Auth when
+      `DEMO_AUTH_USER`/`DEMO_AUTH_PASSWORD` are set, and behaves exactly as before (no auth
+      prompt) when they're unset — local `make dev` must stay frictionless
+- [ ] No credential material (plaintext or hashed) is committed to the repo — it's a **public**
+      GitHub repo — the actual password lives in ADC's Bitwarden per MS2.5 §11.1
 
 ## Subtasks
 
@@ -82,22 +97,60 @@ via `gh api repos/ADC-Consulting/rosetta-decode/rulesets/15240362`, which shows 
 deletion/non-fast-forward/pull-request rules.
 - [x] done
 
+### F: HTTP Basic Auth for the demo environment
+**File:** `src/frontend/nginx.conf`, `src/frontend/Dockerfile`, `docker-compose.yml`
+**Depends on:** A (extends the same nginx.conf/Dockerfile A created)
+**Done when:** the whole nginx server block (static assets + all proxied `/jobs`, `/migrate`,
+`/explain`, `/health` routes — not just the SPA shell, or an unauthenticated visitor could hit the
+API directly) is gated behind `auth_basic` when credentials are configured. Design:
+- A small entrypoint script in the final Docker stage checks for `DEMO_AUTH_USER` and
+  `DEMO_AUTH_PASSWORD` env vars at container start. If both are set, it generates
+  `/etc/nginx/.htpasswd` (via `htpasswd` from `apache2-utils`, installed in the final stage) and
+  enables an `auth_basic` include; if either is unset, auth is skipped entirely (nginx starts
+  exactly as it does today) — this keeps `make dev`/local Docker Compose frictionless, since those
+  env vars won't be set there.
+- `docker-compose.yml`'s `frontend` service gets
+  `environment: [DEMO_AUTH_USER=${DEMO_AUTH_USER:-}, DEMO_AUTH_PASSWORD=${DEMO_AUTH_PASSWORD:-}]`
+  (empty defaults, same pattern already used for `tensorzero`'s Azure vars) so the values pass
+  through when Dokploy's dashboard sets them, without requiring anything locally.
+- Nothing about the actual credential value is committed anywhere — no htpasswd file, no hash, no
+  plaintext. It's set once in Dokploy's Environment tab (manual, subtask D) and the value itself
+  lives in ADC's Bitwarden. Note in a comment (not `.env.example`, which Claude cannot edit in this
+  sandbox — flag the addition to the user instead) that these two vars exist and what they do.
+
+Implemented via `src/frontend/docker-entrypoint.sh` (new) + a wildcard `include` in
+`nginx.conf` at the `server {}` level (`auth_basic` inherits into every location automatically, no
+per-location duplication needed) + `apache2-utils` installed in the Dockerfile's final stage for
+`htpasswd`. Independently verified (not just the implementing agent's own report) via a standalone
+container run: auth-on + no creds → 401, auth-on + right creds → 200, auth-on + wrong creds → 401,
+auth-off (env vars unset) → 200 with no prompt. `.env.example` lines still need adding manually by
+the user (sandbox blocks Claude editing `.env*`):
+```
+# Optional: gates the whole demo deployment behind HTTP Basic Auth when both are set (unset = no auth, local dev unaffected)
+DEMO_AUTH_USER=
+DEMO_AUTH_PASSWORD=
+```
+- [x] done
+
 ### D: Dokploy dashboard reconfiguration (manual)
 **File:** none (Dokploy dashboard only)
-**Depends on:** A, B, C (repointing to `main` is only safe once `main` is protected)
+**Depends on:** A, B, C, F (repointing to `main` is only safe once `main` is protected and, now,
+once the auth gap is closed — don't put an unauthenticated build live even briefly)
 **Done when:** the user has, in the Dokploy dashboard: (1) changed Provider → Branch from
 `fix/vite-allowed-hosts` to `main`, (2) set Watch Paths to `src/**`, `docker-compose.yml`,
-`config/**`, `alembic/**`, (3) triggered a Deploy and confirmed it's green, (4) confirmed
-`rosetta.dokploy-1.adc-it.com` loads correctly with working API calls and SSE streams.
+`config/**`, `alembic/**`, (3) set `DEMO_AUTH_USER`/`DEMO_AUTH_PASSWORD` in the Environment tab
+with a value generated fresh and stored in Bitwarden (not reused from anywhere else), (4) triggered
+a Deploy and confirmed it's green, (5) confirmed `rosetta.dokploy-1.adc-it.com` prompts for
+credentials, accepts the right ones, and works correctly afterward (API calls, SSE streams).
 - [ ] done
 
 ### E: Journal + docs update
 **File:** `journal/BACKLOG.md`, `journal/DECISIONS.md`
-**Depends on:** A, B, C, D
+**Depends on:** A, B, C, D, F
 **Done when:** F97 subtasks marked done in `BACKLOG.md`, a `DECISIONS.md` entry records the
-branch-protection addition and the dev-server-to-static-build switch as locked decisions, and the
-stale PR #135 follow-up is closed out as fully resolved (not just the immediate fix, but the
-underlying dev-server gap it exposed).
+branch-protection addition, the dev-server-to-static-build switch, and the Basic Auth addition as
+locked decisions, and the stale PR #135 follow-up is closed out as fully resolved (not just the
+immediate fix, but the underlying dev-server gap and the compliance gap it led to discovering).
 - [ ] done
 
 ### Final: Full verification
