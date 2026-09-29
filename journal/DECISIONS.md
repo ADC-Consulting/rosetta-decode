@@ -6,6 +6,24 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-09-29 — Solo-developer exception flagged per ADC MS2.5 policy §7.3
+
+- **Context:** while researching Dokploy best practices for F97, checked ADC's Confluence
+  handbook (`MS2.5 Secure Software Development Policy`) since the demo environment
+  (`rosetta.dokploy-1.adc-it.com`) is ADC-hosted infrastructure and in scope of that policy.
+  §6.2 requires branch protection with at least one reviewer other than the author before merge;
+  §7.3 allows a documented exception for solo-developer projects.
+- **Decision:** `main`'s branch protection (added this session, F97 subtask C) intentionally does
+  NOT require a second reviewer — `required_approving_review_count: 0`. This is a solo-developer
+  project right now. Flagging this explicitly here satisfies §7.3's requirement to record the
+  exception; per policy it should also get a periodic review by IT & Compliance or a senior
+  developer at minimum at midpoint and handover — that's an ADC process step outside what this
+  repo/session can arrange, noted here so it isn't lost.
+- **Revisit:** if a second contributor joins the project, or at any ADC compliance review of this
+  repo — add the reviewer requirement at that point.
+
+---
+
 ## 2026-09-28 — Effort-estimate investigation: formula is correct, two follow-ups flagged not fixed
 
 - **"Before you accept" panel's effort-estimate figure traced end to end, no code bug found:**
