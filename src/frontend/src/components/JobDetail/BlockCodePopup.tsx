@@ -356,6 +356,11 @@ export default function BlockCodePopup({
                   {pythonFile}
                 </span>
               )}
+              {startLine > 0 && (
+                <span className="ml-auto text-[11px] text-muted-foreground/60 font-mono">
+                  lines {startLine}–{endLine}
+                </span>
+              )}
               {isReadOnly && (
                 <span className="ml-auto text-[11px] text-muted-foreground/60 italic">
                   read-only

@@ -710,6 +710,90 @@ async def test_get_job_plan_available() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_job_plan_includes_end_line() -> None:
+    """Test get_job_plan round-trips end_line from stored block plan data.
+
+    Regression test: BlockPlanResponse previously had no end_line field, so
+    Pydantic silently dropped it from the raw stored dict during validation
+    (SAS: src/backend/api/routes/jobs.py:605), even though the worker always
+    computes and stores it (SAS: src/worker/engine/agents/migration_planner.py:315-339).
+    """
+    job_id = uuid.uuid4()
+    plan_data = {
+        "summary": "Plan summary",
+        "overall_risk": "low",
+        "block_plans": [
+            {
+                "block_id": "b1",
+                "source_file": "test.sas",
+                "start_line": 9,
+                "end_line": 42,
+                "block_type": "DATA_STEP",
+                "strategy": "auto",
+                "risk": "low",
+                "rationale": "simple",
+                "estimated_effort": "low",
+            }
+        ],
+        "recommended_review_blocks": [],
+        "cross_file_dependencies": [],
+    }
+    job = _make_job(str(job_id), status="done", migration_plan=plan_data)
+    session = AsyncMock()
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = job
+    session.execute.return_value = result_mock
+
+    response = await get_job_plan(job_id, session)
+
+    from src.backend.api.schemas import JobPlanResponse
+
+    assert isinstance(response, JobPlanResponse)
+    assert response.block_plans[0].end_line == 42
+
+
+@pytest.mark.asyncio
+async def test_get_job_plan_missing_end_line_defaults_to_none() -> None:
+    """Test get_job_plan deserializes pre-fix stored plans missing end_line.
+
+    Older jobs created before end_line was added to the worker's BlockPlan
+    model have no end_line key in their stored migration_plan JSON at all.
+    This must not raise a validation error; end_line should come back as None.
+    """
+    job_id = uuid.uuid4()
+    plan_data = {
+        "summary": "Plan summary",
+        "overall_risk": "low",
+        "block_plans": [
+            {
+                "block_id": "b1",
+                "source_file": "test.sas",
+                "start_line": 9,
+                "block_type": "DATA_STEP",
+                "strategy": "auto",
+                "risk": "low",
+                "rationale": "simple",
+                "estimated_effort": "low",
+            }
+        ],
+        "recommended_review_blocks": [],
+        "cross_file_dependencies": [],
+    }
+    job = _make_job(str(job_id), status="done", migration_plan=plan_data)
+    session = AsyncMock()
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = job
+    session.execute.return_value = result_mock
+
+    response = await get_job_plan(job_id, session)
+
+    from src.backend.api.schemas import JobPlanResponse
+
+    assert isinstance(response, JobPlanResponse)
+    assert response.block_plans[0].end_line is None
+
+
+@pytest.mark.asyncio
 async def test_get_job_plan_not_found() -> None:
     """Test get_job_plan raises 404 when job doesn't exist."""
     job_id = uuid.uuid4()

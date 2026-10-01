@@ -229,6 +229,11 @@ class BlockPlanResponse(BaseModel):
     block_id: str
     source_file: str
     start_line: int
+    # SAS: src/worker/engine/models.py:299 — mirrors worker's BlockPlan.end_line
+    # exactly: optional since stored plans created before this field existed
+    # (migration_plan / migration_plan_post_run JSON predating this fix) won't
+    # have the key at all.
+    end_line: int | None = None
     block_type: str
     strategy: str
     risk: str
