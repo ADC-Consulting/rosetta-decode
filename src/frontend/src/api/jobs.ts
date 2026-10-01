@@ -233,7 +233,7 @@ export async function saveBlockPython(
   jobId: string,
   blockId: string,
   pythonCode: string,
-  options?: { notes?: string | null; trigger?: string },
+  options?: { notes?: string | null; trigger?: string; verified_by?: string | null },
 ): Promise<{ revision_number: number; block_id: string }> {
   const encodedBlockId = blockId.replace(/:/g, '%3A');
   const res = await fetch(
@@ -245,6 +245,9 @@ export async function saveBlockPython(
         python_code: pythonCode,
         notes: options?.notes ?? null,
         trigger: options?.trigger ?? "human",
+        // Backend only persists this when trigger === "human-verify" — safe to
+        // always send, it's ignored server-side for every other trigger value.
+        verified_by: options?.verified_by ?? null,
       }),
     },
   );

@@ -2,7 +2,7 @@
 
 **Phase:** 3
 **Area:** Both (small Backend / API addition + Frontend consolidation)
-**Status:** in-progress
+**Status:** complete
 
 ## Goal
 
@@ -30,23 +30,27 @@ viewed, recording who verified it.
 
 ## Acceptance Criteria
 
-- [ ] `block_revisions` has a nullable `verified_by` column (no `verified_at` needed — the
+- [x] `block_revisions` has a nullable `verified_by` column (no `verified_at` needed — the
       existing `created_at` on a `human-verify`-triggered revision already serves as "when")
-- [ ] `PATCH /jobs/{id}/blocks/{block_id}/python` accepts an optional `verified_by` in its request
+- [x] `PATCH /jobs/{id}/blocks/{block_id}/python` accepts an optional `verified_by` in its request
       body, stored only when `trigger == "human-verify"`
-- [ ] `ChangelogEntry` exposes `verified_by`
-- [ ] A shared `deriveBlockStatus`/`BlockStatus` helper exists (currently duplicated/divergent
+- [x] `ChangelogEntry` exposes `verified_by`
+- [x] A shared `deriveBlockStatus`/`BlockStatus` helper exists (currently duplicated/divergent
       between `ETLTab.tsx` and `BlockPlanTable.tsx`) and both consume it
-- [ ] `BlockCodePopup` has two distinct footer actions when editable: "Save" (`trigger: "human"`,
+- [x] `BlockCodePopup` has two distinct footer actions when editable: "Save" (`trigger: "human"`,
       no verification) and "Mark as verified" (`trigger: "human-verify"`, prompts for a reviewer
       name pre-filled from `localStorage`) — not the same action
-- [ ] `BlockCodePopup` has a dark/light theme toggle for the editor, matching what
+- [x] `BlockCodePopup` has a dark/light theme toggle for the editor, matching what
       `BlockPlanTable`'s dialog already has today (parity requirement before Plan tab can switch to
       it without regressing)
-- [ ] `BlockPlanTable.tsx`'s hand-rolled `<Dialog>` is replaced with `<BlockCodePopup>`, keeping its
+- [x] `BlockPlanTable.tsx`'s hand-rolled `<Dialog>` is replaced with `<BlockCodePopup>`, keeping its
       existing (more complex) source/generated-file resolution logic intact
-- [ ] A verified block shows a visible "Verified by X" indicator in both ETL tab and Plan tab
-- [ ] `make test` exits 0, ruff/mypy/tsc/lint all pass
+- [x] A verified block shows a visible "Verified by X" indicator in both ETL tab and Plan tab
+- [x] The job-level `auto_verified`/`needs_review` counts actually reflect verification — found
+      missing during live testing (backend never checked `verified_by`, and the Plan tab reads a
+      separate, differently-keyed trust-report query than the one originally invalidated), both
+      fixed and confirmed live: counts update reactively, no reload needed
+- [x] `make test` exits 0, ruff/mypy/tsc/lint all pass
 
 ## Subtasks
 
@@ -84,7 +88,7 @@ status/tone helpers already there)
 `ETLTab.tsx`) move to a shared module; `ETLTab.tsx` imports it instead of defining its own copy.
 This subtask alone should be a no-op behavior change for ETL tab — pure extraction, verified by
 `make test` and a quick manual check that ETL tab still looks identical.
-- [ ] done
+- [x] done
 
 ### E: `BlockCodePopup` — split Save/Verify, add theme toggle
 **File:** `src/frontend/src/components/JobDetail/BlockCodePopup.tsx`
@@ -98,7 +102,7 @@ This subtask alone should be a no-op behavior change for ETL tab — pure extrac
   (`codeEditorDark` state, sun/moon icon button) — port that interaction here.
 - The "human-verified" status banner/indicator shows the `verified_by` name when present (e.g.
   "Verified by Jane — you can close this panel.").
-- [ ] done
+- [x] done
 
 ### F: Replace `BlockPlanTable`'s hand-rolled dialog with `BlockCodePopup`
 **File:** `src/frontend/src/components/JobDetail/BlockPlanTable.tsx`
@@ -114,7 +118,17 @@ D, using this component's existing `trustBlocks`/`bp.strategy` data plus a chang
 (`block-revisions`, `job`, `job versions`) already present in this file. The now-unused
 `codeEditorDark`/`codeEditable`/`codeSaving` local dialog state and JSX are removed — `BlockCodePopup`
 owns that now.
-- [ ] done
+
+Found and fixed two additional gaps while live-testing (both pre-existing, not introduced by this
+subtask): (1) `needs_attention` never checked `verified_by` at all — a verified block's own badge
+updated but the job-level `auto_verified`/`needs_review` counts (and the effort-estimate formula
+that reads them) never moved; fixed server-side with a short-circuit override. (2) the frontend has
+two separate trust-report queries under different key shapes (`["job", jobId, "trust-report"]` in
+`JobDetailPage.tsx`, consumed by `ETLTab`'s summary bar, vs `["trust-report", jobId]` in
+`PlanTab.tsx`, driving the Plan tab's counts) — the verify callbacks only invalidated the first one,
+so the Plan tab's counts were stale until a full page reload; fixed by invalidating both. Verified
+live end-to-end after both fixes: counts update reactively, in place, with no reload needed.
+- [x] done
 
 ### G: Manual smoke test
 **Depends on:** F
@@ -123,17 +137,46 @@ practical, per this session's established fallback) — in the Plan tab's step t
 `needs_review` block's code, confirm both "Save" and "Mark as verified" appear and behave distinctly,
 confirm the block drops out of the `needs_review` count once verified, confirm "Verified by X" shows
 in both the Plan tab and ETL tab for the same block (same underlying data, two surfaces).
-- [ ] done
+
+Verified live via real browser automation (not just code review): opened a `needs_review` block in
+the Plan tab's step table, confirmed the consolidated `BlockCodePopup` renders there with Save and
+Mark as verified as distinct actions, confirmed the reviewer-name prompt pre-fills from
+`localStorage`, confirmed the badge flips to "Human-verified" with the name shown, and confirmed
+(after finding and fixing the two gaps noted in subtask F) the job-level counts update reactively
+in the same session, no reload required.
+- [x] done
 
 ### Final: Full verification
-- [ ] `make test` exits 0
-- [ ] ruff, mypy, tsc, lint all pass
-- [ ] Mark F98 done in `journal/BACKLOG.md`
+- [x] `make test` exits 0
+- [x] ruff, mypy, tsc, lint all pass
+- [x] Mark F98 done in `journal/BACKLOG.md`
 
 ## Dependencies on other features
 
 - Builds on the existing `BlockRevision`/changelog/`trust-report` infrastructure — extends it with
   one column, doesn't replace anything.
+
+## Follow-ups discovered, not actioned here
+
+- **A third divergent `deriveBlockStatus`-equivalent exists**: `src/frontend/src/components/JobDetail/blockStatusHelpers.ts`
+  (`BlockStatusKind`/`getBlockStatus`, used by `BlockInspectorPanel`/`PipelineStepPanel` via
+  `BlockRow`) — a different enum shape (includes a `failed` state the others don't), display-only,
+  not a code-editing dialog. Out of scope for this feature since it doesn't touch verification
+  directly, but it's the same class of duplication this plan just fixed twice over. Worth
+  consolidating alongside `status-colors.ts`'s version someday.
+- **Two separate trust-report queries with different key shapes** (`["job", jobId, "trust-report"]`
+  in `JobDetailPage.tsx`, `["trust-report", jobId]` in `PlanTab.tsx`) is itself a code-quality issue
+  — both are now correctly invalidated after a verify action, but having two independent queries
+  for the same backend resource is fragile and will bite again the next time someone adds a feature
+  that changes trust-report data without knowing both exist. Worth unifying into one shared query
+  (e.g. lifted to a hook or context) in a future cleanup.
+- **A separate, pre-existing bug unrelated to F98**: hard-navigating directly to any `/jobs/...` URL
+  (not via client-side routing) returns raw backend JSON instead of the SPA — nginx's `/jobs`
+  location block (added in F97) proxies the request to the backend before the SPA ever loads, since
+  the API and the page share the same path prefix. Affects any bookmark, shared link, or browser
+  refresh while on a job detail page. Found while live-testing this feature; not fixed here since
+  it's an F97-era infrastructure issue, not an F98 one — flagged in `journal/BACKLOG.md` for
+  separate follow-up.
 
 ## Out of scope for this feature
 

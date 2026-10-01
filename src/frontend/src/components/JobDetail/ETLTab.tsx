@@ -25,7 +25,7 @@ import FileBlockListPanel from "./FileBlockListPanel";
 import FileViewPopup from "./FileViewPopup";
 import PipelineStepPanel from "./PipelineStepPanel";
 import PythonModulePanel from "./PythonModulePanel";
-import { TONE_TEXT_CLASS } from "./status-colors";
+import { deriveBlockStatus, TONE_TEXT_CLASS } from "./status-colors";
 import TargetGraph from "./TargetGraph";
 
 // ---------------------------------------------------------------------------
@@ -40,30 +40,6 @@ interface ETLTabProps {
   isReviewable: boolean;
   isAccepted?: boolean;
   generatedFiles: Record<string, string> | null;
-}
-
-type BlockStatus =
-  | "auto-verified"
-  | "needs-review"
-  | "manual"
-  | "human-verified"
-  | "pending";
-
-// ---------------------------------------------------------------------------
-// Status derivation helper
-// ---------------------------------------------------------------------------
-
-function deriveBlockStatus(
-  blockId: string,
-  blockPlan: BlockPlan,
-  trustBlocks: Record<string, TrustReportBlock>,
-  humanVerifiedBlocks: Set<string>,
-): BlockStatus {
-  if (humanVerifiedBlocks.has(blockId)) return "human-verified";
-  if (blockPlan.strategy === "manual") return "manual";
-  if (trustBlocks[blockId]?.needs_attention) return "needs-review";
-  if (trustBlocks[blockId]?.reconciliation_status === "pass") return "auto-verified";
-  return "pending";
 }
 
 // ---------------------------------------------------------------------------
@@ -141,6 +117,17 @@ export default function ETLTab({
       .filter((e) => e.trigger === "human-verify")
       .forEach((e) => s.add(e.block_id));
     return s;
+  }, [changelog]);
+
+  // ── Changelog → verifiedBy per block (entries are newest-first, so the first match wins) ──
+  const verifiedByMap = useMemo(() => {
+    const m = new Map<string, string | null>();
+    (changelog?.entries ?? [])
+      .filter((e) => e.trigger === "human-verify")
+      .forEach((e) => {
+        if (!m.has(e.block_id)) m.set(e.block_id, e.verified_by);
+      });
+    return m;
   }, [changelog]);
 
   // ── trustBlocks map ───────────────────────────────────────────────────────
@@ -258,6 +245,15 @@ export default function ETLTab({
   const handleVerified = () => {
     void queryClient.invalidateQueries({
       queryKey: ["job", jobId, "changelog"],
+    });
+    void queryClient.invalidateQueries({
+      queryKey: ["job", jobId, "trust-report"],
+    });
+    // PlanTab.tsx owns a separate trust-report query under this key — it's the one that actually
+    // drives the Plan tab's "Needs review"/"Auto-verified" counts, so it must be invalidated too
+    // (the key above only refreshes JobDetailPage's own copy, consumed by this tab's summary bar).
+    void queryClient.invalidateQueries({
+      queryKey: ["trust-report", jobId],
     });
     // Don't close modal — let user see the Verified badge update, then close manually
   };
@@ -558,8 +554,10 @@ export default function ETLTab({
           sasSource={jobSources?.[codePopupBlockPlan.source_file] ?? ""}
           startLine={codePopupBlockPlan.start_line}
           endLine={codePopupBlockPlan.end_line}
+          verifiedBy={verifiedByMap.get(codePopupBlockId) ?? null}
           onClose={() => setCodePopupBlockId(null)}
           onVerified={handleVerified}
+          onSaved={handleVerified}
           jobAccepted={isAccepted}
         />
       )}

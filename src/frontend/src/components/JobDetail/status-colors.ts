@@ -1,4 +1,4 @@
-import type { JobStatusValue } from "@/api/types";
+import type { BlockPlan, JobStatusValue, TrustReportBlock } from "@/api/types";
 
 // ---------------------------------------------------------------------------
 // Shared status-color tokens for the Job Detail Plan/ETL surfaces.
@@ -182,3 +182,35 @@ export const JOB_STATUS_TONE: Record<JobStatusValue, Tone> = {
   done: "success",
   failed: "danger",
 };
+
+// ---------------------------------------------------------------------------
+// Block verification status (F98)
+//
+// Was defined independently in ETLTab.tsx and (as a parallel but distinct
+// `BlockStatusKind` — see blockStatusHelpers.ts) elsewhere. This is the one
+// `BlockStatus`/`deriveBlockStatus` both the ETL tab and Plan tab's code
+// popup consume — the exact class of divergence this module's header comment
+// warns about, now for verification status instead of confidence/strategy/
+// risk/criticality. Not to be confused with `BlockStatus` in `@/api/types`
+// (an unrelated lineage per-block OK/UNRECOGNIZED/ERROR_PRONE indicator).
+// ---------------------------------------------------------------------------
+
+export type BlockStatus =
+  | "auto-verified"
+  | "needs-review"
+  | "manual"
+  | "human-verified"
+  | "pending";
+
+export function deriveBlockStatus(
+  blockId: string,
+  blockPlan: BlockPlan,
+  trustBlocks: Record<string, TrustReportBlock>,
+  humanVerifiedBlocks: Set<string>,
+): BlockStatus {
+  if (humanVerifiedBlocks.has(blockId)) return "human-verified";
+  if (blockPlan.strategy === "manual") return "manual";
+  if (trustBlocks[blockId]?.needs_attention) return "needs-review";
+  if (trustBlocks[blockId]?.reconciliation_status === "pass") return "auto-verified";
+  return "pending";
+}

@@ -678,17 +678,34 @@ these are the remaining smaller ones, not yet actioned, no decision made on prio
   - Locked: static content only (no live stats), single CTA (New migration upload, no demo-picker
     since no persistent demo library exists), copy stays concrete to SAS→Python — see
     `journal/DECISIONS.md` 2026-09-28
-- [ ] F98: Manual block verification, available consistently in the Plan tab → see `docs/plans/F98-manual-block-verification.md`
+- [x] F98: Manual block verification, available consistently in the Plan tab → see `docs/plans/F98-manual-block-verification.md`
   (revised after investigation found a working "Mark as verified" already exists in the ETL tab's
   `BlockCodePopup` — the Plan tab's step table uses a separate, hand-rolled code dialog that never
   got it. Now mostly a frontend consolidation + one small backend column, not new infrastructure)
   - [x] F98 A: Alembic migration — `verified_by` on `block_revisions` → see `docs/plans/F98-manual-block-verification.md`
   - [x] F98 B: Schema + route — accept and store `verified_by` → see `docs/plans/F98-manual-block-verification.md`
   - [x] F98 C: Route tests → see `docs/plans/F98-manual-block-verification.md`
-  - [ ] F98 D: Shared `deriveBlockStatus`/`BlockStatus` helper (extracted from `ETLTab.tsx`) → see `docs/plans/F98-manual-block-verification.md`
-  - [ ] F98 E: `BlockCodePopup` — split Save/Verify, add theme toggle → see `docs/plans/F98-manual-block-verification.md`
-  - [ ] F98 F: Replace `BlockPlanTable`'s hand-rolled dialog with `BlockCodePopup` → see `docs/plans/F98-manual-block-verification.md`
-  - [ ] F98 G: Manual smoke test → see `docs/plans/F98-manual-block-verification.md`
+  - [x] F98 D: Shared `deriveBlockStatus`/`BlockStatus` helper (extracted from `ETLTab.tsx`) → see `docs/plans/F98-manual-block-verification.md`
+  - [x] F98 E: `BlockCodePopup` — split Save/Verify, add theme toggle → see `docs/plans/F98-manual-block-verification.md`
+  - [x] F98 F: Replace `BlockPlanTable`'s hand-rolled dialog with `BlockCodePopup` → see `docs/plans/F98-manual-block-verification.md`
+    — found and fixed two live-testing-only gaps: `needs_attention` never checked `verified_by`
+    (fixed server-side), and two separate trust-report queries under different key shapes meant
+    only one got invalidated after verifying (fixed by invalidating both)
+  - [x] F98 G: Manual smoke test → see `docs/plans/F98-manual-block-verification.md` — verified live
+    via real browser automation, counts confirmed updating reactively with no reload
+
+**F98 — complete.** Follow-ups discovered, not actioned (see `docs/plans/F98-manual-block-verification.md`
+"Follow-ups discovered" section for full detail):
+- [ ] A third divergent block-status helper (`blockStatusHelpers.ts`, used by `BlockInspectorPanel`/
+  `PipelineStepPanel`) — same class of duplication just fixed twice over in F98, worth consolidating
+- [ ] Two separate trust-report queries with different key shapes (`["job", jobId, "trust-report"]`
+  vs `["trust-report", jobId]`) — both now correctly invalidated, but worth unifying into one query
+- [ ] **Separate, pre-existing bug (not F98's, found while live-testing it):** hard-navigating
+  directly to any `/jobs/...` URL (not via client-side routing — e.g. a bookmark, shared link, or
+  browser refresh while on a job detail page) returns raw backend JSON instead of the SPA. Root
+  cause: nginx's `/jobs` location block (added in F97) proxies the request to the backend before
+  the SPA ever loads, since the API and the frontend page share the same path prefix. This affects
+  the real deployed demo too, not just local dev — worth prioritizing
 - [ ] #45: AI tab placeholder for AI side-effect data capture
 - [ ] #44: BI tab placeholder for BI side-effect data capture
 

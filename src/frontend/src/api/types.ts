@@ -281,6 +281,7 @@ export interface ChangelogEntry {
   notes: string | null;
   hint: string | null;
   diff_vs_previous: string | null;
+  verified_by: string | null;
   created_at: string;
 }
 
