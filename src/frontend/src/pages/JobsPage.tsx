@@ -1389,12 +1389,17 @@ export default function JobsPage(): React.ReactElement {
                       htmlFor="migration-name-dialog"
                       className="text-sm font-medium text-foreground"
                     >
-                      Migration name
+                      Migration name{" "}
+                      <span className="text-destructive" aria-hidden="true">
+                        *
+                      </span>
+                      <span className="sr-only"> (required)</span>
                     </label>
                     <input
                       id="migration-name-dialog"
                       type="text"
                       required
+                      aria-required="true"
                       value={migrationName}
                       onChange={(e) => setMigrationName(e.target.value)}
                       placeholder="e.g. Q4 claims pipeline"
@@ -1514,6 +1519,14 @@ export default function JobsPage(): React.ReactElement {
                       .xls, .xlsx, .zip
                     </p>
                   )}
+
+                  {files.length > 0 &&
+                    unknownFiles.length === 0 &&
+                    migrationName.trim() === "" && (
+                      <p className="text-xs text-muted-foreground">
+                        Enter a migration name to continue.
+                      </p>
+                    )}
                 </form>
               )}
 
