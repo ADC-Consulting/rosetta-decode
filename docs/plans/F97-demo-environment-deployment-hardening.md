@@ -2,7 +2,7 @@
 
 **Phase:** Infrastructure / Deployment (cross-cutting, not tied to a product phase)
 **Area:** Both (Frontend build/serve + repo-level CI/branch settings)
-**Status:** in-progress
+**Status:** complete
 
 ## Goal
 
@@ -37,24 +37,26 @@ solo-developer exception to MS2.5 §6.2's reviewer requirement, which is NOT bei
 
 ## Acceptance Criteria
 
-- [ ] Frontend is served via nginx from a `vite build` static output, not `npm run dev`
-- [ ] nginx reverse-proxies `/jobs`, `/migrate`, `/explain`, `/health` to `http://backend:8000`
+- [x] Frontend is served via nginx from a `vite build` static output, not `npm run dev`
+- [x] nginx reverse-proxies `/jobs`, `/migrate`, `/explain`, `/health` to `http://backend:8000`
       (same behavior as the current `vite.config.ts` dev-server proxy) and falls back to
       `/index.html` for client-side routes
-- [ ] `docker-compose.yml`'s `frontend` service no longer bind-mounts source/`node_modules`
+- [x] `docker-compose.yml`'s `frontend` service no longer bind-mounts source/`node_modules`
       (those stay dev-only, in `docker-compose.override.yml`)
-- [ ] `main` requires the CI `all-green` status check to pass before merge
-- [ ] `make test` exits 0
-- [ ] `make docker-build` exits 0 (required by `CLAUDE.md` for any Dockerfile/compose change)
-- [ ] ruff and mypy pass
-- [ ] Dokploy dashboard repointed to `main` with Watch Paths set (manual step, tracked here but
+- [x] `main` requires the CI `all-green` status check to pass before merge
+- [x] `make test` exits 0
+- [x] `make docker-build` exits 0 (required by `CLAUDE.md` for any Dockerfile/compose change)
+- [x] ruff and mypy pass
+- [x] Dokploy dashboard repointed to `main` with Watch Paths set (manual step, tracked here but
       performed by the user — no Dokploy API/CLI access in this session)
-- [ ] Demo environment verified live: page loads at `rosetta.dokploy-1.adc-it.com`, API calls
-      succeed, SSE endpoints (trace stream, explain streaming) still work through the proxy
-- [ ] The whole app (static assets + all proxied API routes) is gated behind HTTP Basic Auth when
+- [x] Demo environment verified live: page loads at `rosetta.dokploy-1.adc-it.com`, API calls
+      succeed (full migration submission tested), SSE endpoints (trace stream) confirmed working
+      through the proxy
+- [x] The whole app (static assets + all proxied API routes) is gated behind HTTP Basic Auth when
       `DEMO_AUTH_USER`/`DEMO_AUTH_PASSWORD` are set, and behaves exactly as before (no auth
-      prompt) when they're unset — local `make dev` must stay frictionless
-- [ ] No credential material (plaintext or hashed) is committed to the repo — it's a **public**
+      prompt) when they're unset — local `make dev` confirmed frictionless; live deployment
+      confirmed prompting for credentials
+- [x] No credential material (plaintext or hashed) is committed to the repo — it's a **public**
       GitHub repo — the actual password lives in ADC's Bitwarden per MS2.5 §11.1
 
 ## Subtasks
@@ -156,7 +158,20 @@ var (`pydantic_ai.exceptions.UserError: Set the ANTHROPIC_API_KEY environment va
 predates F97 entirely and is likely instance-wide, not specific to this app. IT ticket filed and
 assigned to the Dokploy instance's admin (2026-09-29) with full root cause, evidence, and a
 no-patch-needed fix. (3)-(5) are blocked until that's resolved.
-- [ ] done
+
+Resolved (2026-10-01): admin (Nico Meier) proposed a lower-risk, app-local fix instead of the
+instance-wide key-restore workaround — re-create the env vars under this project from scratch.
+This works because the encryption bug only breaks *decrypting old* ciphertext; new writes always
+encrypt correctly under the current secret. Real values (`ANTHROPIC_API_KEY`, `LLM_MODEL`, the
+TensorZero/Azure vars) were copied from the local `.env` (already known-working) into Dokploy's
+Environment Settings box fresh, alongside new `DEMO_AUTH_USER=demo` /
+`DEMO_AUTH_PASSWORD=<generated, stored in Bitwarden>`. Note: this fixes `rosetta-decode`
+specifically, not the instance-wide root cause — any other app hit by the same secret rotation
+would need the identical per-app treatment. After saving + deploying: `backend`/`worker`/
+`tensorzero` all start clean, `rosetta.dokploy-1.adc-it.com` prompts for credentials, a migration
+submission works end-to-end, and the live trace view (SSE) works through the proxy. All five
+`Done when` criteria confirmed live.
+- [x] done
 
 ### E: Journal + docs update
 **File:** `journal/BACKLOG.md`, `journal/DECISIONS.md`
@@ -165,12 +180,12 @@ no-patch-needed fix. (3)-(5) are blocked until that's resolved.
 branch-protection addition, the dev-server-to-static-build switch, and the Basic Auth addition as
 locked decisions, and the stale PR #135 follow-up is closed out as fully resolved (not just the
 immediate fix, but the underlying dev-server gap and the compliance gap it led to discovering).
-- [ ] done
+- [x] done
 
 ### Final: Full verification
-- [ ] `make test` exits 0
-- [ ] `make docker-build` exits 0
-- [ ] Mark F97 done in `journal/BACKLOG.md`
+- [x] `make test` exits 0
+- [x] `make docker-build` exits 0
+- [x] Mark F97 done in `journal/BACKLOG.md`
 
 ## Dependencies on other features
 

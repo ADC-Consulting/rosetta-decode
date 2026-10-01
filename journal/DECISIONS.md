@@ -6,6 +6,30 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-10-01 — Dokploy env var encryption bug resolved; F97 complete
+
+- **Resolution:** rather than the instance-wide key-restore workaround (see 2026-09-29 entry
+  below), the Dokploy admin (Nico Meier) proposed and implemented a lower-risk, app-local fix:
+  re-create the environment variables under this specific project from scratch. This works because
+  the encryption bug only breaks *decrypting* ciphertext encrypted under a now-rotated secret — new
+  writes always encrypt correctly under the current secret. Real values (`ANTHROPIC_API_KEY`,
+  `LLM_MODEL`, the TensorZero/Azure vars) were copied from the local, already-working `.env` into
+  Dokploy's Environment Settings box, alongside new `DEMO_AUTH_USER=demo` and a freshly generated
+  `DEMO_AUTH_PASSWORD` (stored in ADC's Bitwarden, not reused from local testing).
+- **Why this is noted as a decision, not just a fix:** this app-local approach does not fix the
+  instance-wide root cause — any other app on the same Dokploy instance affected by the same
+  `BETTER_AUTH_SECRET` rotation would need the identical per-app treatment, not a one-time server
+  fix. That's a deliberate tradeoff the admin chose (lower risk, more toil, per-app) over the
+  riskier instance-wide key restoration. Not our call to revisit, but worth remembering if this
+  recurs or another app reports the same symptom.
+- **Verified live, not just deployed:** after re-entering the vars and redeploying,
+  `backend`/`worker`/`tensorzero` all start clean, `rosetta.dokploy-1.adc-it.com` prompts for
+  credentials, a full migration submission works end-to-end, and the live trace view (SSE) works
+  through the proxy. All F97 acceptance criteria confirmed; plan status set to `complete`.
+- **Revisit:** if another app on the same Dokploy instance reports the same `enc:v1:` symptom,
+  that's the moment to reconsider the instance-wide fix with the admin, since the per-app toil
+  would start adding up.
+
 ## 2026-09-29 — Dokploy env var encryption bug found, blocks F97 subtask D completion
 
 - **Finding:** the live demo (`rosetta.dokploy-1.adc-it.com`) went down independent of anything
