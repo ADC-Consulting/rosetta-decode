@@ -1403,3 +1403,65 @@ async def test_save_block_python_human_refine_ignores_verified_by(
     assert len(changelog.entries) == 1
     assert changelog.entries[0].trigger == "human-refine"
     assert changelog.entries[0].verified_by is None
+
+
+@pytest.mark.asyncio
+async def test_trust_report_needs_attention_false_once_verified(
+    f94_session: AsyncSession,
+) -> None:
+    """A verified block drops out of needs_attention despite an unconditional trigger.
+
+    SAS: docs/plans/F98-manual-block-verification.md:D
+
+    strategy="translated_with_review" is one of the unconditional needs_attention
+    triggers in ``_build_trust_blocks``. Before the fix, saving the block with
+    trigger="human-verify" (which sets verified_by on its latest BlockRevision)
+    had no effect on needs_attention — the Plan tab's "Needs review" count never
+    moved even though the block's own badge showed "Human-verified". This test
+    pins the override: verified_by set => needs_attention False, unconditionally.
+    """
+    from src.backend.api.routes.jobs import get_job_trust_report
+    from src.backend.api.schemas import BlockPythonEditRequest
+
+    job_id = await _f94_insert_job(
+        f94_session,
+        migration_plan={
+            "summary": "test",
+            "overall_risk": "low",
+            "recommended_review_blocks": [],
+            "cross_file_dependencies": [],
+            "block_plans": [
+                {
+                    "block_id": "step.sas:1",
+                    "source_file": "step.sas",
+                    "start_line": 1,
+                    "block_type": "DATA_STEP",
+                    "strategy": "translated_with_review",
+                    "risk": "medium",
+                    "rationale": "needs a human look",
+                    "estimated_effort": "1h",
+                }
+            ],
+        },
+    )
+
+    # Sanity check: before verification, this block is in the needs_attention bucket.
+    before = await get_job_trust_report(uuid.UUID(job_id), session=f94_session)
+    before_block = next(b for b in before.blocks if b.block_id == "step.sas:1")
+    assert before_block.needs_attention is True
+
+    await save_block_python(
+        uuid.UUID(job_id),
+        "step.sas:1",
+        BlockPythonEditRequest(
+            python_code="x = 1",
+            trigger="human-verify",
+            verified_by="Jane Doe",
+        ),
+        f94_session,
+    )
+
+    after = await get_job_trust_report(uuid.UUID(job_id), session=f94_session)
+    after_block = next(b for b in after.blocks if b.block_id == "step.sas:1")
+    assert after_block.needs_attention is False
+    assert after_block not in after.review_queue

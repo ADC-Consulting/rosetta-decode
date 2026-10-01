@@ -2288,7 +2288,14 @@ def _build_trust_blocks(
         latest_rev: BlockRevision | None = latest_revision.get(block_id)
         reconciliation_status: str | None = latest_rev.reconciliation_status if latest_rev else None
 
-        needs_attention: bool = (
+        # SAS: docs/plans/F98-manual-block-verification.md:D
+        # A human-verified block (trigger="human-verify", verified_by set on its
+        # latest revision) must behave identically to an auto-verified block
+        # everywhere needs_attention is consumed — this overrides every other
+        # trigger below rather than adding one more OR clause to them.
+        is_verified: bool = latest_rev is not None and latest_rev.verified_by is not None
+
+        needs_attention: bool = not is_verified and (
             strategy in _MANUAL_STRATEGIES
             or strategy == "translated_with_review"
             or reconciliation_status == "fail"
