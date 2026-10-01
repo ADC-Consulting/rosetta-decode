@@ -265,7 +265,7 @@
 - [x] F97 B: `docker-compose.yml` frontend service update → see `docs/plans/F97-demo-environment-deployment-hardening.md`
 - [x] F97 C: GitHub branch protection on `main` → see `docs/plans/F97-demo-environment-deployment-hardening.md`
 - [x] F97 F: HTTP Basic Auth for the demo environment → see `docs/plans/F97-demo-environment-deployment-hardening.md`
-- [ ] F97 D: Dokploy dashboard reconfiguration (manual) → see `docs/plans/F97-demo-environment-deployment-hardening.md`
+- [x] F97 D: Dokploy dashboard reconfiguration (manual) → see `docs/plans/F97-demo-environment-deployment-hardening.md`
   - [x] Merge PR #162 (`feat/F97-dokploy-demo-hardening` → `main`) — merged 2026-09-29
   - [x] Add two lines to `.env.example` (Claude cannot edit `.env*` in this sandbox, applied
     manually by the user): `DEMO_AUTH_USER=` / `DEMO_AUTH_PASSWORD=` under a
@@ -279,26 +279,28 @@
   - [x] Deployed once to test (2026-09-29) — confirmed live: `frontend`/nginx serves correctly
     (no more 404 on the domain itself), but `backend`/`worker` crash on startup and `tensorzero`
     crash-loops, all three for the same reason below. Root-caused, not guessed — see the IT ticket.
-  - [ ] **BLOCKED** — In Dokploy dashboard: Environment tab, set `DEMO_AUTH_USER`/`DEMO_AUTH_PASSWORD`.
-    Root cause confirmed 2026-09-29 with direct log evidence (not just inference): this app's
-    Environment Settings box shows `enc:v1:...` ciphertext even after the reveal toggle — a known,
+  - [x] Root cause confirmed 2026-09-29 with direct log evidence (not just inference): this app's
+    Environment Settings box showed `enc:v1:...` ciphertext even after the reveal toggle — a known,
     maintainer-acknowledged Dokploy bug, [Dokploy/dokploy#4833](https://github.com/Dokploy/dokploy/issues/4833).
     Migrating off the hardcoded `BETTER_AUTH_SECRET` orphans all previously-encrypted env vars;
-    since "Create Environment File" is on, deploys silently write an **empty** `.env` (ciphertext
+    since "Create Environment File" is on, deploys silently wrote an **empty** `.env` (ciphertext
     doesn't parse as `KEY=VALUE`) while still reporting success. Confirmed live: `tensorzero`
-    crash-loops on its own `AZURE_AI_FOUNDRY_ENDPOINT:?...` startup check, and `backend`'s crash log
-    names the exact missing var: `pydantic_ai.exceptions.UserError: Set the ANTHROPIC_API_KEY
-    environment variable...`. Almost certainly instance-wide, not specific to this app. **IT ticket
-    filed and assigned to Nico Meier (2026-09-29)** with the full root cause, evidence, and a
-    no-patch-needed fix (restore the legacy decryption key + restart Dokploy). Do not touch Save or
-    Deploy on this app again until he's resolved it
-  - [ ] **BLOCKED on the above** — Redeploy once Nico confirms the fix, verify `backend`/`worker`/
-    `tensorzero` all come up clean (no crash logs), then set the real `DEMO_AUTH_USER`/
-    `DEMO_AUTH_PASSWORD` in the now-working Environment tab and deploy once more
-  - [ ] **BLOCKED on the above** — Verify live: `rosetta.dokploy-1.adc-it.com` prompts for
-    credentials, accepts the right ones, API calls and SSE streams (trace stream, explain
-    streaming) work afterward
-- [ ] F97 E: Journal + docs update → see `docs/plans/F97-demo-environment-deployment-hardening.md`
+    crash-looped on its own `AZURE_AI_FOUNDRY_ENDPOINT:?...` startup check, and `backend`'s crash
+    log named the exact missing var: `pydantic_ai.exceptions.UserError: Set the ANTHROPIC_API_KEY
+    environment variable...`. IT ticket filed and assigned to Nico Meier (2026-09-29)
+  - [x] Resolved (2026-10-01): Nico proposed re-creating the env vars under this project instead of
+    an instance-wide key-restore (lower risk — new writes always encrypt correctly under the
+    current secret, only old ciphertext is unreadable). Real values copied from local `.env` into
+    Dokploy's Environment Settings box fresh, alongside new `DEMO_AUTH_USER=demo` /
+    `DEMO_AUTH_PASSWORD=<generated, stored in Bitwarden>`. Note: fixes this app specifically, not
+    the instance-wide root cause — other apps hit by the same secret rotation would need the same
+    per-app treatment
+  - [x] Verified live: `backend`/`worker`/`tensorzero` all start clean,
+    `rosetta.dokploy-1.adc-it.com` prompts for credentials, a full migration submission works
+    end-to-end, and the live trace view (SSE) works through the proxy
+- [x] F97 E: Journal + docs update → see `docs/plans/F97-demo-environment-deployment-hardening.md`
+
+**F97 — complete (2026-10-01)**
 
 **ADC compliance gaps** (found checking the Confluence handbook for issue #127 — see
 `journal/DECISIONS.md` 2026-09-29 entries; the auth gap above is the one already fixed via F97 F,
