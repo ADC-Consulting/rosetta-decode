@@ -266,7 +266,58 @@
 - [x] F97 C: GitHub branch protection on `main` → see `docs/plans/F97-demo-environment-deployment-hardening.md`
 - [x] F97 F: HTTP Basic Auth for the demo environment → see `docs/plans/F97-demo-environment-deployment-hardening.md`
 - [ ] F97 D: Dokploy dashboard reconfiguration (manual) → see `docs/plans/F97-demo-environment-deployment-hardening.md`
+  - [x] Merge PR #162 (`feat/F97-dokploy-demo-hardening` → `main`) — merged 2026-09-29
+  - [x] Add two lines to `.env.example` (Claude cannot edit `.env*` in this sandbox, applied
+    manually by the user): `DEMO_AUTH_USER=` / `DEMO_AUTH_PASSWORD=` under a
+    "Demo authentication" comment header; local `.env` confirmed reverted to empty afterward and
+    the frontend container recreated to pick it up — verified back to no-auth (`200` on `/`)
+  - [x] In Dokploy dashboard: Provider → Branch, `fix/vite-allowed-hosts` → `main`
+  - [x] In Dokploy dashboard: set Watch Paths to `src/**`, `docker-compose.yml`, `config/**`,
+    `alembic/**`
+  - [x] In Dokploy dashboard: Domains tab, Container Port for the frontend domain, `5173` → `80`
+    (needed since nginx replaced the Vite dev server and listens on 80, not 5173)
+  - [x] Deployed once to test (2026-09-29) — confirmed live: `frontend`/nginx serves correctly
+    (no more 404 on the domain itself), but `backend`/`worker` crash on startup and `tensorzero`
+    crash-loops, all three for the same reason below. Root-caused, not guessed — see the IT ticket.
+  - [ ] **BLOCKED** — In Dokploy dashboard: Environment tab, set `DEMO_AUTH_USER`/`DEMO_AUTH_PASSWORD`.
+    Root cause confirmed 2026-09-29 with direct log evidence (not just inference): this app's
+    Environment Settings box shows `enc:v1:...` ciphertext even after the reveal toggle — a known,
+    maintainer-acknowledged Dokploy bug, [Dokploy/dokploy#4833](https://github.com/Dokploy/dokploy/issues/4833).
+    Migrating off the hardcoded `BETTER_AUTH_SECRET` orphans all previously-encrypted env vars;
+    since "Create Environment File" is on, deploys silently write an **empty** `.env` (ciphertext
+    doesn't parse as `KEY=VALUE`) while still reporting success. Confirmed live: `tensorzero`
+    crash-loops on its own `AZURE_AI_FOUNDRY_ENDPOINT:?...` startup check, and `backend`'s crash log
+    names the exact missing var: `pydantic_ai.exceptions.UserError: Set the ANTHROPIC_API_KEY
+    environment variable...`. Almost certainly instance-wide, not specific to this app. **IT ticket
+    filed and assigned to Nico Meier (2026-09-29)** with the full root cause, evidence, and a
+    no-patch-needed fix (restore the legacy decryption key + restart Dokploy). Do not touch Save or
+    Deploy on this app again until he's resolved it
+  - [ ] **BLOCKED on the above** — Redeploy once Nico confirms the fix, verify `backend`/`worker`/
+    `tensorzero` all come up clean (no crash logs), then set the real `DEMO_AUTH_USER`/
+    `DEMO_AUTH_PASSWORD` in the now-working Environment tab and deploy once more
+  - [ ] **BLOCKED on the above** — Verify live: `rosetta.dokploy-1.adc-it.com` prompts for
+    credentials, accepts the right ones, API calls and SSE streams (trace stream, explain
+    streaming) work afterward
 - [ ] F97 E: Journal + docs update → see `docs/plans/F97-demo-environment-deployment-hardening.md`
+
+**ADC compliance gaps** (found checking the Confluence handbook for issue #127 — see
+`journal/DECISIONS.md` 2026-09-29 entries; the auth gap above is the one already fixed via F97 F,
+these are the remaining smaller ones, not yet actioned, no decision made on priority)
+
+- [ ] Repo (`ADC-Consulting/rosetta-decode`) is fully **public** on GitHub — confirm this is
+  intentional, or make private/internal
+- [ ] No GitHub topics set — ADC's "How to build a demo" guide asks for repos serving demos to
+  have `demo` as a topic and a `demo-` name prefix; this repo is the product itself, not a
+  spun-up-from-template demo, so the convention may not cleanly apply — needs a judgment call, not
+  a mechanical fix
+- [ ] Dokploy project named "SAS-converter" — handbook asks project names/descriptions to include
+  department/client info, not a generic name
+- [ ] Not confirmed whether this is registered in ADC's Demo Registry (linked from "How to build a
+  demo") — wasn't checked this session
+- [ ] No `SECURITY.md` / completed `MS2.5.1` Secure Development Checklist in the repo — the
+  handbook requires this for any demo living past the proposal phase and facing the internet;
+  partially addressed by the solo-dev exception already logged in `journal/DECISIONS.md`, but the
+  full checklist (data classification, dependency review, etc.) has not been filled out
 
 ---
 
@@ -454,6 +505,16 @@
   - [x] F59 S-E: unit tests for integrated expansion → `tests/test_macro_call_expander.py`
   - [x] F59 S-F: reconciliation test through parser → `tests/reconciliation/test_macro_control_flow.py`
   - [x] F59 S-G: `make test` exits 0
+- [ ] Wire `MacroResolverAgent` into the live pipeline as an LLM fallback for
+  `CannotExpandError` — built and unit-tested (`src/worker/engine/agents/macro_resolver.py`,
+  `tests/test_macro_resolver_agent.py`) but never instantiated in `main.py`; `MacroExpander`
+  already accepts an optional resolver param for exactly this (`macro_expander.py:165`) but
+  `main.py`'s soft-fail path (~line 1035) doesn't pass one, so macro-not-found, parameterised
+  macros, and %IF/%ELSE conditional macros just leave the call unexpanded in the block today.
+  Two of those three cases are explicitly out of MVP scope (`docs/mvp-scope.md`) — before
+  trusting this in production, verify with real reconciliation tests that the LLM fallback
+  actually produces correct output for at least the conditional-macro case, not just wire it
+  and assume. Explicitly deferred, not urgent (2026-09-29)
 - [x] #58: Record-level reconciliation (row-by-row diff) — row_hash_diff + ReconConfig + LLM key resolution
 - [ ] #59: Artefact versioning — group jobs by input_hash
 **F67 — ETL tab: Source / Target toggle (#67) → see `docs/plans/latest/F67-etl-source-target-toggle.md` — complete**

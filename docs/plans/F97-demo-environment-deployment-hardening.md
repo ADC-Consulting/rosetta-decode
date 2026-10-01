@@ -142,6 +142,20 @@ once the auth gap is closed — don't put an unauthenticated build live even bri
 with a value generated fresh and stored in Bitwarden (not reused from anywhere else), (4) triggered
 a Deploy and confirmed it's green, (5) confirmed `rosetta.dokploy-1.adc-it.com` prompts for
 credentials, accepts the right ones, and works correctly afterward (API calls, SSE streams).
+
+Progress (2026-09-29): (1), (2), and the Domains tab's Container Port (`5173` → `80`, needed since
+nginx replaced the dev server) are done. A test deploy was run to validate: `frontend`/nginx serves
+correctly (no more 404 on the domain), confirming subtasks A/B/F actually work live, not just
+locally. But it surfaced a separate, pre-existing Dokploy platform bug blocking (3)-(5): the app's
+Environment Settings box shows undecryptable `enc:v1:...` ciphertext, a known, maintainer-
+acknowledged Dokploy issue ([Dokploy/dokploy#4833](https://github.com/Dokploy/dokploy/issues/4833))
+where rotating `BETTER_AUTH_SECRET` orphans all previously-encrypted env vars and deploys silently
+write an empty `.env`. Confirmed with direct evidence, not inference: `tensorzero` crash-loops on
+its own `AZURE_AI_FOUNDRY_ENDPOINT:?...` check, and `backend`'s crash log names the exact missing
+var (`pydantic_ai.exceptions.UserError: Set the ANTHROPIC_API_KEY environment variable...`). This
+predates F97 entirely and is likely instance-wide, not specific to this app. IT ticket filed and
+assigned to the Dokploy instance's admin (2026-09-29) with full root cause, evidence, and a
+no-patch-needed fix. (3)-(5) are blocked until that's resolved.
 - [ ] done
 
 ### E: Journal + docs update
