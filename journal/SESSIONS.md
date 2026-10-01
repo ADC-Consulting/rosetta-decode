@@ -6,6 +6,74 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-09-29 — F97: Dokploy demo hardening (nginx build, branch protection, Basic Auth); found and escalated a Dokploy platform bug blocking full deployment
+
+**Duration:** spans 2026-09-28 → 2026-09-29 | **Focus:** Merging stale PR #135 (Dokploy access
+fix), investigating and implementing proper Dokploy deployment practices as F97, then hitting and
+diagnosing a real Dokploy platform outage while trying to verify it live
+
+### Done
+- Merged PR #161 (effort-estimate investigation close-out) and PR #135 (Dokploy `allowedHosts` +
+  API-proxy fix) — both stale, both cleanly mergeable after resolving `DECISIONS.md` conflicts
+- Diagnosed and fixed a local Docker Desktop disk-space exhaustion issue that had the local
+  `postgres` container crash-looping (`No space left on device`) — freed ~40GB via `docker image
+  prune -a` + `docker builder prune -a`, no volumes touched, self-recovered
+- Investigated ADC's actual Dokploy deployment practices via a GitHub Marketplace action and
+  ADC's own Confluence handbook (found via issue #127) — found the current deployment ran the Vite
+  **dev server** in place of a production build, had zero GitHub branch protection, and (via the
+  handbook) had no access gating despite being a public repo with sensitive-data-flagged uploads
+- Planned and implemented **F97** (`docs/plans/F97-demo-environment-deployment-hardening.md`):
+  multi-stage frontend Dockerfile serving a real `vite build` via nginx (subtask A), simplified
+  `docker-compose.yml` (subtask B), GitHub ruleset requiring CI to pass before merging to `main`
+  (subtask C), and HTTP Basic Auth gating the whole app when `DEMO_AUTH_USER`/`DEMO_AUTH_PASSWORD`
+  are set, inert otherwise (subtask F) — merged via PR #162
+- Reconfigured the Dokploy dashboard: branch repointed to `main`, Watch Paths set, Domains
+  Container Port corrected `5173` → `80` (subtask D, partial)
+- Ran a live test deploy — confirmed the F97 nginx/auth work is actually correct in the real
+  environment (frontend serves, no more 404 on the domain), but this surfaced a **separate,
+  pre-existing Dokploy platform bug**: env var encryption is broken instance-wide
+  ([Dokploy/dokploy#4833](https://github.com/Dokploy/dokploy/issues/4833)), silently deploying
+  every app with an empty environment. Root-caused with direct log evidence (`tensorzero`
+  crash-loop, `backend`'s `ANTHROPIC_API_KEY` traceback), not just inference. Filed an IT ticket
+  with full evidence and a no-patch-needed fix, assigned to the Dokploy admin
+- Cleaned up 12 stray test/verification jobs from the local jobs database, kept 5 curated demo
+  jobs (Loan demo, FS demo, Biometrics Demo, Monthly Revenue Pipeline, KYC/AML Client Screening)
+- Gave an accurate overview of the worker's 9-agent migration pipeline (grounded in `main.py`, not
+  the stale `docs/architecture.md`) — found `MacroResolverAgent` is fully built and tested but
+  never wired into the live pipeline; deferred to backlog, not actioned
+- Tightened the welcome page hero subhead copy (three short beats instead of one comma-heavy
+  sentence) — this commit was accidentally orphaned when the PR was merged via GitHub's UI before
+  it was pushed; caught and fixed via a follow-up PR (#163), along with a second orphaned
+  `.env.example` documentation commit (#164)
+
+### Decisions
+- See `journal/DECISIONS.md` 2026-09-29 entries: the dev-server-to-nginx switch, branch protection,
+  HTTP Basic Auth approach (shared credential, not SSO), the solo-developer exception to MS2.5
+  §6.2's reviewer requirement (explicitly not changed), and the Dokploy encryption bug finding
+
+### Open Questions
+- ADC compliance gaps found but not actioned (tracked in `journal/BACKLOG.md`): repo is fully
+  public on GitHub, no GitHub topics/naming convention, generic Dokploy project name, unconfirmed
+  Demo Registry registration, no `SECURITY.md`/completed MS2.5.1 checklist in the repo
+- Whether the Dokploy encryption bug affects other apps on the same instance — flagged to the admin
+  but not independently confirmed
+
+### Next Session — Start Here
+1. Check whether the IT ticket (Dokploy env var encryption bug) has been resolved. If yes: redeploy
+   `rosetta-decode`, verify `backend`/`worker`/`tensorzero` all start clean, set real
+   `DEMO_AUTH_USER`/`DEMO_AUTH_PASSWORD` in the now-working Environment tab, deploy once more, then
+   verify live (credential prompt, API calls, SSE streams) — this completes F97 subtask D, then E
+   (final journal close-out) can be done and F97 marked complete. If still unresolved: nothing to
+   do on our end until it is, see `docs/plans/F97-demo-environment-deployment-hardening.md`
+
+### Files Touched
+- `src/frontend/Dockerfile`, `src/frontend/nginx.conf`, `src/frontend/docker-entrypoint.sh`,
+  `docker-compose.yml`, `src/frontend/src/pages/WelcomePage.tsx`, `.env.example`
+- `docs/plans/F97-demo-environment-deployment-hardening.md` (new)
+- `journal/BACKLOG.md`, `journal/DECISIONS.md`
+
+---
+
 ## 2026-09-24 — PR #149 (F92) merged to main; closed out remaining open items; PR landscape triaged
 
 **Duration:** ~1h | **Focus:** Wrapping up the F92 branch — closing two deliberately-deferred items

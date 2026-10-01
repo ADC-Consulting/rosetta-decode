@@ -6,6 +6,54 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-09-29 — Dokploy env var encryption bug found, blocks F97 subtask D completion
+
+- **Finding:** the live demo (`rosetta.dokploy-1.adc-it.com`) went down independent of anything
+  this session did — last deploy was ~26 days old, and `backend`/`worker`/`tensorzero` are all
+  affected. Root-caused with direct log evidence, not inference: Dokploy's Environment Settings
+  box for this app shows undecryptable `enc:v1:...` ciphertext, matching a filed,
+  maintainer-acknowledged Dokploy bug ([Dokploy/dokploy#4833](https://github.com/Dokploy/dokploy/issues/4833)) —
+  rotating `BETTER_AUTH_SECRET` orphans all previously-encrypted env vars, and deploys silently
+  write an empty `.env` while still reporting success. `tensorzero` crash-loops on its own
+  `AZURE_AI_FOUNDRY_ENDPOINT:?...` startup check; `backend`'s crash log names the exact missing
+  var (`ANTHROPIC_API_KEY`).
+- **Why this matters for F97:** subtask D's remaining steps (real `DEMO_AUTH_USER`/
+  `DEMO_AUTH_PASSWORD`, final deploy, live verification) are blocked on this, not on anything in
+  our control. Subtasks A/B/C/F were still validated live during a test deploy — frontend/nginx
+  serves correctly, confirming the F97 code itself is correct; only the pre-existing platform bug
+  blocks full completion.
+- **Action taken:** IT ticket filed and assigned to the Dokploy instance's admin (Nico Meier, per
+  `docs/context` handbook lookup) with full root cause, evidence, and a no-patch-needed workaround
+  (restore the legacy decryption key + restart Dokploy). Likely affects other apps on the same
+  instance, flagged as such.
+- **Revisit:** once the ticket is resolved — finish F97 subtask D (real auth credentials, final
+  deploy, live verification) and subtask E (this plan's final close-out).
+
+## 2026-09-29 — F97: dev-server-to-static-build switch, branch protection, HTTP Basic Auth
+
+- **Frontend now built and served via nginx, not the Vite dev server, for the Dokploy demo
+  deployment:** the dev server was the root cause of PR #135's Host-header bug and isn't meant for
+  anything but local development. Multi-stage `Dockerfile` (`npm run build` → `nginx:1.27-alpine`)
+  with a checked-in `nginx.conf` mirroring PR #135's proxy table, plus lazy DNS resolution for the
+  `backend` upstream so nginx doesn't crash if `backend` isn't up yet at nginx's own startup.
+  Revisit: never, this is just correct — no reason to run a dev server in a deployed environment.
+- **`main` now requires the CI "All checks passed" status check before merge**, via a GitHub
+  ruleset (not the legacy branch-protection API, which still 404s for this repo — see F97 plan
+  subtask C for the distinction). Previously `main` had zero protection. Revisit: never, unless the
+  CI workflow itself is restructured and the check name changes.
+- **HTTP Basic Auth added, shared credential, not per-user SSO:** found while researching Dokploy
+  best practices — the repo is public on GitHub and ADC's MS2.5 policy requires access gating on
+  internet-facing ADC-hosted demos, which this had none of. User's explicit choice: shared HTTP
+  Basic Auth via nginx over full Microsoft 365 SSO (matches ADC's actual identity default but is a
+  disproportionate engineering lift for a solo-dev demo tool right now) and over deferring the gap
+  entirely. Implementation gates the whole nginx server block (not just the SPA shell) only when
+  `DEMO_AUTH_USER`/`DEMO_AUTH_PASSWORD` are both set, so local dev stays frictionless. No
+  credential value is ever committed — the repo is public. Revisit: if a second contributor or a
+  higher-stakes deployment target ever makes per-user SSO worth the lift.
+- **Solo-developer exception to MS2.5 §6.2's reviewer requirement is NOT being changed** — see the
+  entry below, made earlier the same day; recorded here as context for why `main`'s branch
+  protection has no required-reviewer count despite the policy's normal expectation.
+
 ## 2026-09-29 — Solo-developer exception flagged per ADC MS2.5 policy §7.3
 
 - **Context:** while researching Dokploy best practices for F97, checked ADC's Confluence
