@@ -693,19 +693,54 @@ these are the remaining smaller ones, not yet actioned, no decision made on prio
     only one got invalidated after verifying (fixed by invalidating both)
   - [x] F98 G: Manual smoke test → see `docs/plans/F98-manual-block-verification.md` — verified live
     via real browser automation, counts confirmed updating reactively with no reload
+- [x] **Post-F98 polish (2026-10-01):** Python panel in `BlockCodePopup` now shows the same
+  `lines {startLine}–{endLine}` badge the SAS panel already had (user asked for symmetric
+  highlighting between the two sides). Surfaced a second, pre-existing bug while live-testing it:
+  `BlockPlanResponse` (`src/backend/api/schemas.py`) never declared an `end_line` field, so Pydantic
+  silently dropped it from the `/jobs/{id}/plan` response even though the worker always computes and
+  stores it — the badge rendered as "lines 9–" with nothing after the dash, on both panels, for every
+  job. Fixed by adding `end_line: int | None = None` to the schema; two regression tests added
+  (forward + backward compatibility with plans stored before this fix). Commit `152be41`.
 
-**F98 — complete.** Follow-ups discovered, not actioned (see `docs/plans/F98-manual-block-verification.md`
-"Follow-ups discovered" section for full detail):
+**F98 — complete.** Follow-ups discovered, not actioned at the time (see
+`docs/plans/F98-manual-block-verification.md` "Follow-ups discovered" section for full detail).
+Status as of 2026-10-01:
+- [x] **nginx `/jobs`+`/explain` hard-navigation bug** — a bookmark, shared link, or browser refresh
+  on a job detail page or the Explain page was proxied straight to the backend instead of loading
+  the SPA (raw JSON or a 404/405 instead of the app). Both `/jobs` and `/explain` are React Router
+  client routes that also collide with backend API path prefixes. Fixed in `src/frontend/nginx.conf`
+  via an `Accept`-header `map` — real browser navigation (`Accept: text/html`) now rewrites to
+  `/index.html` (`last`, re-matching into the SPA fallback), while the app's own `fetch()`/
+  `EventSource` calls (never `text/html`) still proxy through unchanged. Verified live via
+  `make docker-build` + curl against both branches. Commit `ae3dab9` on `feat/F98-block-verification`.
+- [x] **Two trust-report query key shapes unified** — turned out to be 7 call sites across 6 files
+  (`JobDetailPage.tsx`, `EvaluationTab.tsx`, `PlanTab.tsx`, `DocsPage.tsx` ×2, `BlockRevisionDrawer.tsx`,
+  `BlockRefineDialog.tsx`), not the 2 originally logged. Consolidated into one `useTrustReport(jobId)`
+  hook (`src/frontend/src/lib/useTrustReport.ts`) under the canonical key `["job", jobId,
+  "trust-report"]`; `BlockPlanTable.tsx`/`ETLTab.tsx`'s dual-invalidation workaround removed down to a
+  single invalidate. `DocsPage.tsx`'s two call sites kept separate (per-card vs. popup can be
+  different jobs). Found along the way: `JobDetailPage`'s and `EvaluationTab`/`PlanTab`'s `enabled`
+  gates each allow a different 3-of-4 subset of the backend's real reviewable statuses (`proposed,
+  accepted, under_review, done`) — left as-is since fixing it would be a behavior change outside a
+  pure refactor; flagged below as a new follow-up. Verified live (Plan tab + ETL tab counts both
+  update in place after verifying a block, no reload). Commit `931f0a0`.
 - [ ] A third divergent block-status helper (`blockStatusHelpers.ts`, used by `BlockInspectorPanel`/
-  `PipelineStepPanel`) — same class of duplication just fixed twice over in F98, worth consolidating
-- [ ] Two separate trust-report queries with different key shapes (`["job", jobId, "trust-report"]`
-  vs `["trust-report", jobId]`) — both now correctly invalidated, but worth unifying into one query
-- [ ] **Separate, pre-existing bug (not F98's, found while live-testing it):** hard-navigating
-  directly to any `/jobs/...` URL (not via client-side routing — e.g. a bookmark, shared link, or
-  browser refresh while on a job detail page) returns raw backend JSON instead of the SPA. Root
-  cause: nginx's `/jobs` location block (added in F97) proxies the request to the backend before
-  the SPA ever loads, since the API and the frontend page share the same path prefix. This affects
-  the real deployed demo too, not just local dev — worth prioritizing
+  `PipelineStepPanel`) — same class of duplication just fixed twice over in F98, worth consolidating.
+  Scoped 2026-10-01: touches 7 files, not 2 (`status-colors.ts` + `blockStatusHelpers.ts`, plus 5
+  consumers: `TargetGraph.tsx`, `FileBlockListPanel.tsx`, `BlockDetailPanel.tsx`, `blockRowHelpers.tsx`
+  → `BlockInspectorPanel.tsx`/`PipelineStepPanel.tsx`). The merge itself is mechanical — `failed` is
+  derivable from data `deriveBlockStatus` already receives, not a new backend signal — but
+  `blockStatusHelpers.ts`'s pill styling visibly differs from `status-colors.ts`'s tone system, so
+  this needs a styling decision (which look wins across all 7 places) before implementation, not just
+  a type merge. Not started.
+- [ ] **New, found during trust-report unification (2026-10-01):** `JobDetailPage.tsx`'s trust-report
+  `enabled` gate (`isReviewable`) and `EvaluationTab.tsx`/`PlanTab.tsx`'s gate (`ENABLED_STATUSES`/
+  `trustReportEnabled`) each check a different 3-of-4 subset of the backend's actual reviewable job
+  statuses (`proposed, accepted, under_review, done` — confirmed in `src/backend/api/routes/jobs.py`).
+  `JobDetailPage`'s gate is missing `done`; the other is missing `under_review`. Each in isolation is
+  a real, pre-existing bug (the trust report silently won't fetch for one valid status), but fixing
+  it is a behavior change, so it was deliberately left alone during the pure-refactor trust-report
+  consolidation. Not started.
 - [ ] #45: AI tab placeholder for AI side-effect data capture
 - [ ] #44: BI tab placeholder for BI side-effect data capture
 

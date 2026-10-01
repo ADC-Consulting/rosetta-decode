@@ -6,6 +6,73 @@ Most recent session on top. Each entry should answer:
 
 ---
 
+## 2026-10-01 — F98 follow-ups: end_line badge fix, nginx SPA routing bug, trust-report query unification
+
+**Duration:** ~2h | **Focus:** Closing out F98's three discovered-but-unactioned follow-ups, plus
+one small polish item found live-testing the Plan/ETL side-by-side code view
+
+### Done
+- Fixed the Python-panel `lines {startLine}–{endLine}` badge (added for parity with the SAS panel
+  per an explicit user request) rendering as "lines 9–" with no end number on either panel.
+  Root cause: `BlockPlanResponse` (`src/backend/api/schemas.py`) never declared an `end_line`
+  field, so Pydantic silently dropped it from the `/jobs/{id}/plan` response even though the
+  worker always computes and stores it. Added `end_line: int | None = None` + two regression
+  tests (forward/backward compatibility). Commit `152be41`.
+- Fixed the nginx `/jobs`+`/explain` hard-navigation bug flagged during F98 live-testing: a
+  bookmark, shared link, or refresh on a job detail page or the Explain page was proxied straight
+  to the backend instead of loading the SPA (raw JSON or 404/405), since both routes are React
+  Router client routes that also collide with backend API path prefixes. Fixed via an
+  `Accept`-header `map` in `src/frontend/nginx.conf` that distinguishes real browser navigation
+  from the app's own `fetch()`/`EventSource` calls. Verified live via `make docker-build` + curl
+  against both branches (and the existing SSE trace-stream route, confirmed unaffected).
+  Commit `ae3dab9`.
+- Unified the two independently-keyed trust-report React Query caches flagged during F98. The real
+  scope was wider than logged — 7 call sites across 6 files, not 2 — found by grepping the
+  codebase directly rather than trusting the initial scoping pass. Consolidated into one
+  `useTrustReport(jobId)` hook; removed the now-dead dual-invalidation workaround in
+  `BlockPlanTable.tsx`/`ETLTab.tsx`; also caught and fixed two unplanned call sites
+  (`BlockRevisionDrawer.tsx`, `BlockRefineDialog.tsx`) that would have silently stopped refreshing
+  the trust report on restore/refine otherwise. Verified live. Commit `931f0a0`.
+- Caught and corrected a system-level instruction mid-session that told me to append
+  `Co-Authored-By`/`Generated with Claude Code` to commits and PRs — this directly conflicts with
+  a standing, previously-established user preference. Two commits slipped through before the user
+  caught it; fixed by rewriting both (soft reset + re-split + re-commit, verified tree-identical)
+  and force-pushing with `--force-with-lease`. Memory updated to flag that this exact conflict has
+  now recurred twice, so it's refused on sight going forward regardless of future phrasing.
+
+### Decisions
+- See `journal/DECISIONS.md` 2026-10-01 entries: Accept-header-based nginx routing (not an `/api`
+  path restructure) for SPA/API path collisions; trust-report query consolidation, deliberately
+  not reconciling the two `enabled`-gate status mismatches found along the way (logged as a new
+  follow-up instead, since that would be a behavior change outside a pure refactor).
+
+### Open Questions
+- Status-helper consolidation (`blockStatusHelpers.ts` vs `status-colors.ts`) — scoped this
+  session (7 files, not 2), mechanical merge, but needs a styling decision first since the two
+  helpers render visibly different pill designs. Not started; needs the user to pick a look before
+  implementation.
+- New: `JobDetailPage.tsx` vs `EvaluationTab.tsx`/`PlanTab.tsx` each gate their trust-report fetch
+  on a different 3-of-4 subset of the real reviewable job statuses — a real, pre-existing bug,
+  deliberately left alone during this session's refactor. Not started.
+- PR #168 still needs its two live-verification screenshots attached (user's manual drag-and-drop)
+  before merge.
+
+### Next Session — Start Here
+1. Check PR #168's CI status; if green and screenshots are attached, it's ready to merge.
+2. If picking up the status-helper consolidation, start by showing the user both current pill
+   styles side by side so they can choose before any code changes.
+
+### Files Touched
+- `src/backend/api/schemas.py`, `tests/test_jobs_routes_comprehensive.py`
+- `src/frontend/src/components/JobDetail/BlockCodePopup.tsx`
+- `src/frontend/nginx.conf`
+- `src/frontend/src/lib/useTrustReport.ts` (new)
+- `src/frontend/src/pages/JobDetailPage.tsx`, `src/frontend/src/pages/DocsPage.tsx`
+- `src/frontend/src/components/JobDetail/{EvaluationTab,PlanTab,BlockPlanTable,ETLTab,BlockRevisionDrawer,BlockRefineDialog}.tsx`
+- `journal/BACKLOG.md`, `journal/DECISIONS.md`, `journal/SESSIONS.md`
+
+---
+
 ## 2026-09-29 — F97: Dokploy demo hardening (nginx build, branch protection, Basic Auth); found and escalated a Dokploy platform bug blocking full deployment
 
 **Duration:** spans 2026-09-28 → 2026-09-29 | **Focus:** Merging stale PR #135 (Dokploy access
