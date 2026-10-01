@@ -710,6 +710,90 @@ async def test_get_job_plan_available() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_job_plan_includes_end_line() -> None:
+    """Test get_job_plan round-trips end_line from stored block plan data.
+
+    Regression test: BlockPlanResponse previously had no end_line field, so
+    Pydantic silently dropped it from the raw stored dict during validation
+    (SAS: src/backend/api/routes/jobs.py:605), even though the worker always
+    computes and stores it (SAS: src/worker/engine/agents/migration_planner.py:315-339).
+    """
+    job_id = uuid.uuid4()
+    plan_data = {
+        "summary": "Plan summary",
+        "overall_risk": "low",
+        "block_plans": [
+            {
+                "block_id": "b1",
+                "source_file": "test.sas",
+                "start_line": 9,
+                "end_line": 42,
+                "block_type": "DATA_STEP",
+                "strategy": "auto",
+                "risk": "low",
+                "rationale": "simple",
+                "estimated_effort": "low",
+            }
+        ],
+        "recommended_review_blocks": [],
+        "cross_file_dependencies": [],
+    }
+    job = _make_job(str(job_id), status="done", migration_plan=plan_data)
+    session = AsyncMock()
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = job
+    session.execute.return_value = result_mock
+
+    response = await get_job_plan(job_id, session)
+
+    from src.backend.api.schemas import JobPlanResponse
+
+    assert isinstance(response, JobPlanResponse)
+    assert response.block_plans[0].end_line == 42
+
+
+@pytest.mark.asyncio
+async def test_get_job_plan_missing_end_line_defaults_to_none() -> None:
+    """Test get_job_plan deserializes pre-fix stored plans missing end_line.
+
+    Older jobs created before end_line was added to the worker's BlockPlan
+    model have no end_line key in their stored migration_plan JSON at all.
+    This must not raise a validation error; end_line should come back as None.
+    """
+    job_id = uuid.uuid4()
+    plan_data = {
+        "summary": "Plan summary",
+        "overall_risk": "low",
+        "block_plans": [
+            {
+                "block_id": "b1",
+                "source_file": "test.sas",
+                "start_line": 9,
+                "block_type": "DATA_STEP",
+                "strategy": "auto",
+                "risk": "low",
+                "rationale": "simple",
+                "estimated_effort": "low",
+            }
+        ],
+        "recommended_review_blocks": [],
+        "cross_file_dependencies": [],
+    }
+    job = _make_job(str(job_id), status="done", migration_plan=plan_data)
+    session = AsyncMock()
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = job
+    session.execute.return_value = result_mock
+
+    response = await get_job_plan(job_id, session)
+
+    from src.backend.api.schemas import JobPlanResponse
+
+    assert isinstance(response, JobPlanResponse)
+    assert response.block_plans[0].end_line is None
+
+
+@pytest.mark.asyncio
 async def test_get_job_plan_not_found() -> None:
     """Test get_job_plan raises 404 when job doesn't exist."""
     job_id = uuid.uuid4()
@@ -1306,3 +1390,162 @@ async def test_archive_job_not_found_returns_404(f94_session: AsyncSession) -> N
         await archive_job(uuid.uuid4(), ArchiveJobRequest(archived=True), session=f94_session)
 
     assert exc_info.value.status_code == 404
+
+
+# ─── F98: verified_by persistence on human-verify saves (real in-memory DB) ──
+#
+# SAS: docs/plans/F98-manual-block-verification.md:C
+# These use the real in-memory DB (not a mocked session) so the round trip
+# through the changelog query — which reads the persisted column back off the
+# BlockRevision row — is actually exercised, not just the in-memory request
+# object.
+
+
+@pytest.mark.asyncio
+async def test_save_block_python_human_verify_persists_verified_by(
+    f94_session: AsyncSession,
+) -> None:
+    """A human-verify save with verified_by stores and round-trips the name."""
+    from src.backend.api.routes.jobs import get_job_changelog
+    from src.backend.api.schemas import BlockPythonEditRequest
+
+    job_id = await _f94_insert_job(f94_session)
+
+    await save_block_python(
+        uuid.UUID(job_id),
+        "step.sas:1",
+        BlockPythonEditRequest(
+            python_code="x = 1",
+            trigger="human-verify",
+            verified_by="Jane Doe",
+        ),
+        f94_session,
+    )
+
+    changelog = await get_job_changelog(uuid.UUID(job_id), session=f94_session)
+
+    assert len(changelog.entries) == 1
+    assert changelog.entries[0].trigger == "human-verify"
+    assert changelog.entries[0].verified_by == "Jane Doe"
+
+
+@pytest.mark.asyncio
+async def test_save_block_python_human_trigger_ignores_verified_by(
+    f94_session: AsyncSession,
+) -> None:
+    """A plain human edit must never persist verified_by, even if the client sends one.
+
+    This is the security/data-integrity rule: the server must not trust the
+    client to only send verified_by alongside trigger="human-verify".
+    """
+    from src.backend.api.routes.jobs import get_job_changelog
+    from src.backend.api.schemas import BlockPythonEditRequest
+
+    job_id = await _f94_insert_job(f94_session)
+
+    await save_block_python(
+        uuid.UUID(job_id),
+        "step.sas:1",
+        BlockPythonEditRequest(
+            python_code="x = 1",
+            trigger="human",
+            verified_by="Jane Doe",
+        ),
+        f94_session,
+    )
+
+    changelog = await get_job_changelog(uuid.UUID(job_id), session=f94_session)
+
+    assert len(changelog.entries) == 1
+    assert changelog.entries[0].trigger == "human"
+    assert changelog.entries[0].verified_by is None
+
+
+@pytest.mark.asyncio
+async def test_save_block_python_human_refine_ignores_verified_by(
+    f94_session: AsyncSession,
+) -> None:
+    """A human-refine save must never persist verified_by, even if the client sends one."""
+    from src.backend.api.routes.jobs import get_job_changelog
+    from src.backend.api.schemas import BlockPythonEditRequest
+
+    job_id = await _f94_insert_job(f94_session)
+
+    await save_block_python(
+        uuid.UUID(job_id),
+        "step.sas:1",
+        BlockPythonEditRequest(
+            python_code="x = 1",
+            trigger="human-refine",
+            verified_by="Jane Doe",
+        ),
+        f94_session,
+    )
+
+    changelog = await get_job_changelog(uuid.UUID(job_id), session=f94_session)
+
+    assert len(changelog.entries) == 1
+    assert changelog.entries[0].trigger == "human-refine"
+    assert changelog.entries[0].verified_by is None
+
+
+@pytest.mark.asyncio
+async def test_trust_report_needs_attention_false_once_verified(
+    f94_session: AsyncSession,
+) -> None:
+    """A verified block drops out of needs_attention despite an unconditional trigger.
+
+    SAS: docs/plans/F98-manual-block-verification.md:D
+
+    strategy="translated_with_review" is one of the unconditional needs_attention
+    triggers in ``_build_trust_blocks``. Before the fix, saving the block with
+    trigger="human-verify" (which sets verified_by on its latest BlockRevision)
+    had no effect on needs_attention — the Plan tab's "Needs review" count never
+    moved even though the block's own badge showed "Human-verified". This test
+    pins the override: verified_by set => needs_attention False, unconditionally.
+    """
+    from src.backend.api.routes.jobs import get_job_trust_report
+    from src.backend.api.schemas import BlockPythonEditRequest
+
+    job_id = await _f94_insert_job(
+        f94_session,
+        migration_plan={
+            "summary": "test",
+            "overall_risk": "low",
+            "recommended_review_blocks": [],
+            "cross_file_dependencies": [],
+            "block_plans": [
+                {
+                    "block_id": "step.sas:1",
+                    "source_file": "step.sas",
+                    "start_line": 1,
+                    "block_type": "DATA_STEP",
+                    "strategy": "translated_with_review",
+                    "risk": "medium",
+                    "rationale": "needs a human look",
+                    "estimated_effort": "1h",
+                }
+            ],
+        },
+    )
+
+    # Sanity check: before verification, this block is in the needs_attention bucket.
+    before = await get_job_trust_report(uuid.UUID(job_id), session=f94_session)
+    before_block = next(b for b in before.blocks if b.block_id == "step.sas:1")
+    assert before_block.needs_attention is True
+
+    await save_block_python(
+        uuid.UUID(job_id),
+        "step.sas:1",
+        BlockPythonEditRequest(
+            python_code="x = 1",
+            trigger="human-verify",
+            verified_by="Jane Doe",
+        ),
+        f94_session,
+    )
+
+    after = await get_job_trust_report(uuid.UUID(job_id), session=f94_session)
+    after_block = next(b for b in after.blocks if b.block_id == "step.sas:1")
+    assert after_block.needs_attention is False
+    assert after_block not in after.review_queue

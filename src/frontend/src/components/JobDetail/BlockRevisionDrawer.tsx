@@ -8,6 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { trustReportQueryKey } from "@/lib/useTrustReport";
 import { cn } from "@/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Columns2, AlignLeft } from "lucide-react";
@@ -141,7 +142,7 @@ function RevisionRow({
         queryKey: ["block-revisions", jobId, blockId],
       });
       await queryClient.invalidateQueries({
-        queryKey: ["trust-report", jobId],
+        queryKey: trustReportQueryKey(jobId),
       });
       toast.success(`Restored to revision ${revision.revision_number}`);
     } catch (err) {

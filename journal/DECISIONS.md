@@ -6,6 +6,35 @@ Format: date · decision · rationale · revisit?
 
 ---
 
+## 2026-10-01 — nginx SPA/API path collisions resolved via Accept-header routing
+
+- **Decision:** where a React Router client route shares a URL path prefix with a backend API
+  endpoint (`/jobs`, `/explain`), nginx now distinguishes a real browser navigation from the app's
+  own `fetch()`/`EventSource` traffic by the `Accept` header, rather than restructuring routes
+  behind an `/api` prefix. A `map $http_accept $accepts_html` block (http-context, since
+  `nginx.conf` loads as `conf.d/default.conf` inside the main `http {}` block) feeds an `if
+  ($accepts_html) { rewrite ^ /index.html last; }` guard at the top of each colliding `location`
+  block — `last`, not `break`, so the rewritten request re-matches into the catch-all `location /`
+  and its `try_files`, rather than falling through to that same location's own `proxy_pass`.
+- **Why:** a bookmark, shared link, or browser refresh on `/jobs/<id>` or `/explain` was being
+  proxied straight to the backend instead of loading the SPA shell, returning raw JSON or a
+  404/405 — affecting the real deployed demo, not just local dev. Real top-level navigation always
+  sends `Accept: text/html,...`; this app's `fetch()` calls never set that header explicitly, so it
+  reliably tells the two apart with no backend route changes or frontend code changes.
+  · revisit if a new client-side route is ever added under a path a backend endpoint also owns —
+  it needs the same guard, this doesn't generalize automatically.
+- **Trust-report query consolidation:** the job trust report was cached under two different React
+  Query key shapes across 6 files (`["job", jobId, "trust-report"]` and `["trust-report", jobId]`),
+  requiring dual-invalidation after every verify/refine/restore action. Unified into one
+  `useTrustReport(jobId)` hook (`src/frontend/src/lib/useTrustReport.ts`) under a single canonical
+  key. Pure refactor — found along the way that `JobDetailPage.tsx`'s and
+  `EvaluationTab.tsx`/`PlanTab.tsx`'s `enabled` gates each check a different 3-of-4 subset of the
+  backend's real reviewable statuses; deliberately left unreconciled since fixing it would be a
+  behavior change outside this refactor's scope — logged as a new backlog follow-up instead ·
+  revisit when that follow-up is picked up.
+
+---
+
 ## 2026-09-29 — Dokploy env var encryption bug found, blocks F97 subtask D completion
 
 - **Finding:** the live demo (`rosetta.dokploy-1.adc-it.com`) went down independent of anything

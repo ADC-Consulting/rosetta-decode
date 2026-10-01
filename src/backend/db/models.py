@@ -118,6 +118,8 @@ class BlockRevision(Base):
     reconciliation_status: Mapped[str | None] = mapped_column(String(8), nullable=True)
     recon_checks: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
     trigger: Mapped[str] = mapped_column(String(32), nullable=False, default="agent")
+    # SAS: docs/plans/F98-manual-block-verification.md:A
+    verified_by: Mapped[str | None] = mapped_column(Text, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)  # verbatim user instructions
     hint: Mapped[str | None] = mapped_column(Text, nullable=True)  # auto-generated structured hint
     diff_vs_previous: Mapped[str | None] = mapped_column(Text, nullable=True)  # unified diff

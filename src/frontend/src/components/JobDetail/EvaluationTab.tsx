@@ -1,4 +1,3 @@
-import { getJobTrustReport } from "@/api/jobs";
 import type { TrustReportBlock, TrustReportFile } from "@/api/types";
 import {
   Dialog,
@@ -7,7 +6,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { useQuery } from "@tanstack/react-query";
+import { useTrustReport } from "@/lib/useTrustReport";
 import { CheckCircle2, Info, XCircle } from "lucide-react";
 import { useState } from "react";
 
@@ -220,11 +219,7 @@ export default function EvaluationTab({
 }: EvaluationTabProps): React.ReactElement {
   const enabled = ENABLED_STATUSES.has(jobStatus);
 
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ["job", jobId, "trust-report"],
-    queryFn: () => getJobTrustReport(jobId),
-    enabled: !!jobId && enabled,
-  });
+  const { data, isLoading, isError } = useTrustReport(jobId, { enabled });
 
   if (!enabled) {
     return (

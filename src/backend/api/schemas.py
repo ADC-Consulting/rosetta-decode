@@ -229,6 +229,11 @@ class BlockPlanResponse(BaseModel):
     block_id: str
     source_file: str
     start_line: int
+    # SAS: src/worker/engine/models.py:299 — mirrors worker's BlockPlan.end_line
+    # exactly: optional since stored plans created before this field existed
+    # (migration_plan / migration_plan_post_run JSON predating this fix) won't
+    # have the key at all.
+    end_line: int | None = None
     block_type: str
     strategy: str
     risk: str
@@ -499,6 +504,10 @@ class BlockPythonEditRequest(BaseModel):
     python_code: str
     notes: str | None = None
     trigger: str = "human"
+    # SAS: docs/plans/F98-manual-block-verification.md:B
+    # Only persisted by the route when trigger == "human-verify" — never trust
+    # the client to self-police this for other trigger values.
+    verified_by: str | None = None
 
     @field_validator("trigger")
     @classmethod
@@ -543,6 +552,7 @@ class ChangelogEntry(BaseModel):
     notes: str | None
     hint: str | None
     diff_vs_previous: str | None
+    verified_by: str | None
     created_at: datetime
 
 

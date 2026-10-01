@@ -9,22 +9,19 @@ import {
 } from "@/components/ui/dialog";
 import { Editor } from "@monaco-editor/react";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
+import { Loader2, Moon, Sun } from "lucide-react";
 import { Suspense, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { useBrandManifestContainer } from "@/lib/useBrandManifestContainer";
 import { registerSasLanguage } from "./registerSasLanguage";
-import { TONE_CHIP_CLASS } from "./status-colors";
+import { TONE_CHIP_CLASS, type BlockStatus } from "./status-colors";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-type BlockStatus =
-  | "auto-verified"
-  | "needs-review"
-  | "manual"
-  | "human-verified"
-  | "pending";
+/** Key under which the last-used reviewer name is remembered between verifications. */
+const REVIEWER_NAME_STORAGE_KEY = "rosetta.reviewerName";
 
 export interface BlockCodePopupProps {
   jobId: string;
@@ -35,8 +32,25 @@ export interface BlockCodePopupProps {
   sasSource: string;
   startLine: number;
   endLine: number;
+  /**
+   * Fallback Python content to show when no `block_revisions` row exists yet for this block
+   * (e.g. a block the worker hasn't persisted a revision for). Ignored once a revision loads —
+   * `getBlockRevisions` is always preferred when it has data.
+   */
+  fallbackPythonCode?: string | null;
+  /** Generated Python filename this block was emitted into, shown next to the Python header. */
+  pythonFile?: string | null;
+  /**
+   * Reviewer name for a block that was already verified before this popup opened (sourced from
+   * the job's changelog by the caller). Used only until a verification happens in this session —
+   * once that happens, the just-submitted name takes over for display.
+   */
+  verifiedBy?: string | null;
   onClose: () => void;
+  /** Fired only after a "Mark as verified" save succeeds — never after a plain "Save". */
   onVerified: (blockId: string) => void;
+  /** Fired after a plain "Save" succeeds. Does not imply verification. */
+  onSaved?: (blockId: string) => void;
   jobAccepted?: boolean;
 }
 
@@ -98,13 +112,30 @@ export default function BlockCodePopup({
   sasSource,
   startLine,
   endLine,
+  fallbackPythonCode,
+  pythonFile,
+  verifiedBy,
   onClose,
   onVerified,
+  onSaved,
   jobAccepted = false,
 }: BlockCodePopupProps): React.ReactElement {
   const [localPython, setLocalPython] = useState<string>("");
-  const [isSaving, setIsSaving] = useState(false);
+  const [pendingAction, setPendingAction] = useState<"save" | "verify" | null>(null);
+  const isSaving = pendingAction !== null;
   const [isVerified, setIsVerified] = useState(false);
+  // Name used by the verification that just completed in this session — takes priority over the
+  // `verifiedBy` prop (which reflects whatever the changelog said when this popup opened).
+  const [submittedVerifiedBy, setSubmittedVerifiedBy] = useState<string | null>(null);
+  const [showVerifyInput, setShowVerifyInput] = useState(false);
+  const [reviewerName, setReviewerName] = useState<string>(() => {
+    try {
+      return localStorage.getItem(REVIEWER_NAME_STORAGE_KEY) ?? "";
+    } catch {
+      return "";
+    }
+  });
+  const [codeEditorDark, setCodeEditorDark] = useState(false);
   const container = useBrandManifestContainer();
 
   const {
@@ -134,23 +165,60 @@ export default function BlockCodePopup({
   // so we pass localPython only for display and fall back to initialising from revision.
   const pythonEditorKey = `block-py-${blockId}-${latestPythonCode !== null ? "loaded" : "empty"}`;
   const pythonDefaultValue =
-    latestPythonCode ?? "# No Python translation available yet.";
+    latestPythonCode ?? fallbackPythonCode ?? "# No Python translation available yet.";
 
   // Force read-only when job is accepted, regardless of block status.
   const isReadOnly = jobAccepted || status === "auto-verified" || status === "human-verified";
   const canVerify = !jobAccepted && (status === "needs-review" || status === "manual");
 
-  const handleMarkVerified = async () => {
+  // Name used right after a "Mark as verified" in this session wins; otherwise fall back to
+  // whatever the caller already knew from the changelog for a block verified before this popup
+  // opened.
+  const displayVerifiedBy = submittedVerifiedBy ?? verifiedBy ?? null;
+  // Covers both "just verified in this session" (isVerified) and "already verified before this
+  // popup opened" (status === "human-verified", sourced from the changelog by the caller) — not
+  // gated on !isReadOnly, since a loaded human-verified block IS read-only and should still show
+  // who verified it.
+  const showVerifiedBanner = isVerified || status === "human-verified";
+
+  const handleSave = async () => {
     if (isSaving) return;
-    setIsSaving(true);
+    setPendingAction("save");
+    try {
+      await saveBlockPython(jobId, blockId, localPython || pythonDefaultValue, {
+        trigger: "human",
+      });
+      onSaved?.(blockId);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save code.");
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
+  const handleConfirmVerify = async () => {
+    const trimmedName = reviewerName.trim();
+    if (isSaving || !trimmedName) return;
+    setPendingAction("verify");
     try {
       await saveBlockPython(jobId, blockId, localPython || pythonDefaultValue, {
         trigger: "human-verify",
+        verified_by: trimmedName,
       });
+      try {
+        localStorage.setItem(REVIEWER_NAME_STORAGE_KEY, trimmedName);
+      } catch {
+        // Storage can be unavailable (private browsing, quota) — verification itself still
+        // succeeded, so there's nothing to surface to the user here.
+      }
+      setSubmittedVerifiedBy(trimmedName);
+      setShowVerifyInput(false);
       onVerified(blockId);
       setIsVerified(true);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save verification.");
     } finally {
-      setIsSaving(false);
+      setPendingAction(null);
     }
   };
 
@@ -175,6 +243,13 @@ export default function BlockCodePopup({
           <Badge className={`text-[11px] px-2 py-0 border-0 ${statusConfig.className}`}>
             {statusConfig.label}
           </Badge>
+          <button
+            onClick={() => setCodeEditorDark((d) => !d)}
+            aria-label={codeEditorDark ? "Switch to light theme" : "Switch to dark theme"}
+            className="ml-auto inline-flex items-center justify-center rounded p-1.5 text-muted-foreground border border-border hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+          >
+            {codeEditorDark ? <Sun size={14} /> : <Moon size={14} />}
+          </button>
         </DialogHeader>
 
         {/* ----------------------------------------------------------------- */}
@@ -201,14 +276,16 @@ export default function BlockCodePopup({
             <span className="font-medium">This block requires manual Python implementation.</span>
           </div>
         )}
-        {isVerified && !isReadOnly && (
+        {showVerifiedBanner && (
           <div
             role="status"
             className="flex items-center gap-2 px-4 py-2 text-xs bg-[var(--tone-success-bg)]
               border-b border-[var(--tone-success)]/20 text-[var(--tone-success)] shrink-0"
           >
-            <span className="font-medium">Block marked as verified.</span>
-            <span className="text-[var(--tone-success)]/80">You can close this panel.</span>
+            <span className="font-medium">
+              {displayVerifiedBy ? `Verified by ${displayVerifiedBy}` : "Block marked as verified."}
+            </span>
+            <span className="text-[var(--tone-success)]/80">— you can close this panel.</span>
           </div>
         )}
 
@@ -243,7 +320,7 @@ export default function BlockCodePopup({
                     height="100%"
                     defaultValue={extractedSas}
                     language="sas"
-                    theme="sas-light"
+                    theme={codeEditorDark ? "sas-dark" : "sas-light"}
                     beforeMount={registerSasLanguage}
                     loading={
                       <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
@@ -274,6 +351,16 @@ export default function BlockCodePopup({
               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 Python
               </span>
+              {pythonFile && (
+                <span className="text-[11px] font-mono text-muted-foreground/70">
+                  {pythonFile}
+                </span>
+              )}
+              {startLine > 0 && (
+                <span className="ml-auto text-[11px] text-muted-foreground/60 font-mono">
+                  lines {startLine}–{endLine}
+                </span>
+              )}
               {isReadOnly && (
                 <span className="ml-auto text-[11px] text-muted-foreground/60 italic">
                   read-only
@@ -303,7 +390,7 @@ export default function BlockCodePopup({
                     height="100%"
                     defaultValue={pythonDefaultValue}
                     language="python"
-                    theme="vs"
+                    theme={codeEditorDark ? "vs-dark" : "vs"}
                     loading={
                       <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
                         Loading…
@@ -330,23 +417,87 @@ export default function BlockCodePopup({
         {/* Footer */}
         {/* ----------------------------------------------------------------- */}
         <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border bg-muted/30 shrink-0">
+          {canVerify && !isVerified && showVerifyInput && (
+            <div className="flex items-center gap-1.5 mr-auto">
+              <label htmlFor="block-code-reviewer-name" className="text-xs text-muted-foreground">
+                Reviewer name
+              </label>
+              <input
+                id="block-code-reviewer-name"
+                type="text"
+                autoFocus
+                value={reviewerName}
+                onChange={(e) => setReviewerName(e.target.value)}
+                placeholder="Your name"
+                disabled={isSaving}
+                className="h-7 w-40 px-2 text-xs rounded border border-border bg-background
+                  focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
+              />
+              {!reviewerName.trim() && (
+                <span className="text-[11px] text-[var(--tone-danger)]">Required</span>
+              )}
+            </div>
+          )}
           {canVerify && !isVerified && (
-            <Button
-              variant="default"
-              size="sm"
-              disabled={isSaving || isLoadingRevisions}
-              onClick={() => { void handleMarkVerified(); }}
-              aria-label="Mark block as verified"
-            >
-              {isSaving ? (
+            <>
+              {showVerifyInput ? (
                 <>
-                  <Loader2 size={14} className="animate-spin" />
-                  Saving…
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={isSaving}
+                    onClick={() => setShowVerifyInput(false)}
+                    aria-label="Cancel verification"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    disabled={isSaving || isLoadingRevisions || !reviewerName.trim()}
+                    onClick={() => { void handleConfirmVerify(); }}
+                    aria-label="Confirm block verification"
+                  >
+                    {pendingAction === "verify" ? (
+                      <>
+                        <Loader2 size={14} className="animate-spin" />
+                        Saving…
+                      </>
+                    ) : (
+                      "Confirm"
+                    )}
+                  </Button>
                 </>
               ) : (
-                "Mark as verified"
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={isSaving || isLoadingRevisions}
+                    onClick={() => { void handleSave(); }}
+                    aria-label="Save block code"
+                  >
+                    {pendingAction === "save" ? (
+                      <>
+                        <Loader2 size={14} className="animate-spin" />
+                        Saving…
+                      </>
+                    ) : (
+                      "Save"
+                    )}
+                  </Button>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    disabled={isSaving || isLoadingRevisions}
+                    onClick={() => setShowVerifyInput(true)}
+                    aria-label="Mark block as verified"
+                  >
+                    Mark as verified
+                  </Button>
+                </>
               )}
-            </Button>
+            </>
           )}
           <Button
             variant="outline"

@@ -1,4 +1,4 @@
-import { getBlockRevisions, getJobSources, saveBlockPython } from "@/api/jobs";
+import { getBlockRevisions, getJobChangelog, getJobSources } from "@/api/jobs";
 import type { BlockPlan, TrustReportBlock } from "@/api/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,9 +27,9 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { trustReportQueryKey } from "@/lib/useTrustReport";
 import { cn } from "@/lib/utils";
-import { Editor, type OnMount } from "@monaco-editor/react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -38,22 +38,18 @@ import {
   Code2,
   History,
   Info,
-  Lock,
-  Moon,
-  Pencil,
-  Sun,
   Wrench,
   XCircle,
 } from "lucide-react";
-import React, { useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import BlockCodePopup from "./BlockCodePopup";
 import BlockRefineDialog from "./BlockRefineDialog";
 import { BlockRevisionModal } from "./BlockRevisionDrawer";
-import { registerSasLanguage } from "./registerSasLanguage";
 import StatusChip from "./StatusChip";
 import {
   CONFIDENCE_TONE,
   CRITICALITY_TONE,
+  deriveBlockStatus,
   RISK_TONE,
   TONE_TEXT_CLASS,
   type ConfidenceBand,
@@ -406,12 +402,38 @@ export default function BlockPlanTable({
   const [sasCode, setSasCode] = useState<string>("");
   const [codeDialogPython, setCodeDialogPython] = useState<string>("");
   const [codeDialogFile, setCodeDialogFile] = useState<string | null>(null);
-  const [codeEditable, setCodeEditable] = useState(false);
-  const [codeSaving, setCodeSaving] = useState(false);
   const [codeLoading, setCodeLoading] = useState(false);
-  const [codeEditorDark, setCodeEditorDark] = useState(false);
   const initialCodeRef = useRef<string>("");
-  const decorationsRef = useRef<string[]>([]);
+
+  // ── Changelog → humanVerifiedBlocks / verifiedBy (same pattern as ETLTab.tsx) ──
+  const { data: changelog } = useQuery({
+    queryKey: ["job", jobId, "changelog"],
+    queryFn: () => getJobChangelog(jobId),
+  });
+
+  const humanVerifiedBlocks = useMemo(() => {
+    const s = new Set<string>();
+    (changelog?.entries ?? [])
+      .filter((e) => e.trigger === "human-verify")
+      .forEach((e) => s.add(e.block_id));
+    return s;
+  }, [changelog]);
+
+  // Entries are newest-first, so the first match per block is the latest verification.
+  const verifiedByMap = useMemo(() => {
+    const m = new Map<string, string | null>();
+    (changelog?.entries ?? [])
+      .filter((e) => e.trigger === "human-verify")
+      .forEach((e) => {
+        if (!m.has(e.block_id)) m.set(e.block_id, e.verified_by);
+      });
+    return m;
+  }, [changelog]);
+
+  const codeBlockPlan = useMemo(
+    () => blockPlans.find((b) => b.block_id === codeBlockId),
+    [blockPlans, codeBlockId],
+  );
 
   useEffect(() => {
     if (!codeBlockId) return;
@@ -841,9 +863,13 @@ export default function BlockPlanTable({
                                 className="inline-flex items-center justify-center h-6 w-6 rounded-lg hover:bg-muted hover:text-foreground text-muted-foreground transition-colors cursor-pointer"
                                 onClick={() => {
                                   initialCodeRef.current = jobPythonCode ?? "";
-                                  setCodeEditable(false);
                                   setCodeDialogPython("");
                                   setCodeDialogFile(null);
+                                  // Clear stale content from a previously-opened block synchronously —
+                                  // BlockCodePopup has no externally-driven loading state for the SAS
+                                  // pane, so leaving the old value in place risks a flash of the wrong
+                                  // block's code while the new block's source is still being resolved.
+                                  setSasCode("");
                                   setCodeSasFile(bp.source_file);
                                   setCodeBlockId(bp.block_id);
                                 }}
@@ -944,234 +970,49 @@ export default function BlockPlanTable({
         />
       )}
 
-      <Dialog
-        open={codeBlockId !== null}
-        onOpenChange={(o) => {
-          if (!o) setCodeBlockId(null);
-        }}
-      >
-        <DialogContent className="max-w-6xl w-[95vw] h-[80vh] flex flex-col gap-0 p-0 overflow-hidden">
-          {/* ── Title + toolbar ─────────────────────────────────────────────── */}
-          <div className="flex items-center gap-3 px-5 py-3 border-b border-border shrink-0">
-            {/* Block name */}
-            <span className="text-sm font-semibold font-mono text-foreground truncate">
-              {codeBlockId
-                ? (() => {
-                    const raw = codeBlockId.replace(/:\d+$/, "");
-                    const slash = raw.lastIndexOf("/");
-                    return slash >= 0 ? raw.slice(slash + 1) : raw;
-                  })()
-                : "Step Code"}
-            </span>
-
-            <div className="ml-auto flex items-center gap-1.5">
-              {/* Theme toggle */}
-              <button
-                onClick={() => setCodeEditorDark((d) => !d)}
-                aria-label={
-                  codeEditorDark
-                    ? "Switch to light theme"
-                    : "Switch to dark theme"
-                }
-                className="inline-flex items-center justify-center rounded p-1.5 text-muted-foreground border border-border hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
-              >
-                {codeEditorDark ? <Sun size={14} /> : <Moon size={14} />}
-              </button>
-
-              {/* Edit / Lock — hidden when job is accepted */}
-              {!isAccepted && (
-                <button
-                  onClick={() => setCodeEditable((v) => !v)}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium border border-border bg-background hover:bg-muted transition-colors cursor-pointer"
-                >
-                  {codeEditable ? (
-                    <>
-                      <Lock size={12} /> Lock
-                    </>
-                  ) : (
-                    <>
-                      <Pencil size={12} /> Edit
-                    </>
-                  )}
-                </button>
-              )}
-
-              {/* Save — only visible when editing and not accepted */}
-              {!isAccepted && codeEditable && (
-                <button
-                  onClick={async () => {
-                    if (!codeBlockId) return;
-                    setCodeSaving(true);
-                    try {
-                      await saveBlockPython(
-                        jobId,
-                        codeBlockId,
-                        codeDialogPython,
-                      );
-                      setHumanEditedBlocks(
-                        (prev) => new Set([...prev, codeBlockId]),
-                      );
-                      setCodeEditable(false);
-                      void queryClient.invalidateQueries({
-                        queryKey: ["block-revisions", jobId, codeBlockId],
-                      });
-                      void queryClient.invalidateQueries({
-                        queryKey: ["job", jobId],
-                      });
-                      void queryClient.invalidateQueries({
-                        queryKey: ["job", jobId, "versions"],
-                      });
-                      setCodeBlockId(null);
-                    } catch (err) {
-                      toast.error(
-                        err instanceof Error
-                          ? err.message
-                          : "Could not save code.",
-                      );
-                    } finally {
-                      setCodeSaving(false);
-                    }
-                  }}
-                  disabled={codeSaving}
-                  // bg-[var(--primary)] (not bg-primary): the derived --color-primary token only
-                  // resolves once at :root and doesn't re-resolve under the .brand-manifest
-                  // override (see index.css's "F88 indirection bug" note) — same raw-var pattern
-                  // already used for the strategy pills above and elsewhere in this file.
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-[var(--primary)] text-[var(--primary-foreground)] hover:bg-[var(--primary)]/90 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors"
-                >
-                  {codeSaving ? "Saving…" : "Save"}
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* ── Panel headers (identical height, separated by divider) ───────── */}
-          <div className="grid grid-cols-2 border-b border-border shrink-0">
-            {/* SAS header */}
-            <div className="flex items-center gap-2 px-4 py-2 border-r border-border">
-              <img
-                src="/sas.svg"
-                className="h-3.5 w-3.5 shrink-0"
-                alt=""
-                aria-hidden
-              />
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                SAS — source
-              </span>
-            </div>
-            {/* Python header */}
-            <div className="flex items-center gap-2 px-4 py-2">
-              <img
-                src="/python.svg"
-                className="h-3.5 w-3.5 shrink-0"
-                alt=""
-                aria-hidden
-              />
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Python — generated
-              </span>
-              {codeDialogFile && (
-                <span className="text-[11px] font-mono text-muted-foreground/70">
-                  {codeDialogFile}
-                </span>
-              )}
-              {codeEditable && (
-                <span className="ml-1.5 text-[10px] text-amber-600 dark:text-amber-400 font-medium">
-                  editing
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* ── Editors ─────────────────────────────────────────────────────── */}
-          <div className="grid grid-cols-2 flex-1 min-h-0">
-            {/* SAS editor */}
-            <div className="border-r border-border min-h-0 flex flex-col">
-              {codeLoading ? (
-                <div className="flex items-center justify-center flex-1 text-sm text-muted-foreground">
-                  Loading…
-                </div>
-              ) : (
-                <Editor
-                  key={(codeBlockId ?? "none") + "-sas"}
-                  height="100%"
-                  language="sas"
-                  beforeMount={registerSasLanguage}
-                  value={sasCode}
-                  onMount={
-                    ((editor, monaco) => {
-                      const line = codeBlockId
-                        ? parseInt(codeBlockId.split(":").pop() ?? "1", 10)
-                        : 1;
-                      if (line > 1) {
-                        editor.revealLineInCenter(line);
-                        editor.setPosition({ lineNumber: line, column: 1 });
-                      }
-                      const openBp = blockPlans.find(
-                        (b) => b.block_id === codeBlockId,
-                      );
-                      const startLine = line > 0 ? line : 1;
-                      const endLine =
-                        openBp?.end_line && openBp.end_line > startLine
-                          ? openBp.end_line
-                          : startLine + 20;
-                      decorationsRef.current = editor.deltaDecorations(
-                        decorationsRef.current,
-                        [
-                          {
-                            range: new monaco.Range(startLine, 1, endLine, 1),
-                            options: {
-                              isWholeLine: true,
-                              className: "monaco-block-highlight",
-                              overviewRuler: {
-                                color: "rgba(99, 102, 241, 0.3)",
-                                position: 1,
-                              },
-                            },
-                          },
-                        ],
-                      );
-                    }) satisfies OnMount
-                  }
-                  options={{
-                    readOnly: true,
-                    minimap: { enabled: false },
-                    fontSize: 13,
-                    scrollBeyondLastLine: false,
-                    padding: { top: 12 },
-                  }}
-                  theme={codeEditorDark ? "sas-dark" : "sas-light"}
-                />
-              )}
-            </div>
-
-            {/* Python editor */}
-            <div className="min-h-0 flex flex-col">
-              {codeLoading ? (
-                <div className="flex items-center justify-center flex-1 text-sm text-muted-foreground">
-                  Loading…
-                </div>
-              ) : (
-                <Editor
-                  key={codeBlockId ?? "none"}
-                  height="100%"
-                  language="python"
-                  theme={codeEditorDark ? "vs-dark" : "vs"}
-                  value={codeDialogPython}
-                  onChange={(v) => setCodeDialogPython(v ?? "")}
-                  options={{
-                    readOnly: isAccepted || !codeEditable,
-                    minimap: { enabled: false },
-                    fontSize: 13,
-                    scrollBeyondLastLine: false,
-                    padding: { top: 12 },
-                  }}
-                />
-              )}
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {codeBlockId && codeBlockPlan && !codeLoading && (
+        <BlockCodePopup
+          jobId={jobId}
+          blockId={codeBlockId}
+          sourceFile={codeSasFile}
+          blockType={codeBlockPlan.block_type}
+          status={deriveBlockStatus(codeBlockId, codeBlockPlan, trustBlocks, humanVerifiedBlocks)}
+          sasSource={sasCode}
+          startLine={codeBlockPlan.start_line}
+          endLine={codeBlockPlan.end_line}
+          fallbackPythonCode={codeDialogPython}
+          pythonFile={codeDialogFile}
+          verifiedBy={verifiedByMap.get(codeBlockId) ?? null}
+          jobAccepted={isAccepted}
+          onClose={() => setCodeBlockId(null)}
+          onVerified={(blockId) => {
+            setHumanEditedBlocks((prev) => new Set([...prev, blockId]));
+            void queryClient.invalidateQueries({
+              queryKey: ["block-revisions", jobId, blockId],
+            });
+            void queryClient.invalidateQueries({ queryKey: ["job", jobId] });
+            void queryClient.invalidateQueries({
+              queryKey: ["job", jobId, "versions"],
+            });
+            void queryClient.invalidateQueries({
+              queryKey: ["job", jobId, "changelog"],
+            });
+            void queryClient.invalidateQueries({
+              queryKey: trustReportQueryKey(jobId),
+            });
+          }}
+          onSaved={(blockId) => {
+            setHumanEditedBlocks((prev) => new Set([...prev, blockId]));
+            void queryClient.invalidateQueries({
+              queryKey: ["block-revisions", jobId, blockId],
+            });
+            void queryClient.invalidateQueries({ queryKey: ["job", jobId] });
+            void queryClient.invalidateQueries({
+              queryKey: ["job", jobId, "versions"],
+            });
+          }}
+        />
+      )}
     </TooltipProvider>
   );
 }
