@@ -1,10 +1,4 @@
-import {
-  getJobDoc,
-  getJobPlan,
-  getJobSources,
-  getJobTrustReport,
-  listJobs,
-} from "@/api/jobs";
+import { getJobDoc, getJobPlan, getJobSources, listJobs } from "@/api/jobs";
 import type {
   JobPlanResponse,
   JobSummary,
@@ -28,6 +22,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useTrustReport } from "@/lib/useTrustReport";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -288,10 +283,7 @@ function DocCard({
   job: JobSummary;
   onOpen: (jobId: string, tab: "tech" | "plain") => void;
 }): React.ReactElement {
-  const { data: trustReport } = useQuery<TrustReportResponse>({
-    queryKey: ["job", job.job_id, "trust-report"],
-    queryFn: () => getJobTrustReport(job.job_id),
-  });
+  const { data: trustReport } = useTrustReport(job.job_id);
   const { data: planData } = useQuery<JobPlanResponse | null>({
     queryKey: ["job", job.job_id, "plan"],
     queryFn: () => getJobPlan(job.job_id),
@@ -539,11 +531,7 @@ export default function DocsPage(): React.ReactElement {
     [jobs, selectedJobId],
   );
 
-  const { data: popupTrustReport } = useQuery<TrustReportResponse>({
-    queryKey: ["job", selectedJobId, "trust-report"],
-    queryFn: () => getJobTrustReport(selectedJobId!),
-    enabled: !!selectedJobId,
-  });
+  const { data: popupTrustReport } = useTrustReport(selectedJobId);
   const { data: popupPlanData } = useQuery<JobPlanResponse | null>({
     queryKey: ["job", selectedJobId, "plan"],
     queryFn: () => getJobPlan(selectedJobId!),

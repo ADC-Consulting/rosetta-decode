@@ -4,7 +4,6 @@ import {
   getJob,
   getJobPlan,
   getJobSources,
-  getJobTrustReport,
   refineJob,
 } from "@/api/jobs";
 import type {
@@ -29,6 +28,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
+import { useTrustReport } from "@/lib/useTrustReport";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CheckCircle2, Download } from "lucide-react";
@@ -123,10 +123,8 @@ export default function JobDetailPage(): React.ReactElement {
     enabled: !!id && isReviewable,
   });
 
-  const { data: trustReportData } = useQuery({
-    queryKey: ["job", id, "trust-report"],
-    queryFn: () => getJobTrustReport(id),
-    enabled: !!id && isReviewable,
+  const { data: trustReportData } = useTrustReport(id, {
+    enabled: isReviewable,
   });
 
   const { data: jobSourcesData } = useQuery({

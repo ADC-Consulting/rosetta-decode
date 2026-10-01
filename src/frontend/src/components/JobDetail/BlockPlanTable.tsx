@@ -27,6 +27,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { trustReportQueryKey } from "@/lib/useTrustReport";
 import { cn } from "@/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -997,14 +998,7 @@ export default function BlockPlanTable({
               queryKey: ["job", jobId, "changelog"],
             });
             void queryClient.invalidateQueries({
-              queryKey: ["job", jobId, "trust-report"],
-            });
-            // PlanTab.tsx owns a separate trust-report query under this key — it's the one that
-            // actually drives the Plan tab's "Needs review"/"Auto-verified" counts, so it must be
-            // invalidated too (the key above only refreshes JobDetailPage's own copy, consumed by
-            // ETLTab's summary bar).
-            void queryClient.invalidateQueries({
-              queryKey: ["trust-report", jobId],
+              queryKey: trustReportQueryKey(jobId),
             });
           }}
           onSaved={(blockId) => {

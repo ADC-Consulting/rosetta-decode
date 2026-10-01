@@ -16,6 +16,7 @@ import {
   sasFileToPyFile,
 } from "@/lib/sas-python-file-map";
 import { deriveTargetPipelineSteps } from "@/lib/target-steps";
+import { trustReportQueryKey } from "@/lib/useTrustReport";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import BlockCodePopup from "./BlockCodePopup";
@@ -247,13 +248,7 @@ export default function ETLTab({
       queryKey: ["job", jobId, "changelog"],
     });
     void queryClient.invalidateQueries({
-      queryKey: ["job", jobId, "trust-report"],
-    });
-    // PlanTab.tsx owns a separate trust-report query under this key — it's the one that actually
-    // drives the Plan tab's "Needs review"/"Auto-verified" counts, so it must be invalidated too
-    // (the key above only refreshes JobDetailPage's own copy, consumed by this tab's summary bar).
-    void queryClient.invalidateQueries({
-      queryKey: ["trust-report", jobId],
+      queryKey: trustReportQueryKey(jobId),
     });
     // Don't close modal — let user see the Verified badge update, then close manually
   };

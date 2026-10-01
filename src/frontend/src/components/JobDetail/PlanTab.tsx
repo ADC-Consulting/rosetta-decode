@@ -1,4 +1,4 @@
-import { getJobPlan, getJobRunbook, getJobTrustReport, refineBlock } from "@/api/jobs";
+import { getJobPlan, getJobRunbook, refineBlock } from "@/api/jobs";
 import type {
   BlockOverride,
   BlockPlan,
@@ -23,6 +23,7 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useBrandManifestContainer } from "@/lib/useBrandManifestContainer";
+import { useTrustReport } from "@/lib/useTrustReport";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -546,9 +547,7 @@ export default function PlanTab({
     enabled: !!jobId && isReviewable,
   });
 
-  const { data: trustReport } = useQuery<TrustReportResponse>({
-    queryKey: ["trust-report", jobId],
-    queryFn: () => getJobTrustReport(jobId),
+  const { data: trustReport } = useTrustReport(jobId, {
     enabled: trustReportEnabled,
   });
 

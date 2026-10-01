@@ -2,6 +2,7 @@ import { refineBlock } from "@/api/jobs";
 import type { BlockRefineResponse } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
+import { trustReportQueryKey } from "@/lib/useTrustReport";
 import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
@@ -57,7 +58,7 @@ export default function BlockRefineDialog({
         queryKey: ["block-revisions", jobId, blockId],
       });
       await queryClient.invalidateQueries({
-        queryKey: ["trust-report", jobId],
+        queryKey: trustReportQueryKey(jobId),
       });
       await queryClient.invalidateQueries({ queryKey: ["job", jobId] });
       toast.success(`Block refined — revision ${response.revision_number}`);
