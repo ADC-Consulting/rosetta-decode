@@ -1562,10 +1562,11 @@ export default function JobsPage(): React.ReactElement {
                 onClick={() => {
                   const id = manifest.job_id;
                   handleDialogOpenChange(false);
-                  navigate(`/jobs/${id}`);
+                  setTraceJobId(id);
                 }}
+                aria-label={`Watch live trace for job ${manifest.job_id.slice(0, 8)}`}
               >
-                View Migration
+                Watch live
               </Button>
             )}
           </DialogFooter>
