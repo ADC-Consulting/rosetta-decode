@@ -499,6 +499,10 @@ class BlockPythonEditRequest(BaseModel):
     python_code: str
     notes: str | None = None
     trigger: str = "human"
+    # SAS: docs/plans/F98-manual-block-verification.md:B
+    # Only persisted by the route when trigger == "human-verify" — never trust
+    # the client to self-police this for other trigger values.
+    verified_by: str | None = None
 
     @field_validator("trigger")
     @classmethod
@@ -543,6 +547,7 @@ class ChangelogEntry(BaseModel):
     notes: str | None
     hint: str | None
     diff_vs_previous: str | None
+    verified_by: str | None
     created_at: datetime
 
 

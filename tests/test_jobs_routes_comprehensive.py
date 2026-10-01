@@ -1306,3 +1306,100 @@ async def test_archive_job_not_found_returns_404(f94_session: AsyncSession) -> N
         await archive_job(uuid.uuid4(), ArchiveJobRequest(archived=True), session=f94_session)
 
     assert exc_info.value.status_code == 404
+
+
+# ─── F98: verified_by persistence on human-verify saves (real in-memory DB) ──
+#
+# SAS: docs/plans/F98-manual-block-verification.md:C
+# These use the real in-memory DB (not a mocked session) so the round trip
+# through the changelog query — which reads the persisted column back off the
+# BlockRevision row — is actually exercised, not just the in-memory request
+# object.
+
+
+@pytest.mark.asyncio
+async def test_save_block_python_human_verify_persists_verified_by(
+    f94_session: AsyncSession,
+) -> None:
+    """A human-verify save with verified_by stores and round-trips the name."""
+    from src.backend.api.routes.jobs import get_job_changelog
+    from src.backend.api.schemas import BlockPythonEditRequest
+
+    job_id = await _f94_insert_job(f94_session)
+
+    await save_block_python(
+        uuid.UUID(job_id),
+        "step.sas:1",
+        BlockPythonEditRequest(
+            python_code="x = 1",
+            trigger="human-verify",
+            verified_by="Jane Doe",
+        ),
+        f94_session,
+    )
+
+    changelog = await get_job_changelog(uuid.UUID(job_id), session=f94_session)
+
+    assert len(changelog.entries) == 1
+    assert changelog.entries[0].trigger == "human-verify"
+    assert changelog.entries[0].verified_by == "Jane Doe"
+
+
+@pytest.mark.asyncio
+async def test_save_block_python_human_trigger_ignores_verified_by(
+    f94_session: AsyncSession,
+) -> None:
+    """A plain human edit must never persist verified_by, even if the client sends one.
+
+    This is the security/data-integrity rule: the server must not trust the
+    client to only send verified_by alongside trigger="human-verify".
+    """
+    from src.backend.api.routes.jobs import get_job_changelog
+    from src.backend.api.schemas import BlockPythonEditRequest
+
+    job_id = await _f94_insert_job(f94_session)
+
+    await save_block_python(
+        uuid.UUID(job_id),
+        "step.sas:1",
+        BlockPythonEditRequest(
+            python_code="x = 1",
+            trigger="human",
+            verified_by="Jane Doe",
+        ),
+        f94_session,
+    )
+
+    changelog = await get_job_changelog(uuid.UUID(job_id), session=f94_session)
+
+    assert len(changelog.entries) == 1
+    assert changelog.entries[0].trigger == "human"
+    assert changelog.entries[0].verified_by is None
+
+
+@pytest.mark.asyncio
+async def test_save_block_python_human_refine_ignores_verified_by(
+    f94_session: AsyncSession,
+) -> None:
+    """A human-refine save must never persist verified_by, even if the client sends one."""
+    from src.backend.api.routes.jobs import get_job_changelog
+    from src.backend.api.schemas import BlockPythonEditRequest
+
+    job_id = await _f94_insert_job(f94_session)
+
+    await save_block_python(
+        uuid.UUID(job_id),
+        "step.sas:1",
+        BlockPythonEditRequest(
+            python_code="x = 1",
+            trigger="human-refine",
+            verified_by="Jane Doe",
+        ),
+        f94_session,
+    )
+
+    changelog = await get_job_changelog(uuid.UUID(job_id), session=f94_session)
+
+    assert len(changelog.entries) == 1
+    assert changelog.entries[0].trigger == "human-refine"
+    assert changelog.entries[0].verified_by is None

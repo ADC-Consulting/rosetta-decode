@@ -1802,6 +1802,10 @@ async def save_block_python(
         .order_by(BlockRevision.revision_number.desc())
     )
     previous = rev_result.scalars().first()
+    # SAS: docs/plans/F98-manual-block-verification.md:B
+    # Only ever persist verified_by for a human-verify-triggered save — never
+    # trust the client to omit it for other trigger values.
+    verified_by = request.verified_by if request.trigger == "human-verify" else None
     if previous is None:
         new_revision = BlockRevision(
             id=str(uuid.uuid4()),
@@ -1817,6 +1821,7 @@ async def save_block_python(
             notes=request.notes,
             hint=None,
             diff_vs_previous=None,
+            verified_by=verified_by,
         )
         session.add(new_revision)
         await session.commit()
@@ -1847,6 +1852,7 @@ async def save_block_python(
         notes=request.notes,
         hint=None,
         diff_vs_previous=diff_vs_previous,
+        verified_by=verified_by,
     )
     session.add(new_revision)
     await session.commit()
@@ -1902,6 +1908,7 @@ async def get_job_changelog(
             notes=r.notes,
             hint=r.hint,
             diff_vs_previous=r.diff_vs_previous,
+            verified_by=r.verified_by,
             created_at=r.created_at,
         )
         for r in revisions
